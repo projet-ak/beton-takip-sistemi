@@ -1,0 +1,14 @@
+Options -Indexes
+DirectoryIndex index.php
+
+<FilesMatch "^(config\.php|\.env)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTPS} off
+    # HTTPS yönlendirmesi için aşağıdaki satırı aktif edin:
+    # RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
