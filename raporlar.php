@@ -13,17 +13,61 @@ require_once __DIR__ . '/includes/db.php';
 $pageTitle = 'Raporlar — Beton Takip Sistemi';
 
 // ── Filtreler ─────────────────────────────────────────────────────────────────
-$yil        = isset($_GET['yil'])      && ctype_digit($_GET['yil'])      ? (int)$_GET['yil']      : (int)date('Y');
-$ay         = isset($_GET['ay'])       && ctype_digit($_GET['ay'])       ? (int)$_GET['ay']       : 0;
-$parselId   = isset($_GET['parsel'])   && ctype_digit($_GET['parsel'])   ? (int)$_GET['parsel']   : 0;
-$tedarikciId= isset($_GET['tedarikci'])&& ctype_digit($_GET['tedarikci'])? (int)$_GET['tedarikci']: 0;
+$yil           = isset($_GET['yil'])           && ctype_digit($_GET['yil'])           ? (int)$_GET['yil']           : 0;
+$ay            = isset($_GET['ay'])            && ctype_digit($_GET['ay'])            ? (int)$_GET['ay']            : 0;
+$parselId      = isset($_GET['parsel'])        && ctype_digit($_GET['parsel'])        ? (int)$_GET['parsel']        : 0;
+$tedarikciId   = isset($_GET['tedarikci'])     && ctype_digit($_GET['tedarikci'])     ? (int)$_GET['tedarikci']     : 0;
+$projeId       = isset($_GET['proje_id'])      && ctype_digit($_GET['proje_id'])      ? (int)$_GET['proje_id']      : 0;
+$betonSinifiId = isset($_GET['beton_sinifi_id']) && ctype_digit($_GET['beton_sinifi_id']) ? (int)$_GET['beton_sinifi_id'] : 0;
+$imalatGrupId  = isset($_GET['imalat_grup_id'])  && ctype_digit($_GET['imalat_grup_id'])  ? (int)$_GET['imalat_grup_id']  : 0;
+$tip           = isset($_GET['tip']) && in_array($_GET['tip'], ['alis','iade','tum'], true) ? $_GET['tip'] : 'alis';
 
-$where  = ["i.tip = 'alis'", "YEAR(i.tarih) = ?"];
-$params = [$yil];
-if ($ay)         { $where[] = 'MONTH(i.tarih) = ?'; $params[] = $ay; }
-if ($parselId)   { $where[] = 'i.parsel_id = ?';    $params[] = $parselId; }
-if ($tedarikciId){ $where[] = 'i.tedarikci_id = ?'; $params[] = $tedarikciId; }
-$whereSQL = implode(' AND ', $where);
+// Tarih aralığı — yıl seçilmediyse aktif
+$tarihBas = '';
+$tarihBit = '';
+if ($yil === 0) {
+    $tarihBas = isset($_GET['tarih_bas']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tarih_bas']) ? $_GET['tarih_bas'] : '';
+    $tarihBit = isset($_GET['tarih_bit']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tarih_bit']) ? $_GET['tarih_bit'] : '';
+}
+
+// Eğer yıl da seçilmemişse, varsayılan yıl
+$yilDefault = ($yil === 0 && $tarihBas === '') ? (int)date('Y') : $yil;
+
+// ── WHERE inşa et ─────────────────────────────────────────────────────────────
+$where  = [];
+$params = [];
+
+// Tip filtresi
+if ($tip === 'alis') {
+    $where[] = "i.tip = 'alis'";
+} elseif ($tip === 'iade') {
+    $where[] = "i.tip = 'iade'";
+// 'tum' ise koşul yok
+
+// Tarih filtresi
+} if ($yilDefault > 0) {
+    $where[] = 'YEAR(i.tarih) = ?';
+    $params[] = $yilDefault;
+    if ($ay) { $where[] = 'MONTH(i.tarih) = ?'; $params[] = $ay; }
+} elseif ($tarihBas !== '' && $tarihBit !== '') {
+    $where[] = 'i.tarih BETWEEN ? AND ?';
+    $params[] = $tarihBas;
+    $params[] = $tarihBit;
+} elseif ($tarihBas !== '') {
+    $where[] = 'i.tarih >= ?';
+    $params[] = $tarihBas;
+} elseif ($tarihBit !== '') {
+    $where[] = 'i.tarih <= ?';
+    $params[] = $tarihBit;
+}
+
+if ($parselId)      { $where[] = 'i.parsel_id = ?';       $params[] = $parselId; }
+if ($tedarikciId)   { $where[] = 'i.tedarikci_id = ?';    $params[] = $tedarikciId; }
+if ($projeId)       { $where[] = 'i.proje_id = ?';        $params[] = $projeId; }
+if ($betonSinifiId) { $where[] = 'i.beton_sinifi_id = ?'; $params[] = $betonSinifiId; }
+if ($imalatGrupId)  { $where[] = 'i.imalat_grup_id = ?';  $params[] = $imalatGrupId; }
+
+$whereSQL = $where ? implode(' AND ', $where) : '1=1';
 
 // ── Aylık özet ───────────────────────────────────────────────────────────────
 $stm = $pdo->prepare("
@@ -81,13 +125,46 @@ $stm = $pdo->prepare("SELECT COUNT(*) AS adet, COALESCE(SUM(miktar),0) AS toplam
 $stm->execute($params);
 $genelToplam = $stm->fetch();
 
-// Filtre dropdownları
-$yillar      = $pdo->query("SELECT DISTINCT YEAR(tarih) AS y FROM irsaliyeler ORDER BY y DESC")->fetchAll(PDO::FETCH_COLUMN);
-if (!in_array($yil, array_map('intval', $yillar))) { $yillar[] = $yil; }
-$parseller   = $pdo->query("SELECT id,ad FROM parseller ORDER BY ad")->fetchAll();
-$tedarikciler= $pdo->query("SELECT id,ad FROM tedarikciler WHERE aktif=1 ORDER BY ad")->fetchAll();
+// ── Detaylı irsaliye tablosu ──────────────────────────────────────────────────
+$stm = $pdo->prepare("
+    SELECT i.id, i.tarih, i.irsaliye_no, i.tip,
+           t.ad AS tedarikci, bs.ad AS beton_sinifi, i.miktar, i.birim,
+           pt.ad AS pompa, ig.ad AS imalat_grup, aik.ad AS ana_is_kalemi,
+           par.ad AS parsel, blk.ad AS blok, ko.kot_degeri AS kot,
+           f.ad AS firma, i.arac_plaka, i.aciklama, p.kod AS proje_kod
+    FROM irsaliyeler i
+    LEFT JOIN tedarikciler t       ON t.id   = i.tedarikci_id
+    LEFT JOIN beton_siniflari bs   ON bs.id  = i.beton_sinifi_id
+    LEFT JOIN pompa_turleri pt     ON pt.id  = i.pompa_id
+    LEFT JOIN imalat_gruplari ig   ON ig.id  = i.imalat_grup_id
+    LEFT JOIN ana_is_kalemleri aik ON aik.id = i.ana_is_kalemi_id
+    LEFT JOIN parseller par        ON par.id = i.parsel_id
+    LEFT JOIN bloklar blk          ON blk.id = i.blok_id
+    LEFT JOIN kotlar ko            ON ko.id  = i.kot_id
+    LEFT JOIN firmalar f           ON f.id   = i.firma_id
+    LEFT JOIN projeler p           ON p.id   = i.proje_id
+    WHERE {$whereSQL}
+    ORDER BY i.tarih DESC, i.id DESC
+");
+$stm->execute($params);
+$detayRows = $stm->fetchAll();
 
-// Grafik verileri
+// ── Filtre dropdown verileri ──────────────────────────────────────────────────
+$yillar       = $pdo->query("SELECT DISTINCT YEAR(tarih) AS y FROM irsaliyeler ORDER BY y DESC")->fetchAll(PDO::FETCH_COLUMN);
+if ($yilDefault > 0 && !in_array($yilDefault, array_map('intval', $yillar))) { $yillar[] = $yilDefault; }
+$parseller    = $pdo->query("SELECT id,ad FROM parseller ORDER BY ad")->fetchAll();
+$tedarikciler = $pdo->query("SELECT id,ad FROM tedarikciler WHERE aktif=1 ORDER BY ad")->fetchAll();
+$betonSiniflari = $pdo->query("SELECT id,ad FROM beton_siniflari ORDER BY ad")->fetchAll();
+$imalatGruplari = $pdo->query("SELECT id,ad FROM imalat_gruplari ORDER BY ad")->fetchAll();
+
+// Projeler — tablo yoksa boş
+try {
+    $projeler = $pdo->query("SELECT id, COALESCE(kod, ad, CONCAT('Proje #',id)) AS etiket FROM projeler ORDER BY etiket")->fetchAll();
+} catch (Exception $e) {
+    $projeler = [];
+}
+
+// ── Grafik verileri ───────────────────────────────────────────────────────────
 $chartLabels = []; $chartM3 = [];
 for ($i = 1; $i <= 12; $i++) {
     $chartLabels[] = $ayAdlari[$i];
@@ -99,29 +176,72 @@ $betonValues  = json_encode(array_map(fn($r) => (float)$r['toplam_m3'], $betonOz
 $tedLabels    = json_encode(array_column($tedarikciOzet, 'ad'));
 $tedValues    = json_encode(array_map(fn($r) => (float)$r['toplam_m3'], $tedarikciOzet));
 
+// JS'e aktarılacak özet değerleri
+$jsToplamM3   = (float)$genelToplam['toplam_m3'];
+$jsToplamAdet = (int)$genelToplam['adet'];
+
+// Dönem etiketi
+$donemEtiketi = '';
+if ($yilDefault > 0) {
+    $donemEtiketi = $yilDefault . ($ay ? ' / ' . $ayAdlari[$ay] : '');
+} elseif ($tarihBas || $tarihBit) {
+    $donemEtiketi = ($tarihBas ?: '...') . ' – ' . ($tarihBit ?: '...');
+}
+
 require_once __DIR__ . '/includes/header.php';
 ?>
 
+<style>
+@media print {
+    .no-print { display: none !important; }
+    .card { break-inside: avoid; }
+    .navbar { display: none !important; }
+    body { padding: 0; }
+    .container-fluid { padding: 0.5rem !important; }
+}
+</style>
+
+<!-- Başlık & Aksiyon Butonları -->
 <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
     <h4 class="mb-0"><i class="bi bi-bar-chart-line text-primary me-2"></i>Raporlar</h4>
-    <a href="raporlar.php?<?= http_build_query(['yil'=>$yil,'ay'=>$ay,'parsel'=>$parselId,'tedarikci'=>$tedarikciId]) ?>" class="btn btn-sm btn-outline-secondary" onclick="window.print();return false;">
-        <i class="bi bi-printer me-1"></i> Yazdır
-    </a>
+    <div class="d-flex gap-2 flex-wrap no-print">
+        <button onclick="exportExcel()" class="btn btn-sm btn-success">
+            <i class="bi bi-file-earmark-spreadsheet me-1"></i> Excel'e Aktar
+        </button>
+        <button onclick="window.print()" class="btn btn-sm btn-outline-secondary">
+            <i class="bi bi-printer me-1"></i> PDF / Yazdır
+        </button>
+    </div>
 </div>
 
 <!-- Filtreler -->
-<div class="card mb-4">
+<div class="card mb-4 no-print">
     <div class="card-body py-2">
         <form class="row g-2 align-items-end" method="get">
-            <div class="col-sm-3 col-md-2">
-                <label class="form-label small mb-1">Yıl <span class="text-danger">*</span></label>
-                <select name="yil" class="form-select form-select-sm">
+
+            <!-- Tip -->
+            <div class="col-sm-4 col-md-2">
+                <label class="form-label small mb-1">Tip</label>
+                <select name="tip" class="form-select form-select-sm">
+                    <option value="alis"  <?= $tip === 'alis'  ? 'selected' : '' ?>>Alış</option>
+                    <option value="iade"  <?= $tip === 'iade'  ? 'selected' : '' ?>>İade</option>
+                    <option value="tum"   <?= $tip === 'tum'   ? 'selected' : '' ?>>Tümü</option>
+                </select>
+            </div>
+
+            <!-- Yıl -->
+            <div class="col-sm-3 col-md-1">
+                <label class="form-label small mb-1">Yıl</label>
+                <select name="yil" class="form-select form-select-sm" id="selYil">
+                    <option value="0" <?= $yilDefault === 0 ? 'selected' : '' ?>>—</option>
                     <?php foreach ($yillar as $y): ?>
-                        <option value="<?= $y ?>" <?= $yil == (int)$y ? 'selected' : '' ?>><?= $y ?></option>
+                        <option value="<?= $y ?>" <?= $yilDefault == (int)$y ? 'selected' : '' ?>><?= $y ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-sm-2 col-md-1">
+
+            <!-- Ay -->
+            <div class="col-sm-3 col-md-1">
                 <label class="form-label small mb-1">Ay</label>
                 <select name="ay" class="form-select form-select-sm">
                     <option value="">Tümü</option>
@@ -130,6 +250,18 @@ require_once __DIR__ . '/includes/header.php';
                     <?php endfor; ?>
                 </select>
             </div>
+
+            <!-- Tarih Aralığı (yıl seçilmemişse aktif) -->
+            <div class="col-sm-4 col-md-2" id="tarihBasDiv">
+                <label class="form-label small mb-1">Başlangıç Tarihi</label>
+                <input type="date" name="tarih_bas" class="form-control form-control-sm" value="<?= h($tarihBas) ?>">
+            </div>
+            <div class="col-sm-4 col-md-2" id="tarihBitDiv">
+                <label class="form-label small mb-1">Bitiş Tarihi</label>
+                <input type="date" name="tarih_bit" class="form-control form-control-sm" value="<?= h($tarihBit) ?>">
+            </div>
+
+            <!-- Parsel -->
             <div class="col-sm-4 col-md-2">
                 <label class="form-label small mb-1">Parsel</label>
                 <select name="parsel" class="form-select form-select-sm">
@@ -139,6 +271,8 @@ require_once __DIR__ . '/includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
+
+            <!-- Tedarikçi -->
             <div class="col-sm-4 col-md-2">
                 <label class="form-label small mb-1">Tedarikçi</label>
                 <select name="tedarikci" class="form-select form-select-sm">
@@ -148,6 +282,42 @@ require_once __DIR__ . '/includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
+
+            <!-- Proje -->
+            <?php if (!empty($projeler)): ?>
+            <div class="col-sm-4 col-md-2">
+                <label class="form-label small mb-1">Proje</label>
+                <select name="proje_id" class="form-select form-select-sm">
+                    <option value="">Tümü</option>
+                    <?php foreach ($projeler as $pr): ?>
+                        <option value="<?= $pr['id'] ?>" <?= $projeId == $pr['id'] ? 'selected' : '' ?>><?= h($pr['etiket']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php endif; ?>
+
+            <!-- Beton Sınıfı -->
+            <div class="col-sm-4 col-md-2">
+                <label class="form-label small mb-1">Beton Sınıfı</label>
+                <select name="beton_sinifi_id" class="form-select form-select-sm">
+                    <option value="">Tümü</option>
+                    <?php foreach ($betonSiniflari as $bs): ?>
+                        <option value="<?= $bs['id'] ?>" <?= $betonSinifiId == $bs['id'] ? 'selected' : '' ?>><?= h($bs['ad']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <!-- İmalat Grubu -->
+            <div class="col-sm-4 col-md-2">
+                <label class="form-label small mb-1">İmalat Grubu</label>
+                <select name="imalat_grup_id" class="form-select form-select-sm">
+                    <option value="">Tümü</option>
+                    <?php foreach ($imalatGruplari as $ig): ?>
+                        <option value="<?= $ig['id'] ?>" <?= $imalatGrupId == $ig['id'] ? 'selected' : '' ?>><?= h($ig['ad']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
             <div class="col-auto">
                 <button class="btn btn-sm btn-primary"><i class="bi bi-search me-1"></i>Filtrele</button>
                 <a href="raporlar.php" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Temizle</a>
@@ -161,12 +331,12 @@ require_once __DIR__ . '/includes/header.php';
     <div class="col-6 col-md-3">
         <div class="card p-3 border-start border-primary border-4">
             <div class="fs-4 fw-bold text-primary"><?= format_number($genelToplam['toplam_m3'], 2) ?></div>
-            <div class="text-muted small">Toplam m³ (<?= $yil ?><?= $ay ? ' / '.$ayAdlari[$ay] : '' ?>)</div>
+            <div class="text-muted small">Toplam m³<?= $donemEtiketi ? ' (' . h($donemEtiketi) . ')' : '' ?></div>
         </div>
     </div>
     <div class="col-6 col-md-3">
         <div class="card p-3 border-start border-success border-4">
-            <div class="fs-4 fw-bold text-success"><?= (int)$genelToplam['adet'] ?></div>
+            <div class="fs-4 fw-bold text-success"><?= $jsToplamAdet ?></div>
             <div class="text-muted small">Toplam İrsaliye</div>
         </div>
     </div>
@@ -188,7 +358,7 @@ require_once __DIR__ . '/includes/header.php';
 <div class="row g-4 mb-4">
     <div class="col-md-8">
         <div class="card">
-            <div class="card-header bg-white">Aylık m³ Dağılımı (<?= $yil ?>)</div>
+            <div class="card-header bg-white">Aylık m³ Dağılımı<?= $yilDefault > 0 ? ' (' . $yilDefault . ')' : '' ?></div>
             <div class="card-body">
                 <canvas id="chartAylik" height="110"></canvas>
             </div>
@@ -208,7 +378,7 @@ require_once __DIR__ . '/includes/header.php';
 <div class="row g-4 mb-4">
     <div class="col-md-7">
         <div class="card">
-            <div class="card-header bg-white fw-semibold">Aylık Detay (<?= $yil ?>)</div>
+            <div class="card-header bg-white fw-semibold">Aylık Detay<?= $yilDefault > 0 ? ' (' . $yilDefault . ')' : '' ?></div>
             <div class="card-body p-0">
                 <table class="table table-sm mb-0">
                     <thead class="table-light"><tr><th>Ay</th><th class="text-end">Adet</th><th class="text-end">m³</th></tr></thead>
@@ -332,6 +502,71 @@ require_once __DIR__ . '/includes/header.php';
     </div>
 </div>
 
+<!-- Detaylı Rapor -->
+<div class="card mb-4">
+    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-table me-1"></i>Detaylı Rapor</span>
+        <small class="text-muted"><?= count($detayRows) ?> kayıt</small>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0" id="detayTablosu">
+                <thead class="table-light">
+                    <tr>
+                        <th>Tarih</th>
+                        <th>İrs.No</th>
+                        <th>Tip</th>
+                        <th>Tedarikçi</th>
+                        <th>Beton</th>
+                        <th class="text-end">Miktar</th>
+                        <th>Pompa</th>
+                        <th>İmalat Grubu</th>
+                        <th>İş Kalemi</th>
+                        <th>Parsel</th>
+                        <th>Blok</th>
+                        <th>Kot</th>
+                        <th>Firma</th>
+                        <th>Plaka</th>
+                        <th>Proje</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php if (empty($detayRows)): ?>
+                    <tr><td colspan="15" class="text-center text-muted py-3">Veri yok</td></tr>
+                <?php else: ?>
+                    <?php foreach ($detayRows as $d): ?>
+                    <tr>
+                        <td><?= format_date($d['tarih']) ?></td>
+                        <td><?= h($d['irsaliye_no'] ?: '—') ?></td>
+                        <td>
+                            <?php if ($d['tip'] === 'alis'): ?>
+                                <span class="badge bg-success">Alış</span>
+                            <?php else: ?>
+                                <span class="badge bg-danger">İade</span>
+                            <?php endif; ?>
+                        </td>
+                        <td><?= h($d['tedarikci'] ?: '—') ?></td>
+                        <td><?= h($d['beton_sinifi'] ?: '—') ?></td>
+                        <td class="text-end fw-semibold"><?= format_number($d['miktar'], 2) ?> <?= h($d['birim'] ?: 'm³') ?></td>
+                        <td><?= h($d['pompa'] ?: '—') ?></td>
+                        <td><?= h($d['imalat_grup'] ?: '—') ?></td>
+                        <td><?= h($d['ana_is_kalemi'] ?: '—') ?></td>
+                        <td><?= h($d['parsel'] ?: '—') ?></td>
+                        <td><?= h($d['blok'] ?: '—') ?></td>
+                        <td><?= h($d['kot'] !== null ? $d['kot'] : '—') ?></td>
+                        <td><?= h($d['firma'] ?: '—') ?></td>
+                        <td><?= h($d['arac_plaka'] ?: '—') ?></td>
+                        <td><?= h($d['proje_kod'] ?: '—') ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 (function () {
     const COLORS = ['#0d6efd','#198754','#fd7e14','#dc3545','#6610f2','#20c997','#ffc107','#0dcaf0','#6f42c1','#d63384'];
@@ -357,7 +592,41 @@ require_once __DIR__ . '/includes/header.php';
         },
         options: { plugins: { legend: { position: 'bottom' } } }
     });
+
+    // Yıl seçilince tarih aralığı alanlarını gizle/göster
+    const selYil = document.getElementById('selYil');
+    const tarihBasDiv = document.getElementById('tarihBasDiv');
+    const tarihBitDiv = document.getElementById('tarihBitDiv');
+    function toggleTarih() {
+        const yilSec = selYil && selYil.value !== '0';
+        if (tarihBasDiv) tarihBasDiv.style.display = yilSec ? 'none' : '';
+        if (tarihBitDiv) tarihBitDiv.style.display = yilSec ? 'none' : '';
+    }
+    if (selYil) { selYil.addEventListener('change', toggleTarih); toggleTarih(); }
 })();
+
+// PHP'den JS'e özet değerleri
+const toplamM3   = <?= json_encode($jsToplamM3) ?>;
+const toplamAdet = <?= json_encode($jsToplamAdet) ?>;
+
+function exportExcel() {
+    const wb = XLSX.utils.book_new();
+
+    // Detay sayfası
+    const ws = XLSX.utils.table_to_sheet(document.getElementById('detayTablosu'));
+    XLSX.utils.book_append_sheet(wb, ws, 'Beton Rapor');
+
+    // Özet sayfası
+    const ozet = [
+        ['Toplam m³', toplamM3],
+        ['Toplam İrsaliye', toplamAdet],
+        ['Tarih', new Date().toLocaleDateString('tr-TR')],
+    ];
+    const ws2 = XLSX.utils.aoa_to_sheet(ozet);
+    XLSX.utils.book_append_sheet(wb, ws2, 'Özet');
+
+    XLSX.writeFile(wb, 'beton_rapor_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+}
 </script>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

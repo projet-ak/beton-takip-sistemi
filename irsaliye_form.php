@@ -553,7 +553,10 @@ require_once __DIR__ . '/includes/header.php';
                                 <i class="bi bi-camera-video me-1"></i> Kamerayı Aç
                             </button>
                             <button type="button" id="btnKameraCevir" class="btn btn-outline-secondary btn-sm d-none">
-                                <i class="bi bi-arrow-repeat me-1"></i> Kamerayı Çevir
+                                <i class="bi bi-arrow-repeat me-1"></i> Çevir
+                            </button>
+                            <button type="button" id="btnKameraQrTara" class="btn btn-outline-success btn-sm d-none" title="Kamerada QR kod tara">
+                                <i class="bi bi-qr-code-scan me-1"></i> QR Tara
                             </button>
                             <button type="button" id="btnKameraKapat" class="btn btn-outline-danger btn-sm d-none">
                                 <i class="bi bi-stop-circle me-1"></i> Kapat
@@ -637,7 +640,7 @@ require_once __DIR__ . '/includes/header.php';
                         </div>
                         <div class="alert alert-info small py-2 mb-0">
                             <i class="bi bi-lightbulb me-1"></i>
-                            QR kodu otomatik tanındığında irsaliye numarası forma aktarılır.
+                            E-İrsaliye QR kodlarında irsaliye no, tarih, plaka, sevk saati ve ETTN otomatik aktarılır. Diğer kodlarda irsaliye no alanı doldurulur.
                         </div>
                     </div>
                 </div>
@@ -771,6 +774,9 @@ const btnFotoCek     = document.getElementById('btnFotoCek');
 const kameraPlaceholder = document.getElementById('kameraPlaceholder');
 let kameraFotograflari = []; // data URL array
 
+const btnKameraQrTara = document.getElementById('btnKameraQrTara');
+let kameraQrAnimId = null, kameraQrAktif = false;
+
 async function kameraAc(faceUser = false) {
     if (kameraStream) kameraKapat();
     try {
@@ -783,6 +789,7 @@ async function kameraAc(faceUser = false) {
         btnKameraCevir.classList.remove('d-none');
         btnKameraKapat.classList.remove('d-none');
         btnFotoCek.classList.remove('d-none');
+        btnKameraQrTara?.classList.remove('d-none');
         btnKameraAc.classList.add('d-none');
     } catch (e) {
         alert('Kamera açılamadı: ' + e.message + '\nTarayıcı kamera iznini kontrol edin.');
@@ -790,6 +797,7 @@ async function kameraAc(faceUser = false) {
 }
 
 function kameraKapat() {
+    kameraQrDurdur();
     kameraStream?.getTracks().forEach(t => t.stop());
     kameraStream = null;
     kameraVideo.classList.add('d-none');
@@ -797,8 +805,67 @@ function kameraKapat() {
     btnKameraCevir.classList.add('d-none');
     btnKameraKapat.classList.add('d-none');
     btnFotoCek.classList.add('d-none');
+    btnKameraQrTara?.classList.add('d-none');
     btnKameraAc.classList.remove('d-none');
 }
+
+function kameraQrDurdur() {
+    cancelAnimationFrame(kameraQrAnimId);
+    kameraQrAktif = false;
+    if (btnKameraQrTara) {
+        btnKameraQrTara.innerHTML = '<i class="bi bi-qr-code-scan me-1"></i> QR Tara';
+        btnKameraQrTara.classList.replace('btn-warning', 'btn-outline-success');
+    }
+}
+
+function kameraQrLoop() {
+    if (!kameraQrAktif || !kameraStream) return;
+    const ctx = kameraCanvas.getContext('2d');
+    kameraCanvas.width  = kameraVideo.videoWidth;
+    kameraCanvas.height = kameraVideo.videoHeight;
+    ctx.drawImage(kameraVideo, 0, 0);
+    const imgData = ctx.getImageData(0, 0, kameraCanvas.width, kameraCanvas.height);
+    if (typeof jsQR !== 'undefined' && imgData.width > 0) {
+        const kod = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'dontInvert' });
+        if (kod) {
+            kameraQrDurdur();
+            // Aynı JSON parse mantığını kullan
+            const rawData = kod.data.trim();
+            try {
+                const json = JSON.parse(rawData);
+                let doldurulan = 0;
+                if (json.no)         { const el = document.querySelector('[name="irsaliye_no"]');        if (el) { el.value = json.no;         doldurulan++; } }
+                if (json.tarih)      { const el = document.querySelector('[name="tarih"]');              if (el) { el.value = json.tarih;      doldurulan++; } }
+                if (json.plaka)      { const el = document.querySelector('[name="arac_plaka"]');         if (el) { el.value = json.plaka;      doldurulan++; } }
+                if (json.sevkzamani) { const el = document.querySelector('[name="mikser_cikis_saati"]'); if (el) { el.value = json.sevkzamani; doldurulan++; } }
+                if (json.ettn)       { const el = document.querySelector('[name="fatura_no"]');          if (el) { el.value = json.ettn;       doldurulan++; } }
+                showToast(`E-İrsaliye QR okundu — ${doldurulan} alan dolduruldu`, 'success');
+            } catch(e) {
+                if (/^[A-Z]{2,5}\d{10,}/.test(rawData)) {
+                    const el = document.querySelector('[name="irsaliye_no"]');
+                    if (el) { el.value = rawData; showToast('İrsaliye No aktarıldı!', 'success'); }
+                } else {
+                    showToast('QR tarandı: ' + rawData.substring(0, 40), 'info');
+                }
+            }
+            return;
+        }
+    }
+    kameraQrAnimId = requestAnimationFrame(kameraQrLoop);
+}
+
+btnKameraQrTara?.addEventListener('click', function () {
+    if (kameraQrAktif) {
+        kameraQrDurdur();
+    } else {
+        kameraQrAktif = true;
+        this.innerHTML = '<i class="bi bi-stop-circle me-1"></i> QR Duraksın';
+        this.classList.replace('btn-outline-success', 'btn-warning');
+        kameraCanvas.width = kameraVideo.videoWidth;
+        kameraCanvas.height = kameraVideo.videoHeight;
+        kameraQrLoop();
+    }
+});
 
 btnKameraAc?.addEventListener('click', () => kameraAc(kameraFaceUser));
 btnKameraCevir?.addEventListener('click', () => { kameraFaceUser = !kameraFaceUser; kameraAc(kameraFaceUser); });
@@ -893,6 +960,8 @@ function qrKapat() {
     document.getElementById('btnQrKapat').classList.add('d-none');
 }
 
+let _sonQrJson = null; // Son taranan QR JSON verisi (varsa)
+
 function qrTara() {
     if (!qrStream) return;
     const ctx = qrScanCanvas.getContext('2d');
@@ -902,12 +971,42 @@ function qrTara() {
     const imgData = ctx.getImageData(0, 0, qrScanCanvas.width, qrScanCanvas.height);
     const kod = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'dontInvert' });
     if (kod) {
-        qrSonuc.innerHTML = `<strong class="text-success"><i class="bi bi-check-circle me-1"></i>Tarındı:</strong><br><code>${kod.data}</code>`;
-        qrEslestir.classList.remove('d-none');
-        // İrsaliye numarası gibi görünüyorsa otomatik ata
-        if (/^[A-Z]{2,5}\d{10,}/.test(kod.data.trim())) {
-            document.querySelector('[name="irsaliye_no"]').value = kod.data.trim();
-            showToast('İrsaliye No forma aktarıldı!', 'success');
+        _sonQrJson = null;
+        // Önce JSON parse dene (e-irsaliye formatı)
+        try {
+            const json = JSON.parse(kod.data);
+            _sonQrJson = json;
+            // Form alanlarını doldur
+            let doldurulan = 0;
+            if (json.no)         { const el = document.querySelector('[name="irsaliye_no"]');        if (el) { el.value = json.no;         doldurulan++; } }
+            if (json.tarih)      { const el = document.querySelector('[name="tarih"]');              if (el) { el.value = json.tarih;      doldurulan++; } }
+            if (json.plaka)      { const el = document.querySelector('[name="arac_plaka"]');         if (el) { el.value = json.plaka;      doldurulan++; } }
+            if (json.sevkzamani) { const el = document.querySelector('[name="mikser_cikis_saati"]'); if (el) { el.value = json.sevkzamani; doldurulan++; } }
+            if (json.ettn)       { const el = document.querySelector('[name="fatura_no"]');          if (el) { el.value = json.ettn;       doldurulan++; } }
+
+            // Formatlanmış tablo göster
+            qrSonuc.innerHTML = `
+                <div class="small">
+                    <div class="fw-semibold text-success mb-1"><i class="bi bi-check-circle me-1"></i>E-İrsaliye QR Okundu</div>
+                    <table class="table table-xs mb-0">
+                        <tr><td class="text-muted">İrsaliye No</td><td class="font-monospace">${json.no || '—'}</td></tr>
+                        <tr><td class="text-muted">Tarih</td><td>${json.tarih || '—'}</td></tr>
+                        <tr><td class="text-muted">Araç Plaka</td><td>${json.plaka || '—'}</td></tr>
+                        <tr><td class="text-muted">Sevk Saati</td><td>${json.sevkzamani || '—'}</td></tr>
+                        <tr><td class="text-muted">ETTN</td><td class="font-monospace small">${json.ettn || '—'}</td></tr>
+                    </table>
+                </div>`;
+            // JSON'dan doldurulamayan alanlar için eşleştir panelini göster
+            qrEslestir.classList.remove('d-none');
+            showToast(`E-İrsaliye QR okundu — ${doldurulan} alan dolduruldu`, 'success');
+        } catch (e) {
+            // JSON değil — eski regex ile irsaliye no kontrolü
+            qrSonuc.innerHTML = `<strong class="text-success"><i class="bi bi-check-circle me-1"></i>Tarındı:</strong><br><code>${kod.data}</code>`;
+            qrEslestir.classList.remove('d-none');
+            if (/^[A-Z]{2,5}\d{10,}/.test(kod.data.trim())) {
+                document.querySelector('[name="irsaliye_no"]').value = kod.data.trim();
+                showToast('İrsaliye No forma aktarıldı!', 'success');
+            }
         }
         qrKapat();
         return;
@@ -920,7 +1019,25 @@ document.getElementById('btnQrKapat')?.addEventListener('click', qrKapat);
 
 document.getElementById('btnQrAta')?.addEventListener('click', function () {
     const hedef = document.getElementById('qrHedefAlan').value;
-    const deger = qrSonuc.querySelector('code')?.textContent;
+    let deger = null;
+
+    if (_sonQrJson) {
+        // JSON QR: hedefe göre uygun JSON alanını seç, yoksa raw text kullan
+        const jsonAlanMap = {
+            irsaliye_no: _sonQrJson.no,
+            fatura_no:   _sonQrJson.ettn,
+            arac_plaka:  _sonQrJson.plaka,
+            proje_no:    null
+        };
+        deger = jsonAlanMap[hedef] ?? null;
+        // Haritada karşılık yoksa raw JSON metnini koy
+        if (deger === null || deger === undefined) {
+            deger = JSON.stringify(_sonQrJson);
+        }
+    } else {
+        deger = qrSonuc.querySelector('code')?.textContent ?? null;
+    }
+
     if (deger && hedef) {
         const input = document.querySelector(`[name="${hedef}"]`);
         if (input) { input.value = deger; showToast(`${hedef} alanına aktarıldı`, 'success'); }
