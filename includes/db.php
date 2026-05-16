@@ -1,8 +1,15 @@
 <?php
+/**
+ * db.php — PDO veritabanı bağlantısı
+ *
+ * config.php yoksa install.php'ye yönlendirir.
+ * Başarılı bağlantıda $pdo değişkenini sağlar.
+ */
 if (!file_exists(__DIR__ . '/../config.php')) {
     header('Location: install.php');
     exit;
 }
+
 require_once __DIR__ . '/../config.php';
 
 try {
@@ -17,5 +24,11 @@ try {
         ]
     );
 } catch (PDOException $e) {
-    die('<div style="font-family:sans-serif;color:red;padding:20px">Veritabanı bağlantı hatası: ' . htmlspecialchars($e->getMessage()) . '</div>');
+    http_response_code(503);
+    die(
+        '<div style="font-family:sans-serif;color:#842029;background:#f8d7da;padding:20px;border-radius:8px;max-width:600px;margin:40px auto">'
+        . '<strong>Veritabanı bağlantı hatası.</strong><br>'
+        . htmlspecialchars($e->getMessage())
+        . '</div>'
+    );
 }

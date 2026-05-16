@@ -5,20 +5,20 @@
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/auth.php';
 
-// Zaten giriş yaptıysa yönlendir
-if (!empty($_SESSION['user'])) {
-    redirect('index.php');
-}
-
 // config.php yoksa kuruluma yönlendir
 if (!file_exists(__DIR__ . '/config.php')) {
     redirect('install.php');
 }
 
+// Zaten giriş yaptıysa ana sayfaya yönlendir
+if (!empty($_SESSION['user'])) {
+    redirect('index.php');
+}
+
 require_once __DIR__ . '/config.php';
 
 $error    = '';
-$redirect = isset($_GET['redirect']) ? $_GET['redirect'] : 'index.php';
+$redirect = trim($_GET['redirect'] ?? 'index.php');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
@@ -38,6 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     PDO::ATTR_EMULATE_PREPARES   => false,
                 ]
             );
+
             $stmt = $pdo->prepare(
                 "SELECT id, username, password_hash, full_name, role, aktif
                  FROM users
@@ -48,30 +49,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $user = $stmt->fetch();
 
             if ($user && $user['aktif'] == 1 && password_verify($password, $user['password_hash'])) {
-                // Oturum yenile (session fixation koruması)
+                // Session fixation koruması
                 session_regenerate_id(true);
                 $_SESSION['user'] = [
-                    'id'        => $user['id'],
+                    'id'        => (int)$user['id'],
                     'username'  => $user['username'],
                     'full_name' => $user['full_name'],
                     'role'      => $user['role'],
                 ];
-                // Güvenli yönlendirme — sadece göreceli yollar
+                // Güvenli yönlendirme: sadece göreceli yollar kabul et
                 $safeRedirect = 'index.php';
-                if (!empty($redirect) && strpos($redirect, '/') !== 0 && strpos($redirect, '//') === false) {
-                    $safeRedirect = $redirect;
+                if (
+                    !empty($redirect)
+                    && !str_starts_with($redirect, '//')
+                    && !preg_match('#^https?://#i', $redirect)
+                ) {
+                    $safeRedirect = ltrim($redirect, '/');
                 }
                 redirect($safeRedirect);
             } elseif ($user && $user['aktif'] == 0) {
-                $error = 'Hesabınız devre dışı bırakılmış. Yönetici ile iletişime geçin.';
+                $error = 'Hesabınız devre dışı bırakılmış. Lütfen yönetici ile iletişime geçin.';
             } else {
                 $error = 'Kullanıcı adı veya şifre hatalı.';
             }
         } catch (PDOException $e) {
-            $error = 'Veritabanı hatası: ' . h($e->getMessage());
+            $error = 'Veritabanı bağlantı hatası. Lütfen yönetici ile iletişime geçin.';
+            error_log('Login PDO error: ' . $e->getMessage());
         }
     }
 }
+
+$flashInfo = get_flash('login_info');
 ?>
 <!DOCTYPE html>
 <html lang="tr">
@@ -82,32 +90,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <style>
-  body {
+body {
     background: linear-gradient(135deg, #0d6efd 0%, #0a4db0 60%, #072d77 100%);
     min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
-  }
-  .login-card {
+}
+.login-card {
     width: 100%;
-    max-width: 420px;
+    max-width: 430px;
     border: none;
-    border-radius: 16px;
-    box-shadow: 0 12px 40px rgba(0,0,0,.35);
-  }
-  .login-logo {
-    width: 64px;
-    height: 64px;
-    background: #0d6efd;
+    border-radius: 18px;
+    box-shadow: 0 16px 48px rgba(0,0,0,.38);
+}
+.login-logo {
+    width: 68px;
+    height: 68px;
+    background: linear-gradient(135deg,#0d6efd,#0a4db0);
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     margin: 0 auto 1rem;
-  }
-  .login-logo i { font-size: 2rem; color: #fff; }
-  .input-group-text { background: #f8f9fa; }
+    box-shadow: 0 4px 16px rgba(13,110,253,.4);
+}
+.login-logo i { font-size: 2.2rem; color: #fff; }
+.input-group-text { background: #f8f9fa; border-right: 0; }
+.input-group .form-control { border-left: 0; }
+.input-group .form-control:focus { box-shadow: none; border-color: #ced4da; }
+.btn-login { height: 46px; font-size: 1rem; letter-spacing: .3px; }
 </style>
 </head>
 <body>
@@ -125,10 +137,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     <?php endif; ?>
 
-    <?php
-    $flashMsg = get_flash('login_info');
-    if ($flashMsg): ?>
-        <div class="alert alert-info py-2"><?= h($flashMsg) ?></div>
+    <?php if ($flashInfo): ?>
+        <div class="alert alert-info d-flex align-items-center gap-2 py-2">
+            <i class="bi bi-info-circle-fill"></i>
+            <span><?= h($flashInfo) ?></span>
+        </div>
     <?php endif; ?>
 
     <form method="post" novalidate>
@@ -149,6 +162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     autocomplete="username"
                     autofocus
                     required
+                    placeholder="kullanici_adi"
                 >
             </div>
         </div>
@@ -164,20 +178,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     class="form-control"
                     autocomplete="current-password"
                     required
+                    placeholder="••••••••"
                 >
-                <button type="button" class="btn btn-outline-secondary" id="togglePwd" tabindex="-1">
+                <button type="button" class="btn btn-outline-secondary" id="togglePwd" tabindex="-1" title="Şifreyi göster/gizle">
                     <i class="bi bi-eye" id="eyeIcon"></i>
                 </button>
             </div>
         </div>
 
-        <button type="submit" class="btn btn-primary w-100 fw-semibold py-2">
+        <button type="submit" class="btn btn-primary w-100 btn-login fw-semibold">
             <i class="bi bi-box-arrow-in-right me-1"></i> Giriş Yap
         </button>
     </form>
 
     <p class="text-center text-muted small mt-4 mb-0">
-        Beton Takip &copy; <?= date('Y') ?> &mdash; Tüm hakları saklıdır.
+        Beton Takip &copy; <?= date('Y') ?>
     </p>
 </div>
 
@@ -187,10 +202,10 @@ document.getElementById('togglePwd').addEventListener('click', function () {
     const pwd  = document.getElementById('password');
     const icon = document.getElementById('eyeIcon');
     if (pwd.type === 'password') {
-        pwd.type  = 'text';
+        pwd.type       = 'text';
         icon.className = 'bi bi-eye-slash';
     } else {
-        pwd.type  = 'password';
+        pwd.type       = 'password';
         icon.className = 'bi bi-eye';
     }
 });

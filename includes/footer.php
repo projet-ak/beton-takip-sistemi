@@ -1,7 +1,8 @@
 </div><!-- /container-fluid -->
 
-<footer class="text-center text-muted py-3 mt-4 border-top small">
-    Beton Takip Sistemi &copy; <?= date('Y') ?>
+<footer class="border-top mt-4 py-3 text-center text-muted small bg-white">
+    <span><i class="bi bi-building-fill-check text-primary"></i> Beton Takip Sistemi</span>
+    &mdash; &copy; <?= date('Y') ?> Tüm hakları saklıdır.
 </footer>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

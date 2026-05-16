@@ -1,6 +1,6 @@
 <?php
 /**
- * logout.php — Oturumu sonlandır
+ * logout.php — Oturumu güvenli şekilde sonlandır
  */
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -9,7 +9,7 @@ if (session_status() === PHP_SESSION_NONE) {
 // Tüm oturum verilerini temizle
 $_SESSION = [];
 
-// Oturum çerezini sil
+// Oturum çerezini tarayıcıdan sil
 if (ini_get('session.use_cookies')) {
     $params = session_get_cookie_params();
     setcookie(

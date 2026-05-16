@@ -1,6 +1,7 @@
 <?php
 /**
  * auth.php — Kimlik doğrulama ve yetkilendirme
+ * session_start() bu dosyada yapılır.
  */
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -8,7 +9,8 @@ if (session_status() === PHP_SESSION_NONE) {
 
 /**
  * Oturum yoksa login.php'ye, rol uyumsuzsa 403'e yönlendir.
- * @param array $roller İzin verilen roller (boş = herkese açık ama giriş şart)
+ *
+ * @param array $roller İzin verilen roller (boş = herkese açık, giriş şart)
  */
 function require_auth(array $roller = []): void
 {
@@ -33,7 +35,7 @@ function current_user(): ?array
 }
 
 /**
- * Belirtilen rollerden biri ise true döner.
+ * Belirtilen rollerden herhangi biriyse true döner.
  */
 function has_role(string ...$roller): bool
 {
@@ -44,32 +46,44 @@ function has_role(string ...$roller): bool
     return in_array($user['role'], $roller, true);
 }
 
-/* --- Yardımcı kısa fonksiyonlar --- */
+// ── Yardımcı kısa fonksiyonlar ───────────────────────────────────────────────
 
+/** Sadece admin */
 function is_admin(): bool
 {
     return has_role('admin');
 }
 
-/** Veri girişi ve tanım yönetimi yapabilenler */
+/**
+ * Veri girişi yapabilenler (irsaliye ekle/düzenle):
+ * admin, teknik_ofis_admin, saha_sefi
+ */
 function can_edit(): bool
 {
     return has_role('admin', 'teknik_ofis_admin', 'saha_sefi');
 }
 
-/** Raporları görebilecek roller */
+/**
+ * Raporları görüntüleyebilecek roller:
+ * admin, teknik_ofis_admin, teknik_ofis
+ */
 function can_view_reports(): bool
 {
     return has_role('admin', 'teknik_ofis_admin', 'teknik_ofis');
 }
 
-/** Referans tanım yönetimi (beton sınıfı, blok vb.) */
+/**
+ * Referans tanım yönetimi (beton sınıfı, blok, parsel vb.):
+ * admin, teknik_ofis_admin
+ */
 function can_manage_definitions(): bool
 {
     return has_role('admin', 'teknik_ofis_admin');
 }
 
-/** Kullanıcı yönetimi */
+/**
+ * Kullanıcı yönetimi: sadece admin
+ */
 function can_manage_users(): bool
 {
     return has_role('admin');
