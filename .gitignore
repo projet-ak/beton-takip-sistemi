@@ -364,3 +364,8 @@ FodyWeavers.xsd
 
 # PHP uygulama - hassas dosyalar
 config.php
+# Yedek dosyaları
+backups/*.sql
+
+# Yüklenen dosyalar
+uploads/irsaliye_fotolar/

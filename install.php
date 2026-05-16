@@ -150,6 +150,16 @@ if ($step === 2 && $_SERVER['REQUEST_METHOD'] === 'POST') {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
 
+        // ── Projeler ─────────────────────────────────────────────────────────
+
+        $pdo->exec("CREATE TABLE IF NOT EXISTS projeler (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            kod VARCHAR(20) NOT NULL UNIQUE,
+            aciklama VARCHAR(200) NOT NULL,
+            aktif TINYINT(1) NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
         // ── Ana irsaliye tablosu ──────────────────────────────────────────────
 
         $pdo->exec("CREATE TABLE IF NOT EXISTS irsaliyeler (
@@ -161,6 +171,7 @@ if ($step === 2 && $_SERVER['REQUEST_METHOD'] === 'POST') {
             kivam_sinifi_id INT NULL,
             irsaliye_no VARCHAR(100) NULL,
             proje_no VARCHAR(50) NULL,
+            proje_id INT NULL,
             tedarikci_id INT NOT NULL,
             tarih DATE NOT NULL,
             mikser_cikis_saati TIME NULL,
@@ -187,6 +198,7 @@ if ($step === 2 && $_SERVER['REQUEST_METHOD'] === 'POST') {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             FOREIGN KEY (kivam_sinifi_id)   REFERENCES kivam_siniflari(id)  ON DELETE SET NULL,
+            FOREIGN KEY (proje_id)          REFERENCES projeler(id)         ON DELETE SET NULL,
             FOREIGN KEY (tedarikci_id)      REFERENCES tedarikciler(id)     ON DELETE RESTRICT,
             FOREIGN KEY (beton_sinifi_id)   REFERENCES beton_siniflari(id)  ON DELETE SET NULL,
             FOREIGN KEY (pompa_id)          REFERENCES pompa_turleri(id)    ON DELETE SET NULL,
@@ -234,6 +246,9 @@ if ($step === 2 && $_SERVER['REQUEST_METHOD'] === 'POST') {
         // ════════════════════════════════════════════════════════════════════
         // REFERANS VERİLERİ
         // ════════════════════════════════════════════════════════════════════
+
+        // Projeler
+        $pdo->exec("INSERT IGNORE INTO projeler (kod, aciklama) VALUES ('U030','BATI YAKASI 1. ETAP'),('U031','BATI YAKASI 2. ETAP'),('U039','MİLLET BAHÇESİ')");
 
         // Beton sınıfları
         $beton_siniflari = ['C16','C20','C25','C30','C35','C40','KURU SHOTCRETE','YAŞ SHOTCRETE','ŞAP 200','ŞAP 300'];

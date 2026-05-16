@@ -99,7 +99,7 @@ $__rootPath = $rootPath ?? '';
                         'tedarikciler.php','beton_siniflari.php','katki_listesi.php',
                         'pompa_turleri.php','firmalar.php','imalat_gruplari.php',
                         'ana_is_kalemleri.php','parseller.php','bloklar.php','kotlar.php',
-                        'kivam_siniflari.php',
+                        'kivam_siniflari.php','projeler.php',
                     ], true) ? 'active' : '' ?>"
                        href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="bi bi-sliders"></i> Tanımlar
@@ -119,7 +119,10 @@ $__rootPath = $rootPath ?? '';
                             <i class="bi bi-speedometer me-1"></i> Kıvam Sınıfları
                         </a></li>
                         <li><hr class="dropdown-divider"></li>
-                        <li><h6 class="dropdown-header">Proje Yapısı</h6></li>
+                        <li><h6 class="dropdown-header">Projeler</h6></li>
+                        <li><a class="dropdown-item" href="<?= $__rootPath ?>projeler.php"><i class="bi bi-diagram-3 me-1"></i> Projeler</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><h6 class="dropdown-header">Lokasyon</h6></li>
                         <li><a class="dropdown-item" href="<?= $__rootPath ?>parseller.php">
                             <i class="bi bi-map me-1"></i> Parseller
                         </a></li>
@@ -156,6 +159,24 @@ $__rootPath = $rootPath ?? '';
                        href="<?= $__rootPath ?>kullanicilar.php">
                         <i class="bi bi-people"></i> Kullanıcılar
                     </a>
+                </li>
+                <?php endif; ?>
+
+                <!-- Yedekleme + Aktarım: sadece admin -->
+                <?php if (is_admin()): ?>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle <?= in_array($__page, ['yedek.php','import.php'], true) ? 'active' : '' ?>"
+                       href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-tools"></i> Araçlar
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="<?= $__rootPath ?>yedek.php">
+                            <i class="bi bi-shield-check me-1"></i> Yedekleme
+                        </a></li>
+                        <li><a class="dropdown-item" href="<?= $__rootPath ?>import.php">
+                            <i class="bi bi-file-earmark-spreadsheet me-1"></i> Excel Aktarımı
+                        </a></li>
+                    </ul>
                 </li>
                 <?php endif; ?>
 

@@ -26,6 +26,16 @@ $migrasyonlar = [
         'sql'     => "ALTER TABLE irsaliyeler ADD COLUMN proje_no VARCHAR(50) NULL AFTER irsaliye_no",
         'aciklama'=> 'irsaliyeler tablosuna proje_no sütunu eklendi',
     ],
+    'projeler_tablosu' => [
+        'kontrol' => "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='projeler'",
+        'sql'     => "CREATE TABLE IF NOT EXISTS projeler (id INT AUTO_INCREMENT PRIMARY KEY, kod VARCHAR(20) NOT NULL UNIQUE, aciklama VARCHAR(200) NOT NULL, aktif TINYINT(1) NOT NULL DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+        'aciklama'=> 'projeler tablosu oluşturuldu',
+    ],
+    'irsaliyeler_proje_id' => [
+        'kontrol' => "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='irsaliyeler' AND COLUMN_NAME='proje_id'",
+        'sql'     => "ALTER TABLE irsaliyeler ADD COLUMN proje_id INT NULL AFTER proje_no",
+        'aciklama'=> 'irsaliyeler tablosuna proje_id sütunu eklendi',
+    ],
 ];
 
 $sonuclar = [];
@@ -38,6 +48,10 @@ foreach ($migrasyonlar as $ad => $m) {
         $sonuclar[] = ['tip'=>'success', 'msg'=> "{$ad}: ✓ {$m['aciklama']}"];
     }
 }
+
+// Projeleri ekle
+$pdo->exec("INSERT IGNORE INTO projeler (kod, aciklama) VALUES ('U030','BATI YAKASI 1. ETAP'),('U031','BATI YAKASI 2. ETAP'),('U039','MİLLET BAHÇESİ')");
+$sonuclar[] = ['tip'=>'info', 'msg'=> 'Proje seed verileri kontrol edildi / eklendi.'];
 ?>
 <!DOCTYPE html>
 <html lang="tr">
