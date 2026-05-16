@@ -160,6 +160,7 @@ if ($step === 2 && $_SERVER['REQUEST_METHOD'] === 'POST') {
             arac_plaka VARCHAR(20) NULL,
             kivam_sinifi_id INT NULL,
             irsaliye_no VARCHAR(100) NULL,
+            proje_no VARCHAR(50) NULL,
             tedarikci_id INT NOT NULL,
             tarih DATE NOT NULL,
             mikser_cikis_saati TIME NULL,
