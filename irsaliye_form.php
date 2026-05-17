@@ -34,6 +34,7 @@ $firmalar       = $pdo->query("SELECT id,ad FROM firmalar ORDER BY ad")->fetchAl
 $kivamSiniflari = $pdo->query("SELECT id,ad FROM kivam_siniflari ORDER BY ad")->fetchAll();
 $imalatGruplari = $pdo->query("SELECT id,ad FROM imalat_gruplari ORDER BY sira,ad")->fetchAll();
 $parseller      = $pdo->query("SELECT id,ad FROM parseller ORDER BY ad")->fetchAll();
+$projeler       = $pdo->query("SELECT id,kod,aciklama FROM projeler WHERE aktif=1 ORDER BY kod")->fetchAll();
 
 // ── Kaydet ───────────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -48,7 +49,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $faturaNo      = trim($d['fatura_no']         ?? '') ?: null;
     $aracPlaka     = strtoupper(trim($d['arac_plaka'] ?? '')) ?: null;
     $irsaliyeNo    = trim($d['irsaliye_no']       ?? '') ?: null;
-    $projeNo       = trim($d['proje_no']          ?? '') ?: null;
+    $projeId = ($d['proje_id'] ?? '') !== '' ? (int)$d['proje_id'] : null;
+    // proje_no'yu seçilen projenin kodundan al
+    $projeNo = null;
+    if ($projeId) {
+        foreach ($projeler as $p) {
+            if ((int)$p['id'] === $projeId) { $projeNo = $p['kod']; break; }
+        }
+    }
     $kivamId       = ($d['kivam_sinifi_id'] ?? '') !== '' ? (int)$d['kivam_sinifi_id'] : null;
     $betonId       = ($d['beton_sinifi_id'] ?? '') !== '' ? (int)$d['beton_sinifi_id'] : null;
     $pompaId       = ($d['pompa_id']        ?? '') !== '' ? (int)$d['pompa_id']        : null;
@@ -76,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($editId) {
                 $stmt = $pdo->prepare("UPDATE irsaliyeler SET
                     tip=?, sira_no=?, fatura_no=?, arac_plaka=?, kivam_sinifi_id=?, irsaliye_no=?,
-                    proje_no=?, tedarikci_id=?, tarih=?, mikser_cikis_saati=?, kantar_giris_saati=?,
+                    proje_no=?, proje_id=?, tedarikci_id=?, tarih=?, mikser_cikis_saati=?, kantar_giris_saati=?,
                     kantar_cikis_saati=?, kantar_net_yildizlar=?, kantar_net_tedarikci=?, kantar_farki=?,
                     beton_sinifi_id=?, miktar=?, birim=?, pompa_id=?, katki1_id=?, katki2_id=?,
                     firma_id=?, imalat_grup_id=?, ana_is_kalemi_id=?, parsel_id=?, blok_id=?, kot_id=?,
@@ -84,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     WHERE id=?");
                 $stmt->execute([
                     $tipPost, $siraNo, $faturaNo, $aracPlaka, $kivamId, $irsaliyeNo,
-                    $projeNo, $tedarikciId, $tarih, $mikserCikis, $kantarGiris, $kantarCikis,
+                    $projeNo, $projeId, $tedarikciId, $tarih, $mikserCikis, $kantarGiris, $kantarCikis,
                     $kantarYildiz, $kantarTed, $kantarFarki,
                     $betonId, $miktar, $birim, $pompaId, $katki1Id, $katki2Id,
                     $firmaId, $imalatGrupId, $anaIsKalemId, $parselId, $blokId, $kotId,
@@ -95,15 +103,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $stmt = $pdo->prepare("INSERT INTO irsaliyeler (
                     tip, sira_no, fatura_no, arac_plaka, kivam_sinifi_id, irsaliye_no,
-                    proje_no, tedarikci_id, tarih, mikser_cikis_saati, kantar_giris_saati,
+                    proje_no, proje_id, tedarikci_id, tarih, mikser_cikis_saati, kantar_giris_saati,
                     kantar_cikis_saati, kantar_net_yildizlar, kantar_net_tedarikci, kantar_farki,
                     beton_sinifi_id, miktar, birim, pompa_id, katki1_id, katki2_id,
                     firma_id, imalat_grup_id, ana_is_kalemi_id, parsel_id, blok_id, kot_id,
                     aciklama, created_by
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
                 $stmt->execute([
                     $tipPost, $siraNo, $faturaNo, $aracPlaka, $kivamId, $irsaliyeNo,
-                    $projeNo, $tedarikciId, $tarih, $mikserCikis, $kantarGiris, $kantarCikis,
+                    $projeNo, $projeId, $tedarikciId, $tarih, $mikserCikis, $kantarGiris, $kantarCikis,
                     $kantarYildiz, $kantarTed, $kantarFarki,
                     $betonId, $miktar, $birim, $pompaId, $katki1Id, $katki2Id,
                     $firmaId, $imalatGrupId, $anaIsKalemId, $parselId, $blokId, $kotId,
@@ -227,8 +235,15 @@ require_once __DIR__ . '/includes/header.php';
                         <input type="text" name="arac_plaka" class="form-control text-uppercase" value="<?= val($row, 'arac_plaka') ?>">
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label">Proje No</label>
-                        <input type="text" name="proje_no" class="form-control" placeholder="Örn: U030" value="<?= val($row, 'proje_no') ?>">
+                        <label class="form-label">Proje</label>
+                        <select name="proje_id" class="form-select">
+                            <option value="">— Seçin —</option>
+                            <?php foreach ($projeler as $p): ?>
+                                <option value="<?= $p['id'] ?>" <?= sel($row['proje_id'] ?? '', $p['id']) ?>>
+                                    <?= h($p['kod']) ?> — <?= h($p['aciklama']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Kıvam Sınıfı</label>
@@ -631,7 +646,6 @@ require_once __DIR__ . '/includes/header.php';
                                     <option value="irsaliye_no">İrsaliye No</option>
                                     <option value="fatura_no">Fatura No</option>
                                     <option value="arac_plaka">Araç Plaka</option>
-                                    <option value="proje_no">Proje No</option>
                                 </select>
                                 <button type="button" id="btnQrAta" class="btn btn-success btn-sm">
                                     <i class="bi bi-arrow-left-circle me-1"></i> Forma Aktar
@@ -1027,7 +1041,6 @@ document.getElementById('btnQrAta')?.addEventListener('click', function () {
             irsaliye_no: _sonQrJson.no,
             fatura_no:   _sonQrJson.ettn,
             arac_plaka:  _sonQrJson.plaka,
-            proje_no:    null
         };
         deger = jsonAlanMap[hedef] ?? null;
         // Haritada karşılık yoksa raw JSON metnini koy

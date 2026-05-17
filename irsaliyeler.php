@@ -10,14 +10,14 @@ if (!file_exists(__DIR__ . '/config.php')) { redirect('install.php'); }
 require_auth();
 require_once __DIR__ . '/includes/db.php';
 
-$tip       = in_array($_GET['tip'] ?? '', ['alis','iade'], true) ? $_GET['tip'] : 'alis';
-$pageTitle = ($tip === 'alis' ? 'Alış' : 'İade') . ' İrsaliyeleri — Beton Takip Sistemi';
+$tip       = in_array($_GET['tip'] ?? '', ['alis','iade','tum'], true) ? $_GET['tip'] : 'alis';
+$pageTitle = ($tip === 'alis' ? 'Alış' : ($tip === 'iade' ? 'İade' : 'Tüm')) . ' İrsaliyeleri — Beton Takip Sistemi';
 
 // ── Silme ────────────────────────────────────────────────────────────────────
 if (can_edit() && isset($_GET['sil']) && ctype_digit($_GET['sil'])) {
-    $row = $pdo->prepare("SELECT id FROM irsaliyeler WHERE id=? AND tip=?");
-    $row->execute([(int)$_GET['sil'], $tip]);
-    if ($row->fetch()) {
+    $chk = $pdo->prepare("SELECT id FROM irsaliyeler WHERE id=?" . ($tip !== 'tum' ? " AND tip=?" : ""));
+    $tip !== 'tum' ? $chk->execute([(int)$_GET['sil'], $tip]) : $chk->execute([(int)$_GET['sil']]);
+    if ($chk->fetch()) {
         $pdo->prepare("DELETE FROM irsaliyeler WHERE id=?")->execute([(int)$_GET['sil']]);
         flash('success', 'İrsaliye silindi.');
     }
@@ -33,8 +33,8 @@ $filtreYil    = isset($_GET['yil'])         && ctype_digit($_GET['yil'])        
 $filtreAy     = isset($_GET['ay'])          && ctype_digit($_GET['ay'])          ? (int)$_GET['ay']          : 0;
 $filtreArama  = trim($_GET['ara'] ?? '');
 
-$where  = ['i.tip = ?'];
-$params = [$tip];
+$where  = $tip !== 'tum' ? ['i.tip = ?'] : [];
+$params = $tip !== 'tum' ? [$tip] : [];
 
 if ($filtreTed)    { $where[] = 'i.tedarikci_id = ?';     $params[] = $filtreTed; }
 if ($filtreParsel) { $where[] = 'i.parsel_id = ?';        $params[] = $filtreParsel; }
@@ -45,7 +45,7 @@ if ($filtreAy)     { $where[] = 'MONTH(i.tarih) = ?';     $params[] = $filtreAy;
 if ($filtreArama)  { $where[] = '(i.irsaliye_no LIKE ? OR i.arac_plaka LIKE ? OR i.fatura_no LIKE ?)';
                      $params[] = "%{$filtreArama}%"; $params[] = "%{$filtreArama}%"; $params[] = "%{$filtreArama}%"; }
 
-$whereSQL = implode(' AND ', $where);
+$whereSQL = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
 
 $stmt = $pdo->prepare("
     SELECT i.*,
@@ -72,7 +72,7 @@ $stmt = $pdo->prepare("
     LEFT JOIN parseller par       ON par.id = i.parsel_id
     LEFT JOIN bloklar blk         ON blk.id = i.blok_id
     LEFT JOIN kotlar kot          ON kot.id = i.kot_id
-    WHERE {$whereSQL}
+    {$whereSQL}
     ORDER BY i.tarih DESC, i.sira_no DESC, i.id DESC
 ");
 $stmt->execute($params);
@@ -101,8 +101,10 @@ require_once __DIR__ . '/includes/header.php';
         <h4 class="mb-0">
             <?php if ($tip === 'alis'): ?>
                 <i class="bi bi-arrow-down-circle text-success me-2"></i>Alış İrsaliyeleri
-            <?php else: ?>
+            <?php elseif ($tip === 'iade'): ?>
                 <i class="bi bi-arrow-up-circle text-danger me-2"></i>İade İrsaliyeleri
+            <?php else: ?>
+                <i class="bi bi-list-ul text-primary me-2"></i>Tüm İrsaliyeler
             <?php endif; ?>
         </h4>
         <div class="text-muted small mt-1">
@@ -116,6 +118,24 @@ require_once __DIR__ . '/includes/header.php';
     </a>
     <?php endif; ?>
 </div>
+
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <a class="nav-link <?= $tip==='alis'?'active':'' ?>" href="irsaliyeler.php?tip=alis">
+            <i class="bi bi-arrow-down-circle text-success me-1"></i> Alış
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link <?= $tip==='iade'?'active':'' ?>" href="irsaliyeler.php?tip=iade">
+            <i class="bi bi-arrow-up-circle text-danger me-1"></i> İade
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link <?= $tip==='tum'?'active':'' ?>" href="irsaliyeler.php?tip=tum">
+            <i class="bi bi-list-ul me-1"></i> Tüm Kayıtlar
+        </a>
+    </li>
+</ul>
 
 <!-- Filtre formu -->
 <div class="card mb-3">
@@ -178,6 +198,7 @@ require_once __DIR__ . '/includes/header.php';
                 <thead class="table-light">
                     <tr>
                         <th class="text-center">#</th>
+                        <?php if ($tip === 'tum'): ?><th>Tip</th><?php endif; ?>
                         <th>Tarih</th>
                         <th>İrsaliye No</th>
                         <th>Plaka</th>
@@ -196,6 +217,9 @@ require_once __DIR__ . '/includes/header.php';
                         <?php foreach ($liste as $r): ?>
                         <tr>
                             <td class="text-center text-muted small"><?= h($r['sira_no'] ?: '-') ?></td>
+                            <?php if ($tip === 'tum'): ?>
+                            <td><?= $r['tip']==='alis' ? '<span class="badge bg-success">Alış</span>' : '<span class="badge bg-danger">İade</span>' ?></td>
+                            <?php endif; ?>
                             <td class="text-nowrap"><?= format_date($r['tarih']) ?></td>
                             <td class="text-nowrap">
                                 <a href="irsaliye_detay.php?id=<?= $r['id'] ?>" class="text-decoration-none fw-semibold">
@@ -220,7 +244,7 @@ require_once __DIR__ . '/includes/header.php';
                             </td>
                             <?php if (can_edit()): ?>
                             <td class="text-end text-nowrap">
-                                <a href="irsaliye_form.php?id=<?= $r['id'] ?>&tip=<?= $tip ?>" class="btn btn-xs btn-outline-primary me-1" title="Düzenle">
+                                <a href="irsaliye_form.php?id=<?= $r['id'] ?>&tip=<?= $r['tip'] ?>" class="btn btn-xs btn-outline-primary me-1" title="Düzenle">
                                     <i class="bi bi-pencil"></i>
                                 </a>
                                 <a href="irsaliyeler.php?sil=<?= $r['id'] ?>&tip=<?= $tip ?>"
@@ -234,13 +258,13 @@ require_once __DIR__ . '/includes/header.php';
                         </tr>
                         <?php endforeach; ?>
                         <tr class="table-secondary fw-bold">
-                            <td colspan="9" class="text-end">TOPLAM</td>
+                            <td colspan="<?= $tip === 'tum' ? 10 : 9 ?>" class="text-end">TOPLAM</td>
                             <td class="text-end"><?= format_number($toplamM3, 2) ?> m³</td>
                             <td colspan="<?= can_edit() ? 2 : 1 ?>"></td>
                         </tr>
                     <?php else: ?>
                         <tr>
-                            <td colspan="<?= can_edit() ? 12 : 11 ?>" class="text-center text-muted py-5">
+                            <td colspan="<?= can_edit() ? ($tip === 'tum' ? 13 : 12) : ($tip === 'tum' ? 12 : 11) ?>" class="text-center text-muted py-5">
                                 <i class="bi bi-inbox fs-2 d-block mb-2"></i>
                                 Kayıt bulunamadı.
                             </td>

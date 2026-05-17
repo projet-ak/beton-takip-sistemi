@@ -26,6 +26,32 @@ $__rootPath = $rootPath ?? '';
 <title><?= h($pageTitle ?? 'Beton Takip Sistemi') ?></title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<!-- Tema rengi CSS değişkenleri -->
+<style id="themeStyle"></style>
+<script>
+(function(){
+  var t = localStorage.getItem('beton_tema') || 'mavi';
+  var renkler = {
+    mavi:    {pri:'#0d6efd', dark:'#0a58ca'},
+    yesil:   {pri:'#198754', dark:'#146c43'},
+    kirmizi: {pri:'#dc3545', dark:'#b02a37'},
+    mor:     {pri:'#6f42c1', dark:'#59359a'},
+    turuncu: {pri:'#fd7e14', dark:'#ca6510'},
+    petrol:  {pri:'#0dcaf0', dark:'#0aa2c0'},
+    koyu:    {pri:'#343a40', dark:'#212529'},
+  };
+  var r = renkler[t] || renkler.mavi;
+  document.getElementById('themeStyle').textContent =
+    ':root{--bs-primary:'+r.pri+';--bs-primary-rgb:'+hexToRgb(r.pri)+';--bs-link-color:'+r.pri+'}'+
+    '.bg-primary{background-color:'+r.pri+'!important}'+
+    '.btn-primary{background-color:'+r.pri+';border-color:'+r.pri+'}'+
+    '.btn-primary:hover{background-color:'+r.dark+';border-color:'+r.dark+'}'+
+    '.text-primary{color:'+r.pri+'!important}'+
+    '.border-primary{border-color:'+r.pri+'!important}'+
+    '.nav-link.active{color:'+r.pri+'!important}';
+  function hexToRgb(h){var r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16);return r+','+g+','+b;}
+})();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="<?= $__rootPath ?>assets/css/style.css">
 </head>
@@ -80,6 +106,14 @@ $__rootPath = $rootPath ?? '';
                         </li>
                         <?php endif; ?>
                     </ul>
+                </li>
+
+                <!-- Hızlı Tarama: herkese -->
+                <li class="nav-item">
+                    <a class="nav-link <?= $__page === 'hizli_tarama.php' ? 'active' : '' ?>"
+                       href="<?= $__rootPath ?>hizli_tarama.php">
+                        <i class="bi bi-qr-code-scan"></i> Hızlı Tarama
+                    </a>
                 </li>
 
                 <!-- Raporlar: admin + teknik_ofis_admin + teknik_ofis -->
@@ -204,6 +238,12 @@ $__rootPath = $rootPath ?? '';
                         </li>
                         <li><hr class="dropdown-divider"></li>
                         <li>
+                            <a class="dropdown-item" href="#" onclick="document.getElementById('temaPaneli').classList.toggle('d-none');return false;">
+                                <i class="bi bi-palette me-1"></i> Tema Rengi
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
                             <a class="dropdown-item text-danger" href="<?= $__rootPath ?>logout.php">
                                 <i class="bi bi-box-arrow-right me-1"></i> Çıkış Yap
                             </a>
@@ -214,6 +254,41 @@ $__rootPath = $rootPath ?? '';
             <?php endif; ?>
         </div>
     </div>
+<!-- Tema Paneli -->
+<div id="temaPaneli" class="d-none position-fixed top-0 end-0 mt-5 me-2 card shadow-lg" style="z-index:9999;min-width:220px;">
+    <div class="card-header fw-semibold d-flex justify-content-between align-items-center py-2">
+        <span><i class="bi bi-palette me-1"></i>Tema Rengi</span>
+        <button onclick="document.getElementById('temaPaneli').classList.add('d-none')" class="btn-close btn-sm"></button>
+    </div>
+    <div class="card-body p-3">
+        <div class="d-flex flex-wrap gap-2">
+            <?php
+            $temalar = [
+                'mavi'    => ['renk'=>'#0d6efd','etiket'=>'Mavi'],
+                'yesil'   => ['renk'=>'#198754','etiket'=>'Yeşil'],
+                'kirmizi' => ['renk'=>'#dc3545','etiket'=>'Kırmızı'],
+                'mor'     => ['renk'=>'#6f42c1','etiket'=>'Mor'],
+                'turuncu' => ['renk'=>'#fd7e14','etiket'=>'Turuncu'],
+                'petrol'  => ['renk'=>'#0dcaf0','etiket'=>'Petrol'],
+                'koyu'    => ['renk'=>'#343a40','etiket'=>'Koyu'],
+            ];
+            foreach ($temalar as $key => $t): ?>
+            <button onclick="temaDegistir('<?= $key ?>')"
+                    class="btn btn-sm rounded-circle p-0"
+                    style="width:36px;height:36px;background:<?= $t['renk'] ?>;border:3px solid rgba(0,0,0,.1);"
+                    title="<?= $t['etiket'] ?>">
+            </button>
+            <?php endforeach; ?>
+        </div>
+        <div class="mt-3 small text-muted">Seçim tarayıcıda kaydedilir.</div>
+    </div>
+</div>
+<script>
+function temaDegistir(tema) {
+    localStorage.setItem('beton_tema', tema);
+    location.reload();
+}
+</script>
 </nav>
 
 <div class="container-fluid py-4 px-4">
