@@ -19,6 +19,8 @@ require_once __DIR__ . '/includes/header.php';
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';</script>
 
 <!-- Kamera Paneli -->
 <div class="row g-3 mb-4">
@@ -72,6 +74,46 @@ require_once __DIR__ . '/includes/header.php';
         <div id="cooldownBar" class="progress mt-2 d-none" style="height:4px;">
           <div id="cooldownFill" class="progress-bar bg-success progress-bar-striped progress-bar-animated" style="width:100%"></div>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PDF'den Tara Paneli -->
+<div class="row g-3 mb-4">
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="card-header fw-semibold d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span><i class="bi bi-file-earmark-pdf text-danger me-1"></i> PDF'den QR Tara</span>
+        <span id="pdfDurumBadge" class="badge bg-secondary d-none">Hazır</span>
+      </div>
+      <div class="card-body">
+        <div class="row g-3 align-items-end">
+          <div class="col-sm-8">
+            <label class="form-label fw-semibold small">PDF Dosyası Seç</label>
+            <input type="file" id="pdfDosya" class="form-control" accept=".pdf" onchange="pdfSecildi(this)">
+            <div class="form-text">Her sayfadaki QR kodlar otomatik taranır ve tabloya eklenir.</div>
+          </div>
+          <div class="col-sm-4">
+            <button id="btnPdfTara" class="btn btn-danger w-100 d-none" onclick="pdfTara()">
+              <i class="bi bi-qr-code-scan me-1"></i> QR Kodları Tara
+            </button>
+          </div>
+        </div>
+        <!-- İlerleme -->
+        <div id="pdfProgress" class="d-none mt-3">
+          <div class="d-flex justify-content-between small mb-1">
+            <span id="pdfProgressText">Sayfa taranıyor...</span>
+            <span id="pdfProgressPct">0%</span>
+          </div>
+          <div class="progress" style="height:6px;">
+            <div id="pdfProgressBar" class="progress-bar bg-danger progress-bar-striped progress-bar-animated" style="width:0%"></div>
+          </div>
+        </div>
+        <!-- Sonuç -->
+        <div id="pdfSonuc" class="d-none mt-3"></div>
+        <!-- Gizli canvas -->
+        <canvas id="pdfCanvas" class="d-none"></canvas>
       </div>
     </div>
   </div>
@@ -469,6 +511,149 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('btnAc').disabled = true;
     }
 });
+
+// ── PDF'den QR Tarama ───────────────────────────────────────────────
+var pdfDosyaObj = null;
+
+function pdfSecildi(input) {
+    pdfDosyaObj = input.files[0] || null;
+    document.getElementById('btnPdfTara').classList.toggle('d-none', !pdfDosyaObj);
+    document.getElementById('pdfSonuc').classList.add('d-none');
+    document.getElementById('pdfProgress').classList.add('d-none');
+    if (pdfDosyaObj) {
+        document.getElementById('pdfDurumBadge').textContent = pdfDosyaObj.name;
+        document.getElementById('pdfDurumBadge').classList.remove('d-none');
+    } else {
+        document.getElementById('pdfDurumBadge').classList.add('d-none');
+    }
+}
+
+async function pdfTara() {
+    if (!pdfDosyaObj) return;
+    if (typeof pdfjsLib === 'undefined') {
+        alert('PDF.js yüklenemedi. Sayfayı yenileyin.');
+        return;
+    }
+
+    var btn = document.getElementById('btnPdfTara');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Taranıyor...';
+    document.getElementById('pdfSonuc').classList.add('d-none');
+
+    var progressEl    = document.getElementById('pdfProgress');
+    var progressBar   = document.getElementById('pdfProgressBar');
+    var progressText  = document.getElementById('pdfProgressText');
+    var progressPct   = document.getElementById('pdfProgressPct');
+    var canvas        = document.getElementById('pdfCanvas');
+    var ctx           = canvas.getContext('2d');
+
+    progressEl.classList.remove('d-none');
+    progressBar.style.width = '0%';
+
+    var bulunan = 0, atlanan = 0;
+    var errors  = [];
+
+    try {
+        var arrayBuf = await pdfDosyaObj.arrayBuffer();
+        var pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
+        var toplamSayfa = pdf.numPages;
+
+        for (var i = 1; i <= toplamSayfa; i++) {
+            var pct = Math.round(((i - 1) / toplamSayfa) * 100);
+            progressBar.style.width = pct + '%';
+            progressPct.textContent = pct + '%';
+            progressText.textContent = toplamSayfa + ' sayfadan ' + i + '. sayfa taranıyor...';
+
+            try {
+                var page = await pdf.getPage(i);
+                // Sayfayı 2x scale ile render et (QR için yeterli çözünürlük)
+                var viewport = page.getViewport({ scale: 2.0 });
+                canvas.width  = viewport.width;
+                canvas.height = viewport.height;
+                await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+                var imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                var code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'attemptBoth' });
+
+                if (code && code.data && code.data.trim()) {
+                    var rawData = code.data.trim();
+                    var json = null;
+                    try { json = JSON.parse(rawData); } catch(e) {}
+
+                    var irsaliyeNo = (json && json.no)        || '';
+                    var tarih      = (json && json.tarih)     || '';
+                    var aracPlaka  = (json && json.plaka)     || '';
+                    var sevkZamani = (json && json.sevkzamani)|| '';
+                    var ettn       = (json && json.ettn)      || '';
+
+                    // Duplicate kontrolü
+                    if (irsaliyeNo && taranmisList.some(function(r){ return r.irsaliye_no === irsaliyeNo; })) {
+                        atlanan++;
+                        errors.push('Sayfa ' + i + ': ' + irsaliyeNo + ' zaten listede (atlandı)');
+                    } else {
+                        beepSes();
+                        rowSayac++;
+                        var item = {
+                            rowId: rowSayac,
+                            irsaliye_no: irsaliyeNo,
+                            tarih: tarih,
+                            arac_plaka: aracPlaka,
+                            mikser_cikis_saati: sevkZamani,
+                            fatura_no: ettn,
+                            miktar: '',
+                            tedarikci_id: '',
+                            beton_sinifi_id: '',
+                            proje_id: ''
+                        };
+                        taranmisList.push(item);
+                        tabloSatirEkle(item);
+                        sayacGuncelle();
+                        bulunan++;
+                    }
+                } else {
+                    // QR bulunamadı bu sayfada — sessizce geç
+                }
+            } catch(pageErr) {
+                errors.push('Sayfa ' + i + ' okunamadı: ' + pageErr.message);
+            }
+        }
+
+        progressBar.style.width = '100%';
+        progressPct.textContent = '100%';
+
+        // Sonuç göster
+        var sonucEl = document.getElementById('pdfSonuc');
+        var alertType = bulunan > 0 ? 'success' : 'warning';
+        var html = '<div class="alert alert-' + alertType + ' mb-0">';
+        html += '<i class="bi bi-' + (bulunan > 0 ? 'check-circle' : 'exclamation-circle') + ' me-1"></i>';
+        html += '<strong>' + toplamSayfa + ' sayfa tarandı.</strong> ';
+        html += bulunan + ' QR kodu bulundu';
+        if (atlanan) html += ', ' + atlanan + ' zaten listede atlandı';
+        html += '.';
+        if (errors.length) {
+            html += '<ul class="mb-0 mt-2 small">' + errors.map(function(e){ return '<li>' + escHtml(e) + '</li>'; }).join('') + '</ul>';
+        }
+        html += '</div>';
+        sonucEl.innerHTML = html;
+        sonucEl.classList.remove('d-none');
+
+        if (bulunan > 0) {
+            document.getElementById('kayitlarCard').scrollIntoView({ behavior: 'smooth' });
+        }
+    } catch(err) {
+        document.getElementById('pdfSonuc').innerHTML = '<div class="alert alert-danger mb-0"><i class="bi bi-exclamation-triangle me-1"></i>PDF açılamadı: ' + escHtml(err.message) + '</div>';
+        document.getElementById('pdfSonuc').classList.remove('d-none');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-qr-code-scan me-1"></i> QR Kodları Tara';
+        progressEl.classList.add('d-none');
+        // Dosya inputunu sıfırla
+        document.getElementById('pdfDosya').value = '';
+        pdfDosyaObj = null;
+        document.getElementById('btnPdfTara').classList.add('d-none');
+        document.getElementById('pdfDurumBadge').classList.add('d-none');
+    }
+}
 </script>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

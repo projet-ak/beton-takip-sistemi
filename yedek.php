@@ -21,8 +21,8 @@ function createBackup(PDO $pdo, string $dir, string $prefix = ''): string {
     $tables   = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
     $sql      = "-- Beton Takip Yedek\n-- " . date('Y-m-d H:i:s') . "\n\nSET FOREIGN_KEY_CHECKS=0;\n\n";
     foreach ($tables as $table) {
-        $create = $pdo->query("SHOW CREATE TABLE `$table`")->fetch();
-        $sql   .= "DROP TABLE IF EXISTS `$table`;\n" . $create[1] . ";\n\n";
+        $create = $pdo->query("SHOW CREATE TABLE `$table`")->fetch(PDO::FETCH_NUM);
+        $sql   .= "DROP TABLE IF EXISTS `$table`;\n" . ($create[1] ?? '') . ";\n\n";
         $rows   = $pdo->query("SELECT * FROM `$table`")->fetchAll(PDO::FETCH_ASSOC);
         if ($rows) {
             $cols  = '`' . implode('`,`', array_keys($rows[0])) . '`';
@@ -87,16 +87,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['sql_dosya'])) {
     $sqlContent = file_get_contents($f['tmp_name']);
     try {
         $pdo->exec("SET FOREIGN_KEY_CHECKS=0");
-        $stmts = array_filter(array_map('trim', explode(";\n", $sqlContent)), fn($s) => strlen($s) > 2);
-        $count = 0;
-        foreach ($stmts as $stmt) { $pdo->exec($stmt); $count++; }
+        // Line-by-line parser: multi-line CREATE TABLE/INSERT düzgün ayrıştırılır
+        $lines = explode("\n", $sqlContent);
+        $stmt = ''; $count = 0;
+        foreach ($lines as $line) {
+            $line = rtrim($line);
+            if ($line === '' || str_starts_with($line, '--')) continue;
+            $stmt .= $line . "\n";
+            if (str_ends_with(rtrim($line), ';')) {
+                $s = trim($stmt);
+                if ($s && strlen($s) > 1) { $pdo->exec($s); $count++; }
+                $stmt = '';
+            }
+        }
         $pdo->exec("SET FOREIGN_KEY_CHECKS=1");
         flash('success', "Veritabanı geri yüklendi. ($count sorgu)");
+        // Oturumu temizle — yeni verilerle yeniden giriş yapılsın
+        session_destroy();
+        redirect('login.php');
     } catch (PDOException $e) {
         $pdo->exec("SET FOREIGN_KEY_CHECKS=1");
         flash('error', 'Geri yükleme hatası: ' . h($e->getMessage()));
+        redirect('yedek.php');
     }
-    redirect('yedek.php');
 }
 
 // Yedek listesi
