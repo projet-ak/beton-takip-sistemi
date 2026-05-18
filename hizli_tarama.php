@@ -29,6 +29,7 @@ require_once __DIR__ . '/includes/header.php';
       <div class="card-header fw-semibold d-flex align-items-center justify-content-between flex-wrap gap-2">
         <span><i class="bi bi-camera-video text-primary me-1"></i> Kamera &amp; Hızlı Tarama</span>
         <span id="sayacBadge" class="badge bg-success fs-6">0 kayıt tarandı</span>
+        <span id="scannerBadge" class="badge bg-secondary d-none ms-auto"></span>
       </div>
       <div class="card-body p-3">
 
@@ -215,13 +216,22 @@ var TEDARIKCILER    = <?= json_encode($tedarikciler, JSON_UNESCAPED_UNICODE) ?>;
 var BETON_SINIFLARI = <?= json_encode($betonSiniflari, JSON_UNESCAPED_UNICODE) ?>;
 var PROJELER        = <?= json_encode($projeler, JSON_UNESCAPED_UNICODE) ?>;
 
+// ── Tarayıcı seçimi: Native BarcodeDetector > jsQR fallback ────────
+var nativeDetector = null;
+(function() {
+    if ('BarcodeDetector' in window) {
+        try { nativeDetector = new BarcodeDetector({ formats: ['qr_code'] }); } catch(e) {}
+    }
+})();
+
 // ── Durum değişkenleri ──────────────────────────────────────────────
 var stream        = null;
-var taramaTimer   = null;
+var taramaActive  = false;  // loop flag (BarcodeDetector için)
+var taramaTimer   = null;   // setInterval handle (jsQR fallback)
 var torchAktif    = false;
 var cooldownAktif = false;
 var scanCanvas    = document.createElement('canvas');
-var SCAN_W = 640, SCAN_H = 360;
+var SCAN_W = 320, SCAN_H = 240; // küçük canvas → jsQR ~4x hızlı
 
 var taranmisList = [];
 var rowSayac     = 0;
@@ -286,6 +296,12 @@ async function kameraAc() {
         var track = stream.getVideoTracks()[0];
         var caps = track.getCapabilities ? track.getCapabilities() : {};
         if (caps.torch) document.getElementById('btnTorch').classList.remove('d-none');
+        var scannerAd = nativeDetector ? '⚡ Native Scanner' : 'jsQR';
+        var scannerCls = nativeDetector ? 'bg-success' : 'bg-secondary';
+        var badge = document.getElementById('scannerBadge');
+        badge.textContent = scannerAd;
+        badge.className = 'badge ' + scannerCls + ' ms-auto';
+        badge.classList.remove('d-none');
         setDurum('<i class="bi bi-qr-code-scan text-warning me-1"></i> Kamera açık — otomatik tarama başladı');
         taramaBaslat();
     } catch(e) {
@@ -301,6 +317,7 @@ function kameraKapat() {
     document.getElementById('btnKapat').classList.add('d-none');
     document.getElementById('btnTorch').classList.add('d-none');
     document.getElementById('hedefBox').classList.add('d-none');
+    document.getElementById('scannerBadge').classList.add('d-none');
     setDurum('Kamera kapatıldı.');
 }
 
@@ -316,28 +333,51 @@ async function torchToggle() {
 
 // ── QR Tarama ──────────────────────────────────────────────────────
 function taramaBaslat() {
-    if (taramaTimer) clearInterval(taramaTimer);
-    taramaTimer = setInterval(qrTara, 150); // 150ms — ~7 fps tarama
+    taramaActive = true;
+    if (nativeDetector) {
+        nativeLoop(); // native: kendi döngüsünü kurar
+    } else {
+        if (taramaTimer) clearInterval(taramaTimer);
+        taramaTimer = setInterval(qrTaraJsqr, 80); // jsQR: 80ms (~12 fps)
+    }
 }
 
 function taramaDurdur() {
+    taramaActive = false;
     if (taramaTimer) { clearInterval(taramaTimer); taramaTimer = null; }
 }
 
-function qrTara() {
+// Native BarcodeDetector — video frame'i doğrudan okur (canvas gereksiz)
+async function nativeLoop() {
+    if (!taramaActive) return;
+    if (!cooldownAktif) {
+        var video = document.getElementById('videoEl');
+        if (video.videoWidth && video.videoHeight && !video.paused) {
+            try {
+                var codes = await nativeDetector.detect(video);
+                if (codes.length && codes[0].rawValue) {
+                    qrBulundu(codes[0].rawValue.trim());
+                }
+            } catch(e) {}
+        }
+    }
+    if (taramaActive) requestAnimationFrame(nativeLoop);
+}
+
+// jsQR fallback — küçük canvas + dontInvert ile hızlandırılmış
+function qrTaraJsqr() {
     if (cooldownAktif) return;
     var video = document.getElementById('videoEl');
     if (!video.videoWidth || !video.videoHeight || video.paused) return;
+    if (typeof jsQR === 'undefined') return;
 
-    // Küçük canvas'a çiz (hız için)
     scanCanvas.width  = SCAN_W;
     scanCanvas.height = SCAN_H;
-    var ctx = scanCanvas.getContext('2d');
+    var ctx = scanCanvas.getContext('2d', { willReadFrequently: true });
     ctx.drawImage(video, 0, 0, SCAN_W, SCAN_H);
     var imgData = ctx.getImageData(0, 0, SCAN_W, SCAN_H);
-
-    if (typeof jsQR === 'undefined') return;
-    var code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'attemptBoth' });
+    // dontInvert: koyu-üzerine-açık QR (standart) için ~2x hızlı
+    var code = jsQR(imgData.data, SCAN_W, SCAN_H, { inversionAttempts: 'dontInvert' });
     if (code && code.data && code.data.trim()) {
         qrBulundu(code.data.trim());
     }
