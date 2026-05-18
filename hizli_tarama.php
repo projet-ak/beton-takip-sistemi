@@ -566,17 +566,9 @@ async function pdfTara() {
 
             try {
                 var page = await pdf.getPage(i);
-                // Sayfayı 2x scale ile render et (QR için yeterli çözünürlük)
-                var viewport = page.getViewport({ scale: 2.0 });
-                canvas.width  = viewport.width;
-                canvas.height = viewport.height;
-                await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+                var rawData = await sayfadaQrBul(page, canvas, ctx);
 
-                var imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                var code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'attemptBoth' });
-
-                if (code && code.data && code.data.trim()) {
-                    var rawData = code.data.trim();
+                if (rawData) {
                     var json = null;
                     try { json = JSON.parse(rawData); } catch(e) {}
 
@@ -586,7 +578,6 @@ async function pdfTara() {
                     var sevkZamani = (json && json.sevkzamani)|| '';
                     var ettn       = (json && json.ettn)      || '';
 
-                    // Duplicate kontrolü
                     if (irsaliyeNo && taranmisList.some(function(r){ return r.irsaliye_no === irsaliyeNo; })) {
                         atlanan++;
                         errors.push('Sayfa ' + i + ': ' + irsaliyeNo + ' zaten listede (atlandı)');
@@ -610,8 +601,6 @@ async function pdfTara() {
                         sayacGuncelle();
                         bulunan++;
                     }
-                } else {
-                    // QR bulunamadı bu sayfada — sessizce geç
                 }
             } catch(pageErr) {
                 errors.push('Sayfa ' + i + ' okunamadı: ' + pageErr.message);
@@ -621,7 +610,6 @@ async function pdfTara() {
         progressBar.style.width = '100%';
         progressPct.textContent = '100%';
 
-        // Sonuç göster
         var sonucEl = document.getElementById('pdfSonuc');
         var alertType = bulunan > 0 ? 'success' : 'warning';
         var html = '<div class="alert alert-' + alertType + ' mb-0">';
@@ -647,12 +635,56 @@ async function pdfTara() {
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-qr-code-scan me-1"></i> QR Kodları Tara';
         progressEl.classList.add('d-none');
-        // Dosya inputunu sıfırla
         document.getElementById('pdfDosya').value = '';
         pdfDosyaObj = null;
         document.getElementById('btnPdfTara').classList.add('d-none');
         document.getElementById('pdfDurumBadge').classList.add('d-none');
     }
+}
+
+// Bir PDF sayfasında QR kodu arar: tam sayfa + 4 bölge, 3 farklı scale dener
+async function sayfadaQrBul(page, canvas, ctx) {
+    var scales = [3.0, 4.0, 5.0];
+    for (var si = 0; si < scales.length; si++) {
+        var scale    = scales[si];
+        var viewport = page.getViewport({ scale: scale });
+        canvas.width  = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+        // 1) Tam sayfa tarama
+        var imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        var code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'attemptBoth' });
+        if (code && code.data && code.data.trim()) return code.data.trim();
+
+        // 2) Dört bölge (quadrant) tarama — QR küçükse tam sayfada gözden kaçabilir
+        var hw = Math.floor(canvas.width  / 2);
+        var hh = Math.floor(canvas.height / 2);
+        var bolge = [[0,0,hw,hh],[hw,0,hw,hh],[0,hh,hw,hh],[hw,hh,hw,hh]];
+        for (var b = 0; b < bolge.length; b++) {
+            var bx = bolge[b][0], by = bolge[b][1], bw = bolge[b][2], bh = bolge[b][3];
+            var qd = ctx.getImageData(bx, by, bw, bh);
+            code = jsQR(qd.data, qd.width, qd.height, { inversionAttempts: 'attemptBoth' });
+            if (code && code.data && code.data.trim()) return code.data.trim();
+        }
+
+        // 3) Köşe bölgeler (QR genellikle sağ alt veya sağ üstte olur — daha küçük crop)
+        var cw = Math.floor(canvas.width  / 3);
+        var ch = Math.floor(canvas.height / 3);
+        var kose = [
+            [canvas.width-cw, 0, cw, ch],                          // sağ üst
+            [canvas.width-cw, canvas.height-ch, cw, ch],           // sağ alt
+            [0, canvas.height-ch, cw, ch],                         // sol alt
+            [0, 0, cw, ch]                                         // sol üst
+        ];
+        for (var k = 0; k < kose.length; k++) {
+            var kx = kose[k][0], ky = kose[k][1], kw = kose[k][2], kh = kose[k][3];
+            var kd = ctx.getImageData(kx, ky, kw, kh);
+            code = jsQR(kd.data, kd.width, kd.height, { inversionAttempts: 'attemptBoth' });
+            if (code && code.data && code.data.trim()) return code.data.trim();
+        }
+    }
+    return null; // bulunamadı
 }
 </script>
 
