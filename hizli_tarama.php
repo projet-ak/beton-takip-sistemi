@@ -79,41 +79,86 @@ require_once __DIR__ . '/includes/header.php';
   </div>
 </div>
 
-<!-- PDF'den Tara Paneli -->
+<!-- PDF İşleme Paneli -->
 <div class="row g-3 mb-4">
   <div class="col-12">
     <div class="card shadow-sm">
-      <div class="card-header fw-semibold d-flex align-items-center justify-content-between flex-wrap gap-2">
-        <span><i class="bi bi-file-earmark-pdf text-danger me-1"></i> PDF'den QR Tara</span>
-        <span id="pdfDurumBadge" class="badge bg-secondary d-none">Hazır</span>
+      <div class="card-header p-0">
+        <ul class="nav nav-tabs border-bottom-0 px-3 pt-2">
+          <li class="nav-item">
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabPdfQr">
+              <i class="bi bi-qr-code text-danger me-1"></i> QR Kodu Tara
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPdfOcr">
+              <i class="bi bi-file-text text-primary me-1"></i> OCR ile Oku
+            </button>
+          </li>
+        </ul>
       </div>
       <div class="card-body">
-        <div class="row g-3 align-items-end">
-          <div class="col-sm-8">
-            <label class="form-label fw-semibold small">PDF Dosyası Seç</label>
-            <input type="file" id="pdfDosya" class="form-control" accept=".pdf" onchange="pdfSecildi(this)">
-            <div class="form-text">Her sayfadaki QR kodlar otomatik taranır ve tabloya eklenir.</div>
+        <div class="tab-content">
+
+          <!-- QR Tab -->
+          <div class="tab-pane fade show active" id="tabPdfQr">
+            <div class="row g-3 align-items-end">
+              <div class="col-sm-8">
+                <label class="form-label fw-semibold small">PDF Dosyası Seç</label>
+                <input type="file" id="pdfDosya" class="form-control" accept=".pdf" onchange="pdfSecildi(this)">
+                <div class="form-text">Her sayfadaki QR kodlar otomatik taranır ve tabloya eklenir.</div>
+              </div>
+              <div class="col-sm-4">
+                <button id="btnPdfTara" class="btn btn-danger w-100 d-none" onclick="pdfTara()">
+                  <i class="bi bi-qr-code-scan me-1"></i> QR Kodları Tara
+                </button>
+              </div>
+            </div>
+            <div id="pdfProgress" class="d-none mt-3">
+              <div class="d-flex justify-content-between small mb-1">
+                <span id="pdfProgressText">Sayfa taranıyor...</span>
+                <span id="pdfProgressPct">0%</span>
+              </div>
+              <div class="progress" style="height:6px;">
+                <div id="pdfProgressBar" class="progress-bar bg-danger progress-bar-striped progress-bar-animated" style="width:0%"></div>
+              </div>
+            </div>
+            <div id="pdfSonuc" class="d-none mt-3"></div>
+            <canvas id="pdfCanvas" class="d-none"></canvas>
           </div>
-          <div class="col-sm-4">
-            <button id="btnPdfTara" class="btn btn-danger w-100 d-none" onclick="pdfTara()">
-              <i class="bi bi-qr-code-scan me-1"></i> QR Kodları Tara
-            </button>
+
+          <!-- OCR Tab -->
+          <div class="tab-pane fade" id="tabPdfOcr">
+            <div class="alert alert-info py-2 small mb-3">
+              <i class="bi bi-info-circle me-1"></i>
+              PDF içindeki metin okunur; <strong>İrsaliye No, Tarih, Plaka, Miktar, Beton Sınıfı ve Tedarikçi</strong> otomatik çıkartılır. Her sayfa = 1 irsaliye kaydı.
+              Dijital (taranmış değil) PDF dosyalarında çalışır.
+            </div>
+            <div class="row g-3 align-items-end">
+              <div class="col-sm-8">
+                <label class="form-label fw-semibold small">PDF Dosyası Seç</label>
+                <input type="file" id="ocrDosya" class="form-control" accept=".pdf" onchange="ocrSecildi(this)">
+                <div class="form-text">Çok sayfalı PDF desteklenir — her sayfa ayrı irsaliye satırı olarak eklenir.</div>
+              </div>
+              <div class="col-sm-4">
+                <button id="btnOcrTara" class="btn btn-primary w-100 d-none" onclick="ocrTara()">
+                  <i class="bi bi-file-text me-1"></i> Metni Oku &amp; Ekle
+                </button>
+              </div>
+            </div>
+            <div id="ocrProgress" class="d-none mt-3">
+              <div class="d-flex justify-content-between small mb-1">
+                <span id="ocrProgressText">Sayfa okunuyor...</span>
+                <span id="ocrProgressPct">0%</span>
+              </div>
+              <div class="progress" style="height:6px;">
+                <div id="ocrProgressBar" class="progress-bar bg-primary progress-bar-striped progress-bar-animated" style="width:0%"></div>
+              </div>
+            </div>
+            <div id="ocrSonuc" class="d-none mt-3"></div>
           </div>
+
         </div>
-        <!-- İlerleme -->
-        <div id="pdfProgress" class="d-none mt-3">
-          <div class="d-flex justify-content-between small mb-1">
-            <span id="pdfProgressText">Sayfa taranıyor...</span>
-            <span id="pdfProgressPct">0%</span>
-          </div>
-          <div class="progress" style="height:6px;">
-            <div id="pdfProgressBar" class="progress-bar bg-danger progress-bar-striped progress-bar-animated" style="width:0%"></div>
-          </div>
-        </div>
-        <!-- Sonuç -->
-        <div id="pdfSonuc" class="d-none mt-3"></div>
-        <!-- Gizli canvas -->
-        <canvas id="pdfCanvas" class="d-none"></canvas>
       </div>
     </div>
   </div>
@@ -638,7 +683,6 @@ async function pdfTara() {
         document.getElementById('pdfDosya').value = '';
         pdfDosyaObj = null;
         document.getElementById('btnPdfTara').classList.add('d-none');
-        document.getElementById('pdfDurumBadge').classList.add('d-none');
     }
 }
 
@@ -685,6 +729,221 @@ async function sayfadaQrBul(page, canvas, ctx) {
         }
     }
     return null; // bulunamadı
+}
+
+// ── PDF OCR (Metin Çıkartma) ────────────────────────────────────────
+var ocrDosyaObj = null;
+
+function ocrSecildi(input) {
+    ocrDosyaObj = input.files[0] || null;
+    document.getElementById('btnOcrTara').classList.toggle('d-none', !ocrDosyaObj);
+    document.getElementById('ocrSonuc').classList.add('d-none');
+    document.getElementById('ocrProgress').classList.add('d-none');
+}
+
+async function ocrTara() {
+    if (!ocrDosyaObj) return;
+    var btn = document.getElementById('btnOcrTara');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Okunuyor...';
+    document.getElementById('ocrSonuc').classList.add('d-none');
+
+    var progressEl  = document.getElementById('ocrProgress');
+    var progressBar = document.getElementById('ocrProgressBar');
+    var progressText= document.getElementById('ocrProgressText');
+    var progressPct = document.getElementById('ocrProgressPct');
+    progressEl.classList.remove('d-none');
+    progressBar.style.width = '0%';
+
+    var bulunan = 0, atlanan = 0, bos = 0, hatalar = [];
+
+    try {
+        var arrayBuf = await ocrDosyaObj.arrayBuffer();
+        var pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
+        var toplamSayfa = pdf.numPages;
+
+        for (var i = 1; i <= toplamSayfa; i++) {
+            var pct = Math.round(((i - 1) / toplamSayfa) * 100);
+            progressBar.style.width = pct + '%';
+            progressPct.textContent = pct + '%';
+            progressText.textContent = toplamSayfa + ' sayfadan ' + i + '. sayfa okunuyor...';
+
+            try {
+                var page   = await pdf.getPage(i);
+                var tc     = await page.getTextContent();
+                // Satır konumuna göre grupla: aynı y ± 5px → aynı satır
+                var items  = tc.items.slice().sort(function(a,b){
+                    var dy = (b.transform[5] - a.transform[5]);
+                    return Math.abs(dy) > 5 ? dy : (a.transform[4] - b.transform[4]);
+                });
+                var text = items.map(function(it){ return it.str; }).join(' ');
+
+                if (!text.trim() || text.replace(/\s/g,'').length < 15) {
+                    bos++;
+                    hatalar.push('Sayfa ' + i + ': metin bulunamadı (görüntü tabanlı PDF olabilir)');
+                    continue;
+                }
+
+                var parsed = parseIrsaliyeMetin(text);
+
+                if (parsed.irsaliye_no && taranmisList.some(function(r){ return r.irsaliye_no === parsed.irsaliye_no; })) {
+                    atlanan++;
+                    hatalar.push('Sayfa ' + i + ': ' + parsed.irsaliye_no + ' zaten listede (atlandı)');
+                    continue;
+                }
+
+                beepSes();
+                rowSayac++;
+                var item = {
+                    rowId: rowSayac,
+                    irsaliye_no: parsed.irsaliye_no,
+                    tarih:        parsed.tarih,
+                    arac_plaka:   parsed.plaka,
+                    mikser_cikis_saati: parsed.sevkZamani,
+                    fatura_no:    parsed.ettn,
+                    miktar:       parsed.miktar,
+                    tedarikci_id: parsed.tedarikci_id,
+                    beton_sinifi_id: parsed.beton_sinifi_id,
+                    proje_id: ''
+                };
+                taranmisList.push(item);
+                tabloSatirEkleOcr(item);
+                sayacGuncelle();
+                bulunan++;
+            } catch(pageErr) {
+                hatalar.push('Sayfa ' + i + ' okunamadı: ' + pageErr.message);
+            }
+        }
+
+        progressBar.style.width = '100%';
+        progressPct.textContent = '100%';
+
+        var sonucEl = document.getElementById('ocrSonuc');
+        var at = bulunan > 0 ? 'success' : 'warning';
+        var html = '<div class="alert alert-' + at + ' mb-0">';
+        html += '<i class="bi bi-' + (bulunan > 0 ? 'check-circle' : 'exclamation-circle') + ' me-1"></i>';
+        html += '<strong>' + toplamSayfa + ' sayfa okundu.</strong> ' + bulunan + ' irsaliye eklendi';
+        if (atlanan) html += ', ' + atlanan + ' atlandı';
+        if (bos) html += ', ' + bos + ' sayfada metin yok';
+        html += '.';
+        if (hatalar.length) html += '<ul class="mb-0 mt-2 small">' + hatalar.map(function(e){ return '<li>' + escHtml(e) + '</li>'; }).join('') + '</ul>';
+        html += '</div>';
+        sonucEl.innerHTML = html;
+        sonucEl.classList.remove('d-none');
+        if (bulunan > 0) document.getElementById('kayitlarCard').scrollIntoView({ behavior: 'smooth' });
+    } catch(err) {
+        document.getElementById('ocrSonuc').innerHTML = '<div class="alert alert-danger mb-0"><i class="bi bi-exclamation-triangle me-1"></i>PDF açılamadı: ' + escHtml(err.message) + '</div>';
+        document.getElementById('ocrSonuc').classList.remove('d-none');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-file-text me-1"></i> Metni Oku &amp; Ekle';
+        progressEl.classList.add('d-none');
+        document.getElementById('ocrDosya').value = '';
+        ocrDosyaObj = null;
+        document.getElementById('btnOcrTara').classList.add('d-none');
+    }
+}
+
+function parseIrsaliyeMetin(text) {
+    var flat = text.replace(/\s+/g, ' ').trim();
+    var r = { irsaliye_no:'', tarih:'', plaka:'', miktar:'', sevkZamani:'', ettn:'', beton_sinifi_id:'', tedarikci_id:'' };
+
+    // İrsaliye No
+    var noM =
+        flat.match(/[İIi]rsaliye\s*[Nn]o[\s:]+([A-ZÇĞİÖŞÜa-zçğiöşü0-9]{6,25})/) ||
+        flat.match(/[Bb]elge\s*[Nn]o[\s:]+([A-ZÇĞİÖŞÜ0-9]{6,25})/) ||
+        flat.match(/[Ss]eri\s*[Nn]o[\s:]+([A-ZÇĞİÖŞÜ0-9]{6,25})/) ||
+        flat.match(/\b([A-ZÇĞİÖŞÜ]{2,5}\d{10,20})\b/);
+    if (noM) r.irsaliye_no = noM[1].trim();
+
+    // Tarih DD.MM.YYYY → YYYY-MM-DD
+    var tM = flat.match(/\b(\d{2})[.\/](\d{2})[.\/](\d{4})\b/);
+    if (tM) r.tarih = tM[3] + '-' + tM[2] + '-' + tM[1];
+
+    // Plaka
+    var pM =
+        flat.match(/[Pp]laka[sı]?[\s:]+(\d{2}\s*[A-ZÇĞİÖŞÜ]{1,3}\s*\d{2,4})/) ||
+        flat.match(/[Aa]ra[çc][\s\w]{0,15}?[\s:]+(\d{2}\s*[A-ZÇĞİÖŞÜ]{1,3}\s*\d{2,4})/) ||
+        flat.match(/\b(\d{2}\s*[A-ZÇĞİÖŞÜ]{2,3}\s*\d{3,4})\b/);
+    if (pM) r.plaka = pM[1].replace(/\s+/g,'');
+
+    // Miktar m³
+    var mM = flat.match(/(\d+[,.]\d+|\d+)\s*(?:[Mm][³3]|[Mm]3\b)/);
+    if (mM) r.miktar = mM[1].replace(',','.');
+
+    // Sevk saati
+    var sM = flat.match(/[Ss]evk[\s\S]{0,50}?(\d{2}:\d{2})/) ||
+             flat.match(/[Çç][ıi]k[ıi][şs][\s\S]{0,30}?(\d{2}:\d{2})/) ||
+             flat.match(/(\d{2}:\d{2}:\d{2})/);
+    if (sM) r.sevkZamani = sM[1];
+
+    // ETTN
+    var eM = flat.match(/[Ee][Tt][Tt][Nn][\s:]+([A-Za-z0-9\-]{30,50})/);
+    if (eM) r.ettn = eM[1].trim();
+
+    // Beton sınıfı — metinde bul, BETON_SINIFLARI ile eşleştir
+    var bM = flat.match(/\b(C\s*\d+\s*[\/\-]\s*\d+)\b/i);
+    if (bM) {
+        var bn = bM[1].replace(/\s+/g,'').toUpperCase();
+        for (var b = 0; b < BETON_SINIFLARI.length; b++) {
+            var bc = BETON_SINIFLARI[b].ad.replace(/\s+/g,'').toUpperCase();
+            if (bc === bn || bc.includes(bn) || bn.includes(bc)) {
+                r.beton_sinifi_id = String(BETON_SINIFLARI[b].id); break;
+            }
+        }
+    }
+
+    // Tedarikçi — bilinen isimleri metin içinde ara
+    var fu = flat.toUpperCase();
+    for (var t = 0; t < TEDARIKCILER.length; t++) {
+        var ta = TEDARIKCILER[t].ad.toUpperCase();
+        var words = ta.split(' ').filter(function(w){ return w.length >= 5; });
+        var hit = words.length > 0 && words.every(function(w){ return fu.includes(w); });
+        if (!hit && ta.length >= 5) hit = fu.includes(ta);
+        if (hit) { r.tedarikci_id = String(TEDARIKCILER[t].id); break; }
+    }
+
+    return r;
+}
+
+// tabloSatirEkle'nin OCR versiyonu — dropdown ve miktar önceden seçili
+function tabloSatirEkleOcr(item) {
+    var bosRow = document.getElementById('bosRow');
+    if (bosRow) bosRow.remove();
+
+    var tbody = document.getElementById('kayitGovde');
+    var tr = document.createElement('tr');
+    tr.id = 'row-' + item.rowId;
+    tr.className = 'table-info';
+    setTimeout(function(){ tr.className = ''; }, 2000);
+
+    var tedOpts = '<option value="">— Seçin —</option>';
+    TEDARIKCILER.forEach(function(t){
+        tedOpts += '<option value="' + t.id + '"' + (String(t.id) === item.tedarikci_id ? ' selected' : '') + '>' + escHtml(t.ad) + '</option>';
+    });
+    var betOpts = '<option value="">—</option>';
+    BETON_SINIFLARI.forEach(function(b){
+        betOpts += '<option value="' + b.id + '"' + (String(b.id) === item.beton_sinifi_id ? ' selected' : '') + '>' + escHtml(b.ad) + '</option>';
+    });
+    var prjOpts = '<option value="">—</option>';
+    PROJELER.forEach(function(p){
+        prjOpts += '<option value="' + p.id + '">' + escHtml(p.kod) + '</option>';
+    });
+
+    tr.innerHTML =
+        '<td class="text-muted small">' + item.rowId + '</td>' +
+        '<td class="font-monospace small text-nowrap">' + escHtml(item.irsaliye_no || '—') + '</td>' +
+        '<td class="text-nowrap small">' + escHtml(item.tarih || '—') + '</td>' +
+        '<td class="text-nowrap small">' + escHtml(item.arac_plaka || '—') + '</td>' +
+        '<td class="text-nowrap small">' + escHtml(item.mikser_cikis_saati || '—') + '</td>' +
+        '<td><select class="form-select form-select-sm" onchange="satirGuncelle(' + item.rowId + ',\'tedarikci_id\',this.value)">' + tedOpts + '</select></td>' +
+        '<td><select class="form-select form-select-sm" onchange="satirGuncelle(' + item.rowId + ',\'beton_sinifi_id\',this.value)">' + betOpts + '</select></td>' +
+        '<td><input type="number" class="form-control form-control-sm" step="0.5" min="0" placeholder="0.0" value="' + escHtml(item.miktar) + '" onchange="satirGuncelle(' + item.rowId + ',\'miktar\',this.value)" oninput="satirGuncelle(' + item.rowId + ',\'miktar\',this.value)"></td>' +
+        '<td><select class="form-select form-select-sm" onchange="satirGuncelle(' + item.rowId + ',\'proje_id\',this.value)">' + prjOpts + '</select></td>' +
+        '<td><button class="btn btn-xs btn-outline-danger" onclick="satirSil(' + item.rowId + ')"><i class="bi bi-trash"></i></button></td>';
+
+    tbody.insertBefore(tr, tbody.firstChild);
+    tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 </script>
 
