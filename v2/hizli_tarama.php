@@ -904,31 +904,99 @@ async function ocrTara() {
 }
 
 function parseIrsaliyeMetin(text) {
+    // Hem satır-yapısı korunmuş (lines) hem de tek-satıra düzleştirilmiş (flat) sürüm kullan
+    var lines = text.split(/\r?\n/).map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0; });
     var flat = text.replace(/\s+/g, ' ').trim();
     var r = { irsaliye_no:'', tarih:'', plaka:'', miktar:'', sevkZamani:'', ettn:'', beton_sinifi_id:'', tedarikci_id:'' };
 
-    // İrsaliye No
+    // ── İrsaliye No ──────────────────────────────────────────────────────────
+    // Yaygın OCR hataları: I↔İ↔l↔1, O↔0
     var noM =
-        flat.match(/[İIi]rsaliye\s*[Nn]o[\s:]+([A-ZÇĞİÖŞÜa-zçğiöşü0-9]{6,25})/) ||
-        flat.match(/[Bb]elge\s*[Nn]o[\s:]+([A-ZÇĞİÖŞÜ0-9]{6,25})/) ||
-        flat.match(/[Ss]eri\s*[Nn]o[\s:]+([A-ZÇĞİÖŞÜ0-9]{6,25})/) ||
+        flat.match(/[İIil1]rsaliye\s*[Nn]o[\s:.]*([A-ZÇĞİÖŞÜa-zçğiöşü0-9]{6,25})/) ||
+        flat.match(/[Bb]elge\s*[Nn]o[\s:.]*([A-ZÇĞİÖŞÜ0-9]{6,25})/) ||
+        flat.match(/[Ss]eri\s*[Nn]o[\s:.]*([A-ZÇĞİÖŞÜ0-9]{6,25})/) ||
         flat.match(/\b([A-ZÇĞİÖŞÜ]{2,5}\d{10,20})\b/);
-    if (noM) r.irsaliye_no = noM[1].trim();
+    if (noM) {
+        // OCR sık hata: 2↔Z, 0↔O, 1↔I. İrsaliye numarası harf-rakam karışımı ise
+        // ilk 3-4 harften sonraki karakterlerde harf→rakam dönüşümü uygula.
+        var raw = noM[1].trim();
+        var fix = raw.replace(/^([A-ZÇĞİÖŞÜ]{2,3})(.*)$/, function(_, pfx, rest) {
+            return pfx + rest.replace(/Z/g,'2').replace(/O/g,'0').replace(/I/g,'1').replace(/B/g,'8');
+        });
+        r.irsaliye_no = fix;
+    }
 
     // Tarih DD.MM.YYYY → YYYY-MM-DD
     var tM = flat.match(/\b(\d{2})[.\/](\d{2})[.\/](\d{4})\b/);
     if (tM) r.tarih = tM[3] + '-' + tM[2] + '-' + tM[1];
 
-    // Plaka
-    var pM =
-        flat.match(/[Pp]laka[sı]?[\s:]+(\d{2}\s*[A-ZÇĞİÖŞÜ]{1,3}\s*\d{2,4})/) ||
-        flat.match(/[Aa]ra[çc][\s\w]{0,15}?[\s:]+(\d{2}\s*[A-ZÇĞİÖŞÜ]{1,3}\s*\d{2,4})/) ||
-        flat.match(/\b(\d{2}\s*[A-ZÇĞİÖŞÜ]{2,3}\s*\d{3,4})\b/);
-    if (pM) r.plaka = pM[1].replace(/\s+/g,'');
+    // ── Plaka ────────────────────────────────────────────────────────────────
+    // Türk plaka kalıbı: 2 rakam + 1-3 harf + 2-4 rakam. OCR'ı O→0, I→1 dönüşümleriyle de dene.
+    // Önce "Plaka" etiketinden sonra ara — ama arada başka rakam/karakterler olabileceği için
+    // sadece geçerli plaka deseniyle eşleştir, sayısal kod ön ekleri (örn. "232 -") değil.
+    function bulPlaka(s) {
+        // Geçerli plaka deseni: 2 rakam (boşluksuz) + 2-3 harf + 2-4 rakam
+        var m = s.match(/\b(\d{2})\s*([A-ZÇĞİÖŞÜ]{2,3})\s*(\d{2,4})\b/);
+        if (m) return (m[1] + m[2] + m[3]).toUpperCase();
+        // O/0, I/1 OCR hatası toleransı: harflerden sonra O veya I gelirse rakam olabilir
+        var m2 = s.match(/\b(\d{2})\s*([A-ZÇĞİÖŞÜ]{2,3})\s*([O0I1\d]{2,4})\b/);
+        if (m2) return (m2[1] + m2[2] + m2[3].replace(/O/g,'0').replace(/I/g,'1')).toUpperCase();
+        return '';
+    }
+    // 1) "Mikser Kodu - Plaka" satırının yakınında ara
+    for (var li = 0; li < lines.length; li++) {
+        if (/[Mm]ikser[\s\S]{0,20}?[Pp]laka/i.test(lines[li])) {
+            // Aynı satırda veya sonraki 1-2 satırda
+            var blob = (lines[li] || '') + ' ' + (lines[li+1] || '') + ' ' + (lines[li+2] || '');
+            var p = bulPlaka(blob);
+            if (p) { r.plaka = p; break; }
+        }
+    }
+    // 2) Hâlâ bulunamadıysa, tüm metinde herhangi bir plaka kalıbı ara
+    if (!r.plaka) {
+        // Pompa plakası "N" veya boş olabilir; ilk geçerli kalıbı al
+        r.plaka = bulPlaka(flat);
+    }
 
-    // Miktar m³
-    var mM = flat.match(/(\d+[,.]\d+|\d+)\s*(?:[Mm][³3]|[Mm]3\b)/);
-    if (mM) r.miktar = mM[1].replace(',','.');
+    // ── Miktar m³ ───────────────────────────────────────────────────────────
+    // OCR'da m³ çoğu zaman "m?", "m\"", "m" veya "m3" olarak okunuyor.
+    // 1) "Miktar" başlığı/sütununun yakınında ara (en güvenilir)
+    var mM = null;
+    for (var mi = 0; mi < lines.length; mi++) {
+        if (/[Mm]iktar/.test(lines[mi])) {
+            // Aynı satır veya sonraki 1-3 satırda "X,YY m..." veya "X.YY m..." ara
+            var area = lines.slice(mi, mi + 4).join(' ');
+            // Miktar (X,YY) ardından opsiyonel m + opsiyonel ³/3/?/"/'
+            mM = area.match(/(\d+[,.]\d{1,2})\s*[mM]\s*[³3?"'`´]?/) ||
+                 area.match(/(\d+[,.]\d{1,2})\s*[mM]\b/) ||
+                 area.match(/(\d{1,3}[,.]\d{1,2})\s+[mM]/);
+            if (mM) break;
+        }
+    }
+    // 2) Beton sınıfı (C25/30 vb.) satırının yanında "X,YY m" ara
+    if (!mM) {
+        var bLineIdx = -1;
+        for (var bi = 0; bi < lines.length; bi++) {
+            if (/\bC\s?\d{2}\s?[\/\-]\s?\d{2}/i.test(lines[bi])) { bLineIdx = bi; break; }
+        }
+        if (bLineIdx >= 0) {
+            var area2 = lines.slice(bLineIdx, bLineIdx + 3).join(' ');
+            mM = area2.match(/(\d+[,.]\d{1,2})\s*[mM]\s*[³3?"'`´]?/) ||
+                 area2.match(/(\d+[,.]\d{1,2})\s*[mM]\b/);
+        }
+    }
+    // 3) Genel fallback: tüm metinde "X,YY m³/m3/m?/m" ara (ETTN/tarih ile karışmasın diye dar)
+    if (!mM) {
+        mM = flat.match(/\b(\d{1,3}[,.]\d{1,2})\s*[mM](?:[³3?"'`´]|\b)/);
+    }
+    if (mM) {
+        var miktarStr = mM[1].replace(',','.');
+        var miktarNum = parseFloat(miktarStr);
+        // Mantıklı bir m³ değeri (genelde 1-15 arası, en fazla 99)
+        if (!isNaN(miktarNum) && miktarNum > 0 && miktarNum < 100) {
+            r.miktar = miktarStr;
+        }
+    }
 
     // Sevk saati
     var sM = flat.match(/[Ss]evk[\s\S]{0,50}?(\d{2}:\d{2})/) ||
