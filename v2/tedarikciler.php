@@ -1,0 +1,183 @@
+<?php
+/**
+ * tedarikciler.php — Tedarikçi yönetimi
+ */
+require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/auth.php';
+
+if (!file_exists(__DIR__ . '/config.php')) { redirect('install.php'); }
+
+require_auth(['admin','teknik_ofis_admin']);
+require_once __DIR__ . '/includes/db.php';
+
+$pageTitle = 'Tedarikçiler — Beton Takip Sistemi';
+
+// ── Sil ──────────────────────────────────────────────────────────────────────
+if (isset($_GET['sil']) && ctype_digit($_GET['sil'])) {
+    $id = (int)$_GET['sil'];
+    $kullanim = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler WHERE tedarikci_id = ?");
+    $kullanim->execute([$id]);
+    if ($kullanim->fetchColumn() > 0) {
+        flash('warning', 'Bu tedarikçiye ait irsaliyeler var, silemezsiniz. Pasif yapabilirsiniz.');
+    } else {
+        $pdo->prepare("DELETE FROM tedarikciler WHERE id = ?")->execute([$id]);
+        flash('success', 'Tedarikçi silindi.');
+    }
+    redirect('tedarikciler.php');
+}
+
+// ── Pasif/Aktif Toggle ───────────────────────────────────────────────────────
+if (isset($_GET['toggle']) && ctype_digit($_GET['toggle'])) {
+    $pdo->prepare("UPDATE tedarikciler SET aktif = 1 - aktif WHERE id = ?")->execute([(int)$_GET['toggle']]);
+    redirect('tedarikciler.php');
+}
+
+// ── Kaydet / Güncelle ────────────────────────────────────────────────────────
+$formError = '';
+$duzenle   = null;
+
+if (isset($_GET['duzenle']) && ctype_digit($_GET['duzenle'])) {
+    $s = $pdo->prepare("SELECT * FROM tedarikciler WHERE id = ?");
+    $s->execute([(int)$_GET['duzenle']]);
+    $duzenle = $s->fetch() ?: null;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $id      = isset($_POST['id']) && ctype_digit($_POST['id']) ? (int)$_POST['id'] : null;
+    $ad      = trim($_POST['ad']      ?? '');
+    $telefon = trim($_POST['telefon'] ?? '');
+    $adres   = trim($_POST['adres']   ?? '');
+    $aktif   = isset($_POST['aktif']) ? 1 : 0;
+
+    if (!$ad) {
+        $formError = 'Tedarikçi adı zorunludur.';
+    } else {
+        if ($id) {
+            $pdo->prepare("UPDATE tedarikciler SET ad=?, telefon=?, adres=?, aktif=? WHERE id=?")
+                ->execute([$ad, $telefon ?: null, $adres ?: null, $aktif, $id]);
+            flash('success', 'Tedarikçi güncellendi.');
+        } else {
+            $pdo->prepare("INSERT INTO tedarikciler (ad, telefon, adres, aktif) VALUES (?,?,?,?)")
+                ->execute([$ad, $telefon ?: null, $adres ?: null, $aktif]);
+            flash('success', 'Tedarikçi eklendi.');
+        }
+        redirect('tedarikciler.php');
+    }
+}
+
+$formAcik = isset($_GET['ekle']) || $duzenle;
+
+// ── Liste ────────────────────────────────────────────────────────────────────
+$liste = $pdo->query("
+    SELECT t.*, COUNT(i.id) AS irsaliye_adet, COALESCE(SUM(i.miktar),0) AS toplam_m3
+    FROM tedarikciler t
+    LEFT JOIN irsaliyeler i ON i.tedarikci_id = t.id
+    GROUP BY t.id
+    ORDER BY t.aktif DESC, t.ad
+")->fetchAll();
+
+require_once __DIR__ . '/includes/header.php';
+?>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0"><i class="bi bi-truck text-primary me-2"></i>Tedarikçiler</h4>
+    <a href="tedarikciler.php?ekle=1" class="btn btn-primary">
+        <i class="bi bi-plus-circle me-1"></i> Yeni Tedarikçi
+    </a>
+</div>
+
+<?php if ($formAcik): ?>
+<div class="card mb-4">
+    <div class="card-header <?= $duzenle ? 'bg-warning text-dark' : 'bg-primary text-white' ?> fw-semibold">
+        <i class="bi bi-<?= $duzenle ? 'pencil' : 'plus-circle' ?> me-1"></i>
+        <?= $duzenle ? 'Tedarikçi Düzenle' : 'Yeni Tedarikçi Ekle' ?>
+    </div>
+    <div class="card-body">
+        <?php if ($formError): ?>
+            <div class="alert alert-danger"><?= h($formError) ?></div>
+        <?php endif; ?>
+        <form method="post">
+            <?php if ($duzenle): ?>
+                <input type="hidden" name="id" value="<?= (int)$duzenle['id'] ?>">
+            <?php endif; ?>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Ad <span class="text-danger">*</span></label>
+                    <input name="ad" class="form-control" required value="<?= h($duzenle['ad'] ?? '') ?>">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Telefon</label>
+                    <input name="telefon" class="form-control" value="<?= h($duzenle['telefon'] ?? '') ?>">
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label">Adres</label>
+                    <input name="adres" class="form-control" value="<?= h($duzenle['adres'] ?? '') ?>">
+                </div>
+                <div class="col-12">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="aktif" id="chkAktif" value="1"
+                               <?= (!$duzenle || $duzenle['aktif']) ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="chkAktif">Aktif</label>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-3 d-flex gap-2">
+                <button class="btn btn-success"><i class="bi bi-save me-1"></i><?= $duzenle ? 'Güncelle' : 'Kaydet' ?></button>
+                <a href="tedarikciler.php" class="btn btn-secondary"><i class="bi bi-x-circle me-1"></i>İptal</a>
+            </div>
+        </form>
+    </div>
+</div>
+<?php endif; ?>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Ad</th>
+                        <th>Telefon</th>
+                        <th>Adres</th>
+                        <th class="text-center">İrsaliye</th>
+                        <th class="text-end">Toplam m³</th>
+                        <th class="text-center">Durum</th>
+                        <th class="text-end">İşlem</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($liste as $r): ?>
+                    <tr class="<?= $r['aktif'] ? '' : 'text-muted bg-light' ?>">
+                        <td class="fw-semibold"><?= h($r['ad']) ?></td>
+                        <td><?= h($r['telefon'] ?: '-') ?></td>
+                        <td class="small"><?= h($r['adres'] ?: '-') ?></td>
+                        <td class="text-center"><?= (int)$r['irsaliye_adet'] ?></td>
+                        <td class="text-end"><?= format_number($r['toplam_m3'], 2) ?></td>
+                        <td class="text-center">
+                            <a href="tedarikciler.php?toggle=<?= $r['id'] ?>"
+                               class="badge text-decoration-none <?= $r['aktif'] ? 'bg-success' : 'bg-secondary' ?>">
+                                <?= $r['aktif'] ? 'Aktif' : 'Pasif' ?>
+                            </a>
+                        </td>
+                        <td class="text-end text-nowrap">
+                            <a href="tedarikciler.php?duzenle=<?= $r['id'] ?>" class="btn btn-xs btn-outline-primary me-1">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <a href="tedarikciler.php?sil=<?= $r['id'] ?>"
+                               class="btn btn-xs btn-outline-danger btn-confirm"
+                               data-msg="Bu tedarikçiyi silmek istediğinize emin misiniz?">
+                                <i class="bi bi-trash"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    <?php if (!$liste): ?>
+                        <tr><td colspan="7" class="text-center text-muted py-5">Henüz tedarikçi yok.</td></tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<?php require_once __DIR__ . '/includes/footer.php'; ?>

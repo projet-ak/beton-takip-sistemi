@@ -1,0 +1,110 @@
+/* ─── Genel ─────────────────────────────────────────────────────────────── */
+body {
+    background-color: #f4f6f9;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+/* ─── Navbar ────────────────────────────────────────────────────────────── */
+.navbar-brand {
+    font-size: 1.1rem;
+    letter-spacing: .4px;
+}
+
+/* ─── Kartlar ───────────────────────────────────────────────────────────── */
+.card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.07);
+}
+
+.card-header {
+    border-radius: 12px 12px 0 0 !important;
+    font-weight: 600;
+    border-bottom: 1px solid rgba(0,0,0,.06);
+}
+
+/* ─── İstatistik kartları ───────────────────────────────────────────────── */
+.stat-card {
+    transition: transform .15s, box-shadow .15s;
+}
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,.1);
+}
+
+.stat-icon {
+    flex-shrink: 0;
+    min-width: 52px;
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+}
+
+/* Eski uyumluluk */
+.stat-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.stat-label {
+    font-size: .8rem;
+    color: #6c757d;
+    margin-top: 4px;
+}
+
+/* ─── Tablolar ──────────────────────────────────────────────────────────── */
+table.table-hover tbody tr:hover {
+    background-color: #eef4ff;
+}
+
+.table th {
+    font-size: .8rem;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    color: #495057;
+    white-space: nowrap;
+}
+
+/* ─── Butonlar ──────────────────────────────────────────────────────────── */
+.btn-action {
+    padding: 2px 8px;
+    font-size: .8rem;
+}
+
+.btn-xs {
+    padding: .15rem .45rem;
+    font-size: .75rem;
+    line-height: 1.4;
+}
+
+/* ─── Badge ─────────────────────────────────────────────────────────────── */
+.badge-tedarikci {
+    font-size: .75rem;
+}
+
+/* ─── Formlar ───────────────────────────────────────────────────────────── */
+.form-label {
+    font-size: .875rem;
+    font-weight: 500;
+    margin-bottom: .3rem;
+}
+
+/* ─── Footer ─────────────────────────────────────────────────────────────── */
+footer {
+    background: #fff;
+}
+
+/* ─── Responsive ────────────────────────────────────────────────────────── */
+@media (max-width: 576px) {
+    .stat-value { font-size: 1.4rem; }
+    .container-fluid { padding-left: .75rem; padding-right: .75rem; }
+}
+
+/* ─── Print ─────────────────────────────────────────────────────────────── */
+@media print {
+    .navbar, .btn, footer, .alert { display: none !important; }
+    .card { box-shadow: none; border: 1px solid #dee2e6 !important; }
+}
