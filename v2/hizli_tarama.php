@@ -21,6 +21,7 @@ require_once __DIR__ . '/includes/header.php';
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';</script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
 <!-- Kamera Paneli -->
 <div class="row g-3 mb-4">
@@ -795,32 +796,47 @@ async function ocrTara() {
     progressEl.classList.remove('d-none');
     progressBar.style.width = '0%';
 
-    var bulunan = 0, atlanan = 0, bos = 0, hatalar = [];
+    var bulunan = 0, atlanan = 0, hatalar = [];
+    var worker = null;
 
     try {
+        progressText.textContent = 'Tesseract OCR motoru başlatılıyor...';
+        progressBar.style.width = '2%';
+
+        worker = await Tesseract.createWorker('tur', 1, {
+            workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+            langPath:   'https://tessdata.projectnaptha.com/4.0.0',
+            logger: function(m) {
+                if (m.status === 'loading tesseract core' || m.status === 'initializing tesseract' || m.status === 'loading language traineddata') {
+                    progressText.textContent = 'Dil paketi yükleniyor... (ilk seferde biraz sürer)';
+                }
+            }
+        });
+
         var arrayBuf = await ocrDosyaObj.arrayBuffer();
         var pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
         var toplamSayfa = pdf.numPages;
+        var ocrCanvas = document.createElement('canvas');
+        var ocrCtx = ocrCanvas.getContext('2d');
 
         for (var i = 1; i <= toplamSayfa; i++) {
             var pct = Math.round(((i - 1) / toplamSayfa) * 100);
-            progressBar.style.width = pct + '%';
+            progressBar.style.width = Math.max(pct, 5) + '%';
             progressPct.textContent = pct + '%';
-            progressText.textContent = toplamSayfa + ' sayfadan ' + i + '. sayfa okunuyor...';
+            progressText.textContent = toplamSayfa + ' sayfadan ' + i + '. sayfa OCR yapılıyor...';
 
             try {
-                var page   = await pdf.getPage(i);
-                var tc     = await page.getTextContent();
-                // Satır konumuna göre grupla: aynı y ± 5px → aynı satır
-                var items  = tc.items.slice().sort(function(a,b){
-                    var dy = (b.transform[5] - a.transform[5]);
-                    return Math.abs(dy) > 5 ? dy : (a.transform[4] - b.transform[4]);
-                });
-                var text = items.map(function(it){ return it.str; }).join(' ');
+                var page     = await pdf.getPage(i);
+                var viewport = page.getViewport({ scale: 2.5 });
+                ocrCanvas.width  = viewport.width;
+                ocrCanvas.height = viewport.height;
+                await page.render({ canvasContext: ocrCtx, viewport: viewport }).promise;
 
-                if (!text.trim() || text.replace(/\s/g,'').length < 15) {
-                    bos++;
-                    hatalar.push('Sayfa ' + i + ': metin bulunamadı (görüntü tabanlı PDF olabilir)');
+                var result = await worker.recognize(ocrCanvas);
+                var text   = result.data.text || '';
+
+                if (!text || text.replace(/\s/g, '').length < 10) {
+                    hatalar.push('Sayfa ' + i + ': OCR metni okunamadı');
                     continue;
                 }
 
@@ -855,6 +871,9 @@ async function ocrTara() {
             }
         }
 
+        await worker.terminate();
+        worker = null;
+
         progressBar.style.width = '100%';
         progressPct.textContent = '100%';
 
@@ -862,9 +881,8 @@ async function ocrTara() {
         var at = bulunan > 0 ? 'success' : 'warning';
         var html = '<div class="alert alert-' + at + ' mb-0">';
         html += '<i class="bi bi-' + (bulunan > 0 ? 'check-circle' : 'exclamation-circle') + ' me-1"></i>';
-        html += '<strong>' + toplamSayfa + ' sayfa okundu.</strong> ' + bulunan + ' irsaliye eklendi';
+        html += '<strong>' + toplamSayfa + ' sayfa OCR ile okundu.</strong> ' + bulunan + ' irsaliye eklendi';
         if (atlanan) html += ', ' + atlanan + ' atlandı';
-        if (bos) html += ', ' + bos + ' sayfada metin yok';
         html += '.';
         if (hatalar.length) html += '<ul class="mb-0 mt-2 small">' + hatalar.map(function(e){ return '<li>' + escHtml(e) + '</li>'; }).join('') + '</ul>';
         html += '</div>';
@@ -872,11 +890,12 @@ async function ocrTara() {
         sonucEl.classList.remove('d-none');
         if (bulunan > 0) document.getElementById('kayitlarCard').scrollIntoView({ behavior: 'smooth' });
     } catch(err) {
-        document.getElementById('ocrSonuc').innerHTML = '<div class="alert alert-danger mb-0"><i class="bi bi-exclamation-triangle me-1"></i>PDF açılamadı: ' + escHtml(err.message) + '</div>';
+        if (worker) try { await worker.terminate(); } catch(e) {}
+        document.getElementById('ocrSonuc').innerHTML = '<div class="alert alert-danger mb-0"><i class="bi bi-exclamation-triangle me-1"></i>Hata: ' + escHtml(err.message) + '</div>';
         document.getElementById('ocrSonuc').classList.remove('d-none');
     } finally {
         btn.disabled = false;
-        btn.innerHTML = '<i class="bi bi-file-text me-1"></i> Metni Oku &amp; Ekle';
+        btn.innerHTML = '<i class="bi bi-file-text me-1"></i> OCR ile Oku &amp; Ekle';
         progressEl.classList.add('d-none');
         document.getElementById('ocrDosya').value = '';
         ocrDosyaObj = null;
