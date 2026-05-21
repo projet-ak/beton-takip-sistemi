@@ -22,13 +22,26 @@ $betonSinifiId = isset($_GET['beton_sinifi_id']) && ctype_digit($_GET['beton_sin
 $imalatGrupId  = isset($_GET['imalat_grup_id'])  && ctype_digit($_GET['imalat_grup_id'])  ? (int)$_GET['imalat_grup_id']  : 0;
 $tip           = isset($_GET['tip']) && in_array($_GET['tip'], ['alis','iade','tum'], true) ? $_GET['tip'] : 'alis';
 
-// Tarih aralığı — yıl seçilmediyse aktif
-$tarihBas = '';
-$tarihBit = '';
-if ($yil === 0) {
-    $tarihBas = isset($_GET['tarih_bas']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tarih_bas']) ? $_GET['tarih_bas'] : '';
-    $tarihBit = isset($_GET['tarih_bit']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tarih_bit']) ? $_GET['tarih_bit'] : '';
+// Tarih aralığı (yıl seçilmediğinde uygulanır; hızlı seçim ile birlikte)
+$tarihBas = isset($_GET['tarih_bas']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tarih_bas']) ? $_GET['tarih_bas'] : '';
+$tarihBit = isset($_GET['tarih_bit']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tarih_bit']) ? $_GET['tarih_bit'] : '';
+
+// Hızlı tarih ön ayarları (bugün, bu hafta, bu ay, bu yıl, son 7/30 gün)
+$tarihHizli = $_GET['tarih_hizli'] ?? '';
+if ($tarihHizli && $yil === 0) {
+    $bugun = date('Y-m-d');
+    switch ($tarihHizli) {
+        case 'bugun':    $tarihBas = $tarihBit = $bugun; break;
+        case 'dun':      $tarihBas = $tarihBit = date('Y-m-d', strtotime('-1 day')); break;
+        case 'son7':     $tarihBas = date('Y-m-d', strtotime('-6 days')); $tarihBit = $bugun; break;
+        case 'son30':    $tarihBas = date('Y-m-d', strtotime('-29 days')); $tarihBit = $bugun; break;
+        case 'bu_ay':    $tarihBas = date('Y-m-01'); $tarihBit = $bugun; break;
+        case 'gecen_ay': $tarihBas = date('Y-m-01', strtotime('first day of last month')); $tarihBit = date('Y-m-t', strtotime('last day of last month')); break;
+        case 'bu_yil':   $tarihBas = date('Y-01-01'); $tarihBit = $bugun; break;
+    }
 }
+// Yıl seçilirse tarih aralığını yok say
+if ($yil > 0) { $tarihBas = ''; $tarihBit = ''; }
 
 // Yıl seçilmemişse ve tarih aralığı da yoksa varsayılan yılı kullan
 $yilDefault = ($yil === 0 && $tarihBas === '') ? (int)date('Y') : $yil;
@@ -125,6 +138,32 @@ $stm = $pdo->prepare("
 ");
 $stm->execute($params);
 $parselOzet = $stm->fetchAll();
+
+// ── Parsel bazlı özet (sadece parsel) ─────────────────────────────────────────
+$stm = $pdo->prepare("
+    SELECT par.ad AS parsel, COUNT(*) AS adet, COALESCE(SUM(i.miktar),0) AS toplam_m3,
+           COUNT(DISTINCT i.blok_id) AS blok_sayisi
+    FROM irsaliyeler i
+    LEFT JOIN parseller par ON par.id = i.parsel_id
+    WHERE {$whereSQL}
+    GROUP BY i.parsel_id, par.ad
+    ORDER BY toplam_m3 DESC
+");
+$stm->execute($params);
+$parselBazli = $stm->fetchAll();
+
+// ── Blok bazlı özet (sadece blok) ─────────────────────────────────────────────
+$stm = $pdo->prepare("
+    SELECT blk.ad AS blok, par.ad AS parsel, COUNT(*) AS adet, COALESCE(SUM(i.miktar),0) AS toplam_m3
+    FROM irsaliyeler i
+    LEFT JOIN bloklar blk   ON blk.id = i.blok_id
+    LEFT JOIN parseller par ON par.id = i.parsel_id
+    WHERE {$whereSQL} AND i.blok_id IS NOT NULL
+    GROUP BY i.blok_id, blk.ad, par.ad
+    ORDER BY toplam_m3 DESC
+");
+$stm->execute($params);
+$blokBazli = $stm->fetchAll();
 
 // ── İmalat grubu / ana iş kalemi dağılımı ────────────────────────────────────
 $stm = $pdo->prepare("
@@ -285,6 +324,25 @@ require_once __DIR__ . '/includes/header.php';
             <div class="col-sm-4 col-md-2" id="tarihBitDiv">
                 <label class="form-label small mb-1">Bitiş Tarihi</label>
                 <input type="date" name="tarih_bit" class="form-control form-control-sm" value="<?= h($tarihBit) ?>">
+            </div>
+            <!-- Hızlı tarih seçim -->
+            <div class="col-12" id="hizliTarihDiv">
+                <div class="btn-group btn-group-sm flex-wrap" role="group" aria-label="Hızlı tarih">
+                    <?php
+                    $hizliSec = [
+                        'bugun' => 'Bugün', 'dun' => 'Dün', 'son7' => 'Son 7 Gün',
+                        'son30' => 'Son 30 Gün', 'bu_ay' => 'Bu Ay',
+                        'gecen_ay' => 'Geçen Ay', 'bu_yil' => 'Bu Yıl',
+                    ];
+                    foreach ($hizliSec as $k => $lbl):
+                    ?>
+                        <button type="submit" name="tarih_hizli" value="<?= $k ?>"
+                                class="btn btn-outline-secondary <?= $tarihHizli === $k ? 'active' : '' ?>"
+                                onclick="document.querySelector('[name=yil]').value='0';">
+                            <?= h($lbl) ?>
+                        </button>
+                    <?php endforeach; ?>
+                </div>
             </div>
 
             <!-- Parsel -->
@@ -491,9 +549,108 @@ require_once __DIR__ . '/includes/header.php';
     </div>
 </div>
 
-<!-- Parsel / Blok Dağılımı -->
+<!-- Parsel Bazlı Rapor -->
+<div class="row g-4 mb-4">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header bg-white fw-semibold">
+                <i class="bi bi-map text-primary me-1"></i> Parsel Bazlı Rapor
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Parsel</th>
+                                <th class="text-end">Blok</th>
+                                <th class="text-end">Adet</th>
+                                <th class="text-end">m³</th>
+                                <th class="text-end">%</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php
+                        $gtopP = (float)$genelToplam['toplam_m3'];
+                        $sumP = 0;
+                        foreach ($parselBazli as $pp):
+                            $pct = $gtopP > 0 ? round(($pp['toplam_m3'] / $gtopP) * 100, 1) : 0;
+                            $sumP += (float)$pp['toplam_m3'];
+                        ?>
+                            <tr>
+                                <td><?= h($pp['parsel'] ?: '(Belirtilmemiş)') ?></td>
+                                <td class="text-end"><?= (int)$pp['blok_sayisi'] ?></td>
+                                <td class="text-end"><?= (int)$pp['adet'] ?></td>
+                                <td class="text-end fw-semibold"><?= format_number($pp['toplam_m3'], 2) ?></td>
+                                <td class="text-end text-muted"><?= $pct ?>%</td>
+                            </tr>
+                        <?php endforeach; ?>
+                        <?php if (empty($parselBazli)): ?>
+                            <tr><td colspan="5" class="text-center text-muted py-3">Veri yok</td></tr>
+                        <?php else: ?>
+                            <tr class="table-secondary fw-bold">
+                                <td colspan="3" class="text-end">TOPLAM</td>
+                                <td class="text-end"><?= format_number($sumP, 2) ?></td>
+                                <td></td>
+                            </tr>
+                        <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header bg-white fw-semibold">
+                <i class="bi bi-buildings text-primary me-1"></i> Blok Bazlı Rapor
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Blok</th>
+                                <th>Parsel</th>
+                                <th class="text-end">Adet</th>
+                                <th class="text-end">m³</th>
+                                <th class="text-end">%</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php
+                        $sumB = 0;
+                        foreach ($blokBazli as $bb):
+                            $pct = $gtopP > 0 ? round(($bb['toplam_m3'] / $gtopP) * 100, 1) : 0;
+                            $sumB += (float)$bb['toplam_m3'];
+                        ?>
+                            <tr>
+                                <td><?= h($bb['blok'] ?: '(Belirtilmemiş)') ?></td>
+                                <td class="small text-muted"><?= h($bb['parsel'] ?: '—') ?></td>
+                                <td class="text-end"><?= (int)$bb['adet'] ?></td>
+                                <td class="text-end fw-semibold"><?= format_number($bb['toplam_m3'], 2) ?></td>
+                                <td class="text-end text-muted"><?= $pct ?>%</td>
+                            </tr>
+                        <?php endforeach; ?>
+                        <?php if (empty($blokBazli)): ?>
+                            <tr><td colspan="5" class="text-center text-muted py-3">Veri yok</td></tr>
+                        <?php else: ?>
+                            <tr class="table-secondary fw-bold">
+                                <td colspan="3" class="text-end">TOPLAM</td>
+                                <td class="text-end"><?= format_number($sumB, 2) ?></td>
+                                <td></td>
+                            </tr>
+                        <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Parsel / Blok Dağılımı (kombine) -->
 <div class="card mb-4">
-    <div class="card-header bg-white fw-semibold">Parsel / Blok Dağılımı</div>
+    <div class="card-header bg-white fw-semibold">Parsel / Blok Dağılımı (Kombine)</div>
     <div class="card-body p-0">
         <div class="table-responsive">
             <table class="table table-sm mb-0">

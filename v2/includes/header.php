@@ -54,6 +54,49 @@ $__rootPath = $rootPath ?? '';
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="<?= $__rootPath ?>assets/css/style.css">
+<style>
+/* Mobil uyumluluk iyileştirmeleri */
+@media (max-width: 991.98px) {
+    .navbar-collapse {
+        max-height: calc(100vh - 56px);
+        overflow-y: auto;
+        padding-bottom: 1rem;
+    }
+    .navbar-nav .dropdown-menu {
+        border: 0;
+        padding-left: 1rem;
+        background: transparent;
+        box-shadow: none;
+    }
+    .navbar-dark .navbar-nav .dropdown-menu .dropdown-item,
+    .navbar-dark .navbar-nav .dropdown-menu .dropdown-header {
+        color: rgba(255,255,255,.85);
+    }
+    .navbar-dark .navbar-nav .dropdown-menu .dropdown-item:hover {
+        background: rgba(255,255,255,.08);
+        color: #fff;
+    }
+    .navbar-dark .navbar-nav .dropdown-menu hr.dropdown-divider {
+        border-top-color: rgba(255,255,255,.15);
+    }
+    .container-fluid.py-4 { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+}
+/* Modern stat-card */
+.stat-card {
+    border: 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0,0,0,.10);
+}
+.stat-icon { display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; }
+.table th.sortable { cursor: pointer; user-select: none; }
+.table th.sortable:hover { background: #e9ecef; }
+.table th.sortable .sort-ind { opacity: .35; font-size: .8em; }
+.table th.sortable.asc .sort-ind, .table th.sortable.desc .sort-ind { opacity: 1; }
+</style>
 </head>
 <body>
 
@@ -126,6 +169,16 @@ $__rootPath = $rootPath ?? '';
                 </li>
                 <?php endif; ?>
 
+                <!-- Projeler: admin + teknik_ofis_admin (ana menüde) -->
+                <?php if (can_manage_definitions()): ?>
+                <li class="nav-item">
+                    <a class="nav-link <?= $__page === 'projeler.php' ? 'active' : '' ?>"
+                       href="<?= $__rootPath ?>projeler.php">
+                        <i class="bi bi-diagram-3"></i> Projeler
+                    </a>
+                </li>
+                <?php endif; ?>
+
                 <!-- Tanımlar: admin + teknik_ofis_admin -->
                 <?php if (can_manage_definitions()): ?>
                 <li class="nav-item dropdown">
@@ -133,7 +186,7 @@ $__rootPath = $rootPath ?? '';
                         'tedarikciler.php','beton_siniflari.php','katki_listesi.php',
                         'pompa_turleri.php','firmalar.php','imalat_gruplari.php',
                         'ana_is_kalemleri.php','parseller.php','bloklar.php','kotlar.php',
-                        'kivam_siniflari.php','projeler.php',
+                        'kivam_siniflari.php',
                     ], true) ? 'active' : '' ?>"
                        href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="bi bi-sliders"></i> Tanımlar
@@ -152,9 +205,6 @@ $__rootPath = $rootPath ?? '';
                         <li><a class="dropdown-item" href="<?= $__rootPath ?>kivam_siniflari.php">
                             <i class="bi bi-speedometer me-1"></i> Kıvam Sınıfları
                         </a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><h6 class="dropdown-header">Projeler</h6></li>
-                        <li><a class="dropdown-item" href="<?= $__rootPath ?>projeler.php"><i class="bi bi-diagram-3 me-1"></i> Projeler</a></li>
                         <li><hr class="dropdown-divider"></li>
                         <li><h6 class="dropdown-header">Lokasyon</h6></li>
                         <li><a class="dropdown-item" href="<?= $__rootPath ?>parseller.php">

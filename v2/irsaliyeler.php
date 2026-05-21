@@ -13,7 +13,7 @@ require_once __DIR__ . '/includes/db.php';
 $tip       = in_array($_GET['tip'] ?? '', ['alis','iade','tum'], true) ? $_GET['tip'] : 'alis';
 $pageTitle = ($tip === 'alis' ? 'Alış' : ($tip === 'iade' ? 'İade' : 'Tüm')) . ' İrsaliyeleri — Beton Takip Sistemi';
 
-// ── Silme ────────────────────────────────────────────────────────────────────
+// ── Tekil silme ──────────────────────────────────────────────────────────────
 if (can_edit() && isset($_GET['sil']) && ctype_digit($_GET['sil'])) {
     $chk = $pdo->prepare("SELECT id FROM irsaliyeler WHERE id=?" . ($tip !== 'tum' ? " AND tip=?" : ""));
     $tip !== 'tum' ? $chk->execute([(int)$_GET['sil'], $tip]) : $chk->execute([(int)$_GET['sil']]);
@@ -24,14 +24,32 @@ if (can_edit() && isset($_GET['sil']) && ctype_digit($_GET['sil'])) {
     redirect("irsaliyeler.php?tip={$tip}");
 }
 
+// ── Toplu silme (POST) ────────────────────────────────────────────────────────
+if (can_edit() && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['toplu_islem'] ?? '') === 'sil') {
+    $ids = $_POST['secim'] ?? [];
+    $ids = array_values(array_filter(array_map('intval', (array)$ids), fn($v) => $v > 0));
+    if ($ids) {
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $pdo->prepare("DELETE FROM irsaliyeler WHERE id IN ($placeholders)")->execute($ids);
+        flash('success', count($ids) . ' irsaliye silindi.');
+    } else {
+        flash('warning', 'Silmek için kayıt seçmediniz.');
+    }
+    redirect("irsaliyeler.php?tip={$tip}");
+}
+
 // ── Filtreler ─────────────────────────────────────────────────────────────────
 $filtreTed    = isset($_GET['tedarikci'])   && ctype_digit($_GET['tedarikci'])   ? (int)$_GET['tedarikci']   : 0;
 $filtreParsel = isset($_GET['parsel'])      && ctype_digit($_GET['parsel'])      ? (int)$_GET['parsel']      : 0;
 $filtreBlok   = isset($_GET['blok'])        && ctype_digit($_GET['blok'])        ? (int)$_GET['blok']        : 0;
 $filtreBS     = isset($_GET['beton'])       && ctype_digit($_GET['beton'])       ? (int)$_GET['beton']       : 0;
+$filtreProje  = isset($_GET['proje_id'])    && ctype_digit($_GET['proje_id'])    ? (int)$_GET['proje_id']    : 0;
 $filtreYil    = isset($_GET['yil'])         && ctype_digit($_GET['yil'])         ? (int)$_GET['yil']         : 0;
 $filtreAy     = isset($_GET['ay'])          && ctype_digit($_GET['ay'])          ? (int)$_GET['ay']          : 0;
 $filtreArama  = trim($_GET['ara'] ?? '');
+$tarihBas     = isset($_GET['tarih_bas']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tarih_bas']) ? $_GET['tarih_bas'] : '';
+$tarihBit     = isset($_GET['tarih_bit']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tarih_bit']) ? $_GET['tarih_bit'] : '';
+$ihrac        = isset($_GET['export']) && in_array($_GET['export'], ['csv'], true) ? $_GET['export'] : '';
 
 $where  = $tip !== 'tum' ? ['i.tip = ?'] : [];
 $params = $tip !== 'tum' ? [$tip] : [];
@@ -40,8 +58,11 @@ if ($filtreTed)    { $where[] = 'i.tedarikci_id = ?';     $params[] = $filtreTed
 if ($filtreParsel) { $where[] = 'i.parsel_id = ?';        $params[] = $filtreParsel; }
 if ($filtreBlok)   { $where[] = 'i.blok_id = ?';          $params[] = $filtreBlok; }
 if ($filtreBS)     { $where[] = 'i.beton_sinifi_id = ?';  $params[] = $filtreBS; }
+if ($filtreProje)  { $where[] = 'i.proje_id = ?';         $params[] = $filtreProje; }
 if ($filtreYil)    { $where[] = 'YEAR(i.tarih) = ?';      $params[] = $filtreYil; }
 if ($filtreAy)     { $where[] = 'MONTH(i.tarih) = ?';     $params[] = $filtreAy; }
+if ($tarihBas !== '') { $where[] = 'i.tarih >= ?';        $params[] = $tarihBas; }
+if ($tarihBit !== '') { $where[] = 'i.tarih <= ?';        $params[] = $tarihBit; }
 if ($filtreArama)  { $where[] = '(i.irsaliye_no LIKE ? OR i.arac_plaka LIKE ? OR i.fatura_no LIKE ?)';
                      $params[] = "%{$filtreArama}%"; $params[] = "%{$filtreArama}%"; $params[] = "%{$filtreArama}%"; }
 
@@ -59,7 +80,8 @@ $stmt = $pdo->prepare("
            aik.ad AS ana_is_kalemi_adi,
            par.ad AS parsel_adi,
            blk.ad AS blok_adi,
-           kot.kot_degeri
+           kot.kot_degeri,
+           pr.kod AS proje_kod
     FROM irsaliyeler i
     LEFT JOIN tedarikciler t      ON t.id   = i.tedarikci_id
     LEFT JOIN beton_siniflari bs  ON bs.id  = i.beton_sinifi_id
@@ -72,6 +94,7 @@ $stmt = $pdo->prepare("
     LEFT JOIN parseller par       ON par.id = i.parsel_id
     LEFT JOIN bloklar blk         ON blk.id = i.blok_id
     LEFT JOIN kotlar kot          ON kot.id = i.kot_id
+    LEFT JOIN projeler pr         ON pr.id  = i.proje_id
     {$whereSQL}
     ORDER BY i.tarih DESC, i.sira_no DESC, i.id DESC
 ");
@@ -80,10 +103,51 @@ $liste = $stmt->fetchAll();
 
 $toplamM3 = array_sum(array_column($liste, 'miktar'));
 
+// ── CSV dışa aktarma ─────────────────────────────────────────────────────────
+if ($ihrac === 'csv') {
+    $fname = 'irsaliyeler_' . date('Ymd_His') . '.csv';
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $fname . '"');
+    $out = fopen('php://output', 'w');
+    // UTF-8 BOM (Excel için)
+    fwrite($out, "\xEF\xBB\xBF");
+    fputcsv($out, [
+        'Sıra','Tip','Tarih','İrsaliye No','Plaka','Tedarikçi','Beton Sınıfı',
+        'Parsel','Blok','Kot','Pompa','Firma','Proje','Miktar','Birim','Açıklama'
+    ], ';');
+    foreach ($liste as $r) {
+        fputcsv($out, [
+            $r['sira_no'] ?? '',
+            $r['tip'] === 'alis' ? 'Alış' : 'İade',
+            $r['tarih'] ?? '',
+            $r['irsaliye_no'] ?? '',
+            $r['arac_plaka'] ?? '',
+            $r['tedarikci_adi'] ?? '',
+            $r['beton_sinifi_adi'] ?? '',
+            $r['parsel_adi'] ?? '',
+            $r['blok_adi'] ?? '',
+            $r['kot_degeri'] ?? '',
+            $r['pompa_adi'] ?? '',
+            $r['firma_adi'] ?? '',
+            $r['proje_kod'] ?? '',
+            number_format((float)$r['miktar'], 2, ',', ''),
+            $r['birim'] ?? '',
+            $r['aciklama'] ?? '',
+        ], ';');
+    }
+    fclose($out);
+    exit;
+}
+
 // Filtre dropdownları için veriler
 $tedarikciler  = $pdo->query("SELECT id,ad FROM tedarikciler WHERE aktif=1 ORDER BY ad")->fetchAll();
 $parseller     = $pdo->query("SELECT id,ad FROM parseller ORDER BY ad")->fetchAll();
 $betonSiniflari= $pdo->query("SELECT id,ad FROM beton_siniflari ORDER BY ad")->fetchAll();
+try {
+    $projelerList = $pdo->query("SELECT id, COALESCE(NULLIF(kod,''), CONCAT('Proje #',id)) AS kod, COALESCE(aciklama,'') AS aciklama FROM projeler ORDER BY kod")->fetchAll();
+} catch (Exception $e) {
+    $projelerList = [];
+}
 if ($filtreParsel) {
     $blokStmt = $pdo->prepare("SELECT id,ad FROM bloklar WHERE parsel_id=? ORDER BY ad");
     $blokStmt->execute([$filtreParsel]);
@@ -91,7 +155,12 @@ if ($filtreParsel) {
 } else {
     $bloklar = [];
 }
-$yillar        = $pdo->query("SELECT DISTINCT YEAR(tarih) AS y FROM irsaliyeler ORDER BY y DESC")->fetchAll(PDO::FETCH_COLUMN);
+$yillar = $pdo->query("SELECT DISTINCT YEAR(tarih) AS y FROM irsaliyeler ORDER BY y DESC")->fetchAll(PDO::FETCH_COLUMN);
+
+// Mevcut GET parametrelerini koru
+$qs = $_GET;
+unset($qs['export'], $qs['sil']);
+$csvHref = 'irsaliyeler.php?' . http_build_query(array_merge($qs, ['export' => 'csv']));
 
 require_once __DIR__ . '/includes/header.php';
 ?>
@@ -112,11 +181,16 @@ require_once __DIR__ . '/includes/header.php';
             <strong><?= format_number($toplamM3, 2) ?> m³</strong>
         </div>
     </div>
-    <?php if (can_edit()): ?>
-    <a href="irsaliye_form.php?tip=<?= $tip ?>" class="btn btn-primary">
-        <i class="bi bi-plus-circle me-1"></i> Yeni İrsaliye
-    </a>
-    <?php endif; ?>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="<?= h($csvHref) ?>" class="btn btn-outline-success btn-sm">
+            <i class="bi bi-file-earmark-spreadsheet me-1"></i> CSV / Excel
+        </a>
+        <?php if (can_edit()): ?>
+        <a href="irsaliye_form.php?tip=<?= h($tip) ?>" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-circle me-1"></i> Yeni İrsaliye
+        </a>
+        <?php endif; ?>
+    </div>
 </div>
 
 <ul class="nav nav-tabs mb-3">
@@ -144,14 +218,23 @@ require_once __DIR__ . '/includes/header.php';
             <input type="hidden" name="tip" value="<?= h($tip) ?>">
             <div class="col-sm-6 col-md-3">
                 <label class="form-label small mb-1">Arama</label>
-                <input type="text" name="ara" class="form-control form-control-sm" placeholder="İrsaliye/Fatura/Plaka" value="<?= h($filtreArama) ?>">
+                <input type="text" name="ara" class="form-control form-control-sm" placeholder="İrsaliye / Fatura / Plaka" value="<?= h($filtreArama) ?>">
             </div>
             <div class="col-sm-6 col-md-2">
                 <label class="form-label small mb-1">Tedarikçi</label>
                 <select name="tedarikci" class="form-select form-select-sm">
                     <option value="">Tümü</option>
                     <?php foreach ($tedarikciler as $t): ?>
-                        <option value="<?= $t['id'] ?>" <?= $filtreTed == $t['id'] ? 'selected' : '' ?>><?= h($t['ad']) ?></option>
+                        <option value="<?= (int)$t['id'] ?>" <?= $filtreTed == $t['id'] ? 'selected' : '' ?>><?= h($t['ad']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-sm-6 col-md-2">
+                <label class="form-label small mb-1">Beton Sınıfı</label>
+                <select name="beton" class="form-select form-select-sm">
+                    <option value="">Tümü</option>
+                    <?php foreach ($betonSiniflari as $bs): ?>
+                        <option value="<?= (int)$bs['id'] ?>" <?= $filtreBS == $bs['id'] ? 'selected' : '' ?>><?= h($bs['ad']) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -160,16 +243,35 @@ require_once __DIR__ . '/includes/header.php';
                 <select name="parsel" class="form-select form-select-sm">
                     <option value="">Tümü</option>
                     <?php foreach ($parseller as $p): ?>
-                        <option value="<?= $p['id'] ?>" <?= $filtreParsel == $p['id'] ? 'selected' : '' ?>><?= h($p['ad']) ?></option>
+                        <option value="<?= (int)$p['id'] ?>" <?= $filtreParsel == $p['id'] ? 'selected' : '' ?>><?= h($p['ad']) ?></option>
                     <?php endforeach; ?>
                 </select>
+            </div>
+            <?php if (!empty($projelerList)): ?>
+            <div class="col-sm-6 col-md-2">
+                <label class="form-label small mb-1">Proje</label>
+                <select name="proje_id" class="form-select form-select-sm">
+                    <option value="">Tümü</option>
+                    <?php foreach ($projelerList as $pr): ?>
+                        <option value="<?= (int)$pr['id'] ?>" <?= $filtreProje == $pr['id'] ? 'selected' : '' ?>><?= h(trim($pr['kod'] . ' ' . $pr['aciklama'])) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php endif; ?>
+            <div class="col-sm-6 col-md-2">
+                <label class="form-label small mb-1">Başlangıç Tarihi</label>
+                <input type="date" name="tarih_bas" class="form-control form-control-sm" value="<?= h($tarihBas) ?>">
+            </div>
+            <div class="col-sm-6 col-md-2">
+                <label class="form-label small mb-1">Bitiş Tarihi</label>
+                <input type="date" name="tarih_bit" class="form-control form-control-sm" value="<?= h($tarihBit) ?>">
             </div>
             <div class="col-sm-6 col-md-1">
                 <label class="form-label small mb-1">Yıl</label>
                 <select name="yil" class="form-select form-select-sm">
                     <option value="">Tümü</option>
                     <?php foreach ($yillar as $y): ?>
-                        <option value="<?= $y ?>" <?= $filtreYil == $y ? 'selected' : '' ?>><?= $y ?></option>
+                        <option value="<?= (int)$y ?>" <?= $filtreYil == $y ? 'selected' : '' ?>><?= (int)$y ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -184,100 +286,176 @@ require_once __DIR__ . '/includes/header.php';
             </div>
             <div class="col-auto">
                 <button class="btn btn-sm btn-outline-primary"><i class="bi bi-search me-1"></i>Filtrele</button>
-                <a href="irsaliyeler.php?tip=<?= $tip ?>" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Temizle</a>
+                <a href="irsaliyeler.php?tip=<?= h($tip) ?>" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-circle me-1"></i>Temizle</a>
             </div>
         </form>
     </div>
 </div>
 
 <!-- Liste tablosu -->
-<div class="card">
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0 table-sm">
-                <thead class="table-light">
-                    <tr>
-                        <th class="text-center">#</th>
-                        <?php if ($tip === 'tum'): ?><th>Tip</th><?php endif; ?>
-                        <th>Tarih</th>
-                        <th>İrsaliye No</th>
-                        <th>Plaka</th>
-                        <th>Tedarikçi</th>
-                        <th>Beton Sınıfı</th>
-                        <th>Parsel / Blok / Kot</th>
-                        <th>Pompa</th>
-                        <th>Firma</th>
-                        <th class="text-end">Miktar</th>
-                        <th>Açıklama</th>
-                        <?php if (can_edit()): ?><th class="text-end">İşlem</th><?php endif; ?>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if ($liste): ?>
-                        <?php foreach ($liste as $r): ?>
+<form method="post" id="topluForm" onsubmit="return onTopluSubmit(event);">
+    <input type="hidden" name="toplu_islem" value="sil">
+
+    <?php if (can_edit()): ?>
+    <div class="d-flex align-items-center mb-2 gap-2" id="topluBar" style="display:none !important;">
+        <span class="text-muted small"><span id="secimSay">0</span> kayıt seçili</span>
+        <button type="submit" class="btn btn-sm btn-danger">
+            <i class="bi bi-trash me-1"></i> Seçilileri Sil
+        </button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="secimTemizle()">
+            <i class="bi bi-x-lg me-1"></i> Seçimi Temizle
+        </button>
+    </div>
+    <?php endif; ?>
+
+    <div class="card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0 table-sm">
+                    <thead class="table-light">
                         <tr>
-                            <td class="text-center text-muted small"><?= h($r['sira_no'] ?: '-') ?></td>
-                            <?php if ($tip === 'tum'): ?>
-                            <td><?= $r['tip']==='alis' ? '<span class="badge bg-success">Alış</span>' : '<span class="badge bg-danger">İade</span>' ?></td>
-                            <?php endif; ?>
-                            <td class="text-nowrap"><?= format_date($r['tarih']) ?></td>
-                            <td class="text-nowrap">
-                                <a href="irsaliye_detay.php?id=<?= $r['id'] ?>" class="text-decoration-none fw-semibold">
-                                    <?= h($r['irsaliye_no'] ?: '#'.$r['id']) ?>
-                                </a>
-                            </td>
-                            <td class="text-nowrap small"><?= h($r['arac_plaka'] ?: '-') ?></td>
-                            <td><span class="badge bg-secondary"><?= h($r['tedarikci_adi'] ?? '-') ?></span></td>
-                            <td><?= h($r['beton_sinifi_adi'] ?? '-') ?></td>
-                            <td class="small text-muted text-nowrap">
-                                <?= h($r['parsel_adi'] ?? '') ?>
-                                <?php if ($r['blok_adi']): ?><br><?= h($r['blok_adi']) ?><?php endif; ?>
-                                <?php if ($r['kot_degeri']): ?> <span class="badge bg-light text-dark"><?= h($r['kot_degeri']) ?></span><?php endif; ?>
-                            </td>
-                            <td class="small"><?= h($r['pompa_adi'] ?? '-') ?></td>
-                            <td class="small"><?= h($r['firma_adi'] ?? '-') ?></td>
-                            <td class="text-end fw-semibold text-nowrap">
-                                <?= format_number($r['miktar'], 2) ?> <span class="text-muted small"><?= h($r['birim']) ?></span>
-                            </td>
-                            <td class="text-muted small" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-                                <?= h($r['aciklama'] ?: '') ?>
-                            </td>
                             <?php if (can_edit()): ?>
-                            <td class="text-end text-nowrap">
-                                <a href="irsaliye_form.php?id=<?= $r['id'] ?>&tip=<?= $r['tip'] ?>" class="btn btn-xs btn-outline-primary me-1" title="Düzenle">
-                                    <i class="bi bi-pencil"></i>
-                                </a>
-                                <a href="irsaliyeler.php?sil=<?= $r['id'] ?>&tip=<?= $tip ?>"
-                                   class="btn btn-xs btn-outline-danger btn-confirm"
-                                   data-msg="Bu irsaliyeyi silmek istediğinize emin misiniz?"
-                                   title="Sil">
-                                    <i class="bi bi-trash"></i>
-                                </a>
-                            </td>
+                            <th class="text-center" style="width:34px;">
+                                <input type="checkbox" id="secTumu" class="form-check-input" title="Tümünü seç">
+                            </th>
                             <?php endif; ?>
+                            <th class="text-center">#</th>
+                            <?php if ($tip === 'tum'): ?><th>Tip</th><?php endif; ?>
+                            <th>Tarih</th>
+                            <th>İrsaliye No</th>
+                            <th>Plaka</th>
+                            <th>Tedarikçi</th>
+                            <th>Beton Sınıfı</th>
+                            <th>Parsel / Blok / Kot</th>
+                            <th>Pompa</th>
+                            <th>Firma</th>
+                            <th class="text-end">Miktar</th>
+                            <th>Açıklama</th>
+                            <?php if (can_edit()): ?><th class="text-end">İşlem</th><?php endif; ?>
                         </tr>
-                        <?php endforeach; ?>
-                        <tr class="table-secondary fw-bold">
-                            <td colspan="<?= $tip === 'tum' ? 10 : 9 ?>" class="text-end">TOPLAM</td>
-                            <td class="text-end"><?= format_number($toplamM3, 2) ?> m³</td>
-                            <td colspan="<?= can_edit() ? 2 : 1 ?>"></td>
-                        </tr>
-                    <?php else: ?>
-                        <tr>
-                            <td colspan="<?= can_edit() ? ($tip === 'tum' ? 13 : 12) : ($tip === 'tum' ? 12 : 11) ?>" class="text-center text-muted py-5">
-                                <i class="bi bi-inbox fs-2 d-block mb-2"></i>
-                                Kayıt bulunamadı.
-                            </td>
-                        </tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        <?php if ($liste): ?>
+                            <?php foreach ($liste as $r): ?>
+                            <tr>
+                                <?php if (can_edit()): ?>
+                                <td class="text-center">
+                                    <input type="checkbox" name="secim[]" value="<?= (int)$r['id'] ?>" class="form-check-input secSatir">
+                                </td>
+                                <?php endif; ?>
+                                <td class="text-center text-muted small"><?= h($r['sira_no'] ?: '-') ?></td>
+                                <?php if ($tip === 'tum'): ?>
+                                <td><?= $r['tip']==='alis' ? '<span class="badge bg-success">Alış</span>' : '<span class="badge bg-danger">İade</span>' ?></td>
+                                <?php endif; ?>
+                                <td class="text-nowrap"><?= format_date($r['tarih']) ?></td>
+                                <td class="text-nowrap">
+                                    <a href="irsaliye_detay.php?id=<?= (int)$r['id'] ?>" class="text-decoration-none fw-semibold">
+                                        <?= h($r['irsaliye_no'] ?: '#'.$r['id']) ?>
+                                    </a>
+                                </td>
+                                <td class="text-nowrap small"><?= h($r['arac_plaka'] ?: '-') ?></td>
+                                <td><span class="badge bg-secondary"><?= h($r['tedarikci_adi'] ?? '-') ?></span></td>
+                                <td><?= h($r['beton_sinifi_adi'] ?? '-') ?></td>
+                                <td class="small text-muted text-nowrap">
+                                    <?= h($r['parsel_adi'] ?? '') ?>
+                                    <?php if ($r['blok_adi']): ?><br><?= h($r['blok_adi']) ?><?php endif; ?>
+                                    <?php if ($r['kot_degeri']): ?> <span class="badge bg-light text-dark"><?= h($r['kot_degeri']) ?></span><?php endif; ?>
+                                </td>
+                                <td class="small"><?= h($r['pompa_adi'] ?? '-') ?></td>
+                                <td class="small"><?= h($r['firma_adi'] ?? '-') ?></td>
+                                <td class="text-end fw-semibold text-nowrap">
+                                    <?= format_number($r['miktar'], 2) ?> <span class="text-muted small"><?= h($r['birim']) ?></span>
+                                </td>
+                                <td class="text-muted small" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                                    <?= h($r['aciklama'] ?: '') ?>
+                                </td>
+                                <?php if (can_edit()): ?>
+                                <td class="text-end text-nowrap">
+                                    <a href="irsaliye_form.php?id=<?= (int)$r['id'] ?>&tip=<?= h($r['tip']) ?>" class="btn btn-xs btn-outline-primary me-1" title="Düzenle">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <a href="irsaliyeler.php?sil=<?= (int)$r['id'] ?>&tip=<?= h($tip) ?>"
+                                       class="btn btn-xs btn-outline-danger btn-confirm"
+                                       data-msg="Bu irsaliyeyi silmek istediğinize emin misiniz?"
+                                       title="Sil">
+                                        <i class="bi bi-trash"></i>
+                                    </a>
+                                </td>
+                                <?php endif; ?>
+                            </tr>
+                            <?php endforeach; ?>
+                            <tr class="table-secondary fw-bold">
+                                <?php
+                                $preCols = ($tip === 'tum' ? 10 : 9) + (can_edit() ? 1 : 0);
+                                ?>
+                                <td colspan="<?= $preCols ?>" class="text-end">TOPLAM</td>
+                                <td class="text-end"><?= format_number($toplamM3, 2) ?> m³</td>
+                                <td colspan="<?= can_edit() ? 2 : 1 ?>"></td>
+                            </tr>
+                        <?php else: ?>
+                            <?php
+                            $baseCols = $tip === 'tum' ? 12 : 11;
+                            $colspan = $baseCols + (can_edit() ? 2 : 0);
+                            ?>
+                            <tr>
+                                <td colspan="<?= $colspan ?>" class="text-center text-muted py-5">
+                                    <i class="bi bi-inbox fs-2 d-block mb-2"></i>
+                                    Kayıt bulunamadı.
+                                </td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
-</div>
+</form>
 
 <style>
 .btn-xs { padding:.15rem .4rem; font-size:.75rem; }
 </style>
+
+<script>
+(function () {
+    const secTumu = document.getElementById('secTumu');
+    const satirlar = document.querySelectorAll('.secSatir');
+    const bar = document.getElementById('topluBar');
+    const sayEl = document.getElementById('secimSay');
+
+    function guncelle() {
+        const sec = document.querySelectorAll('.secSatir:checked');
+        if (sayEl) sayEl.textContent = sec.length;
+        if (bar) bar.style.display = sec.length > 0 ? 'flex' : 'none';
+        if (secTumu) {
+            secTumu.checked = sec.length > 0 && sec.length === satirlar.length;
+            secTumu.indeterminate = sec.length > 0 && sec.length < satirlar.length;
+        }
+    }
+
+    if (secTumu) {
+        secTumu.addEventListener('change', () => {
+            satirlar.forEach(c => c.checked = secTumu.checked);
+            guncelle();
+        });
+    }
+    satirlar.forEach(c => c.addEventListener('change', guncelle));
+
+    window.secimTemizle = function () {
+        satirlar.forEach(c => c.checked = false);
+        if (secTumu) secTumu.checked = false;
+        guncelle();
+    };
+
+    window.onTopluSubmit = function (e) {
+        const sec = document.querySelectorAll('.secSatir:checked');
+        if (sec.length === 0) {
+            e.preventDefault();
+            alert('Lütfen silmek için en az bir kayıt seçin.');
+            return false;
+        }
+        return confirm('Seçili ' + sec.length + ' irsaliye kalıcı olarak silinecek. Emin misiniz?');
+    };
+})();
+</script>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

@@ -16,82 +16,175 @@ require_once __DIR__ . '/includes/db.php';
 
 $pageTitle = 'Dashboard — Beton Takip Sistemi';
 
+// ── Proje filtresi ────────────────────────────────────────────────────────────
+$projeId = isset($_GET['proje_id']) && ctype_digit($_GET['proje_id']) ? (int)$_GET['proje_id'] : 0;
+
+// Projeler listesi (filtre seçici için)
+try {
+    $projeler = $pdo->query("
+        SELECT id, COALESCE(NULLIF(kod,''), CONCAT('Proje #',id)) AS kod, COALESCE(aciklama,'') AS aciklama, aktif
+        FROM projeler
+        ORDER BY aktif DESC, kod
+    ")->fetchAll();
+} catch (Exception $e) {
+    $projeler = [];
+}
+
+// Aktif proje sayısı
+$aktifProjeSay = 0;
+try {
+    $aktifProjeSay = (int)$pdo->query("SELECT COUNT(*) FROM projeler WHERE aktif=1")->fetchColumn();
+} catch (Exception $e) {
+    $aktifProjeSay = 0;
+}
+
+// Proje filtresine göre WHERE
+$projeFilter = '';
+$projeParams = [];
+if ($projeId > 0) {
+    $projeFilter = ' AND i.proje_id = ?';
+    $projeParams = [$projeId];
+}
+
 // ── İstatistikler ─────────────────────────────────────────────────────────────
-$toplamM3     = $pdo->query("SELECT COALESCE(SUM(miktar),0) FROM irsaliyeler WHERE tip='alis'")->fetchColumn();
-$irsaliyeSay  = $pdo->query("SELECT COUNT(*) FROM irsaliyeler WHERE tip='alis'")->fetchColumn();
-$iadeSay      = $pdo->query("SELECT COUNT(*) FROM irsaliyeler WHERE tip='iade'")->fetchColumn();
+$st = $pdo->prepare("SELECT COALESCE(SUM(miktar),0) FROM irsaliyeler i WHERE i.tip='alis'$projeFilter");
+$st->execute($projeParams);
+$toplamM3 = $st->fetchColumn();
+
+$st = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler i WHERE i.tip='alis'$projeFilter");
+$st->execute($projeParams);
+$irsaliyeSay = $st->fetchColumn();
+
+$st = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler i WHERE i.tip='iade'$projeFilter");
+$st->execute($projeParams);
+$iadeSay = $st->fetchColumn();
+
 $tedarikciSay = $pdo->query("SELECT COUNT(*) FROM tedarikciler WHERE aktif=1")->fetchColumn();
 
 // Bu ay
-$buAyM3 = $pdo->query(
-    "SELECT COALESCE(SUM(miktar),0) FROM irsaliyeler
-     WHERE tip='alis' AND DATE_FORMAT(tarih,'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m')"
-)->fetchColumn();
+$st = $pdo->prepare(
+    "SELECT COALESCE(SUM(miktar),0) FROM irsaliyeler i
+     WHERE i.tip='alis' AND DATE_FORMAT(i.tarih,'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m')$projeFilter"
+);
+$st->execute($projeParams);
+$buAyM3 = $st->fetchColumn();
 
 // Son 10 irsaliye
-$sonIrsaliyeler = $pdo->query("
+$st = $pdo->prepare("
     SELECT i.id, i.tip, i.irsaliye_no, i.tarih, i.miktar, i.birim, i.arac_plaka,
            t.ad AS tedarikci_adi,
            bs.ad AS beton_sinifi,
            p.ad AS parsel_adi,
-           b.ad AS blok_adi
+           b.ad AS blok_adi,
+           pr.kod AS proje_kod
     FROM irsaliyeler i
     LEFT JOIN tedarikciler t  ON t.id  = i.tedarikci_id
     LEFT JOIN beton_siniflari bs ON bs.id = i.beton_sinifi_id
     LEFT JOIN parseller p     ON p.id  = i.parsel_id
     LEFT JOIN bloklar b       ON b.id  = i.blok_id
+    LEFT JOIN projeler pr     ON pr.id = i.proje_id
+    WHERE 1=1 $projeFilter
     ORDER BY i.tarih DESC, i.id DESC
     LIMIT 10
-")->fetchAll();
+");
+$st->execute($projeParams);
+$sonIrsaliyeler = $st->fetchAll();
 
 // Aylık m³ (son 12 ay) – grafik
-$aylikData = $pdo->query("
+$st = $pdo->prepare("
     SELECT DATE_FORMAT(tarih,'%Y-%m') AS ay, SUM(miktar) AS toplam
-    FROM irsaliyeler
-    WHERE tip='alis' AND tarih >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+    FROM irsaliyeler i
+    WHERE i.tip='alis' AND i.tarih >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) $projeFilter
     GROUP BY ay
     ORDER BY ay
-")->fetchAll();
+");
+$st->execute($projeParams);
+$aylikData = $st->fetchAll();
 
 $chartLabels = json_encode(array_column($aylikData, 'ay'));
 $chartValues = json_encode(array_map('floatval', array_column($aylikData, 'toplam')));
 
 // Tedarikçi dağılımı
-$dagılım = $pdo->query("
+$st = $pdo->prepare("
     SELECT t.ad, COALESCE(SUM(i.miktar),0) AS toplam
     FROM tedarikciler t
-    LEFT JOIN irsaliyeler i ON i.tedarikci_id = t.id AND i.tip='alis'
+    LEFT JOIN irsaliyeler i ON i.tedarikci_id = t.id AND i.tip='alis'" . ($projeId > 0 ? " AND i.proje_id = ?" : "") . "
     WHERE t.aktif = 1
     GROUP BY t.id, t.ad
     ORDER BY toplam DESC
-")->fetchAll();
+");
+$st->execute($projeParams);
+$dagılım = $st->fetchAll();
 
 $pieLabels = json_encode(array_column($dagılım, 'ad'));
 $pieValues = json_encode(array_map('floatval', array_column($dagılım, 'toplam')));
 
 // Beton sınıfı dağılımı
-$betonDagilim = $pdo->query("
+$st = $pdo->prepare("
     SELECT bs.ad, COALESCE(SUM(i.miktar),0) AS toplam
     FROM beton_siniflari bs
-    LEFT JOIN irsaliyeler i ON i.beton_sinifi_id = bs.id AND i.tip='alis'
+    LEFT JOIN irsaliyeler i ON i.beton_sinifi_id = bs.id AND i.tip='alis'" . ($projeId > 0 ? " AND i.proje_id = ?" : "") . "
     GROUP BY bs.id, bs.ad
     HAVING toplam > 0
     ORDER BY toplam DESC
     LIMIT 8
-")->fetchAll();
+");
+$st->execute($projeParams);
+$betonDagilim = $st->fetchAll();
 
 $betonLabels = json_encode(array_column($betonDagilim, 'ad'));
 $betonValues = json_encode(array_map('floatval', array_column($betonDagilim, 'toplam')));
 
+// Seçili projenin etiketi
+$seciliProjeEtiket = '';
+if ($projeId > 0) {
+    foreach ($projeler as $p) {
+        if ((int)$p['id'] === $projeId) {
+            $seciliProjeEtiket = trim($p['kod'] . ' ' . $p['aciklama']);
+            break;
+        }
+    }
+}
+
 require_once __DIR__ . '/includes/header.php';
 ?>
 
+<!-- Başlık + Proje filtresi -->
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <div>
+        <h4 class="mb-0"><i class="bi bi-speedometer2 text-primary me-2"></i>Kontrol Paneli</h4>
+        <?php if ($seciliProjeEtiket): ?>
+            <div class="text-muted small mt-1">
+                <i class="bi bi-funnel-fill me-1"></i>Filtre: <strong><?= h($seciliProjeEtiket) ?></strong>
+            </div>
+        <?php endif; ?>
+    </div>
+    <?php if (!empty($projeler)): ?>
+    <form method="get" class="d-flex gap-2 align-items-center">
+        <label class="small text-muted mb-0 text-nowrap"><i class="bi bi-diagram-3 me-1"></i>Proje:</label>
+        <select name="proje_id" class="form-select form-select-sm" onchange="this.form.submit()" style="min-width:200px;">
+            <option value="0">Tüm Projeler</option>
+            <?php foreach ($projeler as $p): ?>
+                <option value="<?= (int)$p['id'] ?>" <?= $projeId === (int)$p['id'] ? 'selected' : '' ?>>
+                    <?= h(trim($p['kod'] . ' — ' . $p['aciklama'])) ?><?= $p['aktif'] ? '' : ' (Pasif)' ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <?php if ($projeId > 0): ?>
+            <a href="index.php" class="btn btn-sm btn-outline-secondary" title="Filtreyi temizle">
+                <i class="bi bi-x-lg"></i>
+            </a>
+        <?php endif; ?>
+    </form>
+    <?php endif; ?>
+</div>
+
 <!-- İstatistik kartları -->
 <div class="row g-3 mb-4">
-    <div class="col-6 col-md-3">
-        <div class="card stat-card p-3 border-start border-primary border-4">
+    <div class="col-6 col-md-3 col-xl-2">
+        <div class="card stat-card p-3 h-100 border-start border-primary border-4">
             <div class="d-flex align-items-center gap-3">
-                <div class="stat-icon bg-primary bg-opacity-10 text-primary rounded-3 p-2">
+                <div class="stat-icon bg-primary bg-opacity-10 text-primary rounded-3">
                     <i class="bi bi-box-seam fs-3"></i>
                 </div>
                 <div>
@@ -101,10 +194,10 @@ require_once __DIR__ . '/includes/header.php';
             </div>
         </div>
     </div>
-    <div class="col-6 col-md-3">
-        <div class="card stat-card p-3 border-start border-success border-4">
+    <div class="col-6 col-md-3 col-xl-2">
+        <div class="card stat-card p-3 h-100 border-start border-success border-4">
             <div class="d-flex align-items-center gap-3">
-                <div class="stat-icon bg-success bg-opacity-10 text-success rounded-3 p-2">
+                <div class="stat-icon bg-success bg-opacity-10 text-success rounded-3">
                     <i class="bi bi-calendar-month fs-3"></i>
                 </div>
                 <div>
@@ -114,10 +207,10 @@ require_once __DIR__ . '/includes/header.php';
             </div>
         </div>
     </div>
-    <div class="col-6 col-md-3">
-        <div class="card stat-card p-3 border-start border-warning border-4">
+    <div class="col-6 col-md-3 col-xl-2">
+        <div class="card stat-card p-3 h-100 border-start border-warning border-4">
             <div class="d-flex align-items-center gap-3">
-                <div class="stat-icon bg-warning bg-opacity-10 text-warning rounded-3 p-2">
+                <div class="stat-icon bg-warning bg-opacity-10 text-warning rounded-3">
                     <i class="bi bi-file-earmark-text fs-3"></i>
                 </div>
                 <div>
@@ -127,15 +220,41 @@ require_once __DIR__ . '/includes/header.php';
             </div>
         </div>
     </div>
-    <div class="col-6 col-md-3">
-        <div class="card stat-card p-3 border-start border-danger border-4">
+    <div class="col-6 col-md-3 col-xl-2">
+        <div class="card stat-card p-3 h-100 border-start border-danger border-4">
             <div class="d-flex align-items-center gap-3">
-                <div class="stat-icon bg-danger bg-opacity-10 text-danger rounded-3 p-2">
+                <div class="stat-icon bg-danger bg-opacity-10 text-danger rounded-3">
                     <i class="bi bi-arrow-up-circle fs-3"></i>
                 </div>
                 <div>
                     <div class="fs-4 fw-bold text-danger"><?= (int)$iadeSay ?></div>
                     <div class="text-muted small">İade İrsaliyesi</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3 col-xl-2">
+        <div class="card stat-card p-3 h-100 border-start border-info border-4">
+            <div class="d-flex align-items-center gap-3">
+                <div class="stat-icon bg-info bg-opacity-10 text-info rounded-3">
+                    <i class="bi bi-diagram-3 fs-3"></i>
+                </div>
+                <div>
+                    <div class="fs-4 fw-bold text-info"><?= $aktifProjeSay ?></div>
+                    <div class="text-muted small">Aktif Proje</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3 col-xl-2">
+        <div class="card stat-card p-3 h-100 border-start border-secondary border-4">
+            <div class="d-flex align-items-center gap-3">
+                <div class="stat-icon bg-secondary bg-opacity-10 text-secondary rounded-3">
+                    <i class="bi bi-truck fs-3"></i>
+                </div>
+                <div>
+                    <div class="fs-4 fw-bold text-secondary"><?= (int)$tedarikciSay ?></div>
+                    <div class="text-muted small">Aktif Tedarikçi</div>
                 </div>
             </div>
         </div>
@@ -203,44 +322,45 @@ require_once __DIR__ . '/includes/header.php';
 
 <!-- Son irsaliyeler -->
 <div class="card">
-    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
         <span class="fw-semibold"><i class="bi bi-clock-history text-primary me-1"></i> Son İrsaliyeler</span>
-        <a href="irsaliyeler.php" class="btn btn-sm btn-outline-primary">Tümünü Gör</a>
+        <a href="irsaliyeler.php<?= $projeId ? '?proje_id=' . $projeId : '' ?>" class="btn btn-sm btn-outline-primary">Tümünü Gör</a>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover mb-0 align-middle">
+            <table class="table table-hover mb-0 align-middle" id="sonIrsaliyelerTbl">
                 <thead class="table-light">
                     <tr>
-                        <th>Tip</th>
-                        <th>Tarih</th>
-                        <th>İrsaliye No</th>
-                        <th>Tedarikçi</th>
-                        <th>Beton Sınıfı</th>
+                        <th class="sortable" data-col="0" data-type="text">Tip <span class="sort-ind">&#x21C5;</span></th>
+                        <th class="sortable" data-col="1" data-type="date">Tarih <span class="sort-ind">&#x21C5;</span></th>
+                        <th class="sortable" data-col="2" data-type="text">İrsaliye No <span class="sort-ind">&#x21C5;</span></th>
+                        <th class="sortable" data-col="3" data-type="text">Tedarikçi <span class="sort-ind">&#x21C5;</span></th>
+                        <th class="sortable" data-col="4" data-type="text">Beton Sınıfı <span class="sort-ind">&#x21C5;</span></th>
                         <th>Parsel / Blok</th>
-                        <th class="text-end">Miktar</th>
+                        <th class="text-end sortable" data-col="6" data-type="num">Miktar <span class="sort-ind">&#x21C5;</span></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ($sonIrsaliyeler): ?>
                         <?php foreach ($sonIrsaliyeler as $r): ?>
                         <tr>
-                            <td>
+                            <td data-sort="<?= h($r['tip']) ?>">
                                 <?php if ($r['tip'] === 'alis'): ?>
                                     <span class="badge bg-success"><i class="bi bi-arrow-down-circle me-1"></i>Alış</span>
                                 <?php else: ?>
                                     <span class="badge bg-danger"><i class="bi bi-arrow-up-circle me-1"></i>İade</span>
                                 <?php endif; ?>
                             </td>
-                            <td class="text-nowrap"><?= format_date($r['tarih']) ?></td>
+                            <td class="text-nowrap" data-sort="<?= h($r['tarih']) ?>"><?= format_date($r['tarih']) ?></td>
                             <td class="text-nowrap"><code><?= h($r['irsaliye_no'] ?: '-') ?></code></td>
                             <td><span class="badge bg-secondary"><?= h($r['tedarikci_adi'] ?? '-') ?></span></td>
                             <td><?= h($r['beton_sinifi'] ?? '-') ?></td>
                             <td class="small text-muted">
                                 <?= h($r['parsel_adi'] ?? '') ?>
                                 <?php if ($r['blok_adi']): ?> / <?= h($r['blok_adi']) ?><?php endif; ?>
+                                <?php if ($r['proje_kod']): ?> <span class="badge bg-light text-dark border"><?= h($r['proje_kod']) ?></span><?php endif; ?>
                             </td>
-                            <td class="text-end fw-semibold text-nowrap"><?= format_number($r['miktar'], 2) ?> <?= h($r['birim']) ?></td>
+                            <td class="text-end fw-semibold text-nowrap" data-sort="<?= (float)$r['miktar'] ?>"><?= format_number($r['miktar'], 2) ?> <?= h($r['birim']) ?></td>
                         </tr>
                         <?php endforeach; ?>
                     <?php else: ?>
@@ -314,6 +434,37 @@ require_once __DIR__ . '/includes/header.php';
         }
     });
     <?php endif; ?>
+
+    // ── Tablo sıralama ─────────────────────────────────────────────────────
+    const tbl = document.getElementById('sonIrsaliyelerTbl');
+    if (tbl) {
+        const tbody = tbl.tBodies[0];
+        const headers = tbl.querySelectorAll('th.sortable');
+        headers.forEach(th => {
+            th.addEventListener('click', () => {
+                const col = +th.dataset.col;
+                const type = th.dataset.type || 'text';
+                const asc = !th.classList.contains('asc');
+                headers.forEach(x => x.classList.remove('asc', 'desc'));
+                th.classList.add(asc ? 'asc' : 'desc');
+                const rows = Array.from(tbody.querySelectorAll('tr'));
+                rows.sort((a, b) => {
+                    const av = (a.cells[col]?.dataset.sort ?? a.cells[col]?.innerText ?? '').trim();
+                    const bv = (b.cells[col]?.dataset.sort ?? b.cells[col]?.innerText ?? '').trim();
+                    let cmp;
+                    if (type === 'num') {
+                        cmp = parseFloat(av.replace(',', '.')) - parseFloat(bv.replace(',', '.'));
+                    } else if (type === 'date') {
+                        cmp = new Date(av) - new Date(bv);
+                    } else {
+                        cmp = av.localeCompare(bv, 'tr');
+                    }
+                    return asc ? cmp : -cmp;
+                });
+                rows.forEach(r => tbody.appendChild(r));
+            });
+        });
+    }
 })();
 </script>
 
