@@ -939,114 +939,113 @@ async function ocrTara() {
 }
 
 function parseIrsaliyeMetin(text) {
-    // Hem satır-yapısı korunmuş (lines) hem de tek-satıra düzleştirilmiş (flat) sürüm kullan
     var lines = text.split(/\r?\n/).map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0; });
-    var flat = text.replace(/\s+/g, ' ').trim();
+    var flat  = text.replace(/\s+/g, ' ').trim();
     var r = { irsaliye_no:'', tarih:'', plaka:'', miktar:'', sevkZamani:'', ettn:'', beton_sinifi_id:'', tedarikci_id:'' };
 
     // ── İrsaliye No ──────────────────────────────────────────────────────────
-    // Yaygın OCR hataları: I↔İ↔l↔1, O↔0
     var noM =
         flat.match(/[İIil1]rsaliye\s*[Nn]o[\s:.]*([A-ZÇĞİÖŞÜa-zçğiöşü0-9]{6,25})/) ||
         flat.match(/[Bb]elge\s*[Nn]o[\s:.]*([A-ZÇĞİÖŞÜ0-9]{6,25})/) ||
         flat.match(/[Ss]eri\s*[Nn]o[\s:.]*([A-ZÇĞİÖŞÜ0-9]{6,25})/) ||
         flat.match(/\b([A-ZÇĞİÖŞÜ]{2,5}\d{10,20})\b/);
     if (noM) {
-        // OCR sık hata: 2↔Z, 0↔O, 1↔I. İrsaliye numarası harf-rakam karışımı ise
-        // ilk 3-4 harften sonraki karakterlerde harf→rakam dönüşümü uygula.
         var raw = noM[1].trim();
-        var fix = raw.replace(/^([A-ZÇĞİÖŞÜ]{2,3})(.*)$/, function(_, pfx, rest) {
+        r.irsaliye_no = raw.replace(/^([A-ZÇĞİÖŞÜ]{2,3})(.*)$/, function(_, pfx, rest) {
             return pfx + rest.replace(/Z/g,'2').replace(/O/g,'0').replace(/I/g,'1').replace(/B/g,'8');
         });
-        r.irsaliye_no = fix;
     }
 
-    // Tarih DD.MM.YYYY → YYYY-MM-DD
+    // ── Tarih DD.MM.YYYY → YYYY-MM-DD ────────────────────────────────────────
     var tM = flat.match(/\b(\d{2})[.\/](\d{2})[.\/](\d{4})\b/);
     if (tM) r.tarih = tM[3] + '-' + tM[2] + '-' + tM[1];
 
     // ── Plaka ────────────────────────────────────────────────────────────────
-    // Türk plaka kalıbı: 2 rakam + 1-3 harf + 2-4 rakam. OCR'ı O→0, I→1 dönüşümleriyle de dene.
-    // Önce "Plaka" etiketinden sonra ara — ama arada başka rakam/karakterler olabileceği için
-    // sadece geçerli plaka deseniyle eşleştir, sayısal kod ön ekleri (örn. "232 -") değil.
+    // Türk plakası: 2 rakam + 2-3 harf + 2-4 rakam.
+    // Bazı sayfalarda "Mikser Kodu - Plaka" başlığı ve plaka AYRI satırlarda.
     function bulPlaka(s) {
-        // Geçerli plaka deseni: 2 rakam (boşluksuz) + 2-3 harf + 2-4 rakam
         var m = s.match(/\b(\d{2})\s*([A-ZÇĞİÖŞÜ]{2,3})\s*(\d{2,4})\b/);
         if (m) return (m[1] + m[2] + m[3]).toUpperCase();
-        // O/0, I/1 OCR hatası toleransı: harflerden sonra O veya I gelirse rakam olabilir
         var m2 = s.match(/\b(\d{2})\s*([A-ZÇĞİÖŞÜ]{2,3})\s*([O0I1\d]{2,4})\b/);
         if (m2) return (m2[1] + m2[2] + m2[3].replace(/O/g,'0').replace(/I/g,'1')).toUpperCase();
         return '';
     }
-    // 1) "Mikser Kodu - Plaka" satırının yakınında ara
+    // "Mikser Kodu - Plaka" satırı + sonraki 3 satıra bak (başlık ayrı satırda olabilir)
     for (var li = 0; li < lines.length; li++) {
         if (/[Mm]ikser[\s\S]{0,20}?[Pp]laka/i.test(lines[li])) {
-            // Aynı satırda veya sonraki 1-2 satırda
-            var blob = (lines[li] || '') + ' ' + (lines[li+1] || '') + ' ' + (lines[li+2] || '');
+            var blob = [lines[li], lines[li+1]||'', lines[li+2]||'', lines[li+3]||''].join(' ');
             var p = bulPlaka(blob);
             if (p) { r.plaka = p; break; }
         }
     }
-    // 2) Hâlâ bulunamadıysa, tüm metinde herhangi bir plaka kalıbı ara
-    if (!r.plaka) {
-        // Pompa plakası "N" veya boş olabilir; ilk geçerli kalıbı al
-        r.plaka = bulPlaka(flat);
-    }
+    // Pompa plakası satırını atla (genellikle "N" veya boş), tüm metinde ara
+    if (!r.plaka) r.plaka = bulPlaka(flat);
 
     // ── Miktar m³ ───────────────────────────────────────────────────────────
-    // OCR'da m³ çoğu zaman "m?", "m\"", "m" veya "m3" olarak okunuyor.
-    // 1) "Miktar" başlığı/sütununun yakınında ara (en güvenilir)
-    var mM = null;
-    for (var mi = 0; mi < lines.length; mi++) {
-        if (/[Mm]iktar/.test(lines[mi])) {
-            // Aynı satır veya sonraki 1-3 satırda "X,YY m..." veya "X.YY m..." ara
-            var area = lines.slice(mi, mi + 4).join(' ');
-            // Miktar (X,YY) ardından opsiyonel m + opsiyonel ³/3/?/"/'
-            mM = area.match(/(\d+[,.]\d{1,2})\s*[mM]\s*[³3?"'`´]?/) ||
-                 area.match(/(\d+[,.]\d{1,2})\s*[mM]\b/) ||
-                 area.match(/(\d{1,3}[,.]\d{1,2})\s+[mM]/);
-            if (mM) break;
-        }
-    }
-    // 2) Beton sınıfı (C25/30 vb.) satırının yanında "X,YY m" ara
-    if (!mM) {
-        var bLineIdx = -1;
-        for (var bi = 0; bi < lines.length; bi++) {
-            if (/\bC\s?\d{2}\s?[\/\-]\s?\d{2}/i.test(lines[bi])) { bLineIdx = bi; break; }
-        }
-        if (bLineIdx >= 0) {
-            var area2 = lines.slice(bLineIdx, bLineIdx + 3).join(' ');
-            mM = area2.match(/(\d+[,.]\d{1,2})\s*[mM]\s*[³3?"'`´]?/) ||
-                 area2.match(/(\d+[,.]\d{1,2})\s*[mM]\b/);
-        }
-    }
-    // 3) Genel fallback: tüm metinde "X,YY m³/m3/m?/m" ara (ETTN/tarih ile karışmasın diye dar)
-    if (!mM) {
-        mM = flat.match(/\b(\d{1,3}[,.]\d{1,2})\s*[mM](?:[³3?"'`´]|\b)/);
-    }
-    if (mM) {
-        var miktarStr = mM[1].replace(',','.');
-        var miktarNum = parseFloat(miktarStr);
-        // Mantıklı bir m³ değeri (genelde 1-15 arası, en fazla 99)
-        if (!isNaN(miktarNum) && miktarNum > 0 && miktarNum < 100) {
-            r.miktar = miktarStr;
-        }
+    // KRİTİK SORUN: "Dayanım Gelişimi 0,60 MİLTAŞ BETON" → "0,60 M" false positive.
+    // Önce "Dayanım Gelişimi" satırlarını metinden çıkar, sonra ara.
+    var temizFlat = flat.replace(/[Dd]ayan[ıi]m\s*[Gg]eli[şs]imi\s*[\d,.\s]+/g, ' ');
+    var temizLines = text.split(/\r?\n/).map(function(s){ return s.trim(); })
+        .filter(function(s){ return s.length > 0 && !/[Dd]ayan[ıi]m\s*[Gg]eli[şs]imi/i.test(s); });
+
+    // "m" birim eşleştirme kuralı: m sonrası büyük Türkçe harf gelirse şirket adı — eşleştirme
+    function miktarBul(s) {
+        // m sonrasında: ³, 3, ?, *, :, boşluk+küçük/rakam, satır sonu → geçerli birim
+        // m sonrasında büyük harf → şirket adı → GEÇERSİZ
+        var m = s.match(/(\d+[,.]\d{1,2})\s*(?:m³|m3|m\?|m\*|m:|m\s+\d|m\s*$)/i);
+        if (m) return m[1];
+        // Daha gevşek: m sonrası büyük Türkçe harf değilse
+        var m2 = s.match(/(\d+[,.]\d{1,2})\s*m(?![A-ZÇĞİÖŞÜ])/);
+        if (m2) return m2[1];
+        return null;
     }
 
-    // Sevk saati
+    var miktarHam = null;
+    // 1) "Miktar" başlığı yakınında ara (en güvenilir)
+    for (var mi = 0; mi < temizLines.length; mi++) {
+        if (/[Mm]iktar/.test(temizLines[mi])) {
+            var area = temizLines.slice(mi, mi + 4).join(' ');
+            miktarHam = miktarBul(area);
+            if (miktarHam) break;
+        }
+    }
+    // 2) Beton sınıfı (C25/30 vb.) satırı yanında
+    if (!miktarHam) {
+        for (var bi2 = 0; bi2 < temizLines.length; bi2++) {
+            if (/\bC\s?\d{2}\s?[\/\-]\s?\d{2}/i.test(temizLines[bi2])) {
+                var area3 = temizLines.slice(bi2, bi2 + 3).join(' ');
+                miktarHam = miktarBul(area3);
+                if (miktarHam) break;
+            }
+        }
+    }
+    // 3) Temizlenmiş metin üzerinde genel fallback
+    if (!miktarHam) miktarHam = miktarBul(temizFlat);
+
+    if (miktarHam) {
+        var ms = miktarHam.replace(',', '.');
+        var mn = parseFloat(ms);
+        if (!isNaN(mn) && mn >= 1 && mn < 100) r.miktar = ms;
+    }
+
+    // ── Sevk saati ──────────────────────────────────────────────────────────
     var sM = flat.match(/[Ss]evk[\s\S]{0,50}?(\d{2}:\d{2})/) ||
              flat.match(/[Çç][ıi]k[ıi][şs][\s\S]{0,30}?(\d{2}:\d{2})/) ||
              flat.match(/(\d{2}:\d{2}:\d{2})/);
-    if (sM) r.sevkZamani = sM[1];
+    if (sM) r.sevkZamani = sM[1].substring(0, 5);
 
-    // ETTN
+    // ── ETTN ────────────────────────────────────────────────────────────────
     var eM = flat.match(/[Ee][Tt][Tt][Nn][\s:]+([A-Za-z0-9\-]{30,50})/);
     if (eM) r.ettn = eM[1].trim();
 
-    // Beton sınıfı — metinde bul, BETON_SINIFLARI ile eşleştir
-    var bM = flat.match(/\b(C\s*\d+\s*[\/\-]\s*\d+)\b/i);
+    // ── Beton sınıfı ────────────────────────────────────────────────────────
+    // Önce "C30/37" formatı (iki sayılı), yoksa "Basınç Dayanım Sınıfı C30" formatı (tek sayı)
+    var bM = flat.match(/\bC\s*(\d{2})\s*[\/\-]\s*(\d{2,3})\b/i) ||
+             flat.match(/[Bb]as[ıi]n[çc]\s*[Dd]ayan[ıi]m\s*[Ss][ıi]n[ıi]f[ıi]\s*([Cc]\d{2,3})/);
     if (bM) {
-        var bn = bM[1].replace(/\s+/g,'').toUpperCase();
+        // bM[0] tam eşleşme, bM[1]+bM[2] = parçalar veya bM[1] = "C30"
+        var rawBeton = bM[2] ? ('C' + bM[1] + '/' + bM[2]) : bM[1];
+        var bn = rawBeton.replace(/\s+/g,'').toUpperCase();
         for (var b = 0; b < BETON_SINIFLARI.length; b++) {
             var bc = BETON_SINIFLARI[b].ad.replace(/\s+/g,'').toUpperCase();
             if (bc === bn || bc.includes(bn) || bn.includes(bc)) {
@@ -1055,14 +1054,33 @@ function parseIrsaliyeMetin(text) {
         }
     }
 
-    // Tedarikçi — bilinen isimleri metin içinde ara
-    var fu = flat.toUpperCase();
+    // ── Tedarikçi ───────────────────────────────────────────────────────────
+    // SORUN: "Müşteri Adı: ANADOLU BİRLEŞİM BETON" → "ANADOLU BETON" tedarikçisiyle yanlış eşleşiyor.
+    // ÇÖZÜM 1: OCR metnindeki ilk "VKN XXXXXXXXXX" satıcı VKN'sidir → DB'deki vkn ile eşleştir.
+    // ÇÖZÜM 2: Müşteri adı satırını dışarıda bırakarak isim eşleştir.
+    var vknM = flat.match(/\bVKN\s+(\d{10,11})\b/);
+    var ocrVkn = vknM ? vknM[1] : '';
+
+    // "Müşteri Adı" satırından sonrasını tedarikçi aramasına dahil etme
+    var musteriIdx = flat.toUpperCase().indexOf('MÜŞTERİ ADI');
+    var aramaMetni = musteriIdx > 0 ? flat.substring(0, musteriIdx) : flat;
+    var fu = aramaMetni.toUpperCase();
+
     for (var t = 0; t < TEDARIKCILER.length; t++) {
-        var ta = TEDARIKCILER[t].ad.toUpperCase();
-        var words = ta.split(' ').filter(function(w){ return w.length >= 5; });
-        var hit = words.length > 0 && words.every(function(w){ return fu.includes(w); });
-        if (!hit && ta.length >= 5) hit = fu.includes(ta);
-        if (hit) { r.tedarikci_id = String(TEDARIKCILER[t].id); break; }
+        // Önce VKN ile eşleştir (en güvenilir)
+        if (ocrVkn && TEDARIKCILER[t].vkn && String(TEDARIKCILER[t].vkn) === ocrVkn) {
+            r.tedarikci_id = String(TEDARIKCILER[t].id); break;
+        }
+    }
+    if (!r.tedarikci_id) {
+        // VKN eşleşmesi yoksa, müşteri adı hariç metinde isim ara
+        for (var t2 = 0; t2 < TEDARIKCILER.length; t2++) {
+            var ta = TEDARIKCILER[t2].ad.toUpperCase();
+            var words = ta.split(' ').filter(function(w){ return w.length >= 5; });
+            var hit = words.length > 0 && words.every(function(w){ return fu.includes(w); });
+            if (!hit && ta.length >= 5) hit = fu.includes(ta);
+            if (hit) { r.tedarikci_id = String(TEDARIKCILER[t2].id); break; }
+        }
     }
 
     return r;
