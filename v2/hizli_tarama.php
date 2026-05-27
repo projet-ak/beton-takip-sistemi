@@ -732,8 +732,10 @@ async function pdfTara() {
     }
 }
 
-// Bir PDF sayfasında QR kodu arar: tam sayfa + 4 bölge, 3 farklı scale dener
-async function sayfadaQrBul(page, canvas, ctx) {
+// Bir PDF sayfasında TÜM QR kodlarını bulur (JSON + E1 formatlı pipe-separated)
+// Geriye dönük uyumluluk için ilk bulunan QR'ı string, tümü için bulunan QR'lar dizisi döner.
+async function sayfadakiTumQrlar(page, canvas, ctx) {
+    var bulunanlar = new Set();
     var scales = [3.0, 4.0, 5.0];
     for (var si = 0; si < scales.length; si++) {
         var scale    = scales[si];
@@ -742,39 +744,105 @@ async function sayfadaQrBul(page, canvas, ctx) {
         canvas.height = viewport.height;
         await page.render({ canvasContext: ctx, viewport: viewport }).promise;
 
-        // 1) Tam sayfa tarama
-        var imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        var code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'attemptBoth' });
-        if (code && code.data && code.data.trim()) return code.data.trim();
+        var tryAdd = function(code) {
+            if (code && code.data && code.data.trim()) bulunanlar.add(code.data.trim());
+        };
 
-        // 2) Dört bölge (quadrant) tarama — QR küçükse tam sayfada gözden kaçabilir
+        // 1) Tam sayfa
+        var imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        tryAdd(jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'attemptBoth' }));
+
+        // 2) Dört bölge
         var hw = Math.floor(canvas.width  / 2);
         var hh = Math.floor(canvas.height / 2);
         var bolge = [[0,0,hw,hh],[hw,0,hw,hh],[0,hh,hw,hh],[hw,hh,hw,hh]];
         for (var b = 0; b < bolge.length; b++) {
-            var bx = bolge[b][0], by = bolge[b][1], bw = bolge[b][2], bh = bolge[b][3];
-            var qd = ctx.getImageData(bx, by, bw, bh);
-            code = jsQR(qd.data, qd.width, qd.height, { inversionAttempts: 'attemptBoth' });
-            if (code && code.data && code.data.trim()) return code.data.trim();
+            var qd = ctx.getImageData(bolge[b][0], bolge[b][1], bolge[b][2], bolge[b][3]);
+            tryAdd(jsQR(qd.data, qd.width, qd.height, { inversionAttempts: 'attemptBoth' }));
         }
 
-        // 3) Köşe bölgeler (QR genellikle sağ alt veya sağ üstte olur — daha küçük crop)
+        // 3) Köşe bölgeler (daha küçük crop — QR genelde sağ tarafta)
         var cw = Math.floor(canvas.width  / 3);
         var ch = Math.floor(canvas.height / 3);
         var kose = [
-            [canvas.width-cw, 0, cw, ch],                          // sağ üst
-            [canvas.width-cw, canvas.height-ch, cw, ch],           // sağ alt
-            [0, canvas.height-ch, cw, ch],                         // sol alt
-            [0, 0, cw, ch]                                         // sol üst
+            [canvas.width-cw, 0, cw, ch],
+            [canvas.width-cw, canvas.height-ch, cw, ch],
+            [0, canvas.height-ch, cw, ch],
+            [0, 0, cw, ch]
         ];
         for (var k = 0; k < kose.length; k++) {
-            var kx = kose[k][0], ky = kose[k][1], kw = kose[k][2], kh = kose[k][3];
-            var kd = ctx.getImageData(kx, ky, kw, kh);
-            code = jsQR(kd.data, kd.width, kd.height, { inversionAttempts: 'attemptBoth' });
-            if (code && code.data && code.data.trim()) return code.data.trim();
+            var kd = ctx.getImageData(kose[k][0], kose[k][1], kose[k][2], kose[k][3]);
+            tryAdd(jsQR(kd.data, kd.width, kd.height, { inversionAttempts: 'attemptBoth' }));
+        }
+        // En az 2 farklı QR bulduysak (JSON + E1) erken çık
+        if (bulunanlar.size >= 2) break;
+    }
+    return Array.from(bulunanlar);
+}
+
+// Geriye dönük uyumluluk — ilk bulduğu QR'ı döndürür (eski API)
+async function sayfadaQrBul(page, canvas, ctx) {
+    var hepsi = await sayfadakiTumQrlar(page, canvas, ctx);
+    return hepsi.length > 0 ? hepsi[0] : null;
+}
+
+// E1 formatlı QR'ı parse eder
+// Örnek: E1SAM202400002490562104209552024101518119/9C250,60S4N0,20220,5606CTY232CEMII 42,5...
+function parseE1Qr(s) {
+    if (!s || s.substring(0,2) !== 'E1') return null;
+    var d = { irsaliye_no:'', vkn:'', tarih:'', sevkZamani:'', miktar:'',
+              beton_sinifi:'', dayanim:'', kivam:'', yogunluk:'',
+              klorur:'', dmax:'', suCimento:'', plaka:'' };
+
+    // E1 + harf prefix (2-5) + 13 digit (sabit, TR e-irsaliye standardı) + 10 digit VKN
+    //    + 8 digit tarih (YYYYMMDD) + 4 digit saat (HHMM) + X/Y miktar + Cxx beton sınıfı
+    //    + dayanım/kıvam/yoğunluk/klorür/Dmax/su-çimento — sonra plaka
+    var m = s.match(/^E1([A-ZÇĞİÖŞÜ]{2,5}\d{13})(\d{10})(\d{8})(\d{4})(\d{1,3})\/\d{1,3}(C\d{2,3})(?:\s*[\/\-]\s*\d{2,3})?(\d{1,2},\d{1,2})(S\d{1,2})([A-Z]{1,2})(\d,\d{1,2})(\d{2})(\d,\d{1,2})(\d{2}[A-ZÇĞİÖŞÜ]{2,3}\d{2,4})/);
+    if (!m) {
+        // Gevşek fallback: en az irsaliye_no, VKN, tarih, saat, miktar, beton sınıfı
+        var m2 = s.match(/^E1([A-ZÇĞİÖŞÜ]{2,5}\d{13})(\d{10})(\d{8})(\d{4})(\d{1,3})\/\d{1,3}(C\d{2,3})/);
+        if (!m2) return null;
+        d.irsaliye_no = m2[1];
+        d.vkn         = m2[2];
+        d.tarih       = m2[3].substring(0,4) + '-' + m2[3].substring(4,6) + '-' + m2[3].substring(6,8);
+        d.sevkZamani  = m2[4].substring(0,2) + ':' + m2[4].substring(2,4);
+        d.miktar      = m2[5];
+        d.beton_sinifi= m2[6];
+        // Plaka aramayı eşleşen kısımdan SONRAKİ metinde yap
+        var restFb = s.substring(m2[0].length);
+        var pmFb = restFb.match(/(\d{2}[A-ZÇĞİÖŞÜ]{2,3}\d{2,4})/);
+        if (pmFb) d.plaka = pmFb[1];
+        return d;
+    }
+    d.irsaliye_no = m[1];
+    d.vkn         = m[2];
+    d.tarih       = m[3].substring(0,4) + '-' + m[3].substring(4,6) + '-' + m[3].substring(6,8);
+    d.sevkZamani  = m[4].substring(0,2) + ':' + m[4].substring(2,4);
+    d.miktar      = m[5];
+    d.beton_sinifi= m[6];
+    d.dayanim     = m[7];
+    d.kivam       = m[8];
+    d.yogunluk    = m[9];
+    d.klorur      = m[10];
+    d.dmax        = m[11];
+    d.suCimento   = m[12];
+    d.plaka       = m[13];
+    return d;
+}
+
+// QR listesinden JSON ve E1 verilerini birleştirir
+function qrListesindenVeriAl(qrListesi) {
+    var sonuc = { json: null, e1: null };
+    for (var i = 0; i < qrListesi.length; i++) {
+        var s = qrListesi[i];
+        if (!s) continue;
+        if (s.charAt(0) === '{') {
+            try { sonuc.json = JSON.parse(s); } catch(e) {}
+        } else if (s.substring(0,2) === 'E1') {
+            sonuc.e1 = parseE1Qr(s);
         }
     }
-    return null; // bulunamadı
+    return sonuc;
 }
 
 // ── PDF OCR (Metin Çıkartma) ────────────────────────────────────────
@@ -833,16 +901,16 @@ async function ocrTara() {
             try {
                 var page = await pdf.getPage(i);
 
-                // ── 1) Önce QR kodu dene (irsaliye_no, plaka, tarih, sevk_zamani, ettn için %100 güvenilir)
-                var qrData = null;
+                // ── 1) Sayfadaki TÜM QR'ları topla (JSON + E1 formatlı)
+                var qrJson = null, qrE1 = null;
                 try {
-                    var rawQr = await sayfadaQrBul(page, ocrCanvas, ocrCtx);
-                    if (rawQr) {
-                        try { qrData = JSON.parse(rawQr); } catch(e) { qrData = null; }
-                    }
+                    var qrListesi = await sayfadakiTumQrlar(page, ocrCanvas, ocrCtx);
+                    var qrSonuc = qrListesindenVeriAl(qrListesi);
+                    qrJson = qrSonuc.json;
+                    qrE1   = qrSonuc.e1;
                 } catch(qrErr) { /* QR yoksa devam et */ }
 
-                // ── 2) OCR ile metin çıkar (her durumda — miktar ve beton sınıfı için)
+                // ── 2) OCR ile metin çıkar (her durumda — yedek/güvence için)
                 var viewport = page.getViewport({ scale: 2.5 });
                 ocrCanvas.width  = viewport.width;
                 ocrCanvas.height = viewport.height;
@@ -854,24 +922,51 @@ async function ocrTara() {
 
                 var parsed = parseIrsaliyeMetin(text);
 
-                // ── 3) QR verisi varsa OCR sonucunu üst yaz (QR daha güvenilir)
-                if (qrData) {
-                    if (qrData.no)         parsed.irsaliye_no = String(qrData.no).trim();
-                    if (qrData.tarih)      parsed.tarih       = String(qrData.tarih).trim();
-                    if (qrData.plaka)      parsed.plaka       = String(qrData.plaka).replace(/\s+/g,'').toUpperCase();
-                    if (qrData.sevkzamani) parsed.sevkZamani  = String(qrData.sevkzamani).substring(0,5);
-                    if (qrData.ettn)       parsed.ettn        = String(qrData.ettn).trim();
-                    // Tedarikçi: QR'daki avkntckn (alıcı vkn) ile değil, satıcı vkntckn ile eşle
-                    if (qrData.vkntckn && !parsed.tedarikci_id) {
+                // ── 3) E1 QR'dan veriler (miktar, beton sınıfı, plaka — OCR'dan daha güvenilir)
+                if (qrE1) {
+                    if (qrE1.irsaliye_no) parsed.irsaliye_no = qrE1.irsaliye_no;
+                    if (qrE1.tarih)       parsed.tarih       = qrE1.tarih;
+                    if (qrE1.sevkZamani)  parsed.sevkZamani  = qrE1.sevkZamani;
+                    if (qrE1.plaka)       parsed.plaka       = qrE1.plaka;
+                    if (qrE1.miktar)      parsed.miktar      = qrE1.miktar;
+                    // Beton sınıfı E1'den (örn. C30) — DB'de "C30" veya "C30/37" formatıyla eşle
+                    if (qrE1.beton_sinifi) {
+                        var bnE1 = qrE1.beton_sinifi.toUpperCase();
+                        for (var be = 0; be < BETON_SINIFLARI.length; be++) {
+                            var bcE1 = BETON_SINIFLARI[be].ad.replace(/\s+/g,'').toUpperCase();
+                            if (bcE1 === bnE1 || bcE1.startsWith(bnE1 + '/') || bcE1.startsWith(bnE1 + '-')) {
+                                parsed.beton_sinifi_id = String(BETON_SINIFLARI[be].id); break;
+                            }
+                        }
+                    }
+                    // Tedarikçi VKN eşleştirmesi (E1'de de var)
+                    if (qrE1.vkn && !parsed.tedarikci_id) {
+                        for (var te = 0; te < TEDARIKCILER.length; te++) {
+                            if (TEDARIKCILER[te].vkn && String(TEDARIKCILER[te].vkn) === qrE1.vkn) {
+                                parsed.tedarikci_id = String(TEDARIKCILER[te].id); break;
+                            }
+                        }
+                    }
+                }
+
+                // ── 4) JSON QR (öncelikli — en güvenilir, modern e-irsaliye standardı)
+                if (qrJson) {
+                    if (qrJson.no)         parsed.irsaliye_no = String(qrJson.no).trim();
+                    if (qrJson.tarih)      parsed.tarih       = String(qrJson.tarih).trim();
+                    if (qrJson.plaka)      parsed.plaka       = String(qrJson.plaka).replace(/\s+/g,'').toUpperCase();
+                    if (qrJson.sevkzamani) parsed.sevkZamani  = String(qrJson.sevkzamani).substring(0,5);
+                    if (qrJson.ettn)       parsed.ettn        = String(qrJson.ettn).trim();
+                    if (qrJson.vkntckn && !parsed.tedarikci_id) {
                         for (var ti = 0; ti < TEDARIKCILER.length; ti++) {
-                            if (TEDARIKCILER[ti].vkn && String(TEDARIKCILER[ti].vkn) === String(qrData.vkntckn)) {
+                            if (TEDARIKCILER[ti].vkn && String(TEDARIKCILER[ti].vkn) === String(qrJson.vkntckn)) {
                                 parsed.tedarikci_id = String(TEDARIKCILER[ti].id); break;
                             }
                         }
                     }
                 }
 
-                if (!qrData && (!text || text.replace(/\s/g, '').length < 10)) {
+                var qrVarMi = !!(qrJson || qrE1);
+                if (!qrVarMi && (!text || text.replace(/\s/g, '').length < 10)) {
                     hatalar.push('Sayfa ' + i + ': QR ve OCR metni okunamadı');
                     continue;
                 }
@@ -895,7 +990,7 @@ async function ocrTara() {
                     tedarikci_id: parsed.tedarikci_id,
                     beton_sinifi_id: parsed.beton_sinifi_id,
                     proje_id: '',
-                    qrKullanildi: !!qrData
+                    qrKullanildi: qrVarMi
                 };
                 taranmisList.push(item);
                 tabloSatirEkleOcr(item);
