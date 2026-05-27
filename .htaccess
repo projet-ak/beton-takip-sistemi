@@ -1,31 +1,21 @@
 Options -Indexes
 DirectoryIndex index.php
 
-# config.php ve .env dosyalarına doğrudan erişimi engelle
+# config.php ve .env dosyalarına doğrudan erişimi engelle (Apache 2.4+)
 <FilesMatch "^(config\.php|\.env)$">
-    Order allow,deny
-    Deny from all
-</FilesMatch>
-
-# uploads/ dizininden PHP çalıştırmayı engelle
-<IfModule mod_php.c>
-    <Directory uploads>
-        php_flag engine off
-    </Directory>
-</IfModule>
-
-# uploads/ içindeki PHP dosyalarını direkt engelle (.htaccess override için)
-<FilesMatch "(?i)\.(php[0-9]?|phtml|phar)$">
-    <If "%{REQUEST_URI} =~ m#^/uploads/#">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
         Order allow,deny
         Deny from all
-    </If>
+    </IfModule>
 </FilesMatch>
 
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
-    # uploads/ dizinindeki tüm PHP isteklerini engelle
+    # uploads/ dizinindeki tüm PHP dosyalarını engelle
     RewriteRule ^uploads/.*\.(php[0-9]?|phtml|phar)$ - [F,L]
 
     # HTTPS yönlendirmesi için aşağıdaki satırı aktif edin:
