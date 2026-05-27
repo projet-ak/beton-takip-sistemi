@@ -7,7 +7,12 @@ require_once __DIR__ . '/includes/db.php';
 $pageTitle = 'Hızlı Tarama — Beton Takip Sistemi';
 
 // Referans veriler (dropdownlar için)
-$tedarikciler   = $pdo->query("SELECT id,ad FROM tedarikciler WHERE aktif=1 ORDER BY ad")->fetchAll();
+// VKN sütunu varsa al, yoksa boş
+try {
+    $tedarikciler = $pdo->query("SELECT id, ad, COALESCE(vkn,'') AS vkn FROM tedarikciler WHERE aktif=1 ORDER BY ad")->fetchAll();
+} catch (Exception $e) {
+    $tedarikciler = $pdo->query("SELECT id, ad, '' AS vkn FROM tedarikciler WHERE aktif=1 ORDER BY ad")->fetchAll();
+}
 $betonSiniflari = $pdo->query("SELECT id,ad FROM beton_siniflari ORDER BY ad")->fetchAll();
 $projeler       = $pdo->query("SELECT id,kod,aciklama FROM projeler WHERE aktif=1 ORDER BY kod")->fetchAll();
 require_once __DIR__ . '/includes/header.php';
@@ -823,24 +828,53 @@ async function ocrTara() {
             var pct = Math.round(((i - 1) / toplamSayfa) * 100);
             progressBar.style.width = Math.max(pct, 5) + '%';
             progressPct.textContent = pct + '%';
-            progressText.textContent = toplamSayfa + ' sayfadan ' + i + '. sayfa OCR yapılıyor...';
+            progressText.textContent = toplamSayfa + ' sayfadan ' + i + '. sayfa işleniyor...';
 
             try {
-                var page     = await pdf.getPage(i);
+                var page = await pdf.getPage(i);
+
+                // ── 1) Önce QR kodu dene (irsaliye_no, plaka, tarih, sevk_zamani, ettn için %100 güvenilir)
+                var qrData = null;
+                try {
+                    var rawQr = await sayfadaQrBul(page, ocrCanvas, ocrCtx);
+                    if (rawQr) {
+                        try { qrData = JSON.parse(rawQr); } catch(e) { qrData = null; }
+                    }
+                } catch(qrErr) { /* QR yoksa devam et */ }
+
+                // ── 2) OCR ile metin çıkar (her durumda — miktar ve beton sınıfı için)
                 var viewport = page.getViewport({ scale: 2.5 });
                 ocrCanvas.width  = viewport.width;
                 ocrCanvas.height = viewport.height;
                 await page.render({ canvasContext: ocrCtx, viewport: viewport }).promise;
 
+                progressText.textContent = toplamSayfa + ' sayfadan ' + i + '. sayfa OCR yapılıyor...';
                 var result = await worker.recognize(ocrCanvas);
                 var text   = result.data.text || '';
 
-                if (!text || text.replace(/\s/g, '').length < 10) {
-                    hatalar.push('Sayfa ' + i + ': OCR metni okunamadı');
-                    continue;
+                var parsed = parseIrsaliyeMetin(text);
+
+                // ── 3) QR verisi varsa OCR sonucunu üst yaz (QR daha güvenilir)
+                if (qrData) {
+                    if (qrData.no)         parsed.irsaliye_no = String(qrData.no).trim();
+                    if (qrData.tarih)      parsed.tarih       = String(qrData.tarih).trim();
+                    if (qrData.plaka)      parsed.plaka       = String(qrData.plaka).replace(/\s+/g,'').toUpperCase();
+                    if (qrData.sevkzamani) parsed.sevkZamani  = String(qrData.sevkzamani).substring(0,5);
+                    if (qrData.ettn)       parsed.ettn        = String(qrData.ettn).trim();
+                    // Tedarikçi: QR'daki avkntckn (alıcı vkn) ile değil, satıcı vkntckn ile eşle
+                    if (qrData.vkntckn && !parsed.tedarikci_id) {
+                        for (var ti = 0; ti < TEDARIKCILER.length; ti++) {
+                            if (TEDARIKCILER[ti].vkn && String(TEDARIKCILER[ti].vkn) === String(qrData.vkntckn)) {
+                                parsed.tedarikci_id = String(TEDARIKCILER[ti].id); break;
+                            }
+                        }
+                    }
                 }
 
-                var parsed = parseIrsaliyeMetin(text);
+                if (!qrData && (!text || text.replace(/\s/g, '').length < 10)) {
+                    hatalar.push('Sayfa ' + i + ': QR ve OCR metni okunamadı');
+                    continue;
+                }
 
                 if (parsed.irsaliye_no && taranmisList.some(function(r){ return r.irsaliye_no === parsed.irsaliye_no; })) {
                     atlanan++;
@@ -860,7 +894,8 @@ async function ocrTara() {
                     miktar:       parsed.miktar,
                     tedarikci_id: parsed.tedarikci_id,
                     beton_sinifi_id: parsed.beton_sinifi_id,
-                    proje_id: ''
+                    proje_id: '',
+                    qrKullanildi: !!qrData
                 };
                 taranmisList.push(item);
                 tabloSatirEkleOcr(item);

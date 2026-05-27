@@ -45,20 +45,24 @@ if (isset($_GET['duzenle']) && ctype_digit($_GET['duzenle'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $id      = isset($_POST['id']) && ctype_digit($_POST['id']) ? (int)$_POST['id'] : null;
     $ad      = trim($_POST['ad']      ?? '');
+    $vkn     = trim($_POST['vkn']     ?? '');
     $telefon = trim($_POST['telefon'] ?? '');
     $adres   = trim($_POST['adres']   ?? '');
     $aktif   = isset($_POST['aktif']) ? 1 : 0;
 
-    if (!$ad) {
+    // VKN: sadece rakam, 10-11 hane
+    if ($vkn !== '' && !preg_match('/^\d{10,11}$/', $vkn)) {
+        $formError = 'VKN 10 veya 11 haneli rakamlardan oluşmalıdır.';
+    } elseif (!$ad) {
         $formError = 'Tedarikçi adı zorunludur.';
     } else {
         if ($id) {
-            $pdo->prepare("UPDATE tedarikciler SET ad=?, telefon=?, adres=?, aktif=? WHERE id=?")
-                ->execute([$ad, $telefon ?: null, $adres ?: null, $aktif, $id]);
+            $pdo->prepare("UPDATE tedarikciler SET ad=?, vkn=?, telefon=?, adres=?, aktif=? WHERE id=?")
+                ->execute([$ad, $vkn ?: null, $telefon ?: null, $adres ?: null, $aktif, $id]);
             flash('success', 'Tedarikçi güncellendi.');
         } else {
-            $pdo->prepare("INSERT INTO tedarikciler (ad, telefon, adres, aktif) VALUES (?,?,?,?)")
-                ->execute([$ad, $telefon ?: null, $adres ?: null, $aktif]);
+            $pdo->prepare("INSERT INTO tedarikciler (ad, vkn, telefon, adres, aktif) VALUES (?,?,?,?,?)")
+                ->execute([$ad, $vkn ?: null, $telefon ?: null, $adres ?: null, $aktif]);
             flash('success', 'Tedarikçi eklendi.');
         }
         redirect('tedarikciler.php');
@@ -101,15 +105,22 @@ require_once __DIR__ . '/includes/header.php';
                 <input type="hidden" name="id" value="<?= (int)$duzenle['id'] ?>">
             <?php endif; ?>
             <div class="row g-3">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label">Ad <span class="text-danger">*</span></label>
                     <input name="ad" class="form-control" required value="<?= h($duzenle['ad'] ?? '') ?>">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">VKN</label>
+                    <input name="vkn" class="form-control" pattern="\d{10,11}" maxlength="11"
+                           placeholder="10-11 hane"
+                           title="QR kod eşleştirmesi için tedarikçinin Vergi Kimlik No (10-11 hane)"
+                           value="<?= h($duzenle['vkn'] ?? '') ?>">
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">Telefon</label>
                     <input name="telefon" class="form-control" value="<?= h($duzenle['telefon'] ?? '') ?>">
                 </div>
-                <div class="col-md-5">
+                <div class="col-md-4">
                     <label class="form-label">Adres</label>
                     <input name="adres" class="form-control" value="<?= h($duzenle['adres'] ?? '') ?>">
                 </div>
@@ -137,6 +148,7 @@ require_once __DIR__ . '/includes/header.php';
                 <thead class="table-light">
                     <tr>
                         <th>Ad</th>
+                        <th>VKN</th>
                         <th>Telefon</th>
                         <th>Adres</th>
                         <th class="text-center">İrsaliye</th>
@@ -149,6 +161,7 @@ require_once __DIR__ . '/includes/header.php';
                     <?php foreach ($liste as $r): ?>
                     <tr class="<?= $r['aktif'] ? '' : 'text-muted bg-light' ?>">
                         <td class="fw-semibold"><?= h($r['ad']) ?></td>
+                        <td class="font-monospace small"><?= h(($r['vkn'] ?? '') ?: '-') ?></td>
                         <td><?= h($r['telefon'] ?: '-') ?></td>
                         <td class="small"><?= h($r['adres'] ?: '-') ?></td>
                         <td class="text-center"><?= (int)$r['irsaliye_adet'] ?></td>
@@ -172,7 +185,7 @@ require_once __DIR__ . '/includes/header.php';
                     </tr>
                     <?php endforeach; ?>
                     <?php if (!$liste): ?>
-                        <tr><td colspan="7" class="text-center text-muted py-5">Henüz tedarikçi yok.</td></tr>
+                        <tr><td colspan="8" class="text-center text-muted py-5">Henüz tedarikçi yok.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>

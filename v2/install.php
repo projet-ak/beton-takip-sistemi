@@ -103,6 +103,7 @@ if ($step === 2 && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->exec("CREATE TABLE IF NOT EXISTS tedarikciler (
             id INT AUTO_INCREMENT PRIMARY KEY,
             ad VARCHAR(150) NOT NULL,
+            vkn VARCHAR(15) NULL,
             telefon VARCHAR(30) NULL,
             adres TEXT NULL,
             aktif TINYINT(1) NOT NULL DEFAULT 1,

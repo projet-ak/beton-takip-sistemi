@@ -36,6 +36,11 @@ $migrasyonlar = [
         'sql'     => "ALTER TABLE irsaliyeler ADD COLUMN proje_id INT NULL AFTER proje_no",
         'aciklama'=> 'irsaliyeler tablosuna proje_id sütunu eklendi',
     ],
+    'tedarikciler_vkn' => [
+        'kontrol' => "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tedarikciler' AND COLUMN_NAME='vkn'",
+        'sql'     => "ALTER TABLE tedarikciler ADD COLUMN vkn VARCHAR(15) NULL AFTER ad",
+        'aciklama'=> 'tedarikciler tablosuna vkn (vergi no) sütunu eklendi — QR kod eşleştirmesi için',
+    ],
 ];
 
 $sonuclar = [];
