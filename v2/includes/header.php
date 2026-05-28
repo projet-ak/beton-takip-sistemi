@@ -29,10 +29,11 @@ $__rootPath = $rootPath ?? '';
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-<!-- Tema rengi CSS değişkenleri -->
+<!-- Tema rengi + dark mode CSS değişkenleri -->
 <style id="themeStyle"></style>
 <script>
 (function(){
+  // --- Tema rengi ---
   var t = localStorage.getItem('beton_tema') || 'mavi';
   var renkler = {
     mavi:    {pri:'#0d6efd', dark:'#0a58ca'},
@@ -53,6 +54,10 @@ $__rootPath = $rootPath ?? '';
     '.border-primary{border-color:'+r.pri+'!important}'+
     '.nav-link.active{color:'+r.pri+'!important}';
   function hexToRgb(h){var r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16);return r+','+g+','+b;}
+  // --- Dark mode (render öncesi uygula, flash yok) ---
+  if (localStorage.getItem('beton_dark') === '1') {
+    document.documentElement.setAttribute('data-dark', '1');
+  }
 })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
@@ -226,9 +231,16 @@ $__rootPath = $rootPath ?? '';
 
             </ul>
 
-            <!-- Sağ: kullanıcı bilgisi + çıkış -->
+            <!-- Sağ: dark mode butonu + kullanıcı bilgisi + çıkış -->
             <?php if ($__user): ?>
-            <ul class="navbar-nav ms-auto">
+            <ul class="navbar-nav ms-auto align-items-center">
+                <li class="nav-item">
+                    <button class="btn btn-link nav-link px-2 py-1" id="darkBtn"
+                            onclick="toggleDark()" title="Karanlık / Aydınlık Mod"
+                            style="color:rgba(255,255,255,.82);font-size:1.1rem;">
+                        <i id="darkIcon" class="bi bi-moon-stars-fill"></i>
+                    </button>
+                </li>
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle d-flex align-items-center gap-2"
                        href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -298,6 +310,21 @@ function temaDegistir(tema) {
     localStorage.setItem('beton_tema', tema);
     location.reload();
 }
+function toggleDark() {
+    var isDark = document.documentElement.getAttribute('data-dark') === '1';
+    var next = isDark ? '0' : '1';
+    document.documentElement.setAttribute('data-dark', next);
+    localStorage.setItem('beton_dark', next);
+    var icon = document.getElementById('darkIcon');
+    if (icon) icon.className = next === '1' ? 'bi bi-sun-fill' : 'bi bi-moon-stars-fill';
+}
+// İkon durumunu sayfa yüklenmesinde güncelle
+document.addEventListener('DOMContentLoaded', function() {
+    var icon = document.getElementById('darkIcon');
+    if (icon && document.documentElement.getAttribute('data-dark') === '1') {
+        icon.className = 'bi bi-sun-fill';
+    }
+});
 </script>
 </nav>
 
