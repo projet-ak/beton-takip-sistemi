@@ -89,37 +89,84 @@ $flashInfo = get_flash('login_info');
 <title>Giriş — Beton Takip Sistemi</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <style>
+:root { --pri: #0d6efd; --pri-dark: #0a4db0; --pri-deep: #072d77; }
+* { font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif; }
 body {
-    background: linear-gradient(135deg, #0d6efd 0%, #0a4db0 60%, #072d77 100%);
+    background: linear-gradient(135deg, var(--pri) 0%, var(--pri-dark) 55%, var(--pri-deep) 100%);
     min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
+    position: relative;
 }
+/* Dekoratif arka plan blob'ları */
+body::before, body::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(60px);
+    opacity: .35;
+}
+body::before { width: 460px; height: 460px; background: #4dabff; top: -140px; left: -120px; animation: float1 14s ease-in-out infinite; }
+body::after  { width: 380px; height: 380px; background: #1c4fd6; bottom: -120px; right: -100px; animation: float2 17s ease-in-out infinite; }
+@keyframes float1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(40px,30px)} }
+@keyframes float2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-30px,-40px)} }
+
 .login-card {
     width: 100%;
     max-width: 430px;
-    border: none;
-    border-radius: 18px;
-    box-shadow: 0 16px 48px rgba(0,0,0,.38);
+    border: 1px solid rgba(255,255,255,.5);
+    border-radius: 22px;
+    box-shadow: 0 24px 64px rgba(0,0,0,.32);
+    background: rgba(255,255,255,.97);
+    backdrop-filter: blur(12px);
+    position: relative;
+    z-index: 1;
+    animation: cardIn .5s cubic-bezier(.2,.8,.2,1) backwards;
 }
+@keyframes cardIn { from { opacity: 0; transform: translateY(18px) scale(.97); } to { opacity: 1; transform: none; } }
+
 .login-logo {
-    width: 68px;
-    height: 68px;
-    background: linear-gradient(135deg,#0d6efd,#0a4db0);
-    border-radius: 50%;
+    width: 72px;
+    height: 72px;
+    background: linear-gradient(135deg, var(--pri), var(--pri-deep));
+    border-radius: 20px;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto 1rem;
-    box-shadow: 0 4px 16px rgba(13,110,253,.4);
+    margin: 0 auto 1.1rem;
+    box-shadow: 0 8px 24px rgba(13,110,253,.45);
+    transform: rotate(-4deg);
 }
-.login-logo i { font-size: 2.2rem; color: #fff; }
-.input-group-text { background: #f8f9fa; border-right: 0; }
+.login-logo i { font-size: 2.3rem; color: #fff; transform: rotate(4deg); }
+
+.login-card h4 { font-weight: 750; letter-spacing: -.02em; }
+.form-label { font-weight: 600; font-size: .85rem; }
+.form-control { border-radius: 11px; padding: .6rem .8rem; }
+.input-group-text { background: #f6f8fb; border-right: 0; border-radius: 11px 0 0 11px; color: #6b7685; }
 .input-group .form-control { border-left: 0; }
-.input-group .form-control:focus { box-shadow: none; border-color: #ced4da; }
-.btn-login { height: 46px; font-size: 1rem; letter-spacing: .3px; }
+.input-group:focus-within .input-group-text { border-color: var(--pri); color: var(--pri); }
+.input-group:focus-within .form-control { border-color: var(--pri); }
+.form-control:focus { box-shadow: none; }
+.btn-login {
+    height: 48px;
+    font-size: 1rem;
+    font-weight: 650;
+    letter-spacing: .2px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--pri), var(--pri-dark));
+    border: none;
+    box-shadow: 0 6px 18px rgba(13,110,253,.4);
+    transition: .2s;
+}
+.btn-login:hover { transform: translateY(-1px); box-shadow: 0 10px 26px rgba(13,110,253,.5); }
+.btn-login:active { transform: translateY(0); }
+.alert { border-radius: 12px; }
 </style>
 </head>
 <body>
@@ -127,8 +174,8 @@ body {
     <div class="login-logo">
         <i class="bi bi-building-fill-check"></i>
     </div>
-    <h4 class="text-center fw-bold mb-1">Beton Takip Sistemi</h4>
-    <p class="text-center text-muted small mb-4">Lütfen hesabınızla giriş yapın</p>
+    <h4 class="text-center mb-1">Beton Takip Sistemi</h4>
+    <p class="text-center text-muted small mb-4">Devam etmek için hesabınızla giriş yapın</p>
 
     <?php if ($error): ?>
         <div class="alert alert-danger d-flex align-items-center gap-2 py-2" role="alert">
