@@ -647,8 +647,20 @@ async function pdfTara() {
         var resp = await fetch('api/pdf_qr_scan.php', { method: 'POST', body: formData });
         if (!resp.ok) throw new Error('Sunucu hatası: HTTP ' + resp.status);
 
-        var data = await resp.json();
-        if (!data.ok) throw new Error(data.msg || 'QR tarama başarısız');
+        // Yanıt önce text olarak al — JSON değilse ham içeriği göster
+        var rawText = await resp.text();
+        var data;
+        try {
+            data = JSON.parse(rawText);
+        } catch(e) {
+            throw new Error('API yanıtı geçersiz (PHP hatası olabilir):\n' + rawText.substring(0, 300));
+        }
+        if (!data.ok) {
+            var errMsg = data.msg || 'QR tarama başarısız';
+            if (data.code === 'exec_disabled') errMsg = 'Sunucuda exec() kapalı — sistem yöneticisiyle iletişime geçin veya "OCR ile Oku" sekmesini kullanın.';
+            if (data.code === 'tool_missing')  errMsg = 'Sunucuda eksik araç: ' + (data.missing || []).join(', ') + '. Hosting sağlayıcısına poppler-utils + zbar-tools kurulmasını isteyin.';
+            throw new Error(errMsg);
+        }
 
         var toplamSayfa = data.pages;
 
