@@ -769,71 +769,73 @@ async function pdfTara() {
     }
 }
 
-// Taramalı PDF için gri-tonlama + kontrast artırma
-// jsQR gürültülü/soluk QR kodlarını bu sayede daha iyi okur
+// jsQR için gri-tonlama + kontrast artırma (taramalı PDF QR'ları için)
 function goruntIsle(imgData) {
-    var src = imgData.data;
-    var dst = new Uint8ClampedArray(src.length);
+    var src = imgData.data, dst = new Uint8ClampedArray(src.length);
     for (var i = 0; i < src.length; i += 4) {
         var gray = 0.299 * src[i] + 0.587 * src[i+1] + 0.114 * src[i+2];
-        // Kontrast artır (factor=2) ve gri merkezle
         var v = Math.max(0, Math.min(255, 2.2 * (gray - 128) + 128));
-        dst[i] = dst[i+1] = dst[i+2] = v;
-        dst[i+3] = 255;
+        dst[i] = dst[i+1] = dst[i+2] = v; dst[i+3] = 255;
     }
     return new ImageData(dst, imgData.width, imgData.height);
 }
 
 // Bir PDF sayfasında TÜM QR kodlarını bulur (JSON + E1)
-// Ham görüntü + kontrast artırılmış görüntü ikisiyle de dener
+// Önce native BarcodeDetector (Chrome/Edge — çok güçlü), yoksa jsQR + kontrast
 async function sayfadakiTumQrlar(page, canvas, ctx) {
     var bulunanlar = new Set();
-    // 4.0 → 200 DPI eşdeğeri A4 için; 5.5 → daha küçük QR için; 2.5 → hızlı ilk geçiş
-    var scales = [2.5, 4.0, 5.5];
 
-    function tryAdd(code) {
-        if (code && code.data && code.data.trim()) bulunanlar.add(code.data.trim());
+    function tryAdd(val) {
+        if (val && val.trim()) bulunanlar.add(val.trim());
     }
-    function deneBolge(imgData) {
-        tryAdd(jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'attemptBoth' }));
-        // Kontrast artırılmış versiyonu da dene
+    function deneBolgeJsqr(imgData) {
+        var r1 = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'attemptBoth' });
+        if (r1) tryAdd(r1.data);
         var kg = goruntIsle(imgData);
-        tryAdd(jsQR(kg.data, kg.width, kg.height, { inversionAttempts: 'attemptBoth' }));
+        var r2 = jsQR(kg.data, kg.width, kg.height, { inversionAttempts: 'attemptBoth' });
+        if (r2) tryAdd(r2.data);
     }
 
+    // Native BarcodeDetector (Chrome 83+, Edge 83+) — tüm QR'ları tek seferde bulur
+    var useBarcodeDetector = ('BarcodeDetector' in window);
+    if (useBarcodeDetector && !window._bdQr) {
+        try { window._bdQr = new BarcodeDetector({ formats: ['qr_code'] }); }
+        catch(e) { useBarcodeDetector = false; }
+    }
+
+    var scales = [2.5, 4.0, 5.5];
     for (var si = 0; si < scales.length; si++) {
-        var scale    = scales[si];
-        var viewport = page.getViewport({ scale: scale });
+        var viewport = page.getViewport({ scale: scales[si] });
         canvas.width  = viewport.width;
         canvas.height = viewport.height;
         await page.render({ canvasContext: ctx, viewport: viewport }).promise;
 
-        // 1) Tam sayfa
+        if (useBarcodeDetector) {
+            try {
+                var barcodes = await window._bdQr.detect(canvas);
+                for (var bc of barcodes) { if (bc.rawValue) tryAdd(bc.rawValue); }
+                if (bulunanlar.size >= 2) break;     // JSON + E1 ikisi de bulundu
+                // Bulduysa jsQR'a gerek yok, bulamadıysa jsQR denesin
+                if (bulunanlar.size > 0) continue;   // kısmen buldu, büyük ölçekle dene
+            } catch(e) { useBarcodeDetector = false; }
+        }
+
+        // jsQR fallback: tam sayfa + 4 çeyrek + 4 köşe
         var tamSayfa = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        deneBolge(tamSayfa);
+        deneBolgeJsqr(tamSayfa);
         if (bulunanlar.size >= 2) break;
 
-        // 2) Dört çeyrek
-        var hw = Math.floor(canvas.width  / 2);
-        var hh = Math.floor(canvas.height / 2);
-        var ceyrekler = [[0,0,hw,hh],[hw,0,hw,hh],[0,hh,hw,hh],[hw,hh,hw,hh]];
-        for (var b = 0; b < ceyrekler.length; b++) {
-            deneBolge(ctx.getImageData(ceyrekler[b][0], ceyrekler[b][1], ceyrekler[b][2], ceyrekler[b][3]));
-        }
+        var hw = Math.floor(canvas.width / 2), hh = Math.floor(canvas.height / 2);
+        [[0,0,hw,hh],[hw,0,hw,hh],[0,hh,hw,hh],[hw,hh,hw,hh]].forEach(function(b){
+            deneBolgeJsqr(ctx.getImageData(b[0],b[1],b[2],b[3]));
+        });
         if (bulunanlar.size >= 2) break;
 
-        // 3) Köşe bantlar (1/3 boyutunda — QR genelde köşelere yerleştirilir)
-        var cw = Math.floor(canvas.width  / 3);
-        var ch = Math.floor(canvas.height / 3);
-        var kose = [
-            [canvas.width-cw, 0,              cw, ch],
-            [canvas.width-cw, canvas.height-ch, cw, ch],
-            [0,              canvas.height-ch, cw, ch],
-            [0,              0,                cw, ch]
-        ];
-        for (var k = 0; k < kose.length; k++) {
-            deneBolge(ctx.getImageData(kose[k][0], kose[k][1], kose[k][2], kose[k][3]));
-        }
+        var cw = Math.floor(canvas.width / 3), ch = Math.floor(canvas.height / 3);
+        [[canvas.width-cw,0,cw,ch],[canvas.width-cw,canvas.height-ch,cw,ch],
+         [0,canvas.height-ch,cw,ch],[0,0,cw,ch]].forEach(function(k){
+            deneBolgeJsqr(ctx.getImageData(k[0],k[1],k[2],k[3]));
+        });
         if (bulunanlar.size >= 2) break;
     }
     return Array.from(bulunanlar);
@@ -1142,15 +1144,16 @@ function parseIrsaliyeMetin(text) {
     var temizLines = text.split(/\r?\n/).map(function(s){ return s.trim(); })
         .filter(function(s){ return s.length > 0 && !/[Dd]ayan[ıi]m\s*[Gg]eli[şs]imi/i.test(s); });
 
-    // "m" birim eşleştirme kuralı: m sonrası büyük Türkçe harf gelirse şirket adı — eşleştirme
+    // "m" birim eşleştirme — OCR gürültüsüne karşı esnek
     function miktarBul(s) {
-        // m sonrasında: ³, 3, ?, *, :, boşluk+küçük/rakam, satır sonu → geçerli birim
-        // m sonrasında büyük harf → şirket adı → GEÇERSİZ
-        var m = s.match(/(\d+[,.]\d{1,2})\s*(?:m³|m3|m\?|m\*|m:|m\s+\d|m\s*$)/i);
-        if (m) return m[1];
-        // Daha gevşek: m sonrası büyük Türkçe harf değilse
+        // Açık birim: m³, m3, m2 (OCR ³→2), veya m sonrası büyük harf yok
+        var m = s.match(/(\d+[,.]\d{1,2})\s*(?:m[³3²2\?]|m\s*$|m\s+(?:\d|[a-z]))/i);
+        if (m && !m[0].match(/m[A-ZÇĞİÖŞÜ]/)) return m[1];
         var m2 = s.match(/(\d+[,.]\d{1,2})\s*m(?![A-ZÇĞİÖŞÜ])/);
         if (m2) return m2[1];
+        // Tam sayı m³ (örn. "9 m3" — virgülsüz)
+        var m3 = s.match(/\b(\d{1,3})\s*(?:m[³3²2]|m\s*$)/i);
+        if (m3 && !m3[0].match(/m[A-ZÇĞİÖŞÜ]/)) return m3[1] + ',00';
         return null;
     }
 
