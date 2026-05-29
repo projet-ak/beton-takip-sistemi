@@ -619,8 +619,52 @@ function pdfSecildi(input) {
     }
 }
 
+// QR verilerini parsed nesnesine yazar (E1 → JSON öncelik sırası)
+function qrVerileriniUygula(parsed, qrJson, qrE1) {
+    // E1 QR: miktar, beton sınıfı, plaka, tedarikçi (OCR'ın zayıf olduğu alanlar)
+    if (qrE1) {
+        if (qrE1.irsaliye_no) parsed.irsaliye_no = qrE1.irsaliye_no;
+        if (qrE1.tarih)       parsed.tarih        = qrE1.tarih;
+        if (qrE1.sevkZamani)  parsed.sevkZamani   = qrE1.sevkZamani;
+        if (qrE1.plaka)       parsed.plaka         = qrE1.plaka;
+        if (qrE1.miktar)      parsed.miktar        = qrE1.miktar;
+        if (qrE1.beton_sinifi) {
+            var bn = qrE1.beton_sinifi.toUpperCase();
+            for (var be = 0; be < BETON_SINIFLARI.length; be++) {
+                var bc = BETON_SINIFLARI[be].ad.replace(/\s+/g,'').toUpperCase();
+                if (bc === bn || bc.startsWith(bn+'/') || bc.startsWith(bn+'-')) {
+                    parsed.beton_sinifi_id = String(BETON_SINIFLARI[be].id); break;
+                }
+            }
+        }
+        if (qrE1.vkn) {
+            for (var te = 0; te < TEDARIKCILER.length; te++) {
+                if (TEDARIKCILER[te].vkn && String(TEDARIKCILER[te].vkn) === qrE1.vkn) {
+                    parsed.tedarikci_id = String(TEDARIKCILER[te].id); break;
+                }
+            }
+        }
+    }
+    // JSON QR: irsaliye_no, tarih, plaka, saat, ETTN, tedarikçi (öncelikli — üstüne yazar)
+    if (qrJson) {
+        if (qrJson.no)         parsed.irsaliye_no = String(qrJson.no).trim();
+        if (qrJson.tarih)      parsed.tarih        = String(qrJson.tarih).trim();
+        if (qrJson.plaka)      parsed.plaka         = String(qrJson.plaka).replace(/\s+/g,'').toUpperCase();
+        if (qrJson.sevkzamani) parsed.sevkZamani   = String(qrJson.sevkzamani).substring(0, 5);
+        if (qrJson.ettn)       parsed.ettn          = String(qrJson.ettn).trim();
+        if (qrJson.vkntckn && !parsed.tedarikci_id) {
+            for (var ti = 0; ti < TEDARIKCILER.length; ti++) {
+                if (TEDARIKCILER[ti].vkn && String(TEDARIKCILER[ti].vkn) === String(qrJson.vkntckn)) {
+                    parsed.tedarikci_id = String(TEDARIKCILER[ti].id); break;
+                }
+            }
+        }
+    }
+}
+
 async function pdfTara() {
     if (!pdfDosyaObj) return;
+    if (typeof pdfjsLib === 'undefined') { alert('PDF.js yüklenemedi. Sayfayı yenileyin.'); return; }
 
     var btn = document.getElementById('btnPdfTara');
     btn.disabled = true;
@@ -632,132 +676,66 @@ async function pdfTara() {
     var progressText = document.getElementById('pdfProgressText');
     var progressPct  = document.getElementById('pdfProgressPct');
     progressEl.classList.remove('d-none');
-    progressBar.style.width = '5%';
-    progressText.textContent = 'PDF sunucuya yükleniyor (ZBar taraması)...';
+    progressBar.style.width = '2%';
+    progressText.textContent = 'PDF açılıyor...';
     progressPct.textContent  = '';
 
-    var bulunan = 0, atlanan = 0;
-    var errors  = [];
+    var canvas = document.getElementById('pdfCanvas');
+    var ctx    = canvas.getContext('2d');
+    var bulunan = 0, atlanan = 0, errors = [];
 
     try {
-        // ── 1) PDF'i PHP API'ye gönder, ZBar ile tara ─────────────────
-        var formData = new FormData();
-        formData.append('pdf', pdfDosyaObj);
+        var arrayBuf    = await pdfDosyaObj.arrayBuffer();
+        var pdf         = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
+        var toplamSayfa = pdf.numPages;
 
-        var resp = await fetch('api/pdf_qr_scan.php', { method: 'POST', body: formData });
-        if (!resp.ok) throw new Error('Sunucu hatası: HTTP ' + resp.status);
-
-        // Yanıt önce text olarak al — JSON değilse ham içeriği göster
-        var rawText = await resp.text();
-        var data;
-        try {
-            data = JSON.parse(rawText);
-        } catch(e) {
-            throw new Error('API yanıtı geçersiz (PHP hatası olabilir):\n' + rawText.substring(0, 300));
-        }
-        if (!data.ok) {
-            var errMsg = data.msg || 'QR tarama başarısız';
-            if (data.code === 'exec_disabled') errMsg = 'Sunucuda exec() kapalı — sistem yöneticisiyle iletişime geçin veya "OCR ile Oku" sekmesini kullanın.';
-            if (data.code === 'tool_missing')  errMsg = 'Sunucuda eksik araç: ' + (data.missing || []).join(', ') + '. Hosting sağlayıcısına poppler-utils + zbar-tools kurulmasını isteyin.';
-            throw new Error(errMsg);
-        }
-
-        var toplamSayfa = data.pages;
-
-        // ── 2) Her sayfa: QR parse → tablo satırı ─────────────────────
-        for (var i = 0; i < data.results.length; i++) {
-            var pageNo   = data.results[i].page;
-            var qrListesi = data.results[i].qrs;
-
-            var pct = Math.round(15 + (i / toplamSayfa) * 80);
-            progressBar.style.width = pct + '%';
+        for (var i = 1; i <= toplamSayfa; i++) {
+            var pct = Math.round(((i - 1) / toplamSayfa) * 95);
+            progressBar.style.width = Math.max(pct, 4) + '%';
             progressPct.textContent = pct + '%';
-            progressText.textContent = toplamSayfa + ' sayfadan ' + pageNo + '. sayfa işleniyor...';
+            progressText.textContent = toplamSayfa + ' sayfadan ' + i + '. sayfa taranıyor...';
 
             try {
+                var page     = await pdf.getPage(i);
+                var qrListesi = await sayfadakiTumQrlar(page, canvas, ctx);
+
                 if (qrListesi.length === 0) {
-                    errors.push('Sayfa ' + pageNo + ': QR kodu okunamadı');
+                    errors.push('Sayfa ' + i + ': QR kodu okunamadı');
                     continue;
                 }
 
                 var qrSonuc = qrListesindenVeriAl(qrListesi);
-                var qrJson  = qrSonuc.json;
-                var qrE1    = qrSonuc.e1;
+                var parsed  = { irsaliye_no:'', tarih:'', plaka:'', miktar:'',
+                                sevkZamani:'', ettn:'', beton_sinifi_id:'', tedarikci_id:'' };
+                qrVerileriniUygula(parsed, qrSonuc.json, qrSonuc.e1);
 
-                var parsed = {
-                    irsaliye_no: '', tarih: '', plaka: '', miktar: '',
-                    sevkZamani: '', ettn: '', beton_sinifi_id: '', tedarikci_id: ''
-                };
-
-                // E1 QR → miktar, beton sınıfı, plaka, tedarikçi VKN
-                if (qrE1) {
-                    if (qrE1.irsaliye_no) parsed.irsaliye_no = qrE1.irsaliye_no;
-                    if (qrE1.tarih)       parsed.tarih       = qrE1.tarih;
-                    if (qrE1.sevkZamani)  parsed.sevkZamani  = qrE1.sevkZamani;
-                    if (qrE1.plaka)       parsed.plaka       = qrE1.plaka;
-                    if (qrE1.miktar)      parsed.miktar      = qrE1.miktar;
-                    if (qrE1.beton_sinifi) {
-                        var bnE1 = qrE1.beton_sinifi.toUpperCase();
-                        for (var be = 0; be < BETON_SINIFLARI.length; be++) {
-                            var bcE1 = BETON_SINIFLARI[be].ad.replace(/\s+/g,'').toUpperCase();
-                            if (bcE1 === bnE1 || bcE1.startsWith(bnE1+'/') || bcE1.startsWith(bnE1+'-')) {
-                                parsed.beton_sinifi_id = String(BETON_SINIFLARI[be].id); break;
-                            }
-                        }
-                    }
-                    if (qrE1.vkn) {
-                        for (var te = 0; te < TEDARIKCILER.length; te++) {
-                            if (TEDARIKCILER[te].vkn && String(TEDARIKCILER[te].vkn) === qrE1.vkn) {
-                                parsed.tedarikci_id = String(TEDARIKCILER[te].id); break;
-                            }
-                        }
-                    }
+                if (!parsed.irsaliye_no && !qrSonuc.e1) {
+                    errors.push('Sayfa ' + i + ': QR içeriği tanımlanamadı');
+                    continue;
                 }
 
-                // JSON QR → irsaliye_no, tarih, plaka, saat, ETTN, tedarikçi (öncelikli)
-                if (qrJson) {
-                    if (qrJson.no)         parsed.irsaliye_no = String(qrJson.no).trim();
-                    if (qrJson.tarih)      parsed.tarih       = String(qrJson.tarih).trim();
-                    if (qrJson.plaka)      parsed.plaka       = String(qrJson.plaka).replace(/\s+/g,'').toUpperCase();
-                    if (qrJson.sevkzamani) parsed.sevkZamani  = String(qrJson.sevkzamani).substring(0, 5);
-                    if (qrJson.ettn)       parsed.ettn        = String(qrJson.ettn).trim();
-                    if (qrJson.vkntckn && !parsed.tedarikci_id) {
-                        for (var ti = 0; ti < TEDARIKCILER.length; ti++) {
-                            if (TEDARIKCILER[ti].vkn && String(TEDARIKCILER[ti].vkn) === String(qrJson.vkntckn)) {
-                                parsed.tedarikci_id = String(TEDARIKCILER[ti].id); break;
-                            }
-                        }
-                    }
-                }
-
-                // Mükerrer irsaliye kontrolü
                 if (parsed.irsaliye_no && taranmisList.some(function(r){ return r.irsaliye_no === parsed.irsaliye_no; })) {
                     atlanan++;
-                    errors.push('Sayfa ' + pageNo + ': ' + parsed.irsaliye_no + ' zaten listede (atlandı)');
+                    errors.push('Sayfa ' + i + ': ' + parsed.irsaliye_no + ' zaten listede (atlandı)');
                     continue;
                 }
 
                 beepSes();
                 rowSayac++;
                 var item = {
-                    rowId:              rowSayac,
-                    irsaliye_no:        parsed.irsaliye_no,
-                    tarih:              parsed.tarih,
-                    arac_plaka:         parsed.plaka,
-                    mikser_cikis_saati: parsed.sevkZamani,
-                    fatura_no:          parsed.ettn,
-                    miktar:             parsed.miktar,
-                    tedarikci_id:       parsed.tedarikci_id,
-                    beton_sinifi_id:    parsed.beton_sinifi_id,
-                    proje_id:           ''
+                    rowId: rowSayac, irsaliye_no: parsed.irsaliye_no,
+                    tarih: parsed.tarih, arac_plaka: parsed.plaka,
+                    mikser_cikis_saati: parsed.sevkZamani, fatura_no: parsed.ettn,
+                    miktar: parsed.miktar, tedarikci_id: parsed.tedarikci_id,
+                    beton_sinifi_id: parsed.beton_sinifi_id, proje_id: ''
                 };
                 taranmisList.push(item);
-                tabloSatirEkleOcr(item);   // dropdown'lar ve miktar önceden dolu
+                tabloSatirEkleOcr(item);
                 sayacGuncelle();
                 bulunan++;
 
             } catch(pageErr) {
-                errors.push('Sayfa ' + pageNo + ' işlenemedi: ' + pageErr.message);
+                errors.push('Sayfa ' + i + ' işlenemedi: ' + pageErr.message);
             }
         }
 
@@ -768,20 +746,15 @@ async function pdfTara() {
         var alertType = bulunan > 0 ? 'success' : 'warning';
         var html = '<div class="alert alert-' + alertType + ' mb-0">';
         html += '<i class="bi bi-' + (bulunan > 0 ? 'check-circle' : 'exclamation-circle') + ' me-1"></i>';
-        html += '<strong>' + toplamSayfa + ' sayfa tarandı (ZBar).</strong> ';
-        html += bulunan + ' irsaliye eklendi';
+        html += '<strong>' + toplamSayfa + ' sayfa tarandı.</strong> ' + bulunan + ' irsaliye eklendi';
         if (atlanan) html += ', ' + atlanan + ' zaten listede atlandı';
         html += '.';
-        if (errors.length) {
-            html += '<ul class="mb-0 mt-2 small">' + errors.map(function(e){ return '<li>' + escHtml(e) + '</li>'; }).join('') + '</ul>';
-        }
+        if (errors.length) html += '<ul class="mb-0 mt-2 small">' + errors.map(function(e){ return '<li>' + escHtml(e) + '</li>'; }).join('') + '</ul>';
         html += '</div>';
         sonucEl.innerHTML = html;
         sonucEl.classList.remove('d-none');
+        if (bulunan > 0) document.getElementById('kayitlarCard').scrollIntoView({ behavior: 'smooth' });
 
-        if (bulunan > 0) {
-            document.getElementById('kayitlarCard').scrollIntoView({ behavior: 'smooth' });
-        }
     } catch(err) {
         document.getElementById('pdfSonuc').innerHTML =
             '<div class="alert alert-danger mb-0"><i class="bi bi-exclamation-triangle me-1"></i>Hata: ' + escHtml(err.message) + '</div>';
@@ -796,11 +769,38 @@ async function pdfTara() {
     }
 }
 
-// Bir PDF sayfasında TÜM QR kodlarını bulur (JSON + E1 formatlı pipe-separated)
-// Geriye dönük uyumluluk için ilk bulunan QR'ı string, tümü için bulunan QR'lar dizisi döner.
+// Taramalı PDF için gri-tonlama + kontrast artırma
+// jsQR gürültülü/soluk QR kodlarını bu sayede daha iyi okur
+function goruntIsle(imgData) {
+    var src = imgData.data;
+    var dst = new Uint8ClampedArray(src.length);
+    for (var i = 0; i < src.length; i += 4) {
+        var gray = 0.299 * src[i] + 0.587 * src[i+1] + 0.114 * src[i+2];
+        // Kontrast artır (factor=2) ve gri merkezle
+        var v = Math.max(0, Math.min(255, 2.2 * (gray - 128) + 128));
+        dst[i] = dst[i+1] = dst[i+2] = v;
+        dst[i+3] = 255;
+    }
+    return new ImageData(dst, imgData.width, imgData.height);
+}
+
+// Bir PDF sayfasında TÜM QR kodlarını bulur (JSON + E1)
+// Ham görüntü + kontrast artırılmış görüntü ikisiyle de dener
 async function sayfadakiTumQrlar(page, canvas, ctx) {
     var bulunanlar = new Set();
-    var scales = [3.0, 4.0, 5.0];
+    // 4.0 → 200 DPI eşdeğeri A4 için; 5.5 → daha küçük QR için; 2.5 → hızlı ilk geçiş
+    var scales = [2.5, 4.0, 5.5];
+
+    function tryAdd(code) {
+        if (code && code.data && code.data.trim()) bulunanlar.add(code.data.trim());
+    }
+    function deneBolge(imgData) {
+        tryAdd(jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'attemptBoth' }));
+        // Kontrast artırılmış versiyonu da dene
+        var kg = goruntIsle(imgData);
+        tryAdd(jsQR(kg.data, kg.width, kg.height, { inversionAttempts: 'attemptBoth' }));
+    }
+
     for (var si = 0; si < scales.length; si++) {
         var scale    = scales[si];
         var viewport = page.getViewport({ scale: scale });
@@ -808,37 +808,32 @@ async function sayfadakiTumQrlar(page, canvas, ctx) {
         canvas.height = viewport.height;
         await page.render({ canvasContext: ctx, viewport: viewport }).promise;
 
-        var tryAdd = function(code) {
-            if (code && code.data && code.data.trim()) bulunanlar.add(code.data.trim());
-        };
-
         // 1) Tam sayfa
-        var imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        tryAdd(jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'attemptBoth' }));
+        var tamSayfa = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        deneBolge(tamSayfa);
+        if (bulunanlar.size >= 2) break;
 
-        // 2) Dört bölge
+        // 2) Dört çeyrek
         var hw = Math.floor(canvas.width  / 2);
         var hh = Math.floor(canvas.height / 2);
-        var bolge = [[0,0,hw,hh],[hw,0,hw,hh],[0,hh,hw,hh],[hw,hh,hw,hh]];
-        for (var b = 0; b < bolge.length; b++) {
-            var qd = ctx.getImageData(bolge[b][0], bolge[b][1], bolge[b][2], bolge[b][3]);
-            tryAdd(jsQR(qd.data, qd.width, qd.height, { inversionAttempts: 'attemptBoth' }));
+        var ceyrekler = [[0,0,hw,hh],[hw,0,hw,hh],[0,hh,hw,hh],[hw,hh,hw,hh]];
+        for (var b = 0; b < ceyrekler.length; b++) {
+            deneBolge(ctx.getImageData(ceyrekler[b][0], ceyrekler[b][1], ceyrekler[b][2], ceyrekler[b][3]));
         }
+        if (bulunanlar.size >= 2) break;
 
-        // 3) Köşe bölgeler (daha küçük crop — QR genelde sağ tarafta)
+        // 3) Köşe bantlar (1/3 boyutunda — QR genelde köşelere yerleştirilir)
         var cw = Math.floor(canvas.width  / 3);
         var ch = Math.floor(canvas.height / 3);
         var kose = [
-            [canvas.width-cw, 0, cw, ch],
+            [canvas.width-cw, 0,              cw, ch],
             [canvas.width-cw, canvas.height-ch, cw, ch],
-            [0, canvas.height-ch, cw, ch],
-            [0, 0, cw, ch]
+            [0,              canvas.height-ch, cw, ch],
+            [0,              0,                cw, ch]
         ];
         for (var k = 0; k < kose.length; k++) {
-            var kd = ctx.getImageData(kose[k][0], kose[k][1], kose[k][2], kose[k][3]);
-            tryAdd(jsQR(kd.data, kd.width, kd.height, { inversionAttempts: 'attemptBoth' }));
+            deneBolge(ctx.getImageData(kose[k][0], kose[k][1], kose[k][2], kose[k][3]));
         }
-        // En az 2 farklı QR bulduysak (JSON + E1) erken çık
         if (bulunanlar.size >= 2) break;
     }
     return Array.from(bulunanlar);
