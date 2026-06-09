@@ -16,14 +16,17 @@ if (!file_exists($htFile)) {
 }
 
 function createBackup(PDO $pdo, string $dir, string $prefix = ''): string {
-    $filename = ($prefix ?: 'manual') . '_' . date('Y-m-d_H-i-s') . '.sql';
+    $filename = ($prefix ?: 'manual') . '_' . date('Y-m-d_H-i-s') . '.sql.gz';
     $filepath = $dir . '/' . $filename;
-    $tables   = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
-    $sql      = "-- Beton Takip Yedek\n-- " . date('Y-m-d H:i:s') . "\n\nSET FOREIGN_KEY_CHECKS=0;\n\n";
+
+    $tables = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
+    $sql    = "-- Beton Takip Yedek\n-- " . date('Y-m-d H:i:s') . "\n-- Tablo sayısı: " . count($tables) . "\n\nSET FOREIGN_KEY_CHECKS=0;\n\n";
+
     foreach ($tables as $table) {
         $create = $pdo->query("SHOW CREATE TABLE `$table`")->fetch(PDO::FETCH_NUM);
         $sql   .= "DROP TABLE IF EXISTS `$table`;\n" . ($create[1] ?? '') . ";\n\n";
-        $rows   = $pdo->query("SELECT * FROM `$table`")->fetchAll(PDO::FETCH_ASSOC);
+
+        $rows = $pdo->query("SELECT * FROM `$table`")->fetchAll(PDO::FETCH_ASSOC);
         if ($rows) {
             $cols  = '`' . implode('`,`', array_keys($rows[0])) . '`';
             $sql  .= "INSERT INTO `$table` ($cols) VALUES\n";
@@ -35,33 +38,60 @@ function createBackup(PDO $pdo, string $dir, string $prefix = ''): string {
         }
     }
     $sql .= "SET FOREIGN_KEY_CHECKS=1;\n";
-    file_put_contents($filepath, $sql);
+
+    // Gzip sıkıştırma — dosya boyutunu ~5-10x küçültür
+    $gz = gzopen($filepath, 'wb9');
+    gzwrite($gz, $sql);
+    gzclose($gz);
+
     return $filename;
 }
 
-// Günlük otomatik yedek
-$todayPattern = $backupDir . '/auto_' . date('Y-m-d') . '*.sql';
-if (!glob($todayPattern)) {
-    createBackup($pdo, $backupDir, 'auto');
-    foreach (glob($backupDir . '/auto_*.sql') ?: [] as $f) {
-        if (filemtime($f) < strtotime('-30 days')) { unlink($f); }
+// Günlük otomatik yedek — artık dashboard'dan da tetiklenir (yedek.php ziyareti gerekmez)
+function runAutoBackupIfNeeded(PDO $pdo, string $dir): void {
+    $today = date('Y-m-d');
+    if (!glob($dir . '/auto_' . $today . '*.sql.gz')) {
+        createBackup($pdo, $dir, 'auto');
+        // 30 günden eski otomatik yedekleri temizle
+        foreach (glob($dir . '/auto_*.sql.gz') ?: [] as $f) {
+            if (filemtime($f) < strtotime('-30 days')) { @unlink($f); }
+        }
+    }
+}
+
+runAutoBackupIfNeeded($pdo, $backupDir);
+
+// CSRF token üret/doğrula
+if (session_status() === PHP_SESSION_NONE) session_start();
+if (empty($_SESSION['csrf_backup'])) {
+    $_SESSION['csrf_backup'] = bin2hex(random_bytes(16));
+}
+$csrfToken = $_SESSION['csrf_backup'];
+
+function verifyCsrf(): void {
+    if (!hash_equals($_SESSION['csrf_backup'] ?? '', $_POST['csrf'] ?? '')) {
+        http_response_code(403);
+        die('Güvenlik hatası. Sayfayı yenileyip tekrar deneyin.');
     }
 }
 
 // Manuel yedek al
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['yedek_al'])) {
+    verifyCsrf();
     $fname = createBackup($pdo, $backupDir, 'manual');
     flash('success', "Yedek alındı: $fname");
     redirect('yedek.php');
 }
 
 // Yedek indir
-if (isset($_GET['indir']) && preg_match('/^[\w\-\.]+\.sql$/', $_GET['indir'])) {
+if (isset($_GET['indir']) && preg_match('/^[\w\-\.]+\.sql(\.gz)?$/', $_GET['indir'])) {
     $file = $backupDir . '/' . basename($_GET['indir']);
     if (file_exists($file) && is_file($file)) {
+        $isGzip = str_ends_with($file, '.gz');
         header('Content-Type: application/octet-stream');
         header('Content-Disposition: attachment; filename="' . basename($file) . '"');
         header('Content-Length: ' . filesize($file));
+        if ($isGzip) header('Content-Encoding: identity'); // tarayıcı açmasın
         readfile($file);
         exit;
     }
@@ -70,7 +100,7 @@ if (isset($_GET['indir']) && preg_match('/^[\w\-\.]+\.sql$/', $_GET['indir'])) {
 }
 
 // Yedek sil
-if (isset($_GET['sil']) && preg_match('/^[\w\-\.]+\.sql$/', $_GET['sil'])) {
+if (isset($_GET['sil']) && preg_match('/^[\w\-\.]+\.sql(\.gz)?$/', $_GET['sil'])) {
     $file = $backupDir . '/' . basename($_GET['sil']);
     if (file_exists($file)) { unlink($file); flash('success', 'Yedek silindi.'); }
     redirect('yedek.php');
@@ -78,13 +108,16 @@ if (isset($_GET['sil']) && preg_match('/^[\w\-\.]+\.sql$/', $_GET['sil'])) {
 
 // Geri yükle
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['sql_dosya'])) {
+    verifyCsrf();
     $f = $_FILES['sql_dosya'];
     if ($f['error'] !== UPLOAD_ERR_OK) { flash('error', 'Dosya yükleme hatası.'); redirect('yedek.php'); }
-    if (strtolower(pathinfo($f['name'], PATHINFO_EXTENSION)) !== 'sql') {
-        flash('error', 'Sadece .sql dosyası yüklenebilir.'); redirect('yedek.php');
+    $ext = strtolower(pathinfo($f['name'], PATHINFO_EXTENSION));
+    if (!in_array($ext, ['sql', 'gz'])) {
+        flash('error', 'Sadece .sql veya .sql.gz dosyası yüklenebilir.'); redirect('yedek.php');
     }
-    createBackup($pdo, $backupDir, 'pre_restore'); // Geri yüklemeden önce yedek al
-    $sqlContent = file_get_contents($f['tmp_name']);
+    createBackup($pdo, $backupDir, 'pre_restore');
+    // Gzip ise aç, değilse direkt oku
+    $sqlContent = ($ext === 'gz') ? gzdecode(file_get_contents($f['tmp_name'])) : file_get_contents($f['tmp_name']);
     try {
         $pdo->exec("SET FOREIGN_KEY_CHECKS=0");
         // Line-by-line parser: multi-line CREATE TABLE/INSERT düzgün ayrıştırılır
@@ -112,12 +145,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['sql_dosya'])) {
     }
 }
 
-// Yedek listesi
+// Yedek listesi (.sql ve .sql.gz)
 $yedekler = [];
-foreach (array_reverse(glob($backupDir . '/*.sql') ?: []) as $f) {
+$allFiles = array_merge(
+    glob($backupDir . '/*.sql.gz') ?: [],
+    glob($backupDir . '/*.sql')    ?: []
+);
+usort($allFiles, fn($a,$b) => filemtime($b) - filemtime($a));
+foreach ($allFiles as $f) {
     $name = basename($f);
     if ($name === '.htaccess') continue;
-    $yedekler[] = ['name' => $name, 'size' => filesize($f), 'mtime' => filemtime($f), 'is_auto' => str_starts_with($name, 'auto_')];
+    $sizeKb   = round(filesize($f) / 1024, 1);
+    $isGzip   = str_ends_with($name, '.gz');
+    $yedekler[] = [
+        'name'    => $name,
+        'size'    => filesize($f),
+        'size_kb' => $sizeKb,
+        'mtime'   => filemtime($f),
+        'is_auto' => str_starts_with($name, 'auto_'),
+        'is_gz'   => $isGzip,
+    ];
 }
 
 require_once __DIR__ . '/includes/header.php';
@@ -125,6 +172,7 @@ require_once __DIR__ . '/includes/header.php';
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h4 class="mb-0"><i class="bi bi-shield-check text-primary me-2"></i>Veritabanı Yedekleme</h4>
     <form method="post" class="d-inline">
+        <input type="hidden" name="csrf" value="<?= h($csrfToken) ?>">
         <button name="yedek_al" value="1" class="btn btn-primary">
             <i class="bi bi-cloud-download me-1"></i> Hemen Yedek Al
         </button>
@@ -153,9 +201,14 @@ require_once __DIR__ . '/includes/header.php';
         <tbody>
         <?php foreach ($yedekler as $y): ?>
         <tr>
-            <td class="font-monospace small"><?= h($y['name']) ?></td>
-            <td class="text-center"><span class="badge <?= $y['is_auto'] ? 'bg-info' : 'bg-primary' ?>"><?= $y['is_auto'] ? 'Otomatik' : 'Manuel' ?></span></td>
-            <td class="text-end text-nowrap"><?= round($y['size'] / 1024, 1) ?> KB</td>
+            <td class="font-monospace small">
+                <?= h($y['name']) ?>
+                <?php if ($y['is_gz']): ?><span class="badge bg-secondary ms-1" style="font-size:.6rem">gz</span><?php endif; ?>
+            </td>
+            <td class="text-center">
+                <span class="badge <?= $y['is_auto'] ? 'bg-info' : 'bg-primary' ?>"><?= $y['is_auto'] ? 'Otomatik' : 'Manuel' ?></span>
+            </td>
+            <td class="text-end text-nowrap"><?= $y['size_kb'] ?> KB</td>
             <td class="text-center text-nowrap small"><?= date('d.m.Y H:i', $y['mtime']) ?></td>
             <td class="text-end text-nowrap">
                 <a href="yedek.php?indir=<?= urlencode($y['name']) ?>" class="btn btn-xs btn-outline-success me-1" title="İndir"><i class="bi bi-download"></i></a>
@@ -174,9 +227,10 @@ require_once __DIR__ . '/includes/header.php';
                 <strong>Dikkat!</strong> Geri yükleme mevcut verilerin üzerine yazar. İşlem öncesi otomatik yedek alınır.
             </div>
             <form method="post" enctype="multipart/form-data">
+                <input type="hidden" name="csrf" value="<?= h($csrfToken) ?>">
                 <div class="mb-3">
                     <label class="form-label fw-semibold">SQL Dosyası Seç</label>
-                    <input type="file" name="sql_dosya" class="form-control" accept=".sql" required>
+                    <input type="file" name="sql_dosya" class="form-control" accept=".sql,.gz" required>
                     <div class="form-text">Sadece .sql yedek dosyaları</div>
                 </div>
                 <button class="btn btn-danger w-100 btn-confirm" data-msg="VERİTABANI GERİ YÜKLENECEKTİR! Tüm mevcut veriler silinip yedekteki veriler yüklenir. Emin misiniz?">

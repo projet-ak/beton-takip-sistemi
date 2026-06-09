@@ -1,11 +1,49 @@
-</div><!-- /container-fluid -->
+  </div><!-- /ern-content -->
 
-<footer class="border-top mt-4 py-3 text-center text-muted small bg-white">
-    <span><i class="bi bi-building-fill-check text-primary"></i> Beton Takip Sistemi</span>
-    &mdash; &copy; <?= date('Y') ?> Tüm hakları saklıdır.
-</footer>
+  <?php if (!defined('APP_VERSION')) define('APP_VERSION', '3.0'); ?>
+  <footer class="ern-footer">
+    <span>
+      <i class="bi bi-building-fill-check" style="color:var(--ern)"></i>
+      &nbsp;Beton Takip Sistemi &mdash; &copy; <?= date('Y') ?> ERN Holding
+    </span>
+    <span class="dev-credit">
+      <i class="bi bi-code-slash me-1"></i>Geliştirici: <strong>Tayyar Akbulut</strong>
+    </span>
+    <span style="opacity:.4;font-size:.7rem;">v<?= APP_VERSION ?></span>
+  </footer>
+
+</div><!-- /ern-main -->
+</div><!-- /ern-wrapper -->
+
+<!-- Alt Navigasyon (sadece mobil) -->
+<?php
+$__page = basename($_SERVER['PHP_SELF']);
+$__rp   = $rootPath ?? '';
+?>
+<nav class="bottom-nav d-lg-none" id="bottomNav">
+  <a href="<?= $__rp ?>index.php"         class="bottom-nav-item <?= $__page==='index.php'?'active':'' ?>">
+    <i class="bi bi-speedometer2"></i><span>Dashboard</span>
+  </a>
+  <a href="<?= $__rp ?>irsaliyeler.php"   class="bottom-nav-item <?= $__page==='irsaliyeler.php'?'active':'' ?>">
+    <i class="bi bi-file-earmark-text"></i><span>İrsaliye</span>
+  </a>
+  <a href="<?= $__rp ?>hizli_tarama.php"  class="bottom-nav-fab <?= $__page==='hizli_tarama.php'?'active':'' ?>" title="Hızlı Tara">
+    <i class="bi bi-qr-code-scan"></i>
+  </a>
+  <a href="<?= $__rp ?>raporlar.php"      class="bottom-nav-item <?= $__page==='raporlar.php'?'active':'' ?>">
+    <i class="bi bi-bar-chart-line"></i><span>Raporlar</span>
+  </a>
+  <a href="#" class="bottom-nav-item" onclick="document.getElementById('ernSidebar').classList.toggle('open');document.getElementById('sidebarOverlay').classList.toggle('active');return false;">
+    <i class="bi bi-grid-3x3-gap"></i><span>Menü</span>
+  </a>
+</nav>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="<?= $rootPath ?? '' ?>assets/js/app.js"></script>
+<script src="<?= $rootPath ?? '' ?>assets/js/app.js?v=<?= time() ?>"></script>
+<script>
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('<?= $rootPath ?? '' ?>sw.js').catch(function(){});
+}
+</script>
 </body>
 </html>

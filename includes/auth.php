@@ -55,12 +55,55 @@ function is_admin(): bool
 }
 
 /**
- * Veri girişi yapabilenler (irsaliye ekle/düzenle):
- * admin, teknik_ofis_admin, saha_sefi
+ * Yeni irsaliye oluşturabilenler:
+ * admin, teknik_ofis_admin, saha_sefi, depo
+ */
+function can_create_irsaliye(): bool
+{
+    return has_role('admin', 'teknik_ofis_admin', 'saha_sefi', 'depo');
+}
+
+/**
+ * İrsaliye düzenleyebilecekler (genel can_edit):
+ * admin, teknik_ofis_admin → her zaman
+ * teknik_ofis, saha_sefi  → sadece belirli durumlarda (durum bazlı kontrol için can_edit_irsaliye() kullanın)
  */
 function can_edit(): bool
 {
+    return has_role('admin', 'teknik_ofis_admin', 'teknik_ofis', 'saha_sefi');
+}
+
+/**
+ * Belirli bir irsaliyeyi düzenleyip düzenleyemeyeceği:
+ * - admin / teknik_ofis_admin: her zaman
+ * - teknik_ofis: saha_onaylandi veya beklemede ise
+ * - saha_sefi: beklemede ise
+ * - depo: hiçbir zaman (sadece oluşturur)
+ */
+function can_edit_irsaliye(array $irsaliye): bool
+{
+    if (has_role('admin', 'teknik_ofis_admin')) return true;
+    if (has_role('teknik_ofis')) return in_array($irsaliye['durum'] ?? 'beklemede', ['beklemede','saha_onaylandi']);
+    if (has_role('saha_sefi'))   return ($irsaliye['durum'] ?? 'beklemede') === 'beklemede';
+    return false;
+}
+
+/**
+ * Saha onayı verebilecekler (1. aşama):
+ * admin, teknik_ofis_admin, saha_sefi
+ */
+function can_approve_saha(): bool
+{
     return has_role('admin', 'teknik_ofis_admin', 'saha_sefi');
+}
+
+/**
+ * Teknik ofis onayı verebilecekler (2. aşama / final):
+ * admin, teknik_ofis_admin, teknik_ofis
+ */
+function can_approve_teknik(): bool
+{
+    return has_role('admin', 'teknik_ofis_admin', 'teknik_ofis');
 }
 
 /**
@@ -87,4 +130,19 @@ function can_manage_definitions(): bool
 function can_manage_users(): bool
 {
     return has_role('admin');
+}
+
+/**
+ * Durum rozet HTML'i döner
+ */
+function durum_badge(string $durum): string
+{
+    $map = [
+        'beklemede'      => ['warning', 'clock',              'Beklemede'],
+        'saha_onaylandi' => ['info',    'check-circle',       'Saha Onayı'],
+        'onaylandi'      => ['success', 'check-circle-fill',  'Onaylandı'],
+        'reddedildi'     => ['danger',  'x-circle-fill',      'Reddedildi'],
+    ];
+    $d = $map[$durum] ?? ['secondary', 'question-circle', $durum];
+    return '<span class="badge bg-' . $d[0] . '"><i class="bi bi-' . $d[1] . ' me-1"></i>' . htmlspecialchars($d[2]) . '</span>';
 }

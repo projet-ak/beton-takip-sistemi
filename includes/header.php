@@ -1,313 +1,234 @@
 <?php
 /**
- * header.php — Sayfa başlığı ve rol tabanlı navigasyon çubuğu
- *
- * Bu dosya include edilmeden önce includes/auth.php require edilmiş olmalıdır.
- * Değişkenler:
- *   $pageTitle  (string) — sekme başlığı
- *   $rootPath   (string) — alt dizinlerde çalışırken '../' gibi prefix
+ * header.php — ERN Holding Beton Takip Sistemi | Sidebar Layout v3
  */
-if (!function_exists('current_user')) {
-    require_once __DIR__ . '/auth.php';
-}
-if (!function_exists('role_label')) {
-    require_once __DIR__ . '/functions.php';
-}
+if (!function_exists('current_user'))  require_once __DIR__ . '/auth.php';
+if (!function_exists('role_label'))    require_once __DIR__ . '/functions.php';
 
 $__user     = current_user();
 $__page     = basename($_SERVER['PHP_SELF']);
 $__rootPath = $rootPath ?? '';
+
+function __isActive(string $page): string {
+    global $__page; return $__page === $page ? 'active' : '';
+}
+$__initials = '';
+if ($__user) {
+    $parts = explode(' ', trim($__user['full_name'] ?? $__user['username'] ?? 'U'));
+    foreach (array_slice($parts, 0, 2) as $p) $__initials .= mb_strtoupper(mb_substr($p, 0, 1));
+}
 ?>
 <!DOCTYPE html>
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#00584E">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Beton Takip">
 <title><?= h($pageTitle ?? 'Beton Takip Sistemi') ?></title>
+<link rel="icon" type="image/png" href="https://ern.com.tr/favicon.png">
+<link rel="apple-touch-icon" href="https://ern.com.tr/favicon.png">
+<link rel="manifest" href="<?= $__rootPath ?>manifest.json">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-<!-- Tema rengi CSS değişkenleri -->
-<style id="themeStyle"></style>
-<script>
-(function(){
-  var t = localStorage.getItem('beton_tema') || 'mavi';
-  var renkler = {
-    mavi:    {pri:'#0d6efd', dark:'#0a58ca'},
-    yesil:   {pri:'#198754', dark:'#146c43'},
-    kirmizi: {pri:'#dc3545', dark:'#b02a37'},
-    mor:     {pri:'#6f42c1', dark:'#59359a'},
-    turuncu: {pri:'#fd7e14', dark:'#ca6510'},
-    petrol:  {pri:'#0dcaf0', dark:'#0aa2c0'},
-    koyu:    {pri:'#343a40', dark:'#212529'},
-  };
-  var r = renkler[t] || renkler.mavi;
-  document.getElementById('themeStyle').textContent =
-    ':root{--bs-primary:'+r.pri+';--bs-primary-rgb:'+hexToRgb(r.pri)+';--bs-link-color:'+r.pri+'}'+
-    '.bg-primary{background-color:'+r.pri+'!important}'+
-    '.btn-primary{background-color:'+r.pri+';border-color:'+r.pri+'}'+
-    '.btn-primary:hover{background-color:'+r.dark+';border-color:'+r.dark+'}'+
-    '.text-primary{color:'+r.pri+'!important}'+
-    '.border-primary{border-color:'+r.pri+'!important}'+
-    '.nav-link.active{color:'+r.pri+'!important}';
-  function hexToRgb(h){var r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16);return r+','+g+','+b;}
-})();
-</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap">
+<script>(function(){var d=localStorage.getItem('beton_dark')||(window.matchMedia('(prefers-color-scheme:dark)').matches?'1':'0');document.documentElement.setAttribute('data-dark',d);})();</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<link rel="stylesheet" href="<?= $__rootPath ?>assets/css/style.css">
+<link rel="stylesheet" href="<?= $__rootPath ?>assets/css/style.css?v=<?= time() ?>">
 </head>
 <body>
+<div class="ern-wrapper">
 
-<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-    <div class="container-fluid">
-        <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="<?= $__rootPath ?>index.php">
-            <i class="bi bi-building-fill-check fs-5"></i>
-            <span>Beton Takip</span>
+<!-- SIDEBAR -->
+<aside class="ern-sidebar" id="ernSidebar">
+
+  <div class="sidebar-brand-wrap">
+    <a href="<?= $__rootPath ?>index.php" class="sidebar-brand">
+      <!-- Tam logo (expanded modda) -->
+      <img class="logo-full"
+           src="https://portal.ern.com.tr/assets/assets/images/ern_holding.613de732dd156fc8c966aeb8159822be.png"
+           alt="ERN Holding" style="height:32px;">
+      <!-- Favicon (collapsed modda) -->
+      <img class="logo-icon"
+           src="https://ern.com.tr/favicon.png"
+           alt="ERN" style="display:none;width:32px;height:32px;object-fit:contain;filter:brightness(0) invert(1);">
+      <div class="sidebar-brand-label"><strong>Beton Takip</strong>Sistemi</div>
+    </a>
+    <button class="sidebar-collapse-btn d-none d-lg-flex" id="sidebarCollapseBtn" title="Menüyü daralt">
+      <i class="bi bi-layout-sidebar-reverse" id="sidebarCollapseIcon"></i>
+    </button>
+  </div>
+
+  <div class="sidebar-scroll">
+    <ul class="list-unstyled mb-0">
+
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('index.php') ?>" href="<?= $__rootPath ?>index.php" data-label="Dashboard">
+          <i class="bi bi-speedometer2"></i><span>Dashboard</span>
         </a>
-        <button class="navbar-toggler" type="button"
-                data-bs-toggle="collapse" data-bs-target="#navMenu"
-                aria-controls="navMenu" aria-expanded="false" aria-label="Menüyü aç">
-            <span class="navbar-toggler-icon"></span>
-        </button>
+      </li>
 
-        <div class="collapse navbar-collapse" id="navMenu">
-            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-
-                <!-- Dashboard: herkese -->
-                <li class="nav-item">
-                    <a class="nav-link <?= $__page === 'index.php' ? 'active' : '' ?>"
-                       href="<?= $__rootPath ?>index.php">
-                        <i class="bi bi-speedometer2"></i> Dashboard
-                    </a>
-                </li>
-
-                <!-- İrsaliyeler: herkese -->
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle <?= in_array($__page, ['irsaliyeler.php','irsaliye_yeni.php','irsaliye_iade.php','irsaliye_detay.php'], true) ? 'active' : '' ?>"
-                       href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="bi bi-file-earmark-text"></i> İrsaliyeler
-                    </a>
-                    <ul class="dropdown-menu">
-                        <li>
-                            <a class="dropdown-item" href="<?= $__rootPath ?>irsaliyeler.php?tip=alis">
-                                <i class="bi bi-arrow-down-circle text-success me-1"></i> Alış İrsaliyeleri
-                            </a>
-                        </li>
-                        <li>
-                            <a class="dropdown-item" href="<?= $__rootPath ?>irsaliyeler.php?tip=iade">
-                                <i class="bi bi-arrow-up-circle text-danger me-1"></i> İade İrsaliyeleri
-                            </a>
-                        </li>
-                        <?php if (can_edit()): ?>
-                        <li><hr class="dropdown-divider"></li>
-                        <li>
-                            <a class="dropdown-item" href="<?= $__rootPath ?>irsaliye_form.php">
-                                <i class="bi bi-plus-circle text-primary me-1"></i> Yeni İrsaliye Ekle
-                            </a>
-                        </li>
-                        <?php endif; ?>
-                    </ul>
-                </li>
-
-                <!-- Hızlı Tarama: herkese -->
-                <li class="nav-item">
-                    <a class="nav-link <?= $__page === 'hizli_tarama.php' ? 'active' : '' ?>"
-                       href="<?= $__rootPath ?>hizli_tarama.php">
-                        <i class="bi bi-qr-code-scan"></i> Hızlı Tarama
-                    </a>
-                </li>
-
-                <!-- Raporlar: admin + teknik_ofis_admin + teknik_ofis -->
-                <?php if (can_view_reports()): ?>
-                <li class="nav-item">
-                    <a class="nav-link <?= $__page === 'raporlar.php' ? 'active' : '' ?>"
-                       href="<?= $__rootPath ?>raporlar.php">
-                        <i class="bi bi-bar-chart-line"></i> Raporlar
-                    </a>
-                </li>
-                <?php endif; ?>
-
-                <!-- Tanımlar: admin + teknik_ofis_admin -->
-                <?php if (can_manage_definitions()): ?>
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle <?= in_array($__page, [
-                        'tedarikciler.php','beton_siniflari.php','katki_listesi.php',
-                        'pompa_turleri.php','firmalar.php','imalat_gruplari.php',
-                        'ana_is_kalemleri.php','parseller.php','bloklar.php','kotlar.php',
-                        'kivam_siniflari.php','projeler.php',
-                    ], true) ? 'active' : '' ?>"
-                       href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="bi bi-sliders"></i> Tanımlar
-                    </a>
-                    <ul class="dropdown-menu">
-                        <li><h6 class="dropdown-header">Beton &amp; Malzeme</h6></li>
-                        <li><a class="dropdown-item" href="<?= $__rootPath ?>beton_siniflari.php">
-                            <i class="bi bi-layers me-1"></i> Beton Sınıfları
-                        </a></li>
-                        <li><a class="dropdown-item" href="<?= $__rootPath ?>katki_listesi.php">
-                            <i class="bi bi-flask me-1"></i> Katkı Listesi
-                        </a></li>
-                        <li><a class="dropdown-item" href="<?= $__rootPath ?>pompa_turleri.php">
-                            <i class="bi bi-tools me-1"></i> Pompa Türleri
-                        </a></li>
-                        <li><a class="dropdown-item" href="<?= $__rootPath ?>kivam_siniflari.php">
-                            <i class="bi bi-speedometer me-1"></i> Kıvam Sınıfları
-                        </a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><h6 class="dropdown-header">Projeler</h6></li>
-                        <li><a class="dropdown-item" href="<?= $__rootPath ?>projeler.php"><i class="bi bi-diagram-3 me-1"></i> Projeler</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><h6 class="dropdown-header">Lokasyon</h6></li>
-                        <li><a class="dropdown-item" href="<?= $__rootPath ?>parseller.php">
-                            <i class="bi bi-map me-1"></i> Parseller
-                        </a></li>
-                        <li><a class="dropdown-item" href="<?= $__rootPath ?>bloklar.php">
-                            <i class="bi bi-buildings me-1"></i> Bloklar
-                        </a></li>
-                        <li><a class="dropdown-item" href="<?= $__rootPath ?>kotlar.php">
-                            <i class="bi bi-arrow-up-square me-1"></i> Kotlar
-                        </a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><h6 class="dropdown-header">İş Kalemleri</h6></li>
-                        <li><a class="dropdown-item" href="<?= $__rootPath ?>imalat_gruplari.php">
-                            <i class="bi bi-collection me-1"></i> İmalat Grupları
-                        </a></li>
-                        <li><a class="dropdown-item" href="<?= $__rootPath ?>ana_is_kalemleri.php">
-                            <i class="bi bi-list-task me-1"></i> Ana İş Kalemleri
-                        </a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><h6 class="dropdown-header">Firmalar</h6></li>
-                        <li><a class="dropdown-item" href="<?= $__rootPath ?>firmalar.php">
-                            <i class="bi bi-briefcase me-1"></i> Firmalar
-                        </a></li>
-                        <li><a class="dropdown-item" href="<?= $__rootPath ?>tedarikciler.php">
-                            <i class="bi bi-truck me-1"></i> Tedarikçiler
-                        </a></li>
-                    </ul>
-                </li>
-                <?php endif; ?>
-
-                <!-- Kullanıcılar: sadece admin -->
-                <?php if (can_manage_users()): ?>
-                <li class="nav-item">
-                    <a class="nav-link <?= $__page === 'kullanicilar.php' ? 'active' : '' ?>"
-                       href="<?= $__rootPath ?>kullanicilar.php">
-                        <i class="bi bi-people"></i> Kullanıcılar
-                    </a>
-                </li>
-                <?php endif; ?>
-
-                <!-- Yedekleme + Aktarım: sadece admin -->
-                <?php if (is_admin()): ?>
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle <?= in_array($__page, ['yedek.php','import.php'], true) ? 'active' : '' ?>"
-                       href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="bi bi-tools"></i> Araçlar
-                    </a>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="<?= $__rootPath ?>yedek.php">
-                            <i class="bi bi-shield-check me-1"></i> Yedekleme
-                        </a></li>
-                        <li><a class="dropdown-item" href="<?= $__rootPath ?>import.php">
-                            <i class="bi bi-file-earmark-spreadsheet me-1"></i> Excel Aktarımı
-                        </a></li>
-                    </ul>
-                </li>
-                <?php endif; ?>
-
-            </ul>
-
-            <!-- Sağ: kullanıcı bilgisi + çıkış -->
-            <?php if ($__user): ?>
-            <ul class="navbar-nav ms-auto">
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle d-flex align-items-center gap-2"
-                       href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="bi bi-person-circle fs-5"></i>
-                        <span class="d-none d-md-inline"><?= h($__user['full_name'] ?: $__user['username']) ?></span>
-                    </a>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        <li>
-                            <span class="dropdown-item-text small text-muted">
-                                <i class="bi bi-person-badge me-1"></i><?= h($__user['username']) ?>
-                            </span>
-                        </li>
-                        <li>
-                            <span class="dropdown-item-text small text-muted">
-                                <i class="bi bi-shield-check me-1"></i><?= role_label($__user['role']) ?>
-                            </span>
-                        </li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li>
-                            <a class="dropdown-item" href="#" onclick="document.getElementById('temaPaneli').classList.toggle('d-none');return false;">
-                                <i class="bi bi-palette me-1"></i> Tema Rengi
-                            </a>
-                        </li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li>
-                            <a class="dropdown-item text-danger" href="<?= $__rootPath ?>logout.php">
-                                <i class="bi bi-box-arrow-right me-1"></i> Çıkış Yap
-                            </a>
-                        </li>
-                    </ul>
-                </li>
-            </ul>
-            <?php endif; ?>
+      <?php $__irsA = in_array($__page,['irsaliyeler.php','irsaliye_form.php','irsaliye_detay.php'],true); ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= $__irsA?'active':'' ?>" href="#subIrs" data-bs-toggle="collapse" role="button" aria-expanded="<?= $__irsA?'true':'false' ?>" data-label="İrsaliyeler">
+          <i class="bi bi-file-earmark-text"></i><span>İrsaliyeler</span><i class="bi bi-chevron-right chev"></i>
+        </a>
+        <div class="collapse <?= $__irsA?'show':'' ?>" id="subIrs">
+          <ul class="list-unstyled sidebar-sub">
+            <li><a class="sidebar-sub-link <?= (__isActive('irsaliyeler.php')&&(($_GET['tip']??'')==='alis'))?'active':'' ?>" href="<?= $__rootPath ?>irsaliyeler.php?tip=alis">Alış İrsaliyeleri</a></li>
+            <li><a class="sidebar-sub-link <?= (__isActive('irsaliyeler.php')&&(($_GET['tip']??'')==='iade'))?'active':'' ?>" href="<?= $__rootPath ?>irsaliyeler.php?tip=iade">İade İrsaliyeleri</a></li>
+            <?php if(can_edit()): ?><li><a class="sidebar-sub-link <?= __isActive('irsaliye_form.php') ?>" href="<?= $__rootPath ?>irsaliye_form.php">Yeni İrsaliye Ekle</a></li><?php endif; ?>
+          </ul>
         </div>
-    </div>
-<!-- Tema Paneli -->
-<div id="temaPaneli" class="d-none position-fixed top-0 end-0 mt-5 me-2 card shadow-lg" style="z-index:9999;min-width:220px;">
-    <div class="card-header fw-semibold d-flex justify-content-between align-items-center py-2">
-        <span><i class="bi bi-palette me-1"></i>Tema Rengi</span>
-        <button onclick="document.getElementById('temaPaneli').classList.add('d-none')" class="btn-close btn-sm"></button>
-    </div>
-    <div class="card-body p-3">
-        <div class="d-flex flex-wrap gap-2">
-            <?php
-            $temalar = [
-                'mavi'    => ['renk'=>'#0d6efd','etiket'=>'Mavi'],
-                'yesil'   => ['renk'=>'#198754','etiket'=>'Yeşil'],
-                'kirmizi' => ['renk'=>'#dc3545','etiket'=>'Kırmızı'],
-                'mor'     => ['renk'=>'#6f42c1','etiket'=>'Mor'],
-                'turuncu' => ['renk'=>'#fd7e14','etiket'=>'Turuncu'],
-                'petrol'  => ['renk'=>'#0dcaf0','etiket'=>'Petrol'],
-                'koyu'    => ['renk'=>'#343a40','etiket'=>'Koyu'],
-            ];
-            foreach ($temalar as $key => $t): ?>
-            <button onclick="temaDegistir('<?= $key ?>')"
-                    class="btn btn-sm rounded-circle p-0"
-                    style="width:36px;height:36px;background:<?= $t['renk'] ?>;border:3px solid rgba(0,0,0,.1);"
-                    title="<?= $t['etiket'] ?>">
-            </button>
-            <?php endforeach; ?>
+      </li>
+
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('hizli_tarama.php') ?>" href="<?= $__rootPath ?>hizli_tarama.php" data-label="Hızlı Tarama">
+          <i class="bi bi-qr-code-scan"></i><span>Hızlı Tarama</span>
+        </a>
+      </li>
+
+      <?php if(can_view_reports()): ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('raporlar.php') ?>" href="<?= $__rootPath ?>raporlar.php" data-label="Raporlar">
+          <i class="bi bi-bar-chart-line"></i><span>Raporlar</span>
+        </a>
+      </li>
+      <?php endif; ?>
+
+      <?php if(can_manage_definitions()): ?>
+      <li class="sidebar-nav-item mt-1"><div class="nav-section">Yönetim</div></li>
+
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('projeler.php') ?>" href="<?= $__rootPath ?>projeler.php" data-label="Projeler">
+          <i class="bi bi-diagram-3"></i><span>Projeler</span>
+        </a>
+      </li>
+
+      <?php $__tanA = in_array($__page,['tedarikciler.php','beton_siniflari.php','katki_listesi.php','pompa_turleri.php','firmalar.php','imalat_gruplari.php','ana_is_kalemleri.php','parseller.php','bloklar.php','kotlar.php','kivam_siniflari.php'],true); ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= $__tanA?'active':'' ?>" href="#subTan" data-bs-toggle="collapse" role="button" aria-expanded="<?= $__tanA?'true':'false' ?>" data-label="Tanımlar">
+          <i class="bi bi-sliders"></i><span>Tanımlar</span><i class="bi bi-chevron-right chev"></i>
+        </a>
+        <div class="collapse <?= $__tanA?'show':'' ?>" id="subTan">
+          <ul class="list-unstyled sidebar-sub">
+            <li><a class="sidebar-sub-link <?= __isActive('beton_siniflari.php') ?>" href="<?= $__rootPath ?>beton_siniflari.php">Beton Sınıfları</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('katki_listesi.php') ?>"  href="<?= $__rootPath ?>katki_listesi.php">Katkı Listesi</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('pompa_turleri.php') ?>"  href="<?= $__rootPath ?>pompa_turleri.php">Pompa Türleri</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('kivam_siniflari.php') ?>" href="<?= $__rootPath ?>kivam_siniflari.php">Kıvam Sınıfları</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('parseller.php') ?>"  href="<?= $__rootPath ?>parseller.php">Parseller</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('bloklar.php') ?>"    href="<?= $__rootPath ?>bloklar.php">Bloklar</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('kotlar.php') ?>"     href="<?= $__rootPath ?>kotlar.php">Kotlar</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('imalat_gruplari.php') ?>"  href="<?= $__rootPath ?>imalat_gruplari.php">İmalat Grupları</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('ana_is_kalemleri.php') ?>" href="<?= $__rootPath ?>ana_is_kalemleri.php">Ana İş Kalemleri</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('firmalar.php') ?>"     href="<?= $__rootPath ?>firmalar.php">Firmalar</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('tedarikciler.php') ?>" href="<?= $__rootPath ?>tedarikciler.php">Tedarikçiler</a></li>
+          </ul>
         </div>
-        <div class="mt-3 small text-muted">Seçim tarayıcıda kaydedilir.</div>
+      </li>
+      <?php endif; ?>
+
+      <?php if(can_manage_users()): ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('kullanicilar.php') ?>" href="<?= $__rootPath ?>kullanicilar.php" data-label="Kullanıcılar">
+          <i class="bi bi-people"></i><span>Kullanıcılar</span>
+        </a>
+      </li>
+      <?php endif; ?>
+
+      <?php if(is_admin()): ?>
+      <?php $__araA = in_array($__page,['yedek.php','import.php'],true); ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= $__araA?'active':'' ?>" href="#subAra" data-bs-toggle="collapse" role="button" aria-expanded="<?= $__araA?'true':'false' ?>">
+          <i class="bi bi-tools"></i><span>Araçlar</span><i class="bi bi-chevron-right chev"></i>
+        </a>
+        <div class="collapse <?= $__araA?'show':'' ?>" id="subAra">
+          <ul class="list-unstyled sidebar-sub">
+            <li><a class="sidebar-sub-link <?= __isActive('yedek.php') ?>"  href="<?= $__rootPath ?>yedek.php">Yedekleme</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('import.php') ?>" href="<?= $__rootPath ?>import.php">Excel Aktarımı</a></li>
+          </ul>
+        </div>
+      </li>
+      <?php endif; ?>
+
+    </ul>
+  </div>
+
+  <?php if($__user): ?>
+  <div class="sidebar-user">
+
+    <!-- Hover popup -->
+    <div class="sidebar-user-popup">
+      <div class="popup-user-info">
+        <div class="popup-avatar"><?= h($__initials?:'U') ?></div>
+        <div>
+          <div class="popup-name"><?= h($__user['full_name']?:$__user['username']) ?></div>
+          <div class="popup-role"><?= role_label($__user['role']) ?></div>
+        </div>
+      </div>
+      <a href="<?= $__rootPath ?>logout.php" class="popup-logout">
+        <i class="bi bi-box-arrow-right"></i> Çıkış Yap
+      </a>
     </div>
-</div>
-<script>
-function temaDegistir(tema) {
-    localStorage.setItem('beton_tema', tema);
-    location.reload();
-}
-</script>
-</nav>
 
-<div class="container-fluid py-4 px-4">
+    <div class="sidebar-avatar"><?= h($__initials?:'U') ?></div>
+    <div class="sidebar-user-info">
+      <div class="sidebar-user-name"><?= h($__user['full_name']?:$__user['username']) ?></div>
+      <div class="sidebar-user-role"><?= role_label($__user['role']) ?></div>
+    </div>
+    <a href="<?= $__rootPath ?>logout.php" class="sidebar-logout" title="Çıkış"><i class="bi bi-box-arrow-right"></i></a>
+  </div>
+  <?php endif; ?>
 
+</aside>
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<!-- MAIN -->
+<div class="ern-main" id="ernMain">
+
+  <header class="ern-topbar">
+    <button class="topbar-menu-btn" id="sidebarToggleBtn"><i class="bi bi-list fs-5"></i></button>
+    <div class="topbar-title d-none d-md-block">
+      <?php
+      $__bc=['index.php'=>'Dashboard','irsaliyeler.php'=>'İrsaliyeler','irsaliye_form.php'=>'İrsaliye Formu','irsaliye_detay.php'=>'İrsaliye Detayı','hizli_tarama.php'=>'Hızlı Tarama','raporlar.php'=>'Raporlar','projeler.php'=>'Projeler','kullanicilar.php'=>'Kullanıcılar','tedarikciler.php'=>'Tedarikçiler','beton_siniflari.php'=>'Beton Sınıfları','yedek.php'=>'Yedekleme','import.php'=>'Excel Aktarımı'];
+      echo '<span style="color:var(--bt-text-soft);font-size:.78rem;">ERN Holding</span><span style="color:var(--bt-border);margin:0 .4rem;">/</span><span style="font-weight:600;font-size:.85rem;">'.h($__bc[$__page]??ucfirst(basename($__page,'.php'))).'</span>';
+      ?>
+    </div>
+    <div class="topbar-actions ms-auto">
+      <button class="btn-topbar" id="darkToggleBtn" title="Tema"><i class="bi bi-moon-stars-fill" id="darkToggleIcon"></i></button>
+      <?php if($__user): ?>
+      <div class="dropdown">
+        <div class="topbar-user" data-bs-toggle="dropdown">
+          <div class="topbar-user-avatar"><?= h($__initials?:'U') ?></div>
+          <div class="d-none d-sm-block">
+            <div class="topbar-user-name"><?= h($__user['full_name']?:$__user['username']) ?></div>
+            <div class="topbar-user-role"><?= role_label($__user['role']) ?></div>
+          </div>
+          <i class="bi bi-chevron-down ms-1" style="font-size:.7rem;color:var(--bt-text-soft)"></i>
+        </div>
+        <ul class="dropdown-menu dropdown-menu-end mt-1" style="min-width:190px">
+          <li><span class="dropdown-item-text small py-2 d-flex align-items-center gap-2">
+            <div class="topbar-user-avatar" style="width:26px;height:26px;font-size:.7rem;"><?= h($__initials?:'U') ?></div>
+            <div><div style="font-weight:600;font-size:.82rem"><?= h($__user['username']) ?></div><div style="font-size:.7rem;color:var(--bt-text-muted)"><?= role_label($__user['role']) ?></div></div>
+          </span></li>
+          <li><hr class="dropdown-divider my-1"></li>
+          <li><a class="dropdown-item text-danger" href="<?= $__rootPath ?>logout.php"><i class="bi bi-box-arrow-right me-2"></i>Çıkış Yap</a></li>
+        </ul>
+      </div>
+      <?php endif; ?>
+    </div>
+  </header>
+
+  <div class="ern-content">
 <?php
-// Flash mesajlarını göster
-if (!function_exists('get_flash')) {
-    require_once __DIR__ . '/functions.php';
-}
-$__flashTypes = ['success' => 'check-circle', 'error' => 'exclamation-triangle', 'warning' => 'exclamation-circle', 'info' => 'info-circle'];
-foreach ($__flashTypes as $__fkey => $__icon) {
-    $__fmsg = get_flash($__fkey);
-    if ($__fmsg) {
-        $__bsType = $__fkey === 'error' ? 'danger' : $__fkey;
-        echo '<div class="alert alert-' . $__bsType . ' alert-dismissible fade show d-flex align-items-center gap-2" role="alert">'
-           . '<i class="bi bi-' . $__icon . '-fill"></i>'
-           . '<span>' . h($__fmsg) . '</span>'
-           . '<button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Kapat"></button>'
-           . '</div>';
-    }
+if(!function_exists('get_flash')) require_once __DIR__.'/functions.php';
+foreach(['success'=>'check-circle-fill','error'=>'exclamation-triangle-fill','warning'=>'exclamation-circle-fill','info'=>'info-circle-fill'] as $__fk=>$__fi){
+    $__fm=get_flash($__fk);
+    if($__fm) echo '<div class="alert alert-'.($__fk==='error'?'danger':$__fk).' alert-dismissible fade show d-flex align-items-center gap-2 mb-3"><i class="bi bi-'.$__fi.'"></i><span>'.h($__fm).'</span><button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button></div>';
 }
 ?>

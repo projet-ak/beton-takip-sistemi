@@ -369,3 +369,7 @@ backups/*.sql
 
 # Yüklenen dosyalar
 uploads/irsaliye_fotolar/
+uploads/scans/
+
+# Geçici çalışma dosyaları
+scratch/

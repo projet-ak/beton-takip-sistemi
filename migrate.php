@@ -36,6 +36,33 @@ $migrasyonlar = [
         'sql'     => "ALTER TABLE irsaliyeler ADD COLUMN proje_id INT NULL AFTER proje_no",
         'aciklama'=> 'irsaliyeler tablosuna proje_id sütunu eklendi',
     ],
+    'tedarikciler_vkn' => [
+        'kontrol' => "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='tedarikciler' AND COLUMN_NAME='vkn'",
+        'sql'     => "ALTER TABLE tedarikciler ADD COLUMN vkn VARCHAR(15) NULL AFTER ad",
+        'aciklama'=> 'tedarikciler tablosuna vkn (vergi no) sütunu eklendi — QR kod eşleştirmesi için',
+    ],
+
+    // ── Onay Akışı (v3) ─────────────────────────────────────────────
+    'irsaliye_durum' => [
+        'kontrol' => "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                      WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='irsaliyeler' AND COLUMN_NAME='durum'",
+        'sql'     => "ALTER TABLE irsaliyeler
+                        ADD COLUMN durum ENUM('beklemede','saha_onaylandi','onaylandi','reddedildi') NOT NULL DEFAULT 'beklemede' AFTER tip,
+                        ADD COLUMN saha_onaylayan_id INT NULL,
+                        ADD COLUMN saha_onay_tarih  DATETIME NULL,
+                        ADD COLUMN teknik_onaylayan_id INT NULL,
+                        ADD COLUMN teknik_onay_tarih   DATETIME NULL,
+                        ADD COLUMN red_neden VARCHAR(500) NULL,
+                        ADD INDEX idx_durum (durum)",
+        'aciklama'=> 'irsaliyeler tablosuna onay akışı kolonları eklendi (durum, saha/teknik onay)',
+    ],
+
+    'users_aktif' => [
+        'kontrol' => "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                      WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND COLUMN_NAME='aktif'",
+        'sql'     => "ALTER TABLE users ADD COLUMN aktif TINYINT(1) NOT NULL DEFAULT 1",
+        'aciklama'=> 'users tablosuna aktif sütunu eklendi',
+    ],
 ];
 
 $sonuclar = [];
@@ -52,6 +79,14 @@ foreach ($migrasyonlar as $ad => $m) {
 // Projeleri ekle
 $pdo->exec("INSERT IGNORE INTO projeler (kod, aciklama) VALUES ('U030','BATI YAKASI 1. ETAP'),('U031','BATI YAKASI 2. ETAP'),('U039','MİLLET BAHÇESİ')");
 $sonuclar[] = ['tip'=>'info', 'msg'=> 'Proje seed verileri kontrol edildi / eklendi.'];
+
+// Mevcut irsaliyeleri "onaylandi" olarak işaretle (geçiş kolaylığı)
+try {
+    $guncellenen = $pdo->exec("UPDATE irsaliyeler SET durum='onaylandi' WHERE durum='beklemede' AND created_by IS NOT NULL");
+    if ($guncellenen > 0) {
+        $sonuclar[] = ['tip'=>'success', 'msg'=> "Mevcut $guncellenen irsaliye 'onaylandi' durumuna geçirildi (geçiş)."];
+    }
+} catch (Exception $e) { /* durum kolonu henüz yoksa sessiz geç */ }
 ?>
 <!DOCTYPE html>
 <html lang="tr">

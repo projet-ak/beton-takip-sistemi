@@ -2,77 +2,17 @@
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/auth.php';
 if (!file_exists(__DIR__ . '/config.php')) { redirect('install.php'); }
-require_auth(['admin','teknik_ofis_admin']);
+require_auth(['admin', 'teknik_ofis_admin']);
 require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/vendor/autoload.php';
 
-$pageTitle = 'Excel Veri Aktarımı — Beton Takip Sistemi';
+use Shuchkin\SimpleXLSX;
 
-// ── Excel'den çıkarılan 60 kayıt ──────────────────────────────────────────────
-$excelRows = [
-    ['sira_no'=>1,'fatura_no'=>null,'arac_plaka'=>'06 CTY 239','kivam_sinifi'=>'S4','irsaliye_no'=>'ANM2026000000735','tedarikci'=>'ANADOLU BETON','tarih'=>'05.02.2026','mikser_cikis'=>'00:00:00','kantar_giris'=>'00:00:00','kantar_cikis'=>'00:00:00','kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>6.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'YILDIZLAR  D PARSEL GİRİŞ KAPISI MOBİLİZASYON'],
-    ['sira_no'=>2,'fatura_no'=>null,'arac_plaka'=>'34 BML 534','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000000812','tedarikci'=>'ANADOLU BETON','tarih'=>'07.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C16','miktar'=>10.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'YILDIZLAR D PARSEL MOBİLİZASYON YILDIZLAR GİRİŞ YOL BETONU'],
-    ['sira_no'=>3,'fatura_no'=>null,'arac_plaka'=>'06 CTY 232','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000000806','tedarikci'=>'ANADOLU BETON','tarih'=>'07.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>8.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'YILDIZLAR D PARSEL MOBİLİZASYON GİRİŞ GÜVENLİK TURNİKE'],
-    ['sira_no'=>4,'fatura_no'=>null,'arac_plaka'=>'34 BML 414','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000000833','tedarikci'=>'ANADOLU BETON','tarih'=>'09.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>9.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'YILDIZLAR MOBİLİZASYON D PARSEL ELEKTİRİK KÖŞK ALTI'],
-    ['sira_no'=>5,'fatura_no'=>null,'arac_plaka'=>'34 MYZ 032','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000000832','tedarikci'=>'ANADOLU BETON','tarih'=>'09.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>9.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'YILDIZLAR MOBİLİZASYON D PARSEL ELEKTİRİK KÖŞK ALTI'],
-    ['sira_no'=>6,'fatura_no'=>null,'arac_plaka'=>'34 KPR 612','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000000942','tedarikci'=>'ANADOLU BETON','tarih'=>'12.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZSASYON BETENO PARSEL GİRİŞİ YOL BETONU YILDIZLAR'],
-    ['sira_no'=>7,'fatura_no'=>null,'arac_plaka'=>'06 CTL 070','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000000944','tedarikci'=>'ANADOLU BETON','tarih'=>'12.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZSASYON BETENO PARSEL GİRİŞİ YOL BETONU YILDIZLAR'],
-    ['sira_no'=>8,'fatura_no'=>null,'arac_plaka'=>'34 BML 534','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000000946','tedarikci'=>'ANADOLU BETON','tarih'=>'12.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZSASYON BETENO PARSEL GİRİŞİ YOL BETONU YILDIZLAR'],
-    ['sira_no'=>9,'fatura_no'=>null,'arac_plaka'=>'34 BML 414','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000000950','tedarikci'=>'ANADOLU BETON','tarih'=>'12.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZSASYON BETENO PARSEL GİRİŞİ YOL BETONU YILDIZLAR'],
-    ['sira_no'=>10,'fatura_no'=>null,'arac_plaka'=>'06 CTL 070','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000000952','tedarikci'=>'ANADOLU BETON','tarih'=>'12.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZSASYON BETENO PARSEL GİRİŞİ YOL BETONU YILDIZLAR'],
-    ['sira_no'=>11,'fatura_no'=>null,'arac_plaka'=>'06 CTY 239','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001119','tedarikci'=>'ANADOLU BETON','tarih'=>'16.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZASYON DEPO TEMEL BETONU'],
-    ['sira_no'=>12,'fatura_no'=>null,'arac_plaka'=>'34 KPR 612','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001118','tedarikci'=>'ANADOLU BETON','tarih'=>'16.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZASYON DEPO TEMEL BETONU'],
-    ['sira_no'=>13,'fatura_no'=>null,'arac_plaka'=>'34 MYZ 032','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001120','tedarikci'=>'ANADOLU BETON','tarih'=>'16.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZASYON DEPO TEMEL BETONU'],
-    ['sira_no'=>14,'fatura_no'=>null,'arac_plaka'=>'06 CTY 232','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001122','tedarikci'=>'ANADOLU BETON','tarih'=>'16.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZASYON DEPO TEMEL BETONU'],
-    ['sira_no'=>15,'fatura_no'=>null,'arac_plaka'=>'06 CTL 070','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001123','tedarikci'=>'ANADOLU BETON','tarih'=>'16.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZASYON DEPO TEMEL BETONU'],
-    ['sira_no'=>16,'fatura_no'=>null,'arac_plaka'=>'34 BML 414','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001124','tedarikci'=>'ANADOLU BETON','tarih'=>'16.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZASYON DEPO TEMEL BETONU'],
-    ['sira_no'=>17,'fatura_no'=>null,'arac_plaka'=>'34 KPR 612','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001125','tedarikci'=>'ANADOLU BETON','tarih'=>'16.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZASYON DEPO TEMEL BETONU'],
-    ['sira_no'=>18,'fatura_no'=>null,'arac_plaka'=>'06 CTY 239','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001126','tedarikci'=>'ANADOLU BETON','tarih'=>'16.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZASYON DEPO TEMEL BETONU'],
-    ['sira_no'=>19,'fatura_no'=>null,'arac_plaka'=>'06 CTL 158','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001127','tedarikci'=>'ANADOLU BETON','tarih'=>'16.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZASYON DEPO TEMEL BETONU'],
-    ['sira_no'=>20,'fatura_no'=>null,'arac_plaka'=>'06 CTL 070','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001130','tedarikci'=>'ANADOLU BETON','tarih'=>'16.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZASYON DEPO TEMEL BETONU'],
-    ['sira_no'=>21,'fatura_no'=>null,'arac_plaka'=>'06 CTL 158','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001134','tedarikci'=>'ANADOLU BETON','tarih'=>'16.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZASYON DEPO TEMEL BETONU'],
-    ['sira_no'=>22,'fatura_no'=>null,'arac_plaka'=>'06 CTL 070','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001303','tedarikci'=>'ANADOLU BETON','tarih'=>'21.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>5.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D-C PARSEL ARASI YOL KENARI KORKULUK PARAPET'],
-    ['sira_no'=>23,'fatura_no'=>null,'arac_plaka'=>'06 CTY 232','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001293','tedarikci'=>'ANADOLU BETON','tarih'=>'21.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZASYON KANTAR RAMPA BETONU'],
-    ['sira_no'=>24,'fatura_no'=>null,'arac_plaka'=>'06 CTL 158','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001292','tedarikci'=>'ANADOLU BETON','tarih'=>'21.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZASYON KANTAR RAMPA BETONU'],
-    ['sira_no'=>25,'fatura_no'=>null,'arac_plaka'=>'34 MYZ 032','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001295','tedarikci'=>'ANADOLU BETON','tarih'=>'21.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>6.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL MOBİLİZASYON KANTAR RAMPA BETONU'],
-    ['sira_no'=>26,'fatura_no'=>null,'arac_plaka'=>'06 CTY 232','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001340','tedarikci'=>'ANADOLU BETON','tarih'=>'23.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>8.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'OSMAN_CAMCI','imalat_grup'=>'Zemin','ana_is_kalemi'=>'FORE KAZIK','parsel'=>'A_BLOK','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'OSMAN CAMCI A PARSEL 7 NOLU DUVAR KAZIK BETONU'],
-    ['sira_no'=>27,'fatura_no'=>null,'arac_plaka'=>'06 CTY 239','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001344','tedarikci'=>'ANADOLU BETON','tarih'=>'23.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'OSMAN_CAMCI','imalat_grup'=>'Zemin','ana_is_kalemi'=>'FORE KAZIK','parsel'=>'A_BLOK','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'OSMAN CAMCI A PARSEL 7 NOLU DUVAR KAZIK BETONU'],
-    ['sira_no'=>28,'fatura_no'=>null,'arac_plaka'=>'34 MYZ 032','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001342','tedarikci'=>'ANADOLU BETON','tarih'=>'23.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>7.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'OSMAN_CAMCI','imalat_grup'=>'Zemin','ana_is_kalemi'=>'FORE KAZIK','parsel'=>'A_BLOK','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'OSMAN CAMCI A PARSEL 7 NOLU DUVAR KAZIK BETONU'],
-    ['sira_no'=>29,'fatura_no'=>null,'arac_plaka'=>'34 BML 414','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001345','tedarikci'=>'ANADOLU BETON','tarih'=>'23.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'OSMAN_CAMCI','imalat_grup'=>'Zemin','ana_is_kalemi'=>'FORE KAZIK','parsel'=>'A_BLOK','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'OSMAN CAMCI A PARSEL 7 NOLU DUVAR KAZIK BETONU'],
-    ['sira_no'=>30,'fatura_no'=>null,'arac_plaka'=>'34 BML 414','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001371','tedarikci'=>'ANADOLU BETON','tarih'=>'24.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'OSMAN_CAMCI','imalat_grup'=>'Zemin','ana_is_kalemi'=>'FORE KAZIK','parsel'=>'A_BLOK','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'OSMAN CAMCI A PARSEL 7 NOLU DUVAR KAZIK BETONU'],
-    ['sira_no'=>31,'fatura_no'=>null,'arac_plaka'=>'06 CTL 158','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001367','tedarikci'=>'ANADOLU BETON','tarih'=>'24.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'OSMAN_CAMCI','imalat_grup'=>'Zemin','ana_is_kalemi'=>'FORE KAZIK','parsel'=>'A_BLOK','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'OSMAN CAMCI A PARSEL 7 NOLU DUVAR KAZIK BETONU'],
-    ['sira_no'=>32,'fatura_no'=>null,'arac_plaka'=>'34 BML 534','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001364','tedarikci'=>'ANADOLU BETON','tarih'=>'24.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'OSMAN_CAMCI','imalat_grup'=>'Zemin','ana_is_kalemi'=>'FORE KAZIK','parsel'=>'A_BLOK','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'OSMAN CAMCI A PARSEL 7 NOLU DUVAR KAZIK BETONU'],
-    ['sira_no'=>33,'fatura_no'=>null,'arac_plaka'=>'06 CTL 158','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001358','tedarikci'=>'ANADOLU BETON','tarih'=>'24.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'OSMAN_CAMCI','imalat_grup'=>'Zemin','ana_is_kalemi'=>'FORE KAZIK','parsel'=>'A_BLOK','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'OSMAN CAMCI A PARSEL 7 NOLU DUVAR KAZIK BETONU'],
-    ['sira_no'=>34,'fatura_no'=>null,'arac_plaka'=>'06 CTY 239','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001384','tedarikci'=>'ANADOLU BETON','tarih'=>'25.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>5.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'YILDIZLAR','imalat_grup'=>'Diger','ana_is_kalemi'=>'DOLGU BETONU','parsel'=>'A_PARSEL','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'A PARSEL YILDIZLAR DOLGU İÇİN PARAPET BETONU'],
-    ['sira_no'=>35,'fatura_no'=>null,'arac_plaka'=>'06 CTY 232','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001377','tedarikci'=>'ANADOLU BETON','tarih'=>'25.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>2.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'A_PARSEL','imalat_grup'=>'Zemin','ana_is_kalemi'=>'FORE KAZIK','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL FORE KAZIK 7 NOLU PERDE BETONU'],
-    ['sira_no'=>36,'fatura_no'=>null,'arac_plaka'=>'06 CTY 232','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001376','tedarikci'=>'ANADOLU BETON','tarih'=>'25.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>8.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'A_PARSEL','imalat_grup'=>'Zemin','ana_is_kalemi'=>'FORE KAZIK','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL FORE KAZIK 7 NOLU PERDE BETONU'],
-    ['sira_no'=>37,'fatura_no'=>null,'arac_plaka'=>'06 CTY 232','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001397','tedarikci'=>'ANADOLU BETON','tarih'=>'25.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'A_PARSEL','imalat_grup'=>'Zemin','ana_is_kalemi'=>'FORE KAZIK','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL FORE KAZIK 7 NOLU PERDE BETONU'],
-    ['sira_no'=>38,'fatura_no'=>null,'arac_plaka'=>'34 BML 534','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001407','tedarikci'=>'ANADOLU BETON','tarih'=>'25.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'A_PARSEL','imalat_grup'=>'Zemin','ana_is_kalemi'=>'FORE KAZIK','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL FORE KAZIK 7 NOLU PERDE BETONU'],
-    ['sira_no'=>39,'fatura_no'=>null,'arac_plaka'=>'34 BML 414','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001411','tedarikci'=>'ANADOLU BETON','tarih'=>'25.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'A_PARSEL','imalat_grup'=>'Zemin','ana_is_kalemi'=>'FORE KAZIK','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL FORE KAZIK 7 NOLU PERDE BETONU'],
-    ['sira_no'=>40,'fatura_no'=>null,'arac_plaka'=>'34 MYZ 032','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001417','tedarikci'=>'ANADOLU BETON','tarih'=>'26.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'A_PARSEL','imalat_grup'=>'Zemin','ana_is_kalemi'=>'FORE KAZIK','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL KAZIK 7 NOLU DUVAR BETONU'],
-    ['sira_no'=>41,'fatura_no'=>null,'arac_plaka'=>'34 BML 414','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001423','tedarikci'=>'ANADOLU BETON','tarih'=>'2026-02-26','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>4.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'A_PARSEL','imalat_grup'=>'Zemin','ana_is_kalemi'=>'FORE KAZIK','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL KAZIK 7 NOLU DUVAR BETONU'],
-    ['sira_no'=>0,'fatura_no'=>null,'arac_plaka'=>'06CTY232','kivam_sinifi'=>null,'irsaliye_no'=>'ANM2026000001443','tedarikci'=>'ANADOLU BETON','tarih'=>'2026-02-27','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0,'kantar_net_tedarikci'=>0,'kantar_farki'=>0,'beton_sinifi'=>'C30','miktar'=>7.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>null,'katki2'=>null,'firma'=>null,'imalat_grup'=>null,'ana_is_kalemi'=>null,'parsel'=>null,'blok'=>null,'kot'=>null,'aciklama'=>null],
-    ['sira_no'=>42,'fatura_no'=>null,'arac_plaka'=>'34 BML 534','kivam_sinifi'=>'S4','irsaliye_no'=>'ANM2026000001512','tedarikci'=>'ANADOLU BETON','tarih'=>'28.02.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C20','miktar'=>9.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Kaba','ana_is_kalemi'=>'GROBETON','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL 7 NOLU İSTİNAT PERDESİ'],
-    ['sira_no'=>43,'fatura_no'=>null,'arac_plaka'=>'34 KPR 612','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001574','tedarikci'=>'ANADOLU BETON','tarih'=>'03.03.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>8.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Kaba','ana_is_kalemi'=>'DÖŞEME','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL 7 NOLU DUVAR TEMELİ'],
-    ['sira_no'=>44,'fatura_no'=>null,'arac_plaka'=>'34 BML 414','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001570','tedarikci'=>'ANADOLU BETON','tarih'=>'03.03.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>8.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Kaba','ana_is_kalemi'=>'DÖŞEME','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL 7 NOLU DUVAR TEMELİ'],
-    ['sira_no'=>45,'fatura_no'=>null,'arac_plaka'=>'06 CTY 232','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001571','tedarikci'=>'ANADOLU BETON','tarih'=>'03.03.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>8.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Kaba','ana_is_kalemi'=>'DÖŞEME','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL 7 NOLU DUVAR TEMELİ'],
-    ['sira_no'=>46,'fatura_no'=>null,'arac_plaka'=>'06 CTL 158','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001573','tedarikci'=>'ANADOLU BETON','tarih'=>'03.03.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>8.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Kaba','ana_is_kalemi'=>'DÖŞEME','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL 7 NOLU DUVAR TEMELİ'],
-    ['sira_no'=>47,'fatura_no'=>null,'arac_plaka'=>'34 BML 414','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001741','tedarikci'=>'ANADOLU BETON','tarih'=>'07.03.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>1.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>null,'imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'GENEL','blok'=>'GENEL','kot'=>'GENEL','aciklama'=>null],
-    ['sira_no'=>48,'fatura_no'=>null,'arac_plaka'=>'06 CTL 070','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001740','tedarikci'=>'ANADOLU BETON','tarih'=>'07.03.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>4.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>null,'imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'GENEL','blok'=>'GENEL','kot'=>'GENEL','aciklama'=>null],
-    ['sira_no'=>49,'fatura_no'=>null,'arac_plaka'=>'06 CTY 232','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001809','tedarikci'=>'ANADOLU BETON','tarih'=>'10.03.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>6.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL DEPO VE WC KONTEYNIR TEMEL BETONU'],
-    ['sira_no'=>50,'fatura_no'=>null,'arac_plaka'=>'06 CTY 232','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001814','tedarikci'=>'ANADOLU BETON','tarih'=>'10.03.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>5.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL DEPO VE WC KONTEYNIR TEMEL BETONU'],
-    ['sira_no'=>51,'fatura_no'=>null,'arac_plaka'=>'06 CTY 232','kivam_sinifi'=>'S3','irsaliye_no'=>'ANM2026000001805','tedarikci'=>'ANADOLU BETON','tarih'=>'10.03.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C30','miktar'=>10.0,'birim'=>'M3','pompa'=>'MİKSERLİ','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Diger','ana_is_kalemi'=>'MOBİLİZASYON','parsel'=>'D_PARSEL_1','blok'=>'MOBILIZASYON','kot'=>'MOBILIZASYON','aciklama'=>'D PARSEL DEPO VE WC KONTEYNIR TEMEL BETONU'],
-    ['sira_no'=>52,'fatura_no'=>null,'arac_plaka'=>'06 CTY 239','kivam_sinifi'=>'S4','irsaliye_no'=>'ANM2026000001956','tedarikci'=>'ANADOLU BETON','tarih'=>'13.03.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C35','miktar'=>3.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Kaba','ana_is_kalemi'=>'PARAPET','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL 7 NOLU İSTİNAT PERDESİ'],
-    ['sira_no'=>53,'fatura_no'=>null,'arac_plaka'=>'34 BML 534','kivam_sinifi'=>'S4','irsaliye_no'=>'ANM2026000001953','tedarikci'=>'ANADOLU BETON','tarih'=>'13.03.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C35','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Kaba','ana_is_kalemi'=>'PARAPET','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL 7 NOLU İSTİNAT PERDESİ'],
-    ['sira_no'=>54,'fatura_no'=>null,'arac_plaka'=>'06 CTY 232','kivam_sinifi'=>'S4','irsaliye_no'=>'ANM2026000001951','tedarikci'=>'ANADOLU BETON','tarih'=>'13.03.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C35','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Kaba','ana_is_kalemi'=>'PARAPET','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL 7 NOLU İSTİNAT PERDESİ'],
-    ['sira_no'=>55,'fatura_no'=>null,'arac_plaka'=>'34 BML 414','kivam_sinifi'=>'S4','irsaliye_no'=>'ANM2026000001954','tedarikci'=>'ANADOLU BETON','tarih'=>'13.03.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C35','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Kaba','ana_is_kalemi'=>'PARAPET','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL 7 NOLU İSTİNAT PERDESİ'],
-    ['sira_no'=>56,'fatura_no'=>null,'arac_plaka'=>'34 MYZ 032','kivam_sinifi'=>'S4','irsaliye_no'=>'ANM2026000001952','tedarikci'=>'ANADOLU BETON','tarih'=>'13.03.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C35','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Kaba','ana_is_kalemi'=>'PARAPET','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL 7 NOLU İSTİNAT PERDESİ'],
-    ['sira_no'=>57,'fatura_no'=>null,'arac_plaka'=>'06 CTL 070','kivam_sinifi'=>'S4','irsaliye_no'=>'ANM2026000002144','tedarikci'=>'ANADOLU BETON','tarih'=>'17.03.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C35','miktar'=>9.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Kaba','ana_is_kalemi'=>'KOLON-PERDE','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL 7 NOLU PERDE BETONU'],
-    ['sira_no'=>58,'fatura_no'=>null,'arac_plaka'=>'34 BML 534','kivam_sinifi'=>'S4','irsaliye_no'=>'ANM2026000002137','tedarikci'=>'ANADOLU BETON','tarih'=>'17.03.2026','mikser_cikis'=>null,'kantar_giris'=>null,'kantar_cikis'=>null,'kantar_net_yildiz'=>0.0,'kantar_net_tedarikci'=>0.0,'kantar_farki'=>0.0,'beton_sinifi'=>'C35','miktar'=>10.0,'birim'=>'M3','pompa'=>'POMPALI','katki1'=>'BRÜT BETON','katki2'=>null,'firma'=>'DENER','imalat_grup'=>'Kaba','ana_is_kalemi'=>'KOLON-PERDE','parsel'=>'A_PARSEL','blok'=>'ISTINAT_CEVRE_DUVARI','kot'=>'ISTINAT_CEVRE_DUVARI','aciklama'=>'A PARSEL 7 NOLU PERDE BETONU'],
-];
+$pageTitle = 'Dinamik Excel Aktarımı — Beton Takip Sistemi';
 
-// Yardımcı: tabloda yoksa ekle, ID döndür
-function getOrCreate(PDO $pdo, string $tablo, string $sutun, string $deger): ?int {
-    if (!$deger) return null;
+// Yardımcı Fonksiyonlar — ?string (nullable) ile PHP 8 uyumlu
+function getOrCreate(PDO $pdo, string $tablo, string $sutun, ?string $deger): ?int {
+    if ($deger === null || trim($deger) === '') return null;
     $deger = trim($deger);
     $s = $pdo->prepare("SELECT id FROM $tablo WHERE $sutun = ?");
     $s->execute([$deger]);
@@ -82,8 +22,8 @@ function getOrCreate(PDO $pdo, string $tablo, string $sutun, string $deger): ?in
     return (int)$pdo->lastInsertId();
 }
 
-function getOrCreateImalat(PDO $pdo, string $ad): ?int {
-    if (!$ad) return null;
+function getOrCreateImalat(PDO $pdo, ?string $ad): ?int {
+    if ($ad === null || trim($ad) === '') return null;
     $ad = trim($ad);
     $s = $pdo->prepare("SELECT id FROM imalat_gruplari WHERE ad = ?");
     $s->execute([$ad]);
@@ -93,8 +33,8 @@ function getOrCreateImalat(PDO $pdo, string $ad): ?int {
     return (int)$pdo->lastInsertId();
 }
 
-function getOrCreateAnaKalem(PDO $pdo, int $grupId, string $ad): ?int {
-    if (!$ad) return null;
+function getOrCreateAnaKalem(PDO $pdo, ?int $grupId, ?string $ad): ?int {
+    if ($grupId === null || $ad === null || trim($ad) === '') return null;
     $ad = trim($ad);
     $s = $pdo->prepare("SELECT id FROM ana_is_kalemleri WHERE imalat_grup_id = ? AND ad = ?");
     $s->execute([$grupId, $ad]);
@@ -104,8 +44,8 @@ function getOrCreateAnaKalem(PDO $pdo, int $grupId, string $ad): ?int {
     return (int)$pdo->lastInsertId();
 }
 
-function getOrCreateParsel(PDO $pdo, string $ad): ?int {
-    if (!$ad) return null;
+function getOrCreateParsel(PDO $pdo, ?string $ad): ?int {
+    if ($ad === null || trim($ad) === '') return null;
     $ad = trim($ad);
     $s = $pdo->prepare("SELECT id FROM parseller WHERE ad = ?");
     $s->execute([$ad]);
@@ -115,8 +55,8 @@ function getOrCreateParsel(PDO $pdo, string $ad): ?int {
     return (int)$pdo->lastInsertId();
 }
 
-function getOrCreateBlok(PDO $pdo, int $parselId, string $ad): ?int {
-    if (!$ad) return null;
+function getOrCreateBlok(PDO $pdo, ?int $parselId, ?string $ad): ?int {
+    if ($parselId === null || $ad === null || trim($ad) === '') return null;
     $ad = trim($ad);
     $s = $pdo->prepare("SELECT id FROM bloklar WHERE parsel_id = ? AND ad = ?");
     $s->execute([$parselId, $ad]);
@@ -126,8 +66,8 @@ function getOrCreateBlok(PDO $pdo, int $parselId, string $ad): ?int {
     return (int)$pdo->lastInsertId();
 }
 
-function getOrCreateKot(PDO $pdo, int $blokId, string $ad): ?int {
-    if (!$ad) return null;
+function getOrCreateKot(PDO $pdo, ?int $blokId, ?string $ad): ?int {
+    if ($blokId === null || $ad === null || trim($ad) === '') return null;
     $ad = trim($ad);
     $s = $pdo->prepare("SELECT id FROM kotlar WHERE blok_id = ? AND kot_degeri = ?");
     $s->execute([$blokId, $ad]);
@@ -137,165 +77,594 @@ function getOrCreateKot(PDO $pdo, int $blokId, string $ad): ?int {
     return (int)$pdo->lastInsertId();
 }
 
-function parseTarih(string $tarih): ?string {
-    if (!$tarih) return null;
-    // Format: 05.02.2026 → 2026-02-05
+function parseTarih(?string $tarih): ?string {
+    if ($tarih === null || trim($tarih) === '') return null;
+    $tarih = trim($tarih);
+
+    // Format: YYYY-MM-DD
+    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $tarih)) {
+        return $tarih;
+    }
+    // Format: DD.MM.YYYY
     if (preg_match('/^(\d{2})\.(\d{2})\.(\d{4})$/', $tarih, $m)) {
         return "{$m[3]}-{$m[2]}-{$m[1]}";
+    }
+    // Format: D.M.YYYY veya DD/MM/YYYY
+    if (preg_match('/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/', $tarih, $m)) {
+        return sprintf('%04d-%02d-%02d', $m[3], $m[2], $m[1]);
+    }
+    // Excel serial date (sayısal): Excel, tarihleri 1900-01-01'den gün sayısı olarak saklar
+    // Örn: 45678 → 2025-01-10
+    if (preg_match('/^\d{4,6}$/', $tarih)) {
+        $serial = (int)$tarih;
+        if ($serial > 1000 && $serial < 100000) {
+            // Excel'in 1900 yılını hatalı artık yıl saydığı düzeltme (+1)
+            $date = (new DateTime('1899-12-30'))->modify("+{$serial} days");
+            $result = $date->format('Y-m-d');
+            // Makul tarih aralığı: 2000-2050
+            if ($result >= '2000-01-01' && $result <= '2050-12-31') {
+                return $result;
+            }
+        }
+    }
+    // Float serial (bazen ondalıklı gelir: 45678.5 → saat bilgisi var, yalnızca tarih al)
+    if (preg_match('/^(\d{4,6})\.\d+$/', $tarih, $m)) {
+        $serial = (int)$m[1];
+        if ($serial > 1000 && $serial < 100000) {
+            $date = (new DateTime('1899-12-30'))->modify("+{$serial} days");
+            $result = $date->format('Y-m-d');
+            if ($result >= '2000-01-01' && $result <= '2050-12-31') {
+                return $result;
+            }
+        }
     }
     return null;
 }
 
-$result = null;
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import'])) {
-    $added = 0; $skipped = 0; $errors = [];
+$error = null;
+$success = null;
 
-    foreach ($excelRows as $r) {
-        try {
-            $tarih = parseTarih($r['tarih'] ?? '');
-            if (!$tarih) { $skipped++; continue; }
+// CSRF token
+if (session_status() === PHP_SESSION_NONE) session_start();
+if (empty($_SESSION['csrf_import'])) {
+    $_SESSION['csrf_import'] = bin2hex(random_bytes(16));
+}
+$csrfImport = $_SESSION['csrf_import'];
 
-            // FK lookups / auto-create
-            $tedarikciId = getOrCreate($pdo, 'tedarikciler', 'ad', trim($r['tedarikci'] ?? ''));
-            if (!$tedarikciId) { $skipped++; continue; }
+// Oturum temizliği / sıfırlama
+if (isset($_GET['reset'])) {
+    if (isset($_SESSION['import_file']) && file_exists($_SESSION['import_file'])) {
+        @unlink($_SESSION['import_file']);
+    }
+    unset($_SESSION['import_file'], $_SESSION['import_col_mapping'],
+          $_SESSION['import_sheet_idx'], $_SESSION['import_header_row_idx']);
+    redirect('import.php');
+}
 
-            $betonId    = getOrCreate($pdo, 'beton_siniflari', 'ad',  trim($r['beton_sinifi'] ?? ''));
-            $pompaId    = getOrCreate($pdo, 'pompa_turleri',   'ad',  trim($r['pompa'] ?? ''));
-            $katki1Id   = getOrCreate($pdo, 'katki_listesi',   'ad',  trim($r['katki1'] ?? ''));
-            $katki2Id   = getOrCreate($pdo, 'katki_listesi',   'ad',  trim($r['katki2'] ?? ''));
-            $firmaId    = getOrCreate($pdo, 'firmalar',        'ad',  trim($r['firma'] ?? ''));
-            $kivamId    = getOrCreate($pdo, 'kivam_siniflari', 'ad',  trim($r['kivam_sinifi'] ?? ''));
+// 24 saatten eski geçici import dosyalarını temizle
+foreach (glob(__DIR__ . '/uploads/tmp_import_*.xlsx') ?: [] as $oldTmp) {
+    if (filemtime($oldTmp) < time() - 86400) @unlink($oldTmp);
+}
 
-            $imalatGrupId  = getOrCreateImalat($pdo, trim($r['imalat_grup'] ?? ''));
-            $anaKalemId    = $imalatGrupId ? getOrCreateAnaKalem($pdo, $imalatGrupId, trim($r['ana_is_kalemi'] ?? '')) : null;
-            $parselId      = getOrCreateParsel($pdo, trim($r['parsel'] ?? ''));
-            $blokId        = $parselId ? getOrCreateBlok($pdo, $parselId, trim($r['blok'] ?? '')) : null;
-            $kotId         = $blokId   ? getOrCreateKot($pdo, $blokId, trim($r['kot'] ?? ''))   : null;
+function cleanHeader($text) {
+    $text = str_replace(
+        ['İ', 'ı', 'I', 'Ş', 'ş', 'Ğ', 'ğ', 'Ü', 'ü', 'Ö', 'ö', 'Ç', 'ç'],
+        ['i', 'i', 'i', 's', 's', 'g', 'g', 'u', 'u', 'o', 'o', 'c', 'c'],
+        $text
+    );
+    $text = strtolower($text);
+    $text = preg_replace('/[^a-z0-9\s]/', '', $text);
+    $text = preg_replace('/\s+/', ' ', $text);
+    return trim($text);
+}
 
-            // Duplicate check by irsaliye_no
-            if ($r['irsaliye_no']) {
-                $dup = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler WHERE irsaliye_no = ?");
-                $dup->execute([$r['irsaliye_no']]);
-                if ($dup->fetchColumn() > 0) { $skipped++; continue; }
+// CSRF doğrulama (tüm POST'lar için)
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!hash_equals($_SESSION['csrf_import'] ?? '', $_POST['csrf'] ?? '')) {
+        $error = 'Güvenlik hatası. Sayfayı yenileyip tekrar deneyin.';
+    }
+}
+
+// ADIM 1: Dosya Yükleme ve Önizleme Oluşturma
+if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_file'])) {
+    $file = $_FILES['excel_file'];
+    
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        $error = "Dosya yüklenirken bir hata oluştu.";
+    } else {
+        $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+        if (strtolower($ext) !== 'xlsx') {
+            $error = "Yalnızca Excel (.xlsx) dosyaları desteklenmektedir.";
+        } else {
+            $tempPath = __DIR__ . '/uploads/tmp_import_' . current_user()['id'] . '.xlsx';
+            if (move_uploaded_file($file['tmp_name'], $tempPath)) {
+                $_SESSION['import_file'] = $tempPath;
+                $_SESSION['import_sheet_idx'] = isset($_POST['sheet_idx']) ? (int)$_POST['sheet_idx'] : 0;
+                
+                // Başlık Haritalamasını Tespit Et
+                if ($xlsx = SimpleXLSX::parse($tempPath)) {
+                    $rows = $xlsx->rows($_SESSION['import_sheet_idx']);
+                    
+                    // Başlık Satırını Bul (ilk 15 satırı tara, irsaliye no veya tarih içeren satırı seç)
+                    $headerRowIndex = 3; // Varsayılan: satır index 3 (4. satır)
+                    for ($i = 0; $i < min(15, count($rows)); $i++) {
+                        $nonEmpty = array_map('cleanHeader', $rows[$i]);
+                        if (in_array('irsaliye no', $nonEmpty) || in_array('irsaliye tarihi', $nonEmpty) || in_array('tarih', $nonEmpty)) {
+                            $headerRowIndex = $i;
+                            break;
+                        }
+                    }
+                    
+                    // Kolon Haritası Oluştur
+                    $colMapping = [];
+                    $headers = $rows[$headerRowIndex];
+                    foreach ($headers as $colIdx => $hText) {
+                        $hText = cleanHeader($hText);
+                        if ($hText === '') continue;
+                        
+                        if (in_array($hText, ['sira', 'sira no', 'no'])) {
+                            $colMapping['sira_no'] = $colIdx;
+                        } elseif (in_array($hText, ['fatura no', 'fatura'])) {
+                            $colMapping['fatura_no'] = $colIdx;
+                        } elseif (in_array($hText, ['arac plaka no', 'plaka', 'arac plaka'])) {
+                            $colMapping['arac_plaka'] = $colIdx;
+                        } elseif (in_array($hText, ['kivam sinifi', 'kivam'])) {
+                            $colMapping['kivam_sinifi'] = $colIdx;
+                        } elseif (in_array($hText, ['irsaliye no', 'irsaliye no.'])) {
+                            $colMapping['irsaliye_no'] = $colIdx;
+                        } elseif (in_array($hText, ['tedarikci'])) {
+                            $colMapping['tedarikci'] = $colIdx;
+                        } elseif (in_array($hText, ['irsaliye tarihi', 'tarih'])) {
+                            $colMapping['tarih'] = $colIdx;
+                        } elseif (in_array($hText, ['mikser cikis saati', 'mikser cikis'])) {
+                            $colMapping['mikser_cikis'] = $colIdx;
+                        } elseif (in_array($hText, ['yildizlar kantar giris saati', 'kantar giris saati', 'kantar giris'])) {
+                            $colMapping['kantar_giris'] = $colIdx;
+                        } elseif (in_array($hText, ['yildizlar kantar cikis saati', 'kantar cikis saati', 'kantar cikis'])) {
+                            $colMapping['kantar_cikis'] = $colIdx;
+                        } elseif (in_array($hText, ['yildizlar kantar net', 'yildizlar net'])) {
+                            $colMapping['kantar_net_yildiz'] = $colIdx;
+                        } elseif (in_array($hText, ['tedarikci kantar net', 'tedarikci net'])) {
+                            $colMapping['kantar_net_tedarikci'] = $colIdx;
+                        } elseif (in_array($hText, ['kantar farki', 'fark'])) {
+                            $colMapping['kantar_farki'] = $colIdx;
+                        } elseif (in_array($hText, ['beton sinifi', 'beton'])) {
+                            $colMapping['beton_sinifi'] = $colIdx;
+                        } elseif (in_array($hText, ['miktar', 'm', 'm3', 'metre kup', 'metrekup'])) {
+                            $colMapping['miktar'] = $colIdx;
+                        } elseif (in_array($hText, ['birim'])) {
+                            $colMapping['birim'] = $colIdx;
+                        } elseif (in_array($hText, ['pompa durumu', 'pompa'])) {
+                            $colMapping['pompa'] = $colIdx;
+                        } elseif (in_array($hText, ['katki 1', 'katki1'])) {
+                            $colMapping['katki1'] = $colIdx;
+                        } elseif (in_array($hText, ['katki 2', 'katki2'])) {
+                            $colMapping['katki2'] = $colIdx;
+                        } elseif (in_array($hText, ['firma'])) {
+                            $colMapping['firma'] = $colIdx;
+                        } elseif (in_array($hText, ['imalat ana grup', 'imalat grup', 'grup'])) {
+                            $colMapping['imalat_grup'] = $colIdx;
+                        } elseif (in_array($hText, ['ana is kalemi', 'is kalemi'])) {
+                            $colMapping['ana_is_kalemi'] = $colIdx;
+                        } elseif (in_array($hText, ['parsel'])) {
+                            $colMapping['parsel'] = $colIdx;
+                        } elseif (in_array($hText, ['blok'])) {
+                            $colMapping['blok'] = $colIdx;
+                        } elseif (in_array($hText, ['kot', 'seviye'])) {
+                            $colMapping['kot'] = $colIdx;
+                        } elseif (in_array($hText, ['irsaliye aciklama', 'aciklama', 'not', 'notlar'])) {
+                            $colMapping['aciklama'] = $colIdx;
+                        }
+                    }
+                    
+                    // Gerekli sütunlar eksikse varsayılan indekslere dön
+                    if (!isset($colMapping['irsaliye_no']) || !isset($colMapping['tarih'])) {
+                        $colMapping = [
+                            'sira_no' => 1, 'fatura_no' => 2, 'arac_plaka' => 3, 'kivam_sinifi' => 4,
+                            'irsaliye_no' => 5, 'tedarikci' => 6, 'tarih' => 8, 'mikser_cikis' => 9,
+                            'kantar_giris' => 10, 'kantar_cikis' => 11, 'kantar_net_yildiz' => 12,
+                            'kantar_net_tedarikci' => 13, 'kantar_farki' => 14, 'beton_sinifi' => 15,
+                            'miktar' => 16, 'birim' => 17, 'pompa' => 18, 'katki1' => 19, 'katki2' => 20,
+                            'firma' => 21, 'imalat_grup' => 22, 'ana_is_kalemi' => 23, 'parsel' => 24,
+                            'blok' => 25, 'kot' => 26, 'aciklama' => 27
+                        ];
+                    }
+                    
+                    $_SESSION['import_col_mapping'] = $colMapping;
+                    $_SESSION['import_header_row_idx'] = $headerRowIndex;
+                } else {
+                    $error = "Excel dosyası okunamadı: " . SimpleXLSX::parseError();
+                    @unlink($tempPath);
+                    unset($_SESSION['import_file']);
+                }
+            } else {
+                $error = "Dosya sunucuya kaydedilemedi.";
             }
-
-            $mikserCikis = ($r['mikser_cikis'] && $r['mikser_cikis'] !== '00:00:00') ? $r['mikser_cikis'] : null;
-            $kantarGiris = ($r['kantar_giris'] && $r['kantar_giris'] !== '00:00:00') ? $r['kantar_giris'] : null;
-            $kantarCikis = ($r['kantar_cikis'] && $r['kantar_cikis'] !== '00:00:00') ? $r['kantar_cikis'] : null;
-
-            $pdo->prepare("INSERT INTO irsaliyeler
-                (tip, sira_no, fatura_no, arac_plaka, kivam_sinifi_id, irsaliye_no,
-                 tedarikci_id, tarih,
-                 mikser_cikis_saati, kantar_giris_saati, kantar_cikis_saati,
-                 kantar_net_yildizlar, kantar_net_tedarikci, kantar_farki,
-                 beton_sinifi_id, miktar, birim, pompa_id,
-                 katki1_id, katki2_id, firma_id,
-                 imalat_grup_id, ana_is_kalemi_id,
-                 parsel_id, blok_id, kot_id, aciklama)
-                VALUES ('alis',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-                ->execute([
-                    $r['sira_no'], $r['fatura_no'], $r['arac_plaka'],
-                    $kivamId, $r['irsaliye_no'],
-                    $tedarikciId, $tarih,
-                    $mikserCikis, $kantarGiris, $kantarCikis,
-                    $r['kantar_net_yildiz'], $r['kantar_net_tedarikci'], $r['kantar_farki'],
-                    $betonId, $r['miktar'], $r['birim'], $pompaId,
-                    $katki1Id, $katki2Id, $firmaId,
-                    $imalatGrupId, $anaKalemId,
-                    $parselId, $blokId, $kotId, $r['aciklama'],
-                ]);
-            $added++;
-        } catch (PDOException $e) {
-            $errors[] = "Sıra {$r['sira_no']}: " . h($e->getMessage());
-            $skipped++;
         }
     }
-    $result = compact('added', 'skipped', 'errors');
+}
+
+// ADIM 2: Seçilen Satırları Aktarma
+if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_import'])) {
+    if (!isset($_SESSION['import_file']) || !file_exists($_SESSION['import_file'])) {
+        $error = "Yüklü Excel dosyası bulunamadı. Lütfen tekrar yükleyin.";
+    } else {
+        $selectedIndices = isset($_POST['rows']) ? $_POST['rows'] : [];
+        if (empty($selectedIndices)) {
+            $error = "Aktarmak için en az bir satır seçmelisiniz.";
+        } else {
+            $tempPath = $_SESSION['import_file'];
+            $colMapping = $_SESSION['import_col_mapping'];
+            $sheetIdx = $_SESSION['import_sheet_idx'];
+            
+            if ($xlsx = SimpleXLSX::parse($tempPath)) {
+                $rows = $xlsx->rows($sheetIdx);
+                $added = 0; $skipped = 0; $errors = [];
+                
+                $pdo->beginTransaction();
+                try {
+                    foreach ($selectedIndices as $idx) {
+                        $idx = (int)$idx;
+                        if (!isset($rows[$idx])) continue;
+                        $r = $rows[$idx];
+                        
+                        // Sütun verilerini eşle
+                        $val = function($key, $default = null) use ($r, $colMapping) {
+                            if (isset($colMapping[$key]) && isset($r[$colMapping[$key]])) {
+                                $v = trim($r[$colMapping[$key]]);
+                                return $v === '' ? $default : $v;
+                            }
+                            return $default;
+                        };
+                        
+                        $tarihRaw = $val('tarih');
+                        $tarih = parseTarih($tarihRaw ?? '');
+                        if (!$tarih) { 
+                            $skipped++; 
+                            continue; 
+                        }
+                        
+                        $tedarikciAd = $val('tedarikci');
+                        if (!$tedarikciAd) { 
+                            $skipped++; 
+                            continue; 
+                        }
+                        $tedarikciId = getOrCreate($pdo, 'tedarikciler', 'ad', $tedarikciAd);
+                        
+                        $betonId    = getOrCreate($pdo, 'beton_siniflari', 'ad',  $val('beton_sinifi'));
+                        $pompaId    = getOrCreate($pdo, 'pompa_turleri',   'ad',  $val('pompa'));
+                        $katki1Id   = getOrCreate($pdo, 'katki_listesi',   'ad',  $val('katki1'));
+                        $katki2Id   = getOrCreate($pdo, 'katki_listesi',   'ad',  $val('katki2'));
+                        $firmaId    = getOrCreate($pdo, 'firmalar',        'ad',  $val('firma'));
+                        $kivamId    = getOrCreate($pdo, 'kivam_siniflari', 'ad',  $val('kivam_sinifi'));
+                        
+                        $imalatGrupId  = getOrCreateImalat($pdo, $val('imalat_grup'));
+                        $anaKalemId    = $imalatGrupId ? getOrCreateAnaKalem($pdo, $imalatGrupId, $val('ana_is_kalemi')) : null;
+                        $parselId      = getOrCreateParsel($pdo, $val('parsel'));
+                        $blokId        = $parselId ? getOrCreateBlok($pdo, $parselId, $val('blok')) : null;
+                        $kotId         = $blokId   ? getOrCreateKot($pdo, $blokId, $val('kot'))   : null;
+                        
+                        $irsaliyeNo = $val('irsaliye_no');
+                        
+                        // İrsaliye no ile mükerrer kontrolü
+                        if ($irsaliyeNo) {
+                            $dup = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler WHERE irsaliye_no = ?");
+                            $dup->execute([$irsaliyeNo]);
+                            if ($dup->fetchColumn() > 0) { 
+                                $skipped++; 
+                                continue; 
+                            }
+                        }
+                        
+                        $mikserCikis = $val('mikser_cikis');
+                        $kantarGiris = $val('kantar_giris');
+                        $kantarCikis = $val('kantar_cikis');
+                        
+                        $mikserCikis = ($mikserCikis && $mikserCikis !== '00:00:00') ? $mikserCikis : null;
+                        $kantarGiris = ($kantarGiris && $kantarGiris !== '00:00:00') ? $kantarGiris : null;
+                        $kantarCikis = ($kantarCikis && $kantarCikis !== '00:00:00') ? $kantarCikis : null;
+                        
+                        $miktarVal = (float)str_replace(',', '.', $val('miktar', 0));
+                        
+                        $stmt = $pdo->prepare("INSERT INTO irsaliyeler
+                            (tip, sira_no, fatura_no, arac_plaka, kivam_sinifi_id, irsaliye_no,
+                             tedarikci_id, tarih,
+                             mikser_cikis_saati, kantar_giris_saati, kantar_cikis_saati,
+                             kantar_net_yildizlar, kantar_net_tedarikci, kantar_farki,
+                             beton_sinifi_id, miktar, birim, pompa_id,
+                             katki1_id, katki2_id, firma_id,
+                             imalat_grup_id, ana_is_kalemi_id,
+                             parsel_id, blok_id, kot_id, aciklama, created_by)
+                            VALUES ('alis',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                            
+                        $stmt->execute([
+                            $val('sira_no'), $val('fatura_no'), $val('arac_plaka'),
+                            $kivamId, $irsaliyeNo,
+                            $tedarikciId, $tarih,
+                            $mikserCikis, $kantarGiris, $kantarCikis,
+                            (float)str_replace(',', '.', $val('kantar_net_yildiz', 0)),
+                            (float)str_replace(',', '.', $val('kantar_net_tedarikci', 0)),
+                            (float)str_replace(',', '.', $val('kantar_farki', 0)),
+                            $betonId, $miktarVal, $val('birim', 'M3'), $pompaId,
+                            $katki1Id, $katki2Id, $firmaId,
+                            $imalatGrupId, $anaKalemId,
+                            $parselId, $blokId, $kotId, $val('aciklama'), current_user()['id']
+                        ]);
+                        $added++;
+                    }
+                    
+                    $pdo->commit();
+                    $success = "Aktarım işlemi tamamlandı! $added kayıt eklendi, $skipped mükerrer veya geçersiz kayıt atlandı.";
+                    
+                    // Oturum dosyalarını temizle
+                    @unlink($tempPath);
+                    unset($_SESSION['import_file']);
+                    unset($_SESSION['import_col_mapping']);
+                    unset($_SESSION['import_sheet_idx']);
+                    
+                } catch (PDOException $e) {
+                    $pdo->rollBack();
+                    $error = "Aktarım durduruldu. Veritabanı hatası: " . $e->getMessage();
+                }
+            } else {
+                $error = "Excel dosyası okunamadı: " . SimpleXLSX::parseError();
+            }
+        }
+    }
 }
 
 require_once __DIR__ . '/includes/header.php';
 ?>
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="mb-0"><i class="bi bi-file-earmark-spreadsheet text-primary me-2"></i>Excel Veri Aktarımı</h4>
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <h1 class="page-title h3 mb-0"><i class="bi bi-file-earmark-spreadsheet text-primary me-2"></i>Dinamik Excel Aktarımı</h1>
     <a href="irsaliyeler.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>İrsaliyelere Dön</a>
 </div>
 
-<?php if ($result): ?>
-<div class="alert alert-<?= $result['added'] > 0 ? 'success' : 'info' ?> d-flex align-items-start gap-3">
-    <i class="bi bi-check-circle-fill fs-4 mt-1"></i>
-    <div>
-        <strong>Aktarım Tamamlandı</strong><br>
-        <span class="text-success fw-bold"><?= $result['added'] ?> kayıt eklendi</span>,
-        <span class="text-secondary"><?= $result['skipped'] ?> kayıt atlandı (zaten mevcut veya hatalı)</span>
-        <?php if ($result['errors']): ?>
-        <ul class="mt-2 mb-0 small text-danger">
-            <?php foreach (array_slice($result['errors'], 0, 10) as $e): ?>
-            <li><?= h($e) ?></li>
-            <?php endforeach; ?>
-        </ul>
-        <?php endif; ?>
+<?php if ($error): ?>
+    <div class="alert alert-danger d-flex align-items-center gap-2 alert-dismissible fade show" role="alert">
+        <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+        <div><?= h($error) ?></div>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
-</div>
 <?php endif; ?>
 
-<div class="card mb-4">
-    <div class="card-header bg-warning text-dark fw-semibold">
-        <i class="bi bi-exclamation-triangle me-1"></i> Aktarım Hakkında
+<?php if ($success): ?>
+    <div class="alert alert-success d-flex align-items-center gap-2 alert-dismissible fade show" role="alert">
+        <i class="bi bi-check-circle-fill fs-5"></i>
+        <div><?= h($success) ?></div>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
-    <div class="card-body">
-        <ul class="mb-3">
-            <li>Toplam <strong><?= count($excelRows) ?></strong> kayıt aktarılmaya hazır (Beton Takip Tablosu ALIŞLAR sayfası)</li>
-            <li>İrsaliye numarası zaten mevcut olan kayıtlar <strong>atlanır</strong> (tekrar eklenmez)</li>
-            <li>Tedarikçi, beton sınıfı, pompa, katkı, firma, parsel, blok, kot gibi referans veriler <strong>otomatik oluşturulur</strong></li>
-            <li>Bu işlem geri alınamaz — önce mevcut verileri kontrol edin</li>
-        </ul>
-        <form method="post" onsubmit="return confirm('<?= count($excelRows) ?> kayıt aktarılacak. Devam etmek istiyor musunuz?')">
-            <button name="import" value="1" class="btn btn-warning">
-                <i class="bi bi-cloud-upload me-1"></i> Excel Verilerini Aktar (<?= count($excelRows) ?> kayıt)
-            </button>
-        </form>
-    </div>
-</div>
+<?php endif; ?>
 
-<div class="card">
-    <div class="card-header fw-semibold">
-        <i class="bi bi-table me-1"></i> Aktarılacak Kayıtlar (Önizleme)
-    </div>
-    <div class="card-body p-0">
-        <div class="table-responsive" style="max-height:500px;overflow-y:auto">
-            <table class="table table-sm table-hover align-middle mb-0">
-                <thead class="table-light sticky-top">
-                    <tr>
-                        <th>#</th>
-                        <th>İrsaliye No</th>
-                        <th>Tedarikçi</th>
-                        <th>Tarih</th>
-                        <th>Beton</th>
-                        <th class="text-end">Miktar</th>
-                        <th>Pompa</th>
-                        <th>Parsel</th>
-                        <th>Açıklama</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($excelRows as $i => $r): ?>
-                    <tr>
-                        <td class="text-muted small"><?= $r['sira_no'] ?></td>
-                        <td class="font-monospace small"><?= h($r['irsaliye_no'] ?? '-') ?></td>
-                        <td><?= h($r['tedarikci'] ?? '-') ?></td>
-                        <td class="text-nowrap"><?= h($r['tarih'] ?? '-') ?></td>
-                        <td><span class="badge bg-secondary"><?= h($r['beton_sinifi'] ?? '-') ?></span></td>
-                        <td class="text-end"><?= number_format($r['miktar'], 1) ?> <?= h($r['birim']) ?></td>
-                        <td><?= h($r['pompa'] ?? '-') ?></td>
-                        <td><?= h($r['parsel'] ?? '-') ?></td>
-                        <td class="small text-muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= h($r['aciklama'] ?? '') ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+<?php if (!isset($_SESSION['import_file'])): ?>
+    <!-- ADIM 0: Dosya Yükleme Formu -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white border-0 py-3">
+            <h5 class="card-title mb-0 fw-semibold text-muted">
+                <i class="bi bi-cloud-upload text-primary me-1"></i> Excel Dosyası Yükle
+            </h5>
+        </div>
+        <div class="card-body p-4">
+            <form method="post" enctype="multipart/form-data">
+                <input type="hidden" name="csrf" value="<?= h($csrfImport) ?>">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-6">
+                        <label class="form-label fw-medium">Excel Dosyası (.xlsx)</label>
+                        <input type="file" name="excel_file" class="form-control" accept=".xlsx" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-medium">Okunacak Sayfa Index</label>
+                        <select name="sheet_idx" class="form-select">
+                            <option value="0">Sayfa 1 (ALIŞLAR veya İlk Sayfa)</option>
+                            <option value="1">Sayfa 2 (İADE vb.)</option>
+                            <option value="2">Sayfa 3</option>
+                            <option value="3">Sayfa 4</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-eye me-1"></i> Yükle &amp; İncele
+                        </button>
+                    </div>
+                </div>
+            </form>
+            <div class="mt-4">
+                <div class="alert alert-info border-0 bg-light-primary text-primary-emphasis mb-0 p-3 rounded-3">
+                    <h6 class="fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i> İpuçları &amp; Uyumlu Şablon</h6>
+                    <ul class="mb-0 small ps-3">
+                        <li>Dosya boyutu sunucu yükleme sınırları dahilinde olmalıdır. Sadece <strong>.xlsx</strong> formatındaki modern Excel dosyaları kabul edilir.</li>
+                        <li>Sistem, başlık satırını otomatik tespit etmek için ilk 15 satırda <em>"irsaliye no"</em>, <em>"irsaliye tarihi"</em>, <em>"miktar"</em> veya <em>"tarih"</em> kelimelerini arar.</li>
+                        <li>Sütun isimleri otomatik haritalanır. Eşleşmeyen sütunlar için varsayılan şablon (Sıra, İrsaliye No, Tedarikçi, Tarih, Miktar vb.) indeksleri kullanılır.</li>
+                    </ul>
+                </div>
+            </div>
         </div>
     </div>
-</div>
+<?php else: 
+    // ADIM 1: Yüklenen Dosyayı Okuma ve Seçim Tablosu Oluşturma
+    $xlsx = SimpleXLSX::parse($_SESSION['import_file']);
+    if ($xlsx):
+        $rows = $xlsx->rows($_SESSION['import_sheet_idx']);
+        $headerRowIdx = $_SESSION['import_header_row_idx'];
+        $colMapping = $_SESSION['import_col_mapping'];
+        $dataStartIdx = $headerRowIdx + 1;
+        $totalRows = count($rows);
+        $totalDataRows = $totalRows - $dataStartIdx;
+    ?>
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <h5 class="card-title mb-0 fw-semibold text-muted">
+                    <i class="bi bi-eye text-success me-1"></i> Yüklenen Excel Dosya Önizlemesi
+                </h5>
+                <small class="text-muted">Toplam <strong><?= $totalDataRows ?></strong> veri satırı bulundu. Başlık Satırı Index: <?= $headerRowIdx ?></small>
+            </div>
+            <div>
+                <a href="import.php?reset=1" class="btn btn-outline-danger btn-sm">
+                    <i class="bi bi-x-circle me-1"></i> Dosyayı İptal Et
+                </a>
+            </div>
+        </div>
+        
+        <form method="post">
+            <input type="hidden" name="csrf" value="<?= h($csrfImport) ?>">
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height: 550px; overflow-y: auto;">
+                    <table class="table table-striped table-hover align-middle mb-0 small">
+                        <thead class="table-light sticky-top" style="z-index: 10;">
+                            <tr>
+                                <th width="40" class="text-center">
+                                    <input type="checkbox" class="form-check-input" id="selectAll" checked>
+                                </th>
+                                <th width="60">Satır</th>
+                                <th>İrsaliye No</th>
+                                <th>Tedarikçi</th>
+                                <th>Tarih</th>
+                                <th>Beton Sınıfı</th>
+                                <th class="text-end">Miktar (m³)</th>
+                                <th>Pompa</th>
+                                <th>Parsel / Blok / Kot</th>
+                                <th>Açıklama</th>
+                                <th>Durum</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php 
+                            $hasValidRows = false;
+                            for ($i = $dataStartIdx; $i < $totalRows; $i++):
+                                $r = $rows[$i];
+                                
+                                // Boş satırları atla
+                                if (count(array_filter($r)) === 0) continue;
+                                
+                                $hasValidRows = true;
+                                
+                                // Değer çekme yardımcısı
+                                $getVal = function($key) use ($r, $colMapping) {
+                                    return isset($colMapping[$key]) && isset($r[$colMapping[$key]]) ? trim($r[$colMapping[$key]]) : '';
+                                };
+                                
+                                $siraNo = $getVal('sira_no');
+                                $irsaliyeNo = $getVal('irsaliye_no');
+                                $tedarikci = $getVal('tedarikci');
+                                $tarihRaw = $getVal('tarih');
+                                $tarih = parseTarih($tarihRaw ?? '');
+                                $betonSinifi = $getVal('beton_sinifi');
+                                $miktar = $getVal('miktar');
+                                $pompa = $getVal('pompa');
+                                $parsel = $getVal('parsel');
+                                $blok = $getVal('blok');
+                                $kot = $getVal('kot');
+                                $aciklama = $getVal('aciklama');
+                                
+                                $dupColor = '';
+                                $dupText = 'Hazır';
+                                $canImport = true;
+                                
+                                // Mükerrer kontrolü
+                                if ($irsaliyeNo) {
+                                    $dupQ = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler WHERE irsaliye_no = ?");
+                                    $dupQ->execute([$irsaliyeNo]);
+                                    if ($dupQ->fetchColumn() > 0) {
+                                        $dupColor = 'table-warning';
+                                        $dupText = 'Mükerrer';
+                                        $canImport = false;
+                                    }
+                                }
+                                
+                                // Tarih veya tedarikçi yoksa hata
+                                if (!$tarih || !$tedarikci) {
+                                    $dupColor = 'table-danger';
+                                    $dupText = 'Hatalı (Tarih/Tedarikçi Yok)';
+                                    $canImport = false;
+                                }
+                            ?>
+                            <tr class="<?= $dupColor ?>">
+                                <td class="text-center">
+                                    <input type="checkbox" name="rows[]" value="<?= $i ?>" class="form-check-input row-select" <?= $canImport ? 'checked' : '' ?> <?= $canImport ? '' : 'disabled' ?>>
+                                </td>
+                                <td class="text-muted"><?= $i + 1 ?></td>
+                                <td class="font-monospace fw-semibold"><?= h($irsaliyeNo ?: '-') ?></td>
+                                <td><?= h($tedarikci ?: '-') ?></td>
+                                <td class="text-nowrap"><?= h($tarihRaw ?: '-') ?><?= $tarih ? '' : ' <i class="bi bi-x-circle text-danger" title="Geçersiz tarih formatı"></i>' ?></td>
+                                <td><span class="badge bg-secondary"><?= h($betonSinifi ?: '-') ?></span></td>
+                                <td class="text-end fw-bold"><?= number_format((float)str_replace(',', '.', $miktar), 1) ?></td>
+                                <td><?= h($pompa ?: '-') ?></td>
+                                <td>
+                                    <span class="text-muted small">
+                                        <?= h($parsel ?: '-') ?> / <?= h($blok ?: '-') ?> / <?= h($kot ?: '-') ?>
+                                    </span>
+                                </td>
+                                <td class="text-truncate" style="max-width: 150px;" title="<?= h($aciklama) ?>"><?= h($aciklama ?: '-') ?></td>
+                                <td>
+                                    <?php if ($dupText === 'Hazır'): ?>
+                                        <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i> Hazır</span>
+                                    <?php elseif ($dupText === 'Mükerrer'): ?>
+                                        <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i> Mükerrer</span>
+                                    <?php else: ?>
+                                        <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i> Hatalı</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endfor; ?>
+                            
+                            <?php if (!$hasValidRows): ?>
+                                <tr>
+                                    <td colspan="11" class="text-center py-4 text-muted">
+                                        <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+                                        Yorumlanabilir veri satırı bulunamadı. Lütfen Excel yapısını kontrol edin.
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="card-footer bg-white border-0 py-3 px-4 d-flex justify-content-between align-items-center">
+                <span id="selectedCount" class="text-muted fw-medium">0 / 0 satır aktarılacak</span>
+                <button type="submit" name="execute_import" class="btn btn-success" id="importBtn" <?= $hasValidRows ? '' : 'disabled' ?>>
+                    <i class="bi bi-cloud-download me-1"></i> Seçilen Verileri Aktar
+                </button>
+            </div>
+        </form>
+    </div>
+    
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const selectAll = document.getElementById('selectAll');
+        const checkboxes = document.querySelectorAll('.row-select:not(:disabled)');
+        const selectedCount = document.getElementById('selectedCount');
+        const importBtn = document.getElementById('importBtn');
+        
+        function updateCounter() {
+            const checkedCount = Array.from(checkboxes).filter(c => c.checked).length;
+            selectedCount.textContent = `${checkedCount} / ${checkboxes.length} satır aktarılacak`;
+            importBtn.disabled = checkedCount === 0;
+        }
+        
+        if (selectAll) {
+            selectAll.addEventListener('change', function () {
+                checkboxes.forEach(c => c.checked = selectAll.checked);
+                updateCounter();
+            });
+        }
+        
+        checkboxes.forEach(c => {
+            c.addEventListener('change', function () {
+                updateCounter();
+                if (!this.checked) selectAll.checked = false;
+            });
+        });
+        
+        updateCounter();
+    });
+    </script>
+    <?php else: ?>
+        <div class="alert alert-danger">Excel dosyası işlenirken hata oluştu. Lütfen dosyanın bozuk olmadığından emin olun.</div>
+        <a href="import.php?reset=1" class="btn btn-primary">Geri Dön</a>
+    <?php endif; ?>
+<?php endif; ?>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

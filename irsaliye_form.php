@@ -7,7 +7,8 @@ require_once __DIR__ . '/includes/auth.php';
 
 if (!file_exists(__DIR__ . '/config.php')) { redirect('install.php'); }
 
-require_auth(['admin','teknik_ofis_admin','saha_sefi']);
+// Depo dahil tüm oluşturma/görüntüleme rolleri
+require_auth(['admin','teknik_ofis_admin','teknik_ofis','saha_sefi','depo']);
 require_once __DIR__ . '/includes/db.php';
 
 $tip    = in_array($_GET['tip'] ?? '', ['alis','iade'], true) ? $_GET['tip'] : 'alis';
@@ -20,10 +21,23 @@ if ($editId) {
     $row = $s->fetch();
     if (!$row) { flash('error', 'İrsaliye bulunamadı.'); redirect("irsaliyeler.php?tip={$tip}"); }
     $tip = $row['tip'];
+
+    // Yetki kontrolü: bu irsaliyeyi düzenleyebilir mi?
+    if (!can_edit_irsaliye($row)) {
+        flash('error', 'Bu irsaliyeyi düzenleme yetkiniz yok (durum: ' . ($row['durum'] ?? '?') . ').');
+        redirect("irsaliyeler.php?tip={$tip}");
+    }
+}
+
+// Depo: sadece oluşturma, düzenleme yok
+if (!$editId && !can_create_irsaliye()) {
+    flash('error', 'İrsaliye oluşturma yetkiniz yok.');
+    redirect('irsaliyeler.php');
 }
 
 $pageTitle = ($editId ? 'İrsaliye Düzenle' : 'Yeni İrsaliye Ekle') . ' — Beton Takip Sistemi';
 $error     = '';
+$irsaliyeDurum = $row['durum'] ?? 'beklemede'; // mevcut durum
 
 // ── Referans veriler ─────────────────────────────────────────────────────────
 $tedarikciler   = $pdo->query("SELECT id,ad FROM tedarikciler WHERE aktif=1 ORDER BY ad")->fetchAll();
@@ -77,9 +91,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $aciklama      = trim($d['aciklama'] ?? '') ?: null;
     $uid           = current_user_id();
 
-    if (!$tedarikciId || !$tarih || $miktar <= 0) {
+    // Onay aksiyonları (kaydet + onayla)
+    $onayAksiyonu = $_POST['onay_aksiyonu'] ?? '';
+
+    // Onay / ret işlemi (form kayıt gerektirmez)
+    if ($editId && in_array($onayAksiyonu, ['saha_onayla','saha_reddet','teknik_onayla','teknik_reddet'])) {
+        $redNeden = trim($_POST['red_neden'] ?? '');
+        if (str_contains($onayAksiyonu, 'reddet') && !$redNeden) {
+            $error = 'Red nedeni zorunludur.';
+        } else {
+            switch ($onayAksiyonu) {
+                case 'saha_onayla':
+                    if (!can_approve_saha()) { $error = 'Bu işlem için yetkiniz yok.'; break; }
+                    $pdo->prepare("UPDATE irsaliyeler SET durum='saha_onaylandi', saha_onaylayan_id=?, saha_onay_tarih=NOW() WHERE id=?")->execute([$uid, $editId]);
+                    flash('success', 'Saha onayı verildi.'); redirect("irsaliyeler.php?tip={$tip}");
+                    break;
+                case 'saha_reddet':
+                    if (!can_approve_saha()) { $error = 'Yetkiniz yok.'; break; }
+                    $pdo->prepare("UPDATE irsaliyeler SET durum='reddedildi', red_neden=? WHERE id=?")->execute([$redNeden, $editId]);
+                    flash('warning', 'İrsaliye reddedildi.'); redirect("irsaliyeler.php?tip={$tip}");
+                    break;
+                case 'teknik_onayla':
+                    if (!can_approve_teknik()) { $error = 'Yetkiniz yok.'; break; }
+                    $pdo->prepare("UPDATE irsaliyeler SET durum='onaylandi', teknik_onaylayan_id=?, teknik_onay_tarih=NOW() WHERE id=?")->execute([$uid, $editId]);
+                    flash('success', 'Teknik ofis onayı verildi — İrsaliye kaydedildi.'); redirect("irsaliyeler.php?tip={$tip}");
+                    break;
+                case 'teknik_reddet':
+                    if (!can_approve_teknik()) { $error = 'Yetkiniz yok.'; break; }
+                    $pdo->prepare("UPDATE irsaliyeler SET durum='reddedildi', red_neden=? WHERE id=?")->execute([$redNeden, $editId]);
+                    flash('warning', 'İrsaliye teknik ofis tarafından reddedildi.'); redirect("irsaliyeler.php?tip={$tip}");
+                    break;
+            }
+        }
+    }
+
+    if (!$error && !$tedarikciId || !$tarih || $miktar <= 0) {
         $error = 'Tedarikçi, tarih ve miktar zorunludur. Miktar sıfırdan büyük olmalıdır.';
-    } else {
+    } elseif (!$error) {
+        // Yeni kayıt durum: depo oluşturursa 'beklemede', diğerleri 'beklemede' (saha onayı bekler)
+        $yeniDurum = has_role('admin','teknik_ofis_admin') ? 'onaylandi' : 'beklemede';
+
         try {
             if ($editId) {
                 $stmt = $pdo->prepare("UPDATE irsaliyeler SET
@@ -96,28 +147,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $kantarYildiz, $kantarTed, $kantarFarki,
                     $betonId, $miktar, $birim, $pompaId, $katki1Id, $katki2Id,
                     $firmaId, $imalatGrupId, $anaIsKalemId, $parselId, $blokId, $kotId,
-                    $aciklama, $uid,
-                    $editId,
+                    $aciklama, $uid, $editId,
                 ]);
                 flash('success', 'İrsaliye güncellendi.');
             } else {
                 $stmt = $pdo->prepare("INSERT INTO irsaliyeler (
-                    tip, sira_no, fatura_no, arac_plaka, kivam_sinifi_id, irsaliye_no,
+                    tip, durum, sira_no, fatura_no, arac_plaka, kivam_sinifi_id, irsaliye_no,
                     proje_no, proje_id, tedarikci_id, tarih, mikser_cikis_saati, kantar_giris_saati,
                     kantar_cikis_saati, kantar_net_yildizlar, kantar_net_tedarikci, kantar_farki,
                     beton_sinifi_id, miktar, birim, pompa_id, katki1_id, katki2_id,
                     firma_id, imalat_grup_id, ana_is_kalemi_id, parsel_id, blok_id, kot_id,
                     aciklama, created_by
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
                 $stmt->execute([
-                    $tipPost, $siraNo, $faturaNo, $aracPlaka, $kivamId, $irsaliyeNo,
+                    $tipPost, $yeniDurum, $siraNo, $faturaNo, $aracPlaka, $kivamId, $irsaliyeNo,
                     $projeNo, $projeId, $tedarikciId, $tarih, $mikserCikis, $kantarGiris, $kantarCikis,
                     $kantarYildiz, $kantarTed, $kantarFarki,
                     $betonId, $miktar, $birim, $pompaId, $katki1Id, $katki2Id,
                     $firmaId, $imalatGrupId, $anaIsKalemId, $parselId, $blokId, $kotId,
                     $aciklama, $uid,
                 ]);
-                flash('success', 'İrsaliye eklendi.');
+                flash('success', 'İrsaliye eklendi' . ($yeniDurum === 'beklemede' ? ' — Onay bekleniyor.' : '.'));
             }
             redirect("irsaliyeler.php?tip={$tipPost}");
         } catch (PDOException $e) {
@@ -127,7 +177,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = 'Kayıt hatası: ' . h($e->getMessage());
             }
         }
-    }
+    } // end elseif(!$error)
 }
 
 // Seçili parsel varsa blok ve kalemleri dinamik yükle (AJAX ya da sayfa yükleme)
@@ -172,17 +222,95 @@ function val(array $row = null, string $key, $default = ''): string {
 require_once __DIR__ . '/includes/header.php';
 ?>
 
-<div class="d-flex align-items-center gap-3 mb-4">
+<div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
     <a href="irsaliyeler.php?tip=<?= h($tip) ?>" class="btn btn-outline-secondary btn-sm">
         <i class="bi bi-arrow-left"></i>
     </a>
-    <h4 class="mb-0">
+    <h4 class="mb-0 me-auto">
         <?= $editId ? '<i class="bi bi-pencil text-warning me-2"></i>İrsaliye Düzenle' : '<i class="bi bi-plus-circle text-success me-2"></i>Yeni İrsaliye Ekle' ?>
     </h4>
+    <?php if ($editId && isset($row['durum'])): ?>
+        <?= durum_badge($row['durum']) ?>
+    <?php endif; ?>
 </div>
 
 <?php if ($error): ?>
     <div class="alert alert-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i><?= h($error) ?></div>
+<?php endif; ?>
+
+<?php
+// Onay akışı bilgi paneli
+if ($editId && isset($row['durum'])):
+    $rd = $row['durum'];
+?>
+<div class="card mb-4 border-0" style="background:var(--bt-bg-soft)">
+    <div class="card-body py-3 px-4">
+        <div class="d-flex flex-wrap align-items-center gap-3">
+            <div>
+                <div class="fw-semibold small mb-1">Onay Durumu</div>
+                <?= durum_badge($rd) ?>
+            </div>
+
+            <?php if ($row['saha_onaylayan_id']): ?>
+            <div class="small text-muted">
+                <i class="bi bi-person-check me-1"></i>Saha Onayı:
+                <strong><?= format_date($row['saha_onay_tarih']) ?></strong>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($row['teknik_onaylayan_id']): ?>
+            <div class="small text-muted">
+                <i class="bi bi-person-check-fill me-1"></i>Teknik Onay:
+                <strong><?= format_date($row['teknik_onay_tarih']) ?></strong>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($rd === 'reddedildi' && $row['red_neden']): ?>
+            <div class="small text-danger">
+                <i class="bi bi-x-circle me-1"></i>Red nedeni: <em><?= h($row['red_neden']) ?></em>
+            </div>
+            <?php endif; ?>
+
+            <!-- Onay Aksiyon Butonları -->
+            <div class="ms-auto d-flex gap-2 flex-wrap">
+                <?php if ($rd === 'beklemede' && can_approve_saha()): ?>
+                    <button type="button" class="btn btn-sm btn-success"
+                        onclick="onayGonder('saha_onayla')">
+                        <i class="bi bi-check-circle me-1"></i>Saha Onayla
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger"
+                        onclick="redGonder('saha_reddet')">
+                        <i class="bi bi-x-circle me-1"></i>Reddet
+                    </button>
+                <?php endif; ?>
+
+                <?php if ($rd === 'saha_onaylandi' && can_approve_teknik()): ?>
+                    <button type="button" class="btn btn-sm btn-primary"
+                        onclick="onayGonder('teknik_onayla')">
+                        <i class="bi bi-patch-check me-1"></i>Teknik Onayla &amp; Kaydet
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger"
+                        onclick="redGonder('teknik_reddet')">
+                        <i class="bi bi-x-circle me-1"></i>Reddet
+                    </button>
+                <?php endif; ?>
+
+                <?php if ($rd === 'reddedildi' && can_approve_saha()): ?>
+                    <button type="button" class="btn btn-sm btn-warning"
+                        onclick="onayGonder('saha_onayla')">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Yeniden Onayla
+                    </button>
+                <?php endif; ?>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Gizli onay formu -->
+<form id="onayForm" method="post" style="display:none">
+    <input type="hidden" name="onay_aksiyonu" id="onayAksiyon">
+    <input type="hidden" name="red_neden"    id="redNedenInput">
+</form>
 <?php endif; ?>
 
 <form method="post" id="irsaliyeForm">
@@ -192,12 +320,15 @@ require_once __DIR__ . '/includes/header.php';
     <div class="col-lg-8">
 
         <!-- Genel Bilgiler -->
-        <div class="card mb-3">
-            <div class="card-header fw-semibold bg-white">
-                <i class="bi bi-info-circle text-primary me-1"></i> Genel Bilgiler
+        <div class="card mb-4 border-0">
+            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark d-flex align-items-center justify-content-between"
+                 role="button" data-bs-toggle="collapse" data-bs-target="#accGenel" aria-expanded="true">
+                <span><i class="bi bi-info-circle text-primary me-2"></i> Genel Bilgiler</span>
+                <i class="bi bi-chevron-down text-muted d-md-none" style="transition:.2s" id="chevGenel"></i>
             </div>
-            <div class="card-body">
-                <div class="row g-3">
+            <div class="collapse show" id="accGenel">
+            <div class="card-body px-4 pb-4 pt-3">
+                <div class="row g-4">
                     <div class="col-md-4">
                         <label class="form-label">Tip <span class="text-danger">*</span></label>
                         <select name="tip" class="form-select" required>
@@ -218,7 +349,7 @@ require_once __DIR__ . '/includes/header.php';
                         <select name="tedarikci_id" class="form-select" required>
                             <option value="">— Seçin —</option>
                             <?php foreach ($tedarikciler as $t): ?>
-                                <option value="<?= $t['id'] ?>" <?= sel($row['tedarikci_id'] ?? '', $t['id']) ?>><?= h($t['ad']) ?></option>
+                                <option value="<?= $t['id'] ?>" data-vkn="<?= h($t['vkn'] ?? '') ?>" <?= sel($row['tedarikci_id'] ?? '', $t['id']) ?>><?= h($t['ad']) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -256,15 +387,19 @@ require_once __DIR__ . '/includes/header.php';
                     </div>
                 </div>
             </div>
+            </div><!-- /accGenel -->
         </div>
 
         <!-- Beton & Miktar -->
-        <div class="card mb-3">
-            <div class="card-header fw-semibold bg-white">
-                <i class="bi bi-layers text-primary me-1"></i> Beton & Miktar
+        <div class="card mb-4 border-0">
+            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark d-flex align-items-center justify-content-between"
+                 role="button" data-bs-toggle="collapse" data-bs-target="#accBeton" aria-expanded="true">
+                <span><i class="bi bi-layers text-primary me-2"></i> Beton & Miktar</span>
+                <i class="bi bi-chevron-down text-muted d-md-none"></i>
             </div>
-            <div class="card-body">
-                <div class="row g-3">
+            <div class="collapse show" id="accBeton">
+            <div class="card-body px-4 pb-4 pt-3">
+                <div class="row g-4">
                     <div class="col-md-4">
                         <label class="form-label">Beton Sınıfı</label>
                         <select name="beton_sinifi_id" class="form-select">
@@ -311,15 +446,19 @@ require_once __DIR__ . '/includes/header.php';
                     </div>
                 </div>
             </div>
+            </div><!-- /accBeton -->
         </div>
 
         <!-- Kantar Bilgileri -->
-        <div class="card mb-3">
-            <div class="card-header fw-semibold bg-white">
-                <i class="bi bi-speedometer text-primary me-1"></i> Kantar & Saat Bilgileri
+        <div class="card mb-4 border-0">
+            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark d-flex align-items-center justify-content-between"
+                 role="button" data-bs-toggle="collapse" data-bs-target="#accKantar" aria-expanded="false">
+                <span><i class="bi bi-speedometer text-primary me-2"></i> Kantar & Saat Bilgileri</span>
+                <i class="bi bi-chevron-down text-muted d-md-none"></i>
             </div>
-            <div class="card-body">
-                <div class="row g-3">
+            <div class="collapse" id="accKantar">
+            <div class="card-body px-4 pb-4 pt-3">
+                <div class="row g-4">
                     <div class="col-md-4">
                         <label class="form-label">Mikser Çıkış Saati</label>
                         <input type="time" name="mikser_cikis_saati" class="form-control" value="<?= val($row, 'mikser_cikis_saati') ?>">
@@ -347,6 +486,7 @@ require_once __DIR__ . '/includes/header.php';
                     </div>
                 </div>
             </div>
+            </div><!-- /accKantar -->
         </div>
 
     </div>
@@ -355,11 +495,11 @@ require_once __DIR__ . '/includes/header.php';
     <div class="col-lg-4">
 
         <!-- Konum -->
-        <div class="card mb-3">
-            <div class="card-header fw-semibold bg-white">
-                <i class="bi bi-map text-primary me-1"></i> Konum
+        <div class="card mb-4 border-0">
+            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark">
+                <i class="bi bi-map text-primary me-2"></i> Konum
             </div>
-            <div class="card-body">
+            <div class="card-body px-4 pb-4 pt-3">
                 <div class="mb-3">
                     <label class="form-label">Parsel</label>
                     <select name="parsel_id" id="selParsel" class="form-select">
@@ -391,11 +531,11 @@ require_once __DIR__ . '/includes/header.php';
         </div>
 
         <!-- İş Kalemi -->
-        <div class="card mb-3">
-            <div class="card-header fw-semibold bg-white">
-                <i class="bi bi-list-task text-primary me-1"></i> İş Kalemi
+        <div class="card mb-4 border-0">
+            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark">
+                <i class="bi bi-list-task text-primary me-2"></i> İş Kalemi
             </div>
-            <div class="card-body">
+            <div class="card-body px-4 pb-4 pt-3">
                 <div class="mb-3">
                     <label class="form-label">Firma</label>
                     <select name="firma_id" class="form-select">
@@ -427,17 +567,17 @@ require_once __DIR__ . '/includes/header.php';
         </div>
 
         <!-- Açıklama -->
-        <div class="card mb-3">
-            <div class="card-header fw-semibold bg-white">
-                <i class="bi bi-chat-text text-primary me-1"></i> Açıklama
+        <div class="card mb-4 border-0">
+            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark">
+                <i class="bi bi-chat-text text-primary me-2"></i> Açıklama
             </div>
-            <div class="card-body">
+            <div class="card-body px-4 pb-4 pt-3">
                 <textarea name="aciklama" class="form-control" rows="3" placeholder="İsteğe bağlı not..."><?= val($row, 'aciklama') ?></textarea>
             </div>
         </div>
 
-        <div class="d-grid gap-2">
-            <button type="submit" class="btn btn-success btn-lg">
+        <div class="d-grid gap-3">
+            <button type="submit" class="btn btn-primary btn-lg shadow-sm">
                 <i class="bi bi-save me-1"></i> <?= $editId ? 'Güncelle' : 'Kaydet' ?>
             </button>
             <a href="irsaliyeler.php?tip=<?= h($tip) ?>" class="btn btn-outline-secondary">
@@ -452,8 +592,8 @@ require_once __DIR__ . '/includes/header.php';
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 <!-- BELGE / KAMERA / QR PANEL (kayıttan bağımsız çalışır)                -->
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
-<div class="card mt-4" id="belgePanel">
-    <div class="card-header bg-white fw-semibold p-0">
+<div class="card mt-4 border-0 shadow-sm" id="belgePanel">
+    <div class="card-header bg-transparent border-0 fw-semibold p-0 pt-2">
         <ul class="nav nav-tabs border-0" id="belgeTabs" role="tablist">
             <li class="nav-item" role="presentation">
                 <button class="nav-link active rounded-0 px-4" id="tab-yukleme-btn"
@@ -577,7 +717,7 @@ require_once __DIR__ . '/includes/header.php';
                                 <i class="bi bi-stop-circle me-1"></i> Kapat
                             </button>
                         </div>
-                        <div class="position-relative border rounded overflow-hidden bg-dark" style="min-height:200px">
+                        <div class="position-relative border-0 rounded-4 overflow-hidden bg-dark shadow-sm" style="min-height:200px">
                             <video id="kameraVideo" autoplay playsinline muted
                                    class="w-100 d-none" style="max-height:400px;object-fit:cover;"></video>
                             <div id="kameraPlaceholder" class="d-flex align-items-center justify-content-center" style="height:200px">
@@ -620,7 +760,7 @@ require_once __DIR__ . '/includes/header.php';
                                 <i class="bi bi-stop-circle me-1"></i> Durdur
                             </button>
                         </div>
-                        <div class="position-relative border rounded overflow-hidden bg-dark" style="min-height:200px">
+                        <div class="position-relative border-0 rounded-4 overflow-hidden bg-dark shadow-sm" style="min-height:200px">
                             <video id="qrVideo" autoplay playsinline muted
                                    class="w-100 d-none" style="max-height:350px;object-fit:cover;"></video>
                             <canvas id="qrScanCanvas" class="d-none"></canvas>
@@ -664,10 +804,25 @@ require_once __DIR__ . '/includes/header.php';
     </div>
 </div>
 
-<!-- jsQR kütüphanesi (CDN) -->
+<!-- jsQR (CDN) -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <!-- PDF.js (CDN) -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script>
+// BarcodeDetector: QR Code (GIB JSON) + Data Matrix (KGS/THBB E1) desteği
+var _formBarcodeDetector = null;
+(async function() {
+    if (!('BarcodeDetector' in window)) return;
+    try {
+        var formats = ['qr_code', 'data_matrix'];
+        if (typeof BarcodeDetector.getSupportedFormats === 'function') {
+            var sup = await BarcodeDetector.getSupportedFormats();
+            formats = formats.filter(function(f){ return sup.includes(f); });
+        }
+        _formBarcodeDetector = new BarcodeDetector({ formats: formats.length ? formats : ['qr_code'] });
+    } catch(e) {}
+})();
+</script>
 <script>
 if (typeof pdfjsLib !== 'undefined') {
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
@@ -790,6 +945,9 @@ let kameraFotograflari = []; // data URL array
 
 const btnKameraQrTara = document.getElementById('btnKameraQrTara');
 let kameraQrAnimId = null, kameraQrAktif = false;
+let sonTarananKameraRawData = '';
+let kameraOkunanJson = false;
+let kameraOkunanE1 = false;
 
 async function kameraAc(faceUser = false) {
     if (kameraStream) kameraKapat();
@@ -798,6 +956,7 @@ async function kameraAc(faceUser = false) {
             video: { facingMode: faceUser ? 'user' : { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
         });
         kameraVideo.srcObject = kameraStream;
+        await kameraVideo.play();
         kameraVideo.classList.remove('d-none');
         kameraPlaceholder.classList.add('d-none');
         btnKameraCevir.classList.remove('d-none');
@@ -814,6 +973,7 @@ function kameraKapat() {
     kameraQrDurdur();
     kameraStream?.getTracks().forEach(t => t.stop());
     kameraStream = null;
+    kameraVideo.srcObject = null;
     kameraVideo.classList.add('d-none');
     kameraPlaceholder.classList.remove('d-none');
     btnKameraCevir.classList.add('d-none');
@@ -825,6 +985,7 @@ function kameraKapat() {
 
 function kameraQrDurdur() {
     cancelAnimationFrame(kameraQrAnimId);
+    kameraQrAnimId = null;
     kameraQrAktif = false;
     if (btnKameraQrTara) {
         btnKameraQrTara.innerHTML = '<i class="bi bi-qr-code-scan me-1"></i> QR Tara';
@@ -832,34 +993,273 @@ function kameraQrDurdur() {
     }
 }
 
-function kameraQrLoop() {
+// E1 formatlı QR'ı parse eder (Tekli form desteği)
+function parseE1Qr(s) {
+    if (!s) return null;
+    s = s.replace(/\s+/g, '');
+    if (s.substring(0,2) !== 'E1') return null;
+    var d = { irsaliye_no:'', vkn:'', tarih:'', sevkZamani:'', miktar:'',
+              beton_sinifi:'', dayanim:'', kivam:'', yogunluk:'',
+              klorur:'', dmax:'', suCimento:'', plaka:'' };
+
+    var m = s.match(/^E1([A-ZÇĞİÖŞÜ]{2,5}\d{13})(\d{10})(\d{8})(\d{4})(\d{1,3})\/\d{1,3}(C\d{2,3})(?:\s*[\/\-]\s*\d{2,3})?(\d{1,2},\d{1,2})(S\d{1,2})([A-Z]{1,2})(\d,\d{1,2})(\d{2})(\d,\d{1,2})(\d{2}[A-ZÇĞİÖŞÜ]{2,3}\d{2,4})/);
+    if (!m) {
+        var m2 = s.match(/^E1([A-ZÇĞİÖŞÜ]{2,5}\d{13})(\d{10})(\d{8})(\d{4})(\d{1,3})\/\d{1,3}(C\d{2,3})/);
+        if (!m2) return null;
+        d.irsaliye_no = m2[1];
+        d.vkn         = m2[2];
+        d.tarih       = m2[3].substring(0,4) + '-' + m2[3].substring(4,6) + '-' + m2[3].substring(6,8);
+        d.sevkZamani  = m2[4].substring(0,2) + ':' + m2[4].substring(2,4);
+        d.miktar      = m2[5];
+        d.beton_sinifi= m2[6];
+        var restFb = s.substring(m2[0].length);
+        var pmFb = restFb.match(/(\d{2}[A-ZÇĞİÖŞÜ]{2,3}\d{2,4})/);
+        if (pmFb) d.plaka = pmFb[1];
+        return d;
+    }
+    d.irsaliye_no = m[1];
+    d.vkn         = m[2];
+    d.tarih       = m[3].substring(0,4) + '-' + m[3].substring(4,6) + '-' + m[3].substring(6,8);
+    d.sevkZamani  = m[4].substring(0,2) + ':' + m[4].substring(2,4);
+    d.miktar      = m[5];
+    d.beton_sinifi= m[6];
+    d.dayanim     = m[7];
+    d.kivam       = m[8];
+    d.yogunluk    = m[9];
+    d.klorur      = m[10];
+    d.dmax        = m[11];
+    d.suCimento   = m[12];
+    d.plaka       = m[13];
+    return d;
+}
+
+// QR / DataMatrix içeriğini parse edip form alanlarına atar (hem BarcodeDetector hem jsQR yolu kullanır)
+function _formIsleQr(rawData) {
+    let json = null, e1 = null;
+    if (rawData.charAt(0) === '{') {
+        try {
+            const rawJson = JSON.parse(rawData);
+            json = {};
+            for (const key in rawJson) { if (rawJson.hasOwnProperty(key)) json[key.toLowerCase()] = rawJson[key]; }
+        } catch(e) {}
+    } else if (rawData.substring(0, 2) === 'E1') {
+        e1 = parseE1Qr(rawData);
+    }
+    if (!json && !e1) {
+        if (/^[A-Z0-9\-]+$/.test(rawData)) {
+            const el = document.querySelector('[name="irsaliye_no"]');
+            if (el) { el.value = rawData; showToast('İrsaliye No aktarıldı!', 'success'); kameraQrDurdur(); }
+        }
+        return;
+    }
+    let doldurulan = 0;
+    const setVal = (name, val) => {
+        const el = document.querySelector(`[name="${name}"]`);
+        if (el && val) { el.value = val; doldurulan++; }
+    };
+    if (json) {
+        setVal('irsaliye_no', json.no);
+        setVal('tarih', json.tarih);
+        setVal('arac_plaka', json.plaka ? json.plaka.replace(/\s+/g,'').toUpperCase() : '');
+        setVal('mikser_cikis_saati', json.sevkzamani ? json.sevkzamani.substring(0, 5) : '');
+        setVal('fatura_no', json.ettn);
+        if (json.vkntckn) {
+            const sel = document.querySelector('[name="tedarikci_id"]');
+            if (sel) for (let opt of sel.options) {
+                if (String(opt.getAttribute('data-vkn')).trim() === String(json.vkntckn).trim()) { sel.value = opt.value; doldurulan++; break; }
+            }
+        }
+        kameraOkunanJson = true;
+        showToast(`E-İrsaliye QR okundu — ${doldurulan} alan dolduruldu`, 'success');
+    } else if (e1) {
+        setVal('irsaliye_no', e1.irsaliye_no);
+        setVal('tarih', e1.tarih);
+        setVal('arac_plaka', e1.plaka);
+        setVal('mikser_cikis_saati', e1.sevkZamani);
+        setVal('miktar', e1.miktar);
+        if (e1.vkn) {
+            const sel = document.querySelector('[name="tedarikci_id"]');
+            if (sel) for (let opt of sel.options) {
+                if (String(opt.getAttribute('data-vkn')).trim() === String(e1.vkn).trim()) { sel.value = opt.value; doldurulan++; break; }
+            }
+        }
+        if (e1.beton_sinifi) {
+            const bn = e1.beton_sinifi.toUpperCase();
+            const sel = document.querySelector('[name="beton_sinifi_id"]');
+            if (sel) for (let opt of sel.options) {
+                const t = opt.textContent.replace(/\s+/g,'').toUpperCase();
+                if (t === bn || t.startsWith(bn+'/') || t.startsWith(bn+'-')) { sel.value = opt.value; doldurulan++; break; }
+            }
+        }
+        if (e1.kivam) {
+            const kn = e1.kivam.toUpperCase();
+            const sel = document.querySelector('[name="kivam_sinifi_id"]');
+            if (sel) for (let opt of sel.options) {
+                if (opt.textContent.replace(/\s+/g,'').toUpperCase() === kn) { sel.value = opt.value; doldurulan++; break; }
+            }
+        }
+        kameraOkunanE1 = true;
+        showToast(`Beton E1/DataMatrix okundu — ${doldurulan} alan dolduruldu`, 'success');
+    }
+    if (kameraOkunanJson && kameraOkunanE1) {
+        kameraQrDurdur();
+        showToast('Her iki QR kodu başarıyla alındı.', 'success');
+    }
+}
+
+async function kameraQrLoop() {
     if (!kameraQrAktif || !kameraStream) return;
+    if (kameraVideo.videoWidth === 0) {
+        kameraQrAnimId = requestAnimationFrame(kameraQrLoop);
+        return;
+    }
     const ctx = kameraCanvas.getContext('2d');
     kameraCanvas.width  = kameraVideo.videoWidth;
     kameraCanvas.height = kameraVideo.videoHeight;
     ctx.drawImage(kameraVideo, 0, 0);
+
+    // BarcodeDetector ile tüm QR + DataMatrix kodlarını tara (Chrome/Edge)
+    if (_formBarcodeDetector) {
+        try {
+            const codes = await _formBarcodeDetector.detect(kameraCanvas);
+            for (const c of codes) {
+                if (c.rawValue && c.rawValue.trim() !== sonTarananKameraRawData) {
+                    sonTarananKameraRawData = c.rawValue.trim();
+                    _formIsleQr(c.rawValue.trim());
+                }
+            }
+            if (kameraQrAktif) kameraQrAnimId = requestAnimationFrame(kameraQrLoop);
+            return;
+        } catch(e) {}
+    }
+
+    // jsQR fallback (sadece QR code)
     const imgData = ctx.getImageData(0, 0, kameraCanvas.width, kameraCanvas.height);
     if (typeof jsQR !== 'undefined' && imgData.width > 0) {
         const kod = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'dontInvert' });
         if (kod) {
-            kameraQrDurdur();
-            // Aynı JSON parse mantığını kullan
             const rawData = kod.data.trim();
-            try {
-                const json = JSON.parse(rawData);
+            if (rawData === sonTarananKameraRawData) {
+                kameraQrAnimId = requestAnimationFrame(kameraQrLoop);
+                return;
+            }
+            sonTarananKameraRawData = rawData;
+            
+            let json = null;
+            let e1 = null;
+
+            if (rawData.charAt(0) === '{') {
+                try {
+                    const rawJson = JSON.parse(rawData);
+                    json = {};
+                    for (const key in rawJson) {
+                        if (rawJson.hasOwnProperty(key)) {
+                            json[key.toLowerCase()] = rawJson[key];
+                        }
+                    }
+                } catch(e) {}
+            } else if (rawData.substring(0, 2) === 'E1') {
+                e1 = parseE1Qr(rawData);
+            }
+
+            if (json || e1) {
                 let doldurulan = 0;
-                if (json.no)         { const el = document.querySelector('[name="irsaliye_no"]');        if (el) { el.value = json.no;         doldurulan++; } }
-                if (json.tarih)      { const el = document.querySelector('[name="tarih"]');              if (el) { el.value = json.tarih;      doldurulan++; } }
-                if (json.plaka)      { const el = document.querySelector('[name="arac_plaka"]');         if (el) { el.value = json.plaka;      doldurulan++; } }
-                if (json.sevkzamani) { const el = document.querySelector('[name="mikser_cikis_saati"]'); if (el) { el.value = json.sevkzamani; doldurulan++; } }
-                if (json.ettn)       { const el = document.querySelector('[name="fatura_no"]');          if (el) { el.value = json.ettn;       doldurulan++; } }
-                showToast(`E-İrsaliye QR okundu — ${doldurulan} alan dolduruldu`, 'success');
-            } catch(e) {
-                if (/^[A-Z]{2,5}\d{10,}/.test(rawData)) {
+                
+                const setVal = (name, val) => {
+                    const el = document.querySelector(`[name="${name}"]`);
+                    if (el && val) { el.value = val; doldurulan++; }
+                };
+
+                if (json) {
+                    setVal('irsaliye_no', json.no);
+                    setVal('tarih', json.tarih);
+                    setVal('arac_plaka', json.plaka ? json.plaka.replace(/\s+/g,'').toUpperCase() : '');
+                    setVal('mikser_cikis_saati', json.sevkzamani ? json.sevkzamani.substring(0, 5) : '');
+                    setVal('fatura_no', json.ettn);
+
+                    if (json.vkntckn) {
+                        const sel = document.querySelector('[name="tedarikci_id"]');
+                        if (sel) {
+                            for (let opt of sel.options) {
+                                if (String(opt.getAttribute('data-vkn')).trim() === String(json.vkntckn).trim()) {
+                                    sel.value = opt.value;
+                                    doldurulan++;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    showToast(`E-İrsaliye QR okundu — ${doldurulan} alan dolduruldu`, 'success');
+                } else if (e1) {
+                    setVal('irsaliye_no', e1.irsaliye_no);
+                    setVal('tarih', e1.tarih);
+                    setVal('arac_plaka', e1.plaka);
+                    setVal('mikser_cikis_saati', e1.sevkZamani);
+                    setVal('miktar', e1.miktar);
+
+                    if (e1.vkn) {
+                        const sel = document.querySelector('[name="tedarikci_id"]');
+                        if (sel) {
+                            for (let opt of sel.options) {
+                                if (String(opt.getAttribute('data-vkn')).trim() === String(e1.vkn).trim()) {
+                                    sel.value = opt.value;
+                                    doldurulan++;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (e1.beton_sinifi) {
+                        const bn = e1.beton_sinifi.toUpperCase();
+                        const sel = document.querySelector('[name="beton_sinifi_id"]');
+                        if (sel) {
+                            for (let opt of sel.options) {
+                                const text = opt.textContent.replace(/\s+/g,'').toUpperCase();
+                                if (text === bn || text.startsWith(bn+'/') || text.startsWith(bn+'-')) {
+                                    sel.value = opt.value;
+                                    doldurulan++;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (e1.kivam) {
+                        const kn = e1.kivam.toUpperCase();
+                        const sel = document.querySelector('[name="kivam_sinifi_id"]');
+                        if (sel) {
+                            for (let opt of sel.options) {
+                                if (opt.textContent.replace(/\s+/g,'').toUpperCase() === kn) {
+                                    sel.value = opt.value;
+                                    doldurulan++;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    showToast(`Beton E1 QR okundu — ${doldurulan} alan dolduruldu`, 'success');
+                }
+
+                if (json) kameraOkunanJson = true;
+                if (e1) kameraOkunanE1 = true;
+                
+                if (kameraOkunanJson && kameraOkunanE1) {
+                    kameraQrDurdur();
+                    showToast('E-İrsaliye ve E1 QR kodları başarıyla alındı.', 'success');
+                } else {
+                    kameraQrAnimId = requestAnimationFrame(kameraQrLoop);
+                    return;
+                }
+            } else {
+                if (/^[A-Z0-9\-]+$/.test(rawData)) {
+                    kameraQrDurdur();
                     const el = document.querySelector('[name="irsaliye_no"]');
                     if (el) { el.value = rawData; showToast('İrsaliye No aktarıldı!', 'success'); }
                 } else {
                     showToast('QR tarandı: ' + rawData.substring(0, 40), 'info');
+                    kameraQrAnimId = requestAnimationFrame(kameraQrLoop);
+                    return;
                 }
             }
             return;
@@ -873,6 +1273,9 @@ btnKameraQrTara?.addEventListener('click', function () {
         kameraQrDurdur();
     } else {
         kameraQrAktif = true;
+        sonTarananKameraRawData = '';
+        kameraOkunanJson = false;
+        kameraOkunanE1 = false;
         this.innerHTML = '<i class="bi bi-stop-circle me-1"></i> QR Duraksın';
         this.classList.replace('btn-outline-success', 'btn-warning');
         kameraCanvas.width = kameraVideo.videoWidth;
@@ -947,17 +1350,22 @@ const qrPlaceholder = document.getElementById('qrPlaceholder');
 const qrAimBox      = document.getElementById('qrAimBox');
 
 async function qrAc() {
+    if (qrStream) qrKapat();
     try {
         qrStream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: { ideal: 'environment' } }
         });
         qrVideo.srcObject = qrStream;
+        await qrVideo.play();
         qrVideo.classList.remove('d-none');
         qrPlaceholder.classList.add('d-none');
         qrAimBox.classList.remove('d-none');
         document.getElementById('btnQrAc').classList.add('d-none');
         document.getElementById('btnQrKapat').classList.remove('d-none');
-        qrVideo.onloadedmetadata = () => qrTara();
+        sonTarananQrRawData = '';
+        qrOkunanJson = false;
+        qrOkunanE1 = false;
+        qrTara();
     } catch (e) {
         alert('Kamera açılamadı: ' + e.message);
     }
@@ -965,8 +1373,10 @@ async function qrAc() {
 
 function qrKapat() {
     cancelAnimationFrame(qrAnimId);
+    qrAnimId = null;
     qrStream?.getTracks().forEach(t => t.stop());
     qrStream = null;
+    qrVideo.srcObject = null;
     qrVideo.classList.add('d-none');
     qrPlaceholder.classList.remove('d-none');
     qrAimBox.classList.add('d-none');
@@ -974,55 +1384,290 @@ function qrKapat() {
     document.getElementById('btnQrKapat').classList.add('d-none');
 }
 
-let _sonQrJson = null; // Son taranan QR JSON verisi (varsa)
+let _sonQrJson = null;
+let sonTarananQrRawData = '';
+let qrOkunanJson = false;
 
-function qrTara() {
+// QR sekmesi için: parse + form doldur + sonuc paneli güncelle
+function _formIsleQrTabSekme(rawData) {
+    let json = null, e1 = null;
+    _sonQrJson = null;
+    if (rawData.charAt(0) === '{') {
+        try {
+            const rawJson = JSON.parse(rawData);
+            json = {};
+            for (const key in rawJson) { if (rawJson.hasOwnProperty(key)) json[key.toLowerCase()] = rawJson[key]; }
+            _sonQrJson = json;
+        } catch(e) {}
+    } else if (rawData.substring(0, 2) === 'E1') {
+        e1 = parseE1Qr(rawData);
+    }
+    if (!json && !e1) {
+        qrSonuc.innerHTML = `<strong class="text-success"><i class="bi bi-check-circle me-1"></i>Tarandı:</strong><br><code>${rawData}</code>`;
+        qrEslestir.classList.remove('d-none');
+        if (/^[A-Z0-9\-]+$/.test(rawData)) {
+            document.querySelector('[name="irsaliye_no"]').value = rawData;
+            showToast('İrsaliye No forma aktarıldı!', 'success');
+            qrKapat();
+        }
+        return;
+    }
+    let doldurulan = 0;
+    const setVal = (name, val) => {
+        const el = document.querySelector(`[name="${name}"]`);
+        if (el && val) { el.value = val; doldurulan++; }
+    };
+    if (json) {
+        setVal('irsaliye_no', json.no);
+        setVal('tarih', json.tarih);
+        setVal('arac_plaka', json.plaka ? json.plaka.replace(/\s+/g,'').toUpperCase() : '');
+        setVal('mikser_cikis_saati', json.sevkzamani ? json.sevkzamani.substring(0, 5) : '');
+        setVal('fatura_no', json.ettn);
+        if (json.vkntckn) {
+            const sel = document.querySelector('[name="tedarikci_id"]');
+            if (sel) for (let opt of sel.options) {
+                if (String(opt.getAttribute('data-vkn')).trim() === String(json.vkntckn).trim()) { sel.value = opt.value; doldurulan++; break; }
+            }
+        }
+        qrSonuc.innerHTML = `<div class="small"><div class="fw-semibold text-success mb-1"><i class="bi bi-check-circle me-1"></i>E-İrsaliye QR Okundu</div>
+            <table class="table table-xs mb-0">
+            <tr><td class="text-muted">İrsaliye No</td><td class="font-monospace">${json.no||'—'}</td></tr>
+            <tr><td class="text-muted">Tarih</td><td>${json.tarih||'—'}</td></tr>
+            <tr><td class="text-muted">Araç Plaka</td><td>${json.plaka||'—'}</td></tr>
+            <tr><td class="text-muted">Sevk Saati</td><td>${json.sevkzamani||'—'}</td></tr>
+            <tr><td class="text-muted">ETTN</td><td class="font-monospace small">${json.ettn||'—'}</td></tr>
+            </table></div>`;
+        qrEslestir.classList.remove('d-none');
+        qrOkunanJson = true;
+        showToast(`E-İrsaliye QR okundu — ${doldurulan} alan dolduruldu`, 'success');
+    } else if (e1) {
+        setVal('irsaliye_no', e1.irsaliye_no);
+        setVal('tarih', e1.tarih);
+        setVal('arac_plaka', e1.plaka);
+        setVal('mikser_cikis_saati', e1.sevkZamani);
+        setVal('miktar', e1.miktar);
+        if (e1.vkn) {
+            const sel = document.querySelector('[name="tedarikci_id"]');
+            if (sel) for (let opt of sel.options) {
+                if (String(opt.getAttribute('data-vkn')).trim() === String(e1.vkn).trim()) { sel.value = opt.value; doldurulan++; break; }
+            }
+        }
+        if (e1.beton_sinifi) {
+            const bn = e1.beton_sinifi.toUpperCase();
+            const sel = document.querySelector('[name="beton_sinifi_id"]');
+            if (sel) for (let opt of sel.options) {
+                const t = opt.textContent.replace(/\s+/g,'').toUpperCase();
+                if (t === bn || t.startsWith(bn+'/') || t.startsWith(bn+'-')) { sel.value = opt.value; doldurulan++; break; }
+            }
+        }
+        if (e1.kivam) {
+            const kn = e1.kivam.toUpperCase();
+            const sel = document.querySelector('[name="kivam_sinifi_id"]');
+            if (sel) for (let opt of sel.options) {
+                if (opt.textContent.replace(/\s+/g,'').toUpperCase() === kn) { sel.value = opt.value; doldurulan++; break; }
+            }
+        }
+        qrSonuc.innerHTML = `<div class="small"><div class="fw-semibold text-success mb-1"><i class="bi bi-check-circle me-1"></i>Beton E1/DataMatrix Okundu</div>
+            <table class="table table-xs mb-0">
+            <tr><td class="text-muted">İrsaliye No</td><td class="font-monospace">${e1.irsaliye_no||'—'}</td></tr>
+            <tr><td class="text-muted">Tarih</td><td>${e1.tarih||'—'}</td></tr>
+            <tr><td class="text-muted">Araç Plaka</td><td>${e1.plaka||'—'}</td></tr>
+            <tr><td class="text-muted">Miktar</td><td>${e1.miktar||'—'} m³</td></tr>
+            <tr><td class="text-muted">Beton Sınıfı</td><td>${e1.beton_sinifi||'—'}</td></tr>
+            </table></div>`;
+        qrEslestir.classList.remove('d-none');
+        qrOkunanE1 = true;
+        showToast(`Beton E1/DataMatrix okundu — ${doldurulan} alan dolduruldu`, 'success');
+    }
+    if (qrOkunanJson && qrOkunanE1) {
+        qrKapat();
+        showToast('Tüm QR bilgileri alındı.', 'success');
+    }
+}
+let qrOkunanE1 = false;
+
+async function qrTara() {
     if (!qrStream) return;
+    if (qrVideo.videoWidth === 0) {
+        qrAnimId = requestAnimationFrame(qrTara);
+        return;
+    }
     const ctx = qrScanCanvas.getContext('2d');
     qrScanCanvas.width  = qrVideo.videoWidth;
     qrScanCanvas.height = qrVideo.videoHeight;
     ctx.drawImage(qrVideo, 0, 0);
+
+    // BarcodeDetector: QR + DataMatrix
+    if (_formBarcodeDetector) {
+        try {
+            const codes = await _formBarcodeDetector.detect(qrScanCanvas);
+            for (const c of codes) {
+                if (c.rawValue && c.rawValue.trim() !== sonTarananQrRawData) {
+                    sonTarananQrRawData = c.rawValue.trim();
+                    _formIsleQrTabSekme(c.rawValue.trim());
+                }
+            }
+            if (qrStream) qrAnimId = requestAnimationFrame(qrTara);
+            return;
+        } catch(e) {}
+    }
+
+    // jsQR fallback
     const imgData = ctx.getImageData(0, 0, qrScanCanvas.width, qrScanCanvas.height);
     const kod = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: 'dontInvert' });
     if (kod) {
+        const rawData = kod.data.trim();
+        if (rawData === sonTarananQrRawData) {
+            qrAnimId = requestAnimationFrame(qrTara);
+            return;
+        }
+        sonTarananQrRawData = rawData;
         _sonQrJson = null;
-        // Önce JSON parse dene (e-irsaliye formatı)
-        try {
-            const json = JSON.parse(kod.data);
-            _sonQrJson = json;
-            // Form alanlarını doldur
-            let doldurulan = 0;
-            if (json.no)         { const el = document.querySelector('[name="irsaliye_no"]');        if (el) { el.value = json.no;         doldurulan++; } }
-            if (json.tarih)      { const el = document.querySelector('[name="tarih"]');              if (el) { el.value = json.tarih;      doldurulan++; } }
-            if (json.plaka)      { const el = document.querySelector('[name="arac_plaka"]');         if (el) { el.value = json.plaka;      doldurulan++; } }
-            if (json.sevkzamani) { const el = document.querySelector('[name="mikser_cikis_saati"]'); if (el) { el.value = json.sevkzamani; doldurulan++; } }
-            if (json.ettn)       { const el = document.querySelector('[name="fatura_no"]');          if (el) { el.value = json.ettn;       doldurulan++; } }
+        let json = null;
+        let e1 = null;
 
-            // Formatlanmış tablo göster
-            qrSonuc.innerHTML = `
-                <div class="small">
-                    <div class="fw-semibold text-success mb-1"><i class="bi bi-check-circle me-1"></i>E-İrsaliye QR Okundu</div>
-                    <table class="table table-xs mb-0">
-                        <tr><td class="text-muted">İrsaliye No</td><td class="font-monospace">${json.no || '—'}</td></tr>
-                        <tr><td class="text-muted">Tarih</td><td>${json.tarih || '—'}</td></tr>
-                        <tr><td class="text-muted">Araç Plaka</td><td>${json.plaka || '—'}</td></tr>
-                        <tr><td class="text-muted">Sevk Saati</td><td>${json.sevkzamani || '—'}</td></tr>
-                        <tr><td class="text-muted">ETTN</td><td class="font-monospace small">${json.ettn || '—'}</td></tr>
-                    </table>
-                </div>`;
-            // JSON'dan doldurulamayan alanlar için eşleştir panelini göster
+        if (rawData.charAt(0) === '{') {
+            try {
+                const rawJson = JSON.parse(rawData);
+                json = {};
+                for (const key in rawJson) {
+                    if (rawJson.hasOwnProperty(key)) {
+                        json[key.toLowerCase()] = rawJson[key];
+                    }
+                }
+                _sonQrJson = json;
+            } catch(e) {}
+        } else if (rawData.substring(0, 2) === 'E1') {
+            e1 = parseE1Qr(rawData);
+        }
+
+        if (json || e1) {
+            let doldurulan = 0;
+            
+            const setVal = (name, val) => {
+                const el = document.querySelector(`[name="${name}"]`);
+                if (el && val) { el.value = val; doldurulan++; }
+            };
+
+            if (json) {
+                setVal('irsaliye_no', json.no);
+                setVal('tarih', json.tarih);
+                setVal('arac_plaka', json.plaka ? json.plaka.replace(/\s+/g,'').toUpperCase() : '');
+                setVal('mikser_cikis_saati', json.sevkzamani ? json.sevkzamani.substring(0, 5) : '');
+                setVal('fatura_no', json.ettn);
+
+                if (json.vkntckn) {
+                    const sel = document.querySelector('[name="tedarikci_id"]');
+                    if (sel) {
+                        for (let opt of sel.options) {
+                            if (String(opt.getAttribute('data-vkn')).trim() === String(json.vkntckn).trim()) {
+                                sel.value = opt.value;
+                                doldurulan++;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                qrSonuc.innerHTML = `
+                    <div class="small">
+                        <div class="fw-semibold text-success mb-1"><i class="bi bi-check-circle me-1"></i>E-İrsaliye QR Okundu</div>
+                        <table class="table table-xs mb-0">
+                            <tr><td class="text-muted">İrsaliye No</td><td class="font-monospace">${json.no || '—'}</td></tr>
+                            <tr><td class="text-muted">Tarih</td><td>${json.tarih || '—'}</td></tr>
+                            <tr><td class="text-muted">Araç Plaka</td><td>${json.plaka || '—'}</td></tr>
+                            <tr><td class="text-muted">Sevk Saati</td><td>${json.sevkzamani || '—'}</td></tr>
+                            <tr><td class="text-muted">ETTN</td><td class="font-monospace small">${json.ettn || '—'}</td></tr>
+                        </table>
+                    </div>`;
+                qrEslestir.classList.remove('d-none');
+                showToast(`E-İrsaliye QR okundu — ${doldurulan} alan dolduruldu`, 'success');
+            } else if (e1) {
+                setVal('irsaliye_no', e1.irsaliye_no);
+                setVal('tarih', e1.tarih);
+                setVal('arac_plaka', e1.plaka);
+                setVal('mikser_cikis_saati', e1.sevkZamani);
+                setVal('miktar', e1.miktar);
+
+                if (e1.vkn) {
+                    const sel = document.querySelector('[name="tedarikci_id"]');
+                    if (sel) {
+                        for (let opt of sel.options) {
+                            if (String(opt.getAttribute('data-vkn')).trim() === String(e1.vkn).trim()) {
+                                sel.value = opt.value;
+                                doldurulan++;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (e1.beton_sinifi) {
+                    const bn = e1.beton_sinifi.toUpperCase();
+                    const sel = document.querySelector('[name="beton_sinifi_id"]');
+                    if (sel) {
+                        for (let opt of sel.options) {
+                            const text = opt.textContent.replace(/\s+/g,'').toUpperCase();
+                            if (text === bn || text.startsWith(bn+'/') || text.startsWith(bn+'-')) {
+                                sel.value = opt.value;
+                                doldurulan++;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (e1.kivam) {
+                    const kn = e1.kivam.toUpperCase();
+                    const sel = document.querySelector('[name="kivam_sinifi_id"]');
+                    if (sel) {
+                        for (let opt of sel.options) {
+                            if (opt.textContent.replace(/\s+/g,'').toUpperCase() === kn) {
+                                sel.value = opt.value;
+                                doldurulan++;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                qrSonuc.innerHTML = `
+                    <div class="small">
+                        <div class="fw-semibold text-success mb-1"><i class="bi bi-check-circle me-1"></i>Beton E1 QR Okundu</div>
+                        <table class="table table-xs mb-0">
+                            <tr><td class="text-muted">İrsaliye No</td><td class="font-monospace">${e1.irsaliye_no || '—'}</td></tr>
+                            <tr><td class="text-muted">Tarih</td><td>${e1.tarih || '—'}</td></tr>
+                            <tr><td class="text-muted">Araç Plaka</td><td>${e1.plaka || '—'}</td></tr>
+                            <tr><td class="text-muted">Miktar</td><td>${e1.miktar || '—'} m³</td></tr>
+                            <tr><td class="text-muted">Beton Sınıfı</td><td>${e1.beton_sinifi || '—'}</td></tr>
+                        </table>
+                    </div>`;
+                qrEslestir.classList.remove('d-none');
+                showToast(`Beton E1 QR okundu — ${doldurulan} alan dolduruldu`, 'success');
+            }
+            
+            if (json) qrOkunanJson = true;
+            if (e1) qrOkunanE1 = true;
+            
+            if (qrOkunanJson && qrOkunanE1) {
+                qrKapat();
+                showToast('Tüm QR bilgileri alındı.', 'success');
+            } else {
+                qrAnimId = requestAnimationFrame(qrTara);
+                return;
+            }
+        } else {
+            qrSonuc.innerHTML = `<strong class="text-success"><i class="bi bi-check-circle me-1"></i>Tarandı:</strong><br><code>${kod.data}</code>`;
             qrEslestir.classList.remove('d-none');
-            showToast(`E-İrsaliye QR okundu — ${doldurulan} alan dolduruldu`, 'success');
-        } catch (e) {
-            // JSON değil — eski regex ile irsaliye no kontrolü
-            qrSonuc.innerHTML = `<strong class="text-success"><i class="bi bi-check-circle me-1"></i>Tarındı:</strong><br><code>${kod.data}</code>`;
-            qrEslestir.classList.remove('d-none');
-            if (/^[A-Z]{2,5}\d{10,}/.test(kod.data.trim())) {
-                document.querySelector('[name="irsaliye_no"]').value = kod.data.trim();
+            if (/^[A-Z0-9\-]+$/.test(rawData)) {
+                document.querySelector('[name="irsaliye_no"]').value = rawData;
                 showToast('İrsaliye No forma aktarıldı!', 'success');
+                qrKapat();
+            } else {
+                qrAnimId = requestAnimationFrame(qrTara);
+                return;
             }
         }
-        qrKapat();
         return;
     }
     qrAnimId = requestAnimationFrame(qrTara);
@@ -1128,4 +1773,19 @@ document.getElementById('selGrup').addEventListener('change', function () {
 });
 </script>
 
+<script>
+function onayGonder(aksiyon) {
+    if (!confirm('Bu işlemi onaylamak istediğinizden emin misiniz?')) return;
+    document.getElementById('onayAksiyon').value = aksiyon;
+    document.getElementById('onayForm').submit();
+}
+function redGonder(aksiyon) {
+    var neden = prompt('Red nedeni girin:');
+    if (neden === null) return;
+    if (!neden.trim()) { alert('Red nedeni boş olamaz.'); return; }
+    document.getElementById('onayAksiyon').value = aksiyon;
+    document.getElementById('redNedenInput').value = neden.trim();
+    document.getElementById('onayForm').submit();
+}
+</script>
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

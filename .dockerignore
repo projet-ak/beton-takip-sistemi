@@ -1,0 +1,10 @@
+.git
+.gitignore
+*.pdf
+node_modules
+*.log
+backups/*
+uploads/irsaliye_fotolar/*
+uploads/scans/*
+uploads/tmp_import_*.xlsx
+scratch/

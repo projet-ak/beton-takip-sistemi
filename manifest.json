@@ -1,0 +1,32 @@
+{
+  "name": "Beton Takip Sistemi",
+  "short_name": "Beton Takip",
+  "description": "ERN Holding — Beton İrsaliye Takip Sistemi",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#003D35",
+  "theme_color": "#00584E",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "https://ern.com.tr/favicon.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Hızlı Tarama",
+      "short_name": "Tara",
+      "url": "/hizli_tarama.php",
+      "icons": [{ "src": "https://ern.com.tr/favicon.png", "sizes": "any" }]
+    },
+    {
+      "name": "Yeni İrsaliye",
+      "short_name": "Ekle",
+      "url": "/irsaliye_form.php",
+      "icons": [{ "src": "https://ern.com.tr/favicon.png", "sizes": "any" }]
+    }
+  ]
+}
