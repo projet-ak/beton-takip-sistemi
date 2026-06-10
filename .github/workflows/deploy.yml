@@ -18,7 +18,7 @@ jobs:
           server: 77.92.151.228
           username: takbulut
           password: ${{ secrets.FTP_PASSWORD }}
-          server-dir: /public_html/
+          server-dir: /public_html/beton/
           exclude: |
             **/.git*
             **/.git*/**
