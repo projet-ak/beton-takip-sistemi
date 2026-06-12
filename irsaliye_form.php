@@ -131,7 +131,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    if (!$error && !$tedarikciId || !$tarih || $miktar <= 0) {
+    // Onay/ret POST'unda ana form validasyonu atlanır (zaten redirect veya $error var)
+    if ($onayAksiyonu) {
+        // Onay aksiyonu işlendi ama redirect olmadı → sadece $error gösterilecek, kayıt yapılmayacak
+    } elseif (!$tedarikciId || !$tarih || $miktar <= 0) {
         $error = 'Tedarikçi, tarih ve miktar zorunludur. Miktar sıfırdan büyük olmalıdır.';
     } elseif (!$error) {
         // Yeni kayıt durum: depo oluşturursa 'beklemede', diğerleri 'beklemede' (saha onayı bekler)
