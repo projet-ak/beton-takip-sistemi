@@ -284,7 +284,7 @@ if ($editId && isset($row['durum'])):
                     </button>
                 <?php endif; ?>
 
-                <?php if ($rd === 'saha_onaylandi' && can_approve_teknik()): ?>
+                <?php if (in_array($rd, ['beklemede','saha_onaylandi']) && can_approve_teknik()): ?>
                     <button type="button" class="btn btn-sm btn-primary"
                         onclick="onayGonder('teknik_onayla')">
                         <i class="bi bi-patch-check me-1"></i>Teknik Onayla &amp; Kaydet

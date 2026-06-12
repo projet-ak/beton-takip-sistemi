@@ -382,7 +382,8 @@ require_once __DIR__ . '/includes/header.php';
                                        class="btn btn-xs btn-success me-1" title="İncele &amp; Onayla">
                                         <i class="bi bi-check-circle"></i>
                                     </a>
-                                    <?php elseif ($rd === 'saha_onaylandi' && can_approve_teknik()): ?>
+                                    <?php endif; ?>
+                                    <?php if (in_array($rd, ['beklemede','saha_onaylandi']) && can_approve_teknik()): ?>
                                     <a href="irsaliye_form.php?id=<?= (int)$r['id'] ?>&tip=<?= h($r['tip']) ?>"
                                        class="btn btn-xs btn-primary me-1" title="Teknik Onayla">
                                         <i class="bi bi-patch-check"></i>
