@@ -97,7 +97,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Onay / ret işlemi (form kayıt gerektirmez)
     if ($editId && in_array($onayAksiyonu, ['saha_onayla','saha_reddet','teknik_onayla','teknik_reddet'])) {
         $redNeden = trim($_POST['red_neden'] ?? '');
-        if (str_contains($onayAksiyonu, 'reddet') && !$redNeden) {
+        // Onay işlemlerinde proje zorunlu (depo rolü muaf — oluşturma sırasında proje bilinmeyebilir)
+        $projeZorunluOnay = in_array($onayAksiyonu, ['saha_onayla','teknik_onayla'])
+                         && !has_role('depo')
+                         && empty($row['proje_id']);
+        if ($projeZorunluOnay) {
+            $error = 'Onay verebilmek için önce proje seçimi yapılmalıdır. Lütfen irsaliyeyi düzenleyerek proje alanını doldurun.';
+        } elseif (str_contains($onayAksiyonu, 'reddet') && !$redNeden) {
             $error = 'Red nedeni zorunludur.';
         } else {
             switch ($onayAksiyonu) {
@@ -272,10 +278,16 @@ if ($editId && isset($row['durum'])):
             <?php endif; ?>
 
             <!-- Onay Aksiyon Butonları — JavaScript gerektirmez, doğrudan POST -->
-            <div class="ms-auto d-flex gap-2 flex-wrap">
+            <div class="ms-auto d-flex gap-2 flex-wrap align-items-center">
                 <?php
-                $formAction = '?id=' . $editId . '&tip=' . h($tip);
+                $formAction  = '?id=' . $editId . '&tip=' . h($tip);
+                $projeEksik  = empty($row['proje_id']) && !has_role('depo');
+                if ($projeEksik && (can_approve_saha() || can_approve_teknik())):
                 ?>
+                <span class="badge bg-warning text-dark">
+                    <i class="bi bi-exclamation-triangle me-1"></i>Proje seçilmeli
+                </span>
+                <?php endif; ?>
                 <?php if ($rd === 'beklemede' && can_approve_saha()): ?>
                     <form method="post" action="<?= $formAction ?>" style="display:inline">
                         <input type="hidden" name="onay_aksiyonu" value="saha_onayla">
