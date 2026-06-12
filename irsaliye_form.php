@@ -271,46 +271,60 @@ if ($editId && isset($row['durum'])):
             </div>
             <?php endif; ?>
 
-            <!-- Onay Aksiyon Butonları -->
+            <!-- Onay Aksiyon Butonları — JavaScript gerektirmez, doğrudan POST -->
             <div class="ms-auto d-flex gap-2 flex-wrap">
+                <?php
+                $formAction = '?id=' . $editId . '&tip=' . h($tip);
+                ?>
                 <?php if ($rd === 'beklemede' && can_approve_saha()): ?>
-                    <button type="button" class="btn btn-sm btn-success"
-                        onclick="onayGonder('saha_onayla')">
-                        <i class="bi bi-check-circle me-1"></i>Saha Onayla
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-danger"
-                        onclick="redGonder('saha_reddet')">
-                        <i class="bi bi-x-circle me-1"></i>Reddet
-                    </button>
+                    <form method="post" action="<?= $formAction ?>" style="display:inline"
+                          onsubmit="return confirm('Saha onayı vermek istediğinizden emin misiniz?')">
+                        <input type="hidden" name="onay_aksiyonu" value="saha_onayla">
+                        <button type="submit" class="btn btn-sm btn-success">
+                            <i class="bi bi-check-circle me-1"></i>Saha Onayla
+                        </button>
+                    </form>
+                    <form method="post" action="<?= $formAction ?>" style="display:inline"
+                          onsubmit="var n=prompt('Red nedeni girin:'); if(!n||!n.trim()){alert('Red nedeni boş olamaz.');return false;} this.querySelector('[name=red_neden]').value=n.trim(); return true;">
+                        <input type="hidden" name="onay_aksiyonu" value="saha_reddet">
+                        <input type="hidden" name="red_neden" value="">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                            <i class="bi bi-x-circle me-1"></i>Reddet
+                        </button>
+                    </form>
                 <?php endif; ?>
 
                 <?php if (in_array($rd, ['beklemede','saha_onaylandi']) && can_approve_teknik()): ?>
-                    <button type="button" class="btn btn-sm btn-primary"
-                        onclick="onayGonder('teknik_onayla')">
-                        <i class="bi bi-patch-check me-1"></i>Teknik Onayla &amp; Kaydet
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-danger"
-                        onclick="redGonder('teknik_reddet')">
-                        <i class="bi bi-x-circle me-1"></i>Reddet
-                    </button>
+                    <form method="post" action="<?= $formAction ?>" style="display:inline"
+                          onsubmit="return confirm('Teknik ofis onayı vermek istediğinizden emin misiniz?')">
+                        <input type="hidden" name="onay_aksiyonu" value="teknik_onayla">
+                        <button type="submit" class="btn btn-sm btn-primary">
+                            <i class="bi bi-patch-check me-1"></i>Teknik Onayla &amp; Kaydet
+                        </button>
+                    </form>
+                    <form method="post" action="<?= $formAction ?>" style="display:inline"
+                          onsubmit="var n=prompt('Red nedeni girin:'); if(!n||!n.trim()){alert('Red nedeni boş olamaz.');return false;} this.querySelector('[name=red_neden]').value=n.trim(); return true;">
+                        <input type="hidden" name="onay_aksiyonu" value="teknik_reddet">
+                        <input type="hidden" name="red_neden" value="">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                            <i class="bi bi-x-circle me-1"></i>Reddet
+                        </button>
+                    </form>
                 <?php endif; ?>
 
                 <?php if ($rd === 'reddedildi' && can_approve_saha()): ?>
-                    <button type="button" class="btn btn-sm btn-warning"
-                        onclick="onayGonder('saha_onayla')">
-                        <i class="bi bi-arrow-counterclockwise me-1"></i>Yeniden Onayla
-                    </button>
+                    <form method="post" action="<?= $formAction ?>" style="display:inline"
+                          onsubmit="return confirm('Yeniden onaylamak istediğinizden emin misiniz?')">
+                        <input type="hidden" name="onay_aksiyonu" value="saha_onayla">
+                        <button type="submit" class="btn btn-sm btn-warning">
+                            <i class="bi bi-arrow-counterclockwise me-1"></i>Yeniden Onayla
+                        </button>
+                    </form>
                 <?php endif; ?>
             </div>
         </div>
     </div>
 </div>
-
-<!-- Gizli onay formu -->
-<form id="onayForm" method="post" action="" style="display:none">
-    <input type="hidden" name="onay_aksiyonu" id="onayAksiyon">
-    <input type="hidden" name="red_neden"    id="redNedenInput">
-</form>
 <?php endif; ?>
 
 <form method="post" id="irsaliyeForm">
