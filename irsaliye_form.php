@@ -94,33 +94,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Onay aksiyonları (kaydet + onayla)
     $onayAksiyonu = $_POST['onay_aksiyonu'] ?? '';
 
-    // Onay / ret işlemi (form kayıt gerektirmez)
-    if ($editId && in_array($onayAksiyonu, ['saha_onayla','saha_reddet','teknik_onayla','teknik_reddet'])) {
+    // ── Reddet işlemleri (modal'dan gelir, ayrı form — redirekt yeter) ──────────
+    if ($editId && in_array($onayAksiyonu, ['saha_reddet','teknik_reddet'])) {
         $redNeden = trim($_POST['red_neden'] ?? '');
-        // Onay işlemlerinde proje zorunlu (depo rolü muaf — oluşturma sırasında proje bilinmeyebilir)
-        $projeZorunluOnay = in_array($onayAksiyonu, ['saha_onayla','teknik_onayla'])
-                         && !has_role('depo')
-                         && empty($row['proje_id']);
-        if ($projeZorunluOnay) {
-            $error = 'Onay verebilmek için önce proje seçimi yapılmalıdır. Lütfen irsaliyeyi düzenleyerek proje alanını doldurun.';
-        } elseif (str_contains($onayAksiyonu, 'reddet') && !$redNeden) {
+        if (!$redNeden) {
             $error = 'Red nedeni zorunludur.';
         } else {
             switch ($onayAksiyonu) {
-                case 'saha_onayla':
-                    if (!can_approve_saha()) { $error = 'Bu işlem için yetkiniz yok.'; break; }
-                    $pdo->prepare("UPDATE irsaliyeler SET durum='saha_onaylandi', saha_onaylayan_id=?, saha_onay_tarih=NOW() WHERE id=?")->execute([$uid, $editId]);
-                    flash('success', 'Saha onayı verildi.'); redirect("irsaliyeler.php?tip={$tip}");
-                    break;
                 case 'saha_reddet':
                     if (!can_approve_saha()) { $error = 'Yetkiniz yok.'; break; }
                     $pdo->prepare("UPDATE irsaliyeler SET durum='reddedildi', red_neden=? WHERE id=?")->execute([$redNeden, $editId]);
                     flash('warning', 'İrsaliye reddedildi.'); redirect("irsaliyeler.php?tip={$tip}");
-                    break;
-                case 'teknik_onayla':
-                    if (!can_approve_teknik()) { $error = 'Yetkiniz yok.'; break; }
-                    $pdo->prepare("UPDATE irsaliyeler SET durum='onaylandi', teknik_onaylayan_id=?, teknik_onay_tarih=NOW() WHERE id=?")->execute([$uid, $editId]);
-                    flash('success', 'Teknik ofis onayı verildi — İrsaliye kaydedildi.'); redirect("irsaliyeler.php?tip={$tip}");
                     break;
                 case 'teknik_reddet':
                     if (!can_approve_teknik()) { $error = 'Yetkiniz yok.'; break; }
@@ -131,13 +115,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // Onay/ret POST'unda ana form validasyonu atlanır (zaten redirect veya $error var)
-    if ($onayAksiyonu) {
-        // Onay aksiyonu işlendi ama redirect olmadı → sadece $error gösterilecek, kayıt yapılmayacak
+    // ── Form kayıt validasyonu (onayla butonları da ana formu gönderir) ─────────
+    if (!$error && in_array($onayAksiyonu, ['saha_reddet','teknik_reddet'])) {
+        // Reddet POST'u: kayıt gerekmez, sadece hata varsa göster
     } elseif (!$tedarikciId || !$tarih || $miktar <= 0) {
         $error = 'Tedarikçi, tarih ve miktar zorunludur. Miktar sıfırdan büyük olmalıdır.';
     } elseif (!$error) {
-        // Yeni kayıt durum: depo oluşturursa 'beklemede', diğerleri 'beklemede' (saha onayı bekler)
         $yeniDurum = has_role('admin','teknik_ofis_admin') ? 'onaylandi' : 'beklemede';
 
         try {
@@ -158,7 +141,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $firmaId, $imalatGrupId, $anaIsKalemId, $parselId, $blokId, $kotId,
                     $aciklama, $uid, $editId,
                 ]);
-                flash('success', 'İrsaliye güncellendi.');
+
+                // ── Onayla işlemi: form kaydedildikten sonra uygula ─────────
+                if ($editId && in_array($onayAksiyonu, ['saha_onayla','teknik_onayla'])) {
+                    // Proje kontrolü: az önce kaydedilen proje_id üzerinden
+                    if (empty($projeId) && !has_role('depo')) {
+                        $error = 'Onay verebilmek için proje seçimi zorunludur.';
+                    } else {
+                        switch ($onayAksiyonu) {
+                            case 'saha_onayla':
+                                if (!can_approve_saha()) { $error = 'Bu işlem için yetkiniz yok.'; break; }
+                                $pdo->prepare("UPDATE irsaliyeler SET durum='saha_onaylandi', saha_onaylayan_id=?, saha_onay_tarih=NOW() WHERE id=?")->execute([$uid, $editId]);
+                                flash('success', 'Saha onayı verildi.'); redirect("irsaliyeler.php?tip={$tip}");
+                                break;
+                            case 'teknik_onayla':
+                                if (!can_approve_teknik()) { $error = 'Yetkiniz yok.'; break; }
+                                $pdo->prepare("UPDATE irsaliyeler SET durum='onaylandi', teknik_onaylayan_id=?, teknik_onay_tarih=NOW() WHERE id=?")->execute([$uid, $editId]);
+                                flash('success', 'Teknik ofis onayı verildi — İrsaliye kaydedildi.'); redirect("irsaliyeler.php?tip={$tip}");
+                                break;
+                        }
+                    }
+                } else {
+                    flash('success', 'İrsaliye güncellendi.');
+                    redirect("irsaliyeler.php?tip={$tipPost}");
+                }
             } else {
                 $stmt = $pdo->prepare("INSERT INTO irsaliyeler (
                     tip, durum, sira_no, fatura_no, arac_plaka, kivam_sinifi_id, irsaliye_no,
@@ -177,8 +183,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $aciklama, $uid,
                 ]);
                 flash('success', 'İrsaliye eklendi' . ($yeniDurum === 'beklemede' ? ' — Onay bekleniyor.' : '.'));
+                redirect("irsaliyeler.php?tip={$tipPost}");
             }
-            redirect("irsaliyeler.php?tip={$tipPost}");
         } catch (PDOException $e) {
             if ($e->getCode() == 23000) {
                 $error = 'Bu irsaliye numarası zaten kayıtlı.';
@@ -280,24 +286,16 @@ if ($editId && isset($row['durum'])):
             </div>
             <?php endif; ?>
 
-            <!-- Onay Aksiyon Butonları — JavaScript gerektirmez, doğrudan POST -->
+            <!-- Onay Aksiyon Butonları — ana formu gönderir (proje dahil tüm alanlar kaydedilir) -->
             <div class="ms-auto d-flex gap-2 flex-wrap align-items-center">
                 <?php
-                $formAction  = '?id=' . $editId . '&tip=' . h($tip);
-                $projeEksik  = empty($row['proje_id']) && !has_role('depo');
-                if ($projeEksik && (can_approve_saha() || can_approve_teknik())):
+                $formAction = '?id=' . $editId . '&tip=' . h($tip);
                 ?>
-                <span class="badge bg-warning text-dark">
-                    <i class="bi bi-exclamation-triangle me-1"></i>Proje seçilmeli
-                </span>
-                <?php endif; ?>
                 <?php if ($rd === 'beklemede' && can_approve_saha()): ?>
-                    <form method="post" action="<?= $formAction ?>" style="display:inline">
-                        <input type="hidden" name="onay_aksiyonu" value="saha_onayla">
-                        <button type="submit" class="btn btn-sm btn-success">
-                            <i class="bi bi-check-circle me-1"></i>Saha Onayla
-                        </button>
-                    </form>
+                    <button type="button" class="btn btn-sm btn-success"
+                            onclick="submitOnay('saha_onayla')">
+                        <i class="bi bi-check-circle me-1"></i>Saha Onayla
+                    </button>
                     <button type="button" class="btn btn-sm btn-outline-danger"
                             data-bs-toggle="modal" data-bs-target="#redModal"
                             data-aksiyon="saha_reddet" data-action="<?= $formAction ?>">
@@ -306,12 +304,10 @@ if ($editId && isset($row['durum'])):
                 <?php endif; ?>
 
                 <?php if (in_array($rd, ['beklemede','saha_onaylandi']) && can_approve_teknik()): ?>
-                    <form method="post" action="<?= $formAction ?>" style="display:inline">
-                        <input type="hidden" name="onay_aksiyonu" value="teknik_onayla">
-                        <button type="submit" class="btn btn-sm btn-primary">
-                            <i class="bi bi-patch-check me-1"></i>Teknik Onayla &amp; Kaydet
-                        </button>
-                    </form>
+                    <button type="button" class="btn btn-sm btn-primary"
+                            onclick="submitOnay('teknik_onayla')">
+                        <i class="bi bi-patch-check me-1"></i>Teknik Onayla &amp; Kaydet
+                    </button>
                     <button type="button" class="btn btn-sm btn-outline-danger"
                             data-bs-toggle="modal" data-bs-target="#redModal"
                             data-aksiyon="teknik_reddet" data-action="<?= $formAction ?>">
@@ -320,12 +316,10 @@ if ($editId && isset($row['durum'])):
                 <?php endif; ?>
 
                 <?php if ($rd === 'reddedildi' && can_approve_saha()): ?>
-                    <form method="post" action="<?= $formAction ?>" style="display:inline">
-                        <input type="hidden" name="onay_aksiyonu" value="saha_onayla">
-                        <button type="submit" class="btn btn-sm btn-warning">
-                            <i class="bi bi-arrow-counterclockwise me-1"></i>Yeniden Onayla
-                        </button>
-                    </form>
+                    <button type="button" class="btn btn-sm btn-warning"
+                            onclick="submitOnay('saha_onayla')">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Yeniden Onayla
+                    </button>
                 <?php endif; ?>
             </div>
         </div>
@@ -333,7 +327,8 @@ if ($editId && isset($row['durum'])):
 </div>
 <?php endif; ?>
 
-<form method="post" id="irsaliyeForm">
+<form method="post" id="irsaliyeForm" action="?id=<?= $editId ?>&tip=<?= h($tip) ?>">
+<input type="hidden" name="onay_aksiyonu" id="mainOnayAksiyonu" value="">
 <div class="row g-4">
 
     <!-- Sol kolon -->
@@ -1815,6 +1810,13 @@ function redGonder(aksiyon) {
     form.submit();
 }
 </script>
+<script>
+function submitOnay(aksiyon) {
+    document.getElementById('mainOnayAksiyonu').value = aksiyon;
+    document.getElementById('irsaliyeForm').requestSubmit();
+}
+</script>
+
 <!-- Red Nedeni Modalı -->
 <div class="modal fade" id="redModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-sm">
