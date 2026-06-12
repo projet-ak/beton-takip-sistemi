@@ -57,15 +57,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'full_name' => $user['full_name'],
                     'role'      => $user['role'],
                 ];
-                // Güvenli yönlendirme: sadece göreceli yollar kabul et
-                $safeRedirect = 'index.php';
+                // Güvenli yönlendirme: // ve http(s):// yasak, / ile başlayan mutlak yollar geçerli
+                $base = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/';
+                $safeRedirect = $base . 'index.php';
                 if (
                     !empty($redirect)
                     && !str_starts_with($redirect, '//')
                     && !preg_match('#^https?://#i', $redirect)
                 ) {
-                    $clean = ltrim($redirect, '/');
-                    $safeRedirect = $clean !== '' ? $clean : 'index.php';
+                    $safeRedirect = $redirect ?: $base . 'index.php';
                 }
                 redirect($safeRedirect);
             } elseif ($user && $user['aktif'] == 0) {
