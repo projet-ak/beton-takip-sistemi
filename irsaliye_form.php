@@ -277,44 +277,35 @@ if ($editId && isset($row['durum'])):
                 $formAction = '?id=' . $editId . '&tip=' . h($tip);
                 ?>
                 <?php if ($rd === 'beklemede' && can_approve_saha()): ?>
-                    <form method="post" action="<?= $formAction ?>" style="display:inline"
-                          onsubmit="return confirm('Saha onayı vermek istediğinizden emin misiniz?')">
+                    <form method="post" action="<?= $formAction ?>" style="display:inline">
                         <input type="hidden" name="onay_aksiyonu" value="saha_onayla">
                         <button type="submit" class="btn btn-sm btn-success">
                             <i class="bi bi-check-circle me-1"></i>Saha Onayla
                         </button>
                     </form>
-                    <form method="post" action="<?= $formAction ?>" style="display:inline"
-                          onsubmit="var n=prompt('Red nedeni girin:'); if(!n||!n.trim()){alert('Red nedeni boş olamaz.');return false;} this.querySelector('[name=red_neden]').value=n.trim(); return true;">
-                        <input type="hidden" name="onay_aksiyonu" value="saha_reddet">
-                        <input type="hidden" name="red_neden" value="">
-                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                            <i class="bi bi-x-circle me-1"></i>Reddet
-                        </button>
-                    </form>
+                    <button type="button" class="btn btn-sm btn-outline-danger"
+                            data-bs-toggle="modal" data-bs-target="#redModal"
+                            data-aksiyon="saha_reddet" data-action="<?= $formAction ?>">
+                        <i class="bi bi-x-circle me-1"></i>Reddet
+                    </button>
                 <?php endif; ?>
 
                 <?php if (in_array($rd, ['beklemede','saha_onaylandi']) && can_approve_teknik()): ?>
-                    <form method="post" action="<?= $formAction ?>" style="display:inline"
-                          onsubmit="return confirm('Teknik ofis onayı vermek istediğinizden emin misiniz?')">
+                    <form method="post" action="<?= $formAction ?>" style="display:inline">
                         <input type="hidden" name="onay_aksiyonu" value="teknik_onayla">
                         <button type="submit" class="btn btn-sm btn-primary">
                             <i class="bi bi-patch-check me-1"></i>Teknik Onayla &amp; Kaydet
                         </button>
                     </form>
-                    <form method="post" action="<?= $formAction ?>" style="display:inline"
-                          onsubmit="var n=prompt('Red nedeni girin:'); if(!n||!n.trim()){alert('Red nedeni boş olamaz.');return false;} this.querySelector('[name=red_neden]').value=n.trim(); return true;">
-                        <input type="hidden" name="onay_aksiyonu" value="teknik_reddet">
-                        <input type="hidden" name="red_neden" value="">
-                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                            <i class="bi bi-x-circle me-1"></i>Reddet
-                        </button>
-                    </form>
+                    <button type="button" class="btn btn-sm btn-outline-danger"
+                            data-bs-toggle="modal" data-bs-target="#redModal"
+                            data-aksiyon="teknik_reddet" data-action="<?= $formAction ?>">
+                        <i class="bi bi-x-circle me-1"></i>Reddet
+                    </button>
                 <?php endif; ?>
 
                 <?php if ($rd === 'reddedildi' && can_approve_saha()): ?>
-                    <form method="post" action="<?= $formAction ?>" style="display:inline"
-                          onsubmit="return confirm('Yeniden onaylamak istediğinizden emin misiniz?')">
+                    <form method="post" action="<?= $formAction ?>" style="display:inline">
                         <input type="hidden" name="onay_aksiyonu" value="saha_onayla">
                         <button type="submit" class="btn btn-sm btn-warning">
                             <i class="bi bi-arrow-counterclockwise me-1"></i>Yeniden Onayla
@@ -1808,5 +1799,36 @@ function redGonder(aksiyon) {
     form.method = 'post';
     form.submit();
 }
+</script>
+<!-- Red Nedeni Modalı -->
+<div class="modal fade" id="redModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title"><i class="bi bi-x-circle text-danger me-2"></i>Red Nedeni</h6>
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" id="redForm">
+        <div class="modal-body">
+          <input type="hidden" name="onay_aksiyonu" id="redAksiyon">
+          <label class="form-label small fw-semibold">Red nedeni girin <span class="text-danger">*</span></label>
+          <textarea name="red_neden" id="redNeden" class="form-control" rows="3" required
+                    placeholder="Red nedenini açıklayın..."></textarea>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">İptal</button>
+          <button type="submit" class="btn btn-sm btn-danger">Reddet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+document.getElementById('redModal').addEventListener('show.bs.modal', function(e) {
+    var btn = e.relatedTarget;
+    document.getElementById('redAksiyon').value = btn.dataset.aksiyon;
+    document.getElementById('redForm').action   = btn.dataset.action;
+    document.getElementById('redNeden').value   = '';
+});
 </script>
 <?php require_once __DIR__ . '/includes/footer.php'; ?>
