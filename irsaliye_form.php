@@ -307,7 +307,7 @@ if ($editId && isset($row['durum'])):
 </div>
 
 <!-- Gizli onay formu -->
-<form id="onayForm" method="post" style="display:none">
+<form id="onayForm" method="post" action="" style="display:none">
     <input type="hidden" name="onay_aksiyonu" id="onayAksiyon">
     <input type="hidden" name="red_neden"    id="redNedenInput">
 </form>
@@ -1776,16 +1776,23 @@ document.getElementById('selGrup').addEventListener('change', function () {
 <script>
 function onayGonder(aksiyon) {
     if (!confirm('Bu işlemi onaylamak istediğinizden emin misiniz?')) return;
+    var form = document.getElementById('onayForm');
     document.getElementById('onayAksiyon').value = aksiyon;
-    document.getElementById('onayForm').submit();
+    document.getElementById('redNedenInput').value = '';
+    form.action = window.location.href;
+    form.method = 'post';
+    form.submit();
 }
 function redGonder(aksiyon) {
     var neden = prompt('Red nedeni girin:');
     if (neden === null) return;
     if (!neden.trim()) { alert('Red nedeni boş olamaz.'); return; }
+    var form = document.getElementById('onayForm');
     document.getElementById('onayAksiyon').value = aksiyon;
     document.getElementById('redNedenInput').value = neden.trim();
-    document.getElementById('onayForm').submit();
+    form.action = window.location.href;
+    form.method = 'post';
+    form.submit();
 }
 </script>
 <?php require_once __DIR__ . '/includes/footer.php'; ?>
