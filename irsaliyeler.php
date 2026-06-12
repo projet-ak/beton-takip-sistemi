@@ -1,4 +1,5 @@
 <?php
+ob_start();
 /**
  * irsaliyeler.php — İrsaliye listesi (alış + iade)
  */
@@ -24,16 +25,53 @@ if (can_edit() && isset($_GET['sil']) && ctype_digit($_GET['sil'])) {
     redirect("irsaliyeler.php?tip={$tip}");
 }
 
-// ── Toplu silme (POST) ────────────────────────────────────────────────────────
-if (can_edit() && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['toplu_islem'] ?? '') === 'sil') {
-    $ids = $_POST['secim'] ?? [];
-    $ids = array_values(array_filter(array_map('intval', (array)$ids), fn($v) => $v > 0));
-    if ($ids) {
-        $placeholders = implode(',', array_fill(0, count($ids), '?'));
-        $pdo->prepare("DELETE FROM irsaliyeler WHERE id IN ($placeholders)")->execute($ids);
+// ── Toplu işlemler (POST) ─────────────────────────────────────────────────────
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['toplu_islem'])) {
+    $topluIslem = $_POST['toplu_islem'];
+    $ids = array_values(array_filter(array_map('intval', (array)($_POST['secim'] ?? [])), fn($v) => $v > 0));
+    $uid = current_user_id();
+
+    if (!$ids) {
+        flash('warning', 'İşlem için kayıt seçmediniz.');
+        redirect("irsaliyeler.php?tip={$tip}");
+    }
+
+    $ph = implode(',', array_fill(0, count($ids), '?'));
+
+    if ($topluIslem === 'sil' && can_edit()) {
+        $pdo->prepare("DELETE FROM irsaliyeler WHERE id IN ($ph)")->execute($ids);
         flash('success', count($ids) . ' irsaliye silindi.');
+
+    } elseif ($topluIslem === 'saha_onayla' && can_approve_saha()) {
+        // Sadece beklemede olanları, projesi dolu olanları onayla
+        $rows = $pdo->prepare("SELECT id, proje_id FROM irsaliyeler WHERE id IN ($ph) AND durum='beklemede'");
+        $rows->execute($ids);
+        $onaylandi = 0; $projeSiz = 0;
+        foreach ($rows->fetchAll() as $r) {
+            if (empty($r['proje_id'])) { $projeSiz++; continue; }
+            $pdo->prepare("UPDATE irsaliyeler SET durum='saha_onaylandi', saha_onaylayan_id=?, saha_onay_tarih=NOW() WHERE id=?")->execute([$uid, $r['id']]);
+            $onaylandi++;
+        }
+        $msg = $onaylandi . ' irsaliye saha onayı verildi.';
+        if ($projeSiz) $msg .= " {$projeSiz} irsaliye atlandı (proje seçilmemiş).";
+        flash($onaylandi ? 'success' : 'warning', $msg);
+
+    } elseif ($topluIslem === 'teknik_onayla' && can_approve_teknik()) {
+        // beklemede veya saha_onaylandi olanları, projesi dolu olanları onayla
+        $rows = $pdo->prepare("SELECT id, proje_id FROM irsaliyeler WHERE id IN ($ph) AND durum IN ('beklemede','saha_onaylandi')");
+        $rows->execute($ids);
+        $onaylandi = 0; $projeSiz = 0;
+        foreach ($rows->fetchAll() as $r) {
+            if (empty($r['proje_id'])) { $projeSiz++; continue; }
+            $pdo->prepare("UPDATE irsaliyeler SET durum='onaylandi', teknik_onaylayan_id=?, teknik_onay_tarih=NOW() WHERE id=?")->execute([$uid, $r['id']]);
+            $onaylandi++;
+        }
+        $msg = $onaylandi . ' irsaliye teknik onay verildi.';
+        if ($projeSiz) $msg .= " {$projeSiz} irsaliye atlandı (proje seçilmemiş).";
+        flash($onaylandi ? 'success' : 'warning', $msg);
+
     } else {
-        flash('warning', 'Silmek için kayıt seçmediniz.');
+        flash('warning', 'Yetkisiz işlem.');
     }
     redirect("irsaliyeler.php?tip={$tip}");
 }
@@ -366,16 +404,32 @@ require_once __DIR__ . '/includes/header.php';
 
 <!-- Liste tablosu -->
 <form method="post" id="topluForm" onsubmit="return onTopluSubmit(event);">
-    <input type="hidden" name="toplu_islem" value="sil">
+    <input type="hidden" name="toplu_islem" id="topluIslemField" value="sil">
 
     <?php if (can_edit()): ?>
-    <div class="d-flex align-items-center mb-2 gap-2" id="topluBar" style="display:none !important;">
-        <span class="text-muted small"><span id="secimSay">0</span> kayıt seçili</span>
-        <button type="submit" class="btn btn-sm btn-danger">
-            <i class="bi bi-trash me-1"></i> Seçilileri Sil
+    <div class="d-flex flex-wrap align-items-center mb-2 gap-2" id="topluBar" style="display:none !important;">
+        <span class="text-muted small fw-semibold"><span id="secimSay">0</span> kayıt seçili</span>
+
+        <?php if (can_approve_saha()): ?>
+        <button type="button" class="btn btn-sm btn-success" onclick="topluOnay('saha_onayla','Seçili irsaliyelere saha onayı verilsin mi?')">
+            <i class="bi bi-check-circle me-1"></i>Toplu Saha Onayla
         </button>
+        <?php endif; ?>
+
+        <?php if (can_approve_teknik()): ?>
+        <button type="button" class="btn btn-sm btn-primary" onclick="topluOnay('teknik_onayla','Seçili irsaliyelere teknik onay verilsin mi?')">
+            <i class="bi bi-patch-check me-1"></i>Toplu Teknik Onayla
+        </button>
+        <?php endif; ?>
+
+        <?php if (has_role('admin','teknik_ofis_admin')): ?>
+        <button type="button" class="btn btn-sm btn-danger" onclick="topluOnay('sil','Seçili irsaliyeler silinsin mi? Bu işlem geri alınamaz.')">
+            <i class="bi bi-trash me-1"></i>Seçilileri Sil
+        </button>
+        <?php endif; ?>
+
         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="secimTemizle()">
-            <i class="bi bi-x-lg me-1"></i> Seçimi Temizle
+            <i class="bi bi-x-lg me-1"></i>Seçimi Temizle
         </button>
     </div>
     <?php endif; ?>
@@ -540,14 +594,17 @@ require_once __DIR__ . '/includes/header.php';
         guncelle();
     };
 
-    window.onTopluSubmit = function (e) {
+    window.topluOnay = function (islem, msg) {
         const sec = document.querySelectorAll('.secSatir:checked');
-        if (sec.length === 0) {
-            e.preventDefault();
-            alert('Lütfen silmek için en az bir kayıt seçin.');
-            return false;
-        }
-        return confirm('Seçili ' + sec.length + ' irsaliye kalıcı olarak silinecek. Emin misiniz?');
+        if (sec.length === 0) { alert('Lütfen en az bir kayıt seçin.'); return; }
+        if (!confirm(sec.length + ' kayıt seçili. ' + msg)) return;
+        document.getElementById('topluIslemField').value = islem;
+        document.getElementById('topluForm').submit();
+    };
+
+    window.onTopluSubmit = function (e) {
+        e.preventDefault();
+        return false;
     };
 })();
 </script>
