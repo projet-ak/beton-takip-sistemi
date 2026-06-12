@@ -49,7 +49,7 @@ $filtreAy     = isset($_GET['ay'])          && ctype_digit($_GET['ay'])         
 $filtreArama  = trim($_GET['ara'] ?? '');
 $tarihBas     = isset($_GET['tarih_bas']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tarih_bas']) ? $_GET['tarih_bas'] : '';
 $tarihBit     = isset($_GET['tarih_bit']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tarih_bit']) ? $_GET['tarih_bit'] : '';
-$ihrac        = isset($_GET['export']) && in_array($_GET['export'], ['csv'], true) ? $_GET['export'] : '';
+$ihrac        = isset($_GET['export']) && in_array($_GET['export'], ['csv','xlsx'], true) ? $_GET['export'] : '';
 
 $where  = $tip !== 'tum' ? ['i.tip = ?'] : [];
 $params = $tip !== 'tum' ? [$tip] : [];
@@ -103,13 +103,85 @@ $liste = $stmt->fetchAll();
 
 $toplamM3 = array_sum(array_column($liste, 'miktar'));
 
-// ── CSV dışa aktarma ─────────────────────────────────────────────────────────
+// ── Excel (.xlsx) dışa aktarma ───────────────────────────────────────────────
+if ($ihrac === 'xlsx') {
+    require_once __DIR__ . '/includes/XlsxWriter.php';
+
+    $tipLabel = $tip === 'alis' ? 'Alis' : ($tip === 'iade' ? 'Iade' : 'Tum');
+    $fname    = 'irsaliyeler_' . $tipLabel . '_' . date('Ymd_His') . '.xlsx';
+
+    $durumLabel = [
+        'beklemede'      => 'Beklemede',
+        'saha_onaylandi' => 'Saha Onayı',
+        'onaylandi'      => 'Onaylandı',
+        'reddedildi'     => 'Reddedildi',
+    ];
+
+    $xl = new XlsxWriter($tip === 'alis' ? 'Alış İrsaliyeleri' : ($tip === 'iade' ? 'İade İrsaliyeleri' : 'Tüm İrsaliyeler'));
+
+    $xl->header([
+        'Sıra No', 'Tip', 'Tarih', 'İrsaliye No', 'Araç Plaka',
+        'Tedarikçi', 'Beton Sınıfı', 'Parsel', 'Blok', 'Kot',
+        'Pompa', 'Firma', 'Proje', 'Miktar (m³)', 'Birim',
+        'Durum', 'Saha Onay Tarihi', 'Teknik Onay Tarihi', 'Açıklama',
+    ]);
+
+    foreach ($liste as $r) {
+        $xl->row([
+            ['v' => $r['sira_no'] ?? '',                                   't' => 'text'],
+            ['v' => $r['tip'] === 'alis' ? 'Alış' : 'İade',               't' => 'text'],
+            ['v' => $r['tarih'] ?? '',                                      't' => 'date'],
+            ['v' => $r['irsaliye_no'] ?? '',                               't' => 'text'],
+            ['v' => $r['arac_plaka'] ?? '',                                 't' => 'text'],
+            ['v' => $r['tedarikci_adi'] ?? '',                              't' => 'text'],
+            ['v' => $r['beton_sinifi_adi'] ?? '',                           't' => 'text'],
+            ['v' => $r['parsel_adi'] ?? '',                                 't' => 'text'],
+            ['v' => $r['blok_adi'] ?? '',                                   't' => 'text'],
+            ['v' => $r['kot_degeri'] ?? '',                                 't' => 'text'],
+            ['v' => $r['pompa_adi'] ?? '',                                  't' => 'text'],
+            ['v' => $r['firma_adi'] ?? '',                                  't' => 'text'],
+            ['v' => $r['proje_kod'] ?? '',                                  't' => 'text'],
+            ['v' => $r['miktar'] ?? 0,                                      't' => 'number'],
+            ['v' => $r['birim'] ?? 'm³',                                   't' => 'text'],
+            ['v' => $durumLabel[$r['durum'] ?? ''] ?? ($r['durum'] ?? ''), 't' => 'text'],
+            ['v' => $r['saha_onay_tarih'] ?? '',                            't' => 'date'],
+            ['v' => $r['teknik_onay_tarih'] ?? '',                          't' => 'date'],
+            ['v' => $r['aciklama'] ?? '',                                   't' => 'text'],
+        ]);
+    }
+
+    $toplamM3 = array_sum(array_column($liste, 'miktar'));
+    $xl->total([
+        ['v' => 'TOPLAM',      't' => 'text'],
+        ['v' => '',            't' => 'text'],
+        ['v' => '',            't' => 'text'],
+        ['v' => '',            't' => 'text'],
+        ['v' => '',            't' => 'text'],
+        ['v' => '',            't' => 'text'],
+        ['v' => '',            't' => 'text'],
+        ['v' => '',            't' => 'text'],
+        ['v' => '',            't' => 'text'],
+        ['v' => '',            't' => 'text'],
+        ['v' => '',            't' => 'text'],
+        ['v' => '',            't' => 'text'],
+        ['v' => '',            't' => 'text'],
+        ['v' => $toplamM3,     't' => 'number'],
+        ['v' => 'm³',          't' => 'text'],
+        ['v' => count($liste) . ' kayıt', 't' => 'text'],
+        ['v' => '',            't' => 'text'],
+        ['v' => '',            't' => 'text'],
+        ['v' => '',            't' => 'text'],
+    ]);
+
+    $xl->download($fname);
+}
+
+// ── CSV dışa aktarma (yedek, kaldırılabilir) ─────────────────────────────────
 if ($ihrac === 'csv') {
     $fname = 'irsaliyeler_' . date('Ymd_His') . '.csv';
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="' . $fname . '"');
     $out = fopen('php://output', 'w');
-    // UTF-8 BOM (Excel için)
     fwrite($out, "\xEF\xBB\xBF");
     fputcsv($out, [
         'Sıra','Tip','Tarih','İrsaliye No','Plaka','Tedarikçi','Beton Sınıfı',
@@ -160,7 +232,7 @@ $yillar = $pdo->query("SELECT DISTINCT YEAR(tarih) AS y FROM irsaliyeler ORDER B
 // Mevcut GET parametrelerini koru
 $qs = $_GET;
 unset($qs['export'], $qs['sil']);
-$csvHref = 'irsaliyeler.php?' . http_build_query(array_merge($qs, ['export' => 'csv']));
+$xlsxHref = 'irsaliyeler.php?' . http_build_query(array_merge($qs, ['export' => 'xlsx']));
 
 require_once __DIR__ . '/includes/header.php';
 ?>
@@ -182,8 +254,8 @@ require_once __DIR__ . '/includes/header.php';
         </div>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        <a href="<?= h($csvHref) ?>" class="btn btn-outline-success btn-sm">
-            <i class="bi bi-file-earmark-spreadsheet me-1"></i> CSV / Excel
+        <a href="<?= h($xlsxHref) ?>" class="btn btn-outline-success btn-sm">
+            <i class="bi bi-file-earmark-excel me-1"></i> Excel İndir
         </a>
         <?php if (can_edit()): ?>
         <a href="irsaliye_form.php?tip=<?= h($tip) ?>" class="btn btn-primary btn-sm">
