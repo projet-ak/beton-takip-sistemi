@@ -44,21 +44,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $esc = fn($s) => str_replace(["\\", "'"], ["\\\\", "\\'"], $s);
 
-                $config = preg_replace(
-                    "/define\s*\(\s*'AI_PROVIDER'\s*,\s*'[^']*'\s*\);/",
-                    "define('AI_PROVIDER',   '" . $esc($provider) . "');",
-                    $config
-                );
-                $config = preg_replace(
-                    "/define\s*\(\s*'CLAUDE_API_KEY'\s*,\s*'[^']*'\s*\);/",
-                    "define('CLAUDE_API_KEY', '" . $esc($claudeKey) . "');",
-                    $config
-                );
-                $config = preg_replace(
-                    "/define\s*\(\s*'GEMINI_API_KEY'\s*,\s*'[^']*'\s*\);/",
-                    "define('GEMINI_API_KEY', '" . $esc($geminiKey) . "');",
-                    $config
-                );
+                // Satır varsa güncelle, yoksa dosya sonuna ekle
+                $setDefine = function(string &$cfg, string $name, string $val) use ($esc): void {
+                    $pattern     = "/define\s*\(\s*'" . preg_quote($name, '/') . "'\s*,\s*'[^']*'\s*\);/";
+                    $replacement = "define('" . $name . "', '" . $esc($val) . "');";
+                    if (preg_match($pattern, $cfg)) {
+                        $cfg = preg_replace($pattern, $replacement, $cfg);
+                    } else {
+                        $cfg = rtrim($cfg) . "\n" . $replacement . "\n";
+                    }
+                };
+
+                $setDefine($config, 'AI_PROVIDER',   $provider);
+                $setDefine($config, 'CLAUDE_API_KEY', $claudeKey);
+                $setDefine($config, 'GEMINI_API_KEY', $geminiKey);
 
                 if (file_put_contents($configFile, $config) === false) {
                     $hata = 'config.php yazılamadı. Sunucu dosya izinlerini kontrol edin.';
