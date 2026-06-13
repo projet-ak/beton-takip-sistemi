@@ -64,6 +64,19 @@ function flash(string $key, ?string $msg = null): void
 }
 
 /**
+ * Flash mesajı kaydet.
+ *
+ * Kullanım: set_flash('success', 'Kaydedildi.')
+ */
+function set_flash(string $key, string $msg): void
+{
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    $_SESSION['_flash'][$key] = $msg;
+}
+
+/**
  * Flash mesajı oku ve sil; yoksa null döner.
  *
  * Kullanım: $msg = get_flash('success')
