@@ -8,7 +8,7 @@
  */
 
 define('DEPLOY_TOKEN', '9fe41d55f7324123586fd5a2be2fee6b3f5355ff4993fa1f');
-define('REPO',   'projet-ak/beton-takip-sistrmi-v1');
+define('REPO',   'projet-ak/beton-takip-sistemi');
 define('BRANCH', 'claude/organize-control-panel-hUe4z');
 
 header('Content-Type: application/json; charset=utf-8');

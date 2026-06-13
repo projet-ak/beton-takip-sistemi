@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 define('DEPLOY_TOKEN',  '9fe41d55f7324123586fd5a2be2fee6b3f5355ff4993fa1f');
-define('REPO_URL',      'https://github.com/projet-ak/beton-takip-sistrmi-v1.git');
+define('REPO_URL',      'https://github.com/projet-ak/beton-takip-sistemi.git');
 define('BRANCH',        'claude/organize-control-panel-hUe4z');
 define('DEPLOY_DIR',    __DIR__);
 define('LOG_FILE',      __DIR__ . '/deploy.log');
