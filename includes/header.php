@@ -142,15 +142,16 @@ if ($__user) {
       <?php endif; ?>
 
       <?php if(is_admin()): ?>
-      <?php $__araA = in_array($__page,['yedek.php','import.php'],true); ?>
+      <?php $__araA = in_array($__page,['yedek.php','import.php','ai_ayarlar.php'],true); ?>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= $__araA?'active':'' ?>" href="#subAra" data-bs-toggle="collapse" role="button" aria-expanded="<?= $__araA?'true':'false' ?>">
           <i class="bi bi-tools"></i><span>Araçlar</span><i class="bi bi-chevron-right chev"></i>
         </a>
         <div class="collapse <?= $__araA?'show':'' ?>" id="subAra">
           <ul class="list-unstyled sidebar-sub">
-            <li><a class="sidebar-sub-link <?= __isActive('yedek.php') ?>"  href="<?= $__rootPath ?>yedek.php">Yedekleme</a></li>
-            <li><a class="sidebar-sub-link <?= __isActive('import.php') ?>" href="<?= $__rootPath ?>import.php">Excel Aktarımı</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('yedek.php') ?>"      href="<?= $__rootPath ?>yedek.php">Yedekleme</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('import.php') ?>"     href="<?= $__rootPath ?>import.php">Excel Aktarımı</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('ai_ayarlar.php') ?>" href="<?= $__rootPath ?>ai_ayarlar.php"><i class="bi bi-stars me-1"></i>AI Ayarları</a></li>
           </ul>
         </div>
       </li>
@@ -195,7 +196,7 @@ if ($__user) {
     <button class="topbar-menu-btn" id="sidebarToggleBtn"><i class="bi bi-list fs-5"></i></button>
     <div class="topbar-title d-none d-md-block">
       <?php
-      $__bc=['index.php'=>'Dashboard','irsaliyeler.php'=>'İrsaliyeler','irsaliye_form.php'=>'İrsaliye Formu','irsaliye_detay.php'=>'İrsaliye Detayı','hizli_tarama.php'=>'Hızlı Tarama','raporlar.php'=>'Raporlar','projeler.php'=>'Projeler','kullanicilar.php'=>'Kullanıcılar','tedarikciler.php'=>'Tedarikçiler','beton_siniflari.php'=>'Beton Sınıfları','yedek.php'=>'Yedekleme','import.php'=>'Excel Aktarımı'];
+      $__bc=['index.php'=>'Dashboard','irsaliyeler.php'=>'İrsaliyeler','irsaliye_form.php'=>'İrsaliye Formu','irsaliye_detay.php'=>'İrsaliye Detayı','hizli_tarama.php'=>'Hızlı Tarama','raporlar.php'=>'Raporlar','projeler.php'=>'Projeler','kullanicilar.php'=>'Kullanıcılar','tedarikciler.php'=>'Tedarikçiler','beton_siniflari.php'=>'Beton Sınıfları','yedek.php'=>'Yedekleme','import.php'=>'Excel Aktarımı','ai_ayarlar.php'=>'AI Ayarları'];
       echo '<span style="color:var(--bt-text-soft);font-size:.78rem;">ERN Holding</span><span style="color:var(--bt-border);margin:0 .4rem;">/</span><span style="font-weight:600;font-size:.85rem;">'.h($__bc[$__page]??ucfirst(basename($__page,'.php'))).'</span>';
       ?>
     </div>

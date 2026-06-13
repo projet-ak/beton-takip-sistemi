@@ -628,6 +628,12 @@ if ($editId && isset($row['durum'])):
                     <i class="bi bi-qr-code-scan me-1"></i> QR / Barkod Tara
                 </button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link rounded-0 px-4" id="tab-ai-btn"
+                        data-bs-toggle="tab" data-bs-target="#tab-ai" type="button">
+                    <i class="bi bi-stars me-1"></i> AI ile Oku
+                </button>
+            </li>
         </ul>
     </div>
     <div class="card-body">
@@ -810,6 +816,48 @@ if ($editId && isset($row['durum'])):
                         <div class="alert alert-info small py-2 mb-0">
                             <i class="bi bi-lightbulb me-1"></i>
                             E-İrsaliye QR kodlarında irsaliye no, tarih, plaka, sevk saati ve ETTN otomatik aktarılır. Diğer kodlarda irsaliye no alanı doldurulur.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── AI ile Oku Tab ──────────────────────────────────────────────── -->
+            <div class="tab-pane fade" id="tab-ai" role="tabpanel">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <p class="small text-muted mb-2">
+                            <i class="bi bi-stars me-1 text-primary"></i>
+                            Bir irsaliye fotoğrafı veya PDF sayfası yükleyin — yapay zeka alanları otomatik dolduracak.
+                        </p>
+                        <div class="mb-3">
+                            <label class="form-label small fw-semibold">Dosya Seç</label>
+                            <input type="file" id="aiDosyaInput" class="form-control form-control-sm"
+                                   accept=".jpg,.jpeg,.png,.webp,.pdf">
+                            <div class="form-text">JPG, PNG, WEBP veya PDF (maks. 20 MB)</div>
+                        </div>
+                        <button type="button" id="btnAiOku" class="btn btn-primary btn-sm">
+                            <i class="bi bi-stars me-1"></i> Belgeden Oku
+                        </button>
+                        <div id="aiYukleniyor" class="d-none mt-3">
+                            <div class="d-flex align-items-center gap-2 text-muted small">
+                                <div class="spinner-border spinner-border-sm" role="status"></div>
+                                AI belgeyi analiz ediyor...
+                            </div>
+                        </div>
+                        <div id="aiHata" class="alert alert-danger mt-3 d-none small py-2"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div id="aiSonucPanel" class="d-none">
+                            <p class="small fw-semibold text-muted mb-2">Okunan Alanlar</p>
+                            <table class="table table-sm table-bordered mb-2 small">
+                                <tbody id="aiSonucTablosu"></tbody>
+                            </table>
+                            <button type="button" id="btnAiAktar" class="btn btn-success btn-sm w-100">
+                                <i class="bi bi-arrow-left-circle me-1"></i> Forma Aktar
+                            </button>
+                            <div id="aiAktarMesaj" class="d-none alert alert-success mt-2 small py-2">
+                                <i class="bi bi-check-circle me-1"></i> Alanlar forma aktarıldı.
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1258,10 +1306,13 @@ async function kameraQrLoop() {
 
                 if (json) kameraOkunanJson = true;
                 if (e1) kameraOkunanE1 = true;
-                
+
                 if (kameraOkunanJson && kameraOkunanE1) {
                     kameraQrDurdur();
                     showToast('E-İrsaliye ve E1 QR kodları başarıyla alındı.', 'success');
+                } else if (kameraOkunanJson) {
+                    // jsQR DataMatrix okuyamaz — JSON QR yeterli, kamera durdur
+                    kameraQrDurdur();
                 } else {
                     kameraQrAnimId = requestAnimationFrame(kameraQrLoop);
                     return;
@@ -1809,6 +1860,137 @@ function redGonder(aksiyon) {
     form.method = 'post';
     form.submit();
 }
+</script>
+<script>
+// ── AI ile Oku ───────────────────────────────────────────────────────────────
+(function () {
+    let aiAlanlar = {};
+
+    const ETIKETLER = {
+        irsaliye_no:        'İrsaliye No',
+        tarih:              'Tarih',
+        arac_plaka:         'Araç Plaka',
+        miktar:             'Miktar (m³)',
+        tedarikci_vkn:      'Tedarikçi VKN',
+        beton_sinifi:       'Beton Sınıfı',
+        kivam:              'Kıvam',
+        fatura_no:          'Fatura No',
+        mikser_cikis_saati: 'Mikser Çıkış Saati',
+    };
+
+    document.getElementById('btnAiOku')?.addEventListener('click', async function () {
+        const input      = document.getElementById('aiDosyaInput');
+        const hataDiv    = document.getElementById('aiHata');
+        const yukleniyor = document.getElementById('aiYukleniyor');
+        const sonucPanel = document.getElementById('aiSonucPanel');
+        const aktarMesaj = document.getElementById('aiAktarMesaj');
+
+        hataDiv.classList.add('d-none');
+        sonucPanel.classList.add('d-none');
+        aktarMesaj?.classList.add('d-none');
+
+        if (!input?.files?.length) {
+            hataDiv.textContent = 'Lütfen bir dosya seçin.';
+            hataDiv.classList.remove('d-none');
+            return;
+        }
+
+        const fd = new FormData();
+        fd.append('dosya', input.files[0]);
+
+        yukleniyor.classList.remove('d-none');
+        this.disabled = true;
+
+        try {
+            const res  = await fetch('api/ai_okut.php', { method: 'POST', body: fd });
+            const json = await res.json();
+
+            if (!json.ok) {
+                hataDiv.textContent = json.msg || 'Bilinmeyen hata';
+                hataDiv.classList.remove('d-none');
+                return;
+            }
+
+            aiAlanlar = json.alanlar || {};
+
+            let rows = '';
+            for (const [key, label] of Object.entries(ETIKETLER)) {
+                const val = aiAlanlar[key];
+                const goster = (val !== null && val !== undefined) ? String(val) : '<span class="text-muted">—</span>';
+                rows += `<tr><td class="text-muted" style="width:45%">${label}</td><td class="fw-semibold">${goster}</td></tr>`;
+            }
+            document.getElementById('aiSonucTablosu').innerHTML = rows;
+            sonucPanel.classList.remove('d-none');
+
+        } catch (e) {
+            hataDiv.textContent = 'Bağlantı hatası: ' + e.message;
+            hataDiv.classList.remove('d-none');
+        } finally {
+            yukleniyor.classList.add('d-none');
+            this.disabled = false;
+        }
+    });
+
+    document.getElementById('btnAiAktar')?.addEventListener('click', function () {
+        let doldurulan = 0;
+
+        // Düz metin alanları
+        ['irsaliye_no', 'tarih', 'miktar', 'fatura_no', 'mikser_cikis_saati'].forEach(function (key) {
+            const val = aiAlanlar[key];
+            if (val === null || val === undefined) return;
+            const el = document.querySelector('[name="' + key + '"]');
+            if (el) { el.value = val; doldurulan++; }
+        });
+
+        // Araç plaka (büyük harfe çevir)
+        if (aiAlanlar.arac_plaka) {
+            const el = document.querySelector('[name="arac_plaka"]');
+            if (el) { el.value = String(aiAlanlar.arac_plaka).toUpperCase(); doldurulan++; }
+        }
+
+        // Beton sınıfı — select option metni ile eşleştir
+        if (aiAlanlar.beton_sinifi) {
+            const bn  = String(aiAlanlar.beton_sinifi).toUpperCase().replace(/\s+/g, '');
+            const sel = document.querySelector('[name="beton_sinifi_id"]');
+            if (sel) for (const opt of sel.options) {
+                const t = opt.textContent.replace(/\s+/g, '').toUpperCase();
+                if (t === bn || t.startsWith(bn + '/') || t.startsWith(bn + '-')) {
+                    sel.value = opt.value; doldurulan++; break;
+                }
+            }
+        }
+
+        // Kıvam sınıfı
+        if (aiAlanlar.kivam) {
+            const kn  = String(aiAlanlar.kivam).toUpperCase().replace(/\s+/g, '');
+            const sel = document.querySelector('[name="kivam_sinifi_id"]');
+            if (sel) for (const opt of sel.options) {
+                if (opt.textContent.replace(/\s+/g, '').toUpperCase() === kn) {
+                    sel.value = opt.value; doldurulan++; break;
+                }
+            }
+        }
+
+        // Tedarikçi — data-vkn ile eşleştir
+        if (aiAlanlar.tedarikci_vkn) {
+            const vkn = String(aiAlanlar.tedarikci_vkn).trim();
+            const sel = document.querySelector('[name="tedarikci_id"]');
+            if (sel) for (const opt of sel.options) {
+                if (String(opt.getAttribute('data-vkn') || '').trim() === vkn) {
+                    sel.value = opt.value; doldurulan++; break;
+                }
+            }
+        }
+
+        const aktarMesaj = document.getElementById('aiAktarMesaj');
+        if (aktarMesaj) {
+            aktarMesaj.textContent = doldurulan + ' alan forma aktarıldı.';
+            aktarMesaj.innerHTML   = '<i class="bi bi-check-circle me-1"></i>' + aktarMesaj.textContent;
+            aktarMesaj.classList.remove('d-none');
+            setTimeout(() => aktarMesaj.classList.add('d-none'), 4000);
+        }
+    });
+}());
 </script>
 <script>
 function submitOnay(aksiyon) {

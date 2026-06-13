@@ -1440,4 +1440,126 @@ async function buildOzetSheet(wb) {
 }
 </script>
 
+<!-- ── AI Asistan ─────────────────────────────────────────────────────────── -->
+<div class="card mb-4">
+    <div class="card-header bg-white fw-semibold d-flex align-items-center gap-2">
+        <i class="bi bi-stars text-primary"></i> AI Asistan
+        <span class="badge bg-primary-subtle text-primary fw-normal small">beta</span>
+    </div>
+    <div class="card-body">
+        <div class="row g-4">
+            <!-- Anomali Tespiti -->
+            <div class="col-md-5">
+                <p class="small fw-semibold mb-1">Anomali Tespiti</p>
+                <p class="small text-muted mb-2">Mükerrer kayıtlar, anormal miktarlar ve eksik proje bilgilerini otomatik tarar.</p>
+                <button type="button" id="btnAnomaliTara" class="btn btn-outline-warning btn-sm">
+                    <i class="bi bi-bug me-1"></i> Anomali Tara
+                </button>
+                <div id="anomaliYukleniyor" class="d-none mt-2 small text-muted">
+                    <span class="spinner-border spinner-border-sm me-1"></span> Taranıyor...
+                </div>
+                <div id="anomaliSonuc" class="mt-3"></div>
+            </div>
+            <!-- Rapor Asistanı -->
+            <div class="col-md-7 border-start ps-md-4">
+                <p class="small fw-semibold mb-1">Rapor Asistanı</p>
+                <div id="aiSohbet" class="border rounded p-2 mb-2 overflow-auto"
+                     style="min-height:90px;max-height:260px;background:#f8f9fa;font-size:.85rem;">
+                    <span class="text-muted">Veri hakkında bir soru sorun. Örn: <em>Hangi tedarikçiden en çok beton aldık?</em></span>
+                </div>
+                <div class="input-group input-group-sm">
+                    <input type="text" id="aiSoruInput" class="form-control"
+                           placeholder="Sorunuzu yazın...">
+                    <button type="button" id="btnAiSor" class="btn btn-primary">
+                        <i class="bi bi-send"></i>
+                    </button>
+                </div>
+                <div id="aiSorYukleniyor" class="d-none mt-1 small text-muted">
+                    <span class="spinner-border spinner-border-sm me-1"></span> Yanıt hazırlanıyor...
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── Anomali Tespiti ────────────────────────────────────────────────────────
+document.getElementById('btnAnomaliTara').addEventListener('click', async function () {
+    const sonucDiv   = document.getElementById('anomaliSonuc');
+    const yukleniyor = document.getElementById('anomaliYukleniyor');
+    sonucDiv.innerHTML = '';
+    yukleniyor.classList.remove('d-none');
+    this.disabled = true;
+    try {
+        const fd = new FormData();
+        fd.append('action', 'anomali');
+        const res  = await fetch('api/ai_rapor.php', { method: 'POST', body: fd });
+        const json = await res.json();
+        if (!json.ok) {
+            sonucDiv.innerHTML = `<div class="alert alert-danger small py-2">${json.msg}</div>`;
+            return;
+        }
+        if (json.temiz) {
+            sonucDiv.innerHTML = '<div class="alert alert-success small py-2"><i class="bi bi-check-circle me-1"></i> Anomali tespit edilmedi.</div>';
+            return;
+        }
+        let html = '';
+        for (const a of json.anomaliler) {
+            html += `<div class="alert alert-${a.renk} small py-2 mb-2">
+                <strong>${a.tip}</strong>
+                <ul class="mb-0 mt-1 ps-3">${a.satirlar.map(s => `<li>${s}</li>`).join('')}</ul>
+            </div>`;
+        }
+        sonucDiv.innerHTML = html;
+    } catch (e) {
+        sonucDiv.innerHTML = `<div class="alert alert-danger small py-2">Bağlantı hatası: ${e.message}</div>`;
+    } finally {
+        yukleniyor.classList.add('d-none');
+        this.disabled = false;
+    }
+});
+
+// ── Rapor Asistanı ─────────────────────────────────────────────────────────
+async function aiSoruGonder() {
+    const input      = document.getElementById('aiSoruInput');
+    const sohbet     = document.getElementById('aiSohbet');
+    const yukleniyor = document.getElementById('aiSorYukleniyor');
+    const btn        = document.getElementById('btnAiSor');
+    const soru       = input.value.trim();
+    if (!soru) return;
+
+    // İlk mesajda placeholder'ı temizle
+    if (sohbet.querySelector('span.text-muted')) sohbet.innerHTML = '';
+
+    sohbet.innerHTML += `<div class="text-end mb-1"><span class="badge bg-primary-subtle text-primary">${soru}</span></div>`;
+    input.value = '';
+    yukleniyor.classList.remove('d-none');
+    btn.disabled = true;
+
+    try {
+        const fd = new FormData();
+        fd.append('action', 'soru');
+        fd.append('soru', soru);
+        const res  = await fetch('api/ai_rapor.php', { method: 'POST', body: fd });
+        const json = await res.json();
+        if (!json.ok) {
+            sohbet.innerHTML += `<div class="mb-2 text-danger"><i class="bi bi-x-circle me-1"></i>${json.msg}</div>`;
+        } else {
+            sohbet.innerHTML += `<div class="mb-2"><i class="bi bi-stars text-primary me-1"></i>${json.cevap.replace(/\n/g,'<br>')}</div>`;
+        }
+    } catch (e) {
+        sohbet.innerHTML += `<div class="mb-2 text-danger">Bağlantı hatası</div>`;
+    } finally {
+        yukleniyor.classList.add('d-none');
+        btn.disabled = false;
+        sohbet.scrollTop = sohbet.scrollHeight;
+    }
+}
+
+document.getElementById('btnAiSor').addEventListener('click', aiSoruGonder);
+document.getElementById('aiSoruInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); aiSoruGonder(); }
+});
+</script>
+
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

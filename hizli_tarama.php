@@ -1148,7 +1148,7 @@ function listeTemizle() {
     if (!taranmisList.length || confirm('Taranan tüm kayıtlar silinecek. Emin misiniz?')) {
         taranmisList = [];
         rowSayac = 0;
-        document.getElementById('kayitGovde').innerHTML = '<tr id="bosRow"><td colspan="10" class="text-center text-muted py-5"><i class="bi bi-qr-code display-4 opacity-25 d-block mb-2"></i>QR kodu okutun — kayıtlar buraya eklenecek</td></tr>';
+        document.getElementById('kayitGovde').innerHTML = '<tr id="bosRow"><td colspan="15" class="text-center text-muted py-5"><i class="bi bi-qr-code display-4 opacity-25 d-block mb-2"></i>QR kodu okutun — kayıtlar buraya eklenecek</td></tr>';
         sayacGuncelle();
     }
 }

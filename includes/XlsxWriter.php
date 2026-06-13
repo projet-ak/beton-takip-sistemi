@@ -92,6 +92,10 @@ class XlsxWriter
     public function download(string $filename): never
     {
         $xlsx = $this->build();
+        // BOM veya önceki output'u temizle (config.php BOM sorunu)
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment; filename="' . addslashes($filename) . '"');
         header('Content-Length: ' . strlen($xlsx));
