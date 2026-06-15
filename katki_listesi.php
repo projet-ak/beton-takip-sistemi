@@ -64,7 +64,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $formAcik = isset($_GET['ekle']) || $duzenle;
 
 // ── Liste ─────────────────────────────────────────────────────────────────────
-$liste = $pdo->query("SELECT * FROM katki_listesi ORDER BY ad")->fetchAll();
+$liste = $pdo->query("
+    SELECT k.*,
+           (SELECT COUNT(*) FROM irsaliyeler WHERE katki1_id = k.id OR katki2_id = k.id) AS irsaliye_sayisi
+    FROM katki_listesi k ORDER BY k.ad
+")->fetchAll();
 
 // Mevcut duplikatları tespit et
 $duplar = $pdo->query(
@@ -133,6 +137,7 @@ require_once __DIR__ . '/includes/header.php';
                     <tr>
                         <th>#</th>
                         <th>Ad</th>
+                        <th class="text-center">İrsaliye</th>
                         <th class="text-end">İşlem</th>
                     </tr>
                 </thead>
@@ -145,6 +150,16 @@ require_once __DIR__ . '/includes/header.php';
                             <?= h($r['ad']) ?>
                             <?php if ($isDup): ?>
                                 <span class="badge bg-warning text-dark ms-1"><i class="bi bi-exclamation-triangle me-1"></i>Mükerrer</span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="text-center">
+                            <?php if ($r['irsaliye_sayisi'] > 0): ?>
+                                <a href="#" class="badge bg-primary text-white text-decoration-none btn-tanim-modal"
+                                   data-tip="katki" data-id="<?= $r['id'] ?>" data-ad="<?= h($r['ad']) ?>">
+                                    <?= (int)$r['irsaliye_sayisi'] ?>
+                                </a>
+                            <?php else: ?>
+                                <span class="text-muted small">—</span>
                             <?php endif; ?>
                         </td>
                         <td class="text-end text-nowrap">
@@ -167,5 +182,104 @@ require_once __DIR__ . '/includes/header.php';
         </div>
     </div>
 </div>
+
+<!-- İrsaliye Listesi Modal -->
+<div class="modal fade" id="irsaliyeModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-file-earmark-text me-2"></i>
+                    <span id="modalBaslik">İrsaliyeler</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div id="modalYukleniyor" class="text-center py-5">
+                    <div class="spinner-border text-primary"></div>
+                    <div class="mt-2 text-muted small">Yükleniyor…</div>
+                </div>
+                <div id="modalIcerik" class="d-none">
+                    <table class="table table-hover table-sm align-middle mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>İrsaliye No</th>
+                                <th>Tarih</th>
+                                <th>Proje</th>
+                                <th>Beton Sınıfı</th>
+                                <th>Araç Plaka</th>
+                                <th class="text-end">Miktar (m³)</th>
+                                <th class="text-center">Tür</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="modalTbody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <small class="text-muted me-auto" id="modalSayi"></small>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Kapat</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.querySelectorAll('.btn-tanim-modal').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        const tip = this.dataset.tip;
+        const id  = this.dataset.id;
+        const ad  = this.dataset.ad;
+
+        document.getElementById('modalBaslik').textContent = ad + ' — İrsaliyeler';
+        document.getElementById('modalYukleniyor').classList.remove('d-none');
+        document.getElementById('modalIcerik').classList.add('d-none');
+        document.getElementById('modalSayi').textContent = '';
+
+        new bootstrap.Modal(document.getElementById('irsaliyeModal')).show();
+
+        fetch(`api/tanim_irsaliyeler.php?tip=${tip}&id=${id}`)
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('modalYukleniyor').classList.add('d-none');
+                if (!data.ok) {
+                    document.getElementById('modalIcerik').innerHTML = `<div class="alert alert-danger m-3">${data.msg}</div>`;
+                    document.getElementById('modalIcerik').classList.remove('d-none');
+                    return;
+                }
+                const tbody = document.getElementById('modalTbody');
+                tbody.innerHTML = '';
+                if (data.liste.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Kayıt bulunamadı.</td></tr>';
+                } else {
+                    data.liste.forEach(r => {
+                        const tipBadge = r.tip === 'alis'
+                            ? '<span class="badge bg-success-subtle text-success">Alış</span>'
+                            : '<span class="badge bg-danger-subtle text-danger">İade</span>';
+                        tbody.innerHTML += `<tr>
+                            <td class="font-monospace small">${r.irsaliye_no ?? '—'}</td>
+                            <td class="small">${r.tarih ? r.tarih.substring(0,10).split('-').reverse().join('.') : '—'}</td>
+                            <td class="small">${r.proje_adi ?? '<span class="text-muted">—</span>'}</td>
+                            <td class="small">${r.beton_sinifi_adi ?? '—'}</td>
+                            <td class="small">${r.arac_plaka ?? '—'}</td>
+                            <td class="text-end small">${r.miktar ? parseFloat(r.miktar).toLocaleString('tr-TR', {minimumFractionDigits:2}) : '—'}</td>
+                            <td class="text-center">${tipBadge}</td>
+                            <td><a href="irsaliye_goruntule.php?id=${r.id}" target="_blank" class="btn btn-xs btn-outline-secondary"><i class="bi bi-eye"></i></a></td>
+                        </tr>`;
+                    });
+                }
+                document.getElementById('modalIcerik').classList.remove('d-none');
+                document.getElementById('modalSayi').textContent = `Toplam ${data.sayi} irsaliye`;
+            })
+            .catch(() => {
+                document.getElementById('modalYukleniyor').classList.add('d-none');
+                document.getElementById('modalIcerik').innerHTML = '<div class="alert alert-danger m-3">Bağlantı hatası.</div>';
+                document.getElementById('modalIcerik').classList.remove('d-none');
+            });
+    });
+});
+</script>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>
