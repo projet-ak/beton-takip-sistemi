@@ -124,7 +124,7 @@ require_once __DIR__ . '/includes/header.php';
                                        <?= $curProvider === 'gemini' ? 'checked' : '' ?>>
                                 <label class="form-check-label" for="provGemini">
                                     <strong>Gemini</strong>
-                                    <span class="text-muted small ms-1">(Google 1.5 Flash — ücretsiz quota)</span>
+                                    <span class="text-muted small ms-1">(Google 2.0 Flash — ücretsiz quota)</span>
                                 </label>
                             </div>
                         </div>
@@ -231,7 +231,7 @@ require_once __DIR__ . '/includes/header.php';
                         <tr>
                             <th></th>
                             <th>Claude Haiku</th>
-                            <th>Gemini Flash</th>
+                            <th>Gemini 2.0 Flash</th>
                         </tr>
                     </thead>
                     <tbody>

@@ -80,7 +80,7 @@ function _ai_gemini(string $system, array $parts, int $maxTokens): array
         $payload['systemInstruction'] = ['parts' => [['text' => $system]]];
     }
 
-    $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' . urlencode(GEMINI_API_KEY);
+    $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' . urlencode(GEMINI_API_KEY);
 
     return _ai_http(
         $url,
