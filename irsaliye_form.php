@@ -869,6 +869,8 @@ if ($editId && isset($row['durum'])):
 
 <!-- jsQR (CDN) -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<!-- heic2any: iPhone HEIC → JPEG dönüşümü -->
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 <!-- PDF.js (CDN) -->
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script>
@@ -1895,8 +1897,26 @@ function redGonder(aksiyon) {
             return;
         }
 
+        let dosya = input.files[0];
+
+        // iPhone HEIC/HEIF → JPEG dönüşümü
+        if (/heic|heif/i.test(dosya.type) || /\.heic$/i.test(dosya.name)) {
+            yukleniyor.classList.remove('d-none');
+            this.disabled = true;
+            try {
+                const blob = await heic2any({ blob: dosya, toType: 'image/jpeg', quality: 0.85 });
+                dosya = new File([blob], dosya.name.replace(/\.heic$/i, '.jpg'), { type: 'image/jpeg' });
+            } catch (convErr) {
+                yukleniyor.classList.add('d-none');
+                this.disabled = false;
+                hataDiv.textContent = 'HEIC dönüşümü başarısız: ' + convErr.message;
+                hataDiv.classList.remove('d-none');
+                return;
+            }
+        }
+
         const fd = new FormData();
-        fd.append('dosya', input.files[0]);
+        fd.append('dosya', dosya);
 
         yukleniyor.classList.remove('d-none');
         this.disabled = true;
