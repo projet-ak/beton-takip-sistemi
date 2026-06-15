@@ -43,7 +43,13 @@ $formAcik = isset($_GET['ekle']) || $duzenle;
 $gruplar  = $pdo->query("SELECT id,ad FROM imalat_gruplari ORDER BY sira,ad")->fetchAll();
 
 $where  = $filtreGrup ? "WHERE k.imalat_grup_id = $filtreGrup" : '';
-$liste  = $pdo->query("SELECT k.*, g.ad AS grup_adi FROM ana_is_kalemleri k LEFT JOIN imalat_gruplari g ON g.id=k.imalat_grup_id $where ORDER BY g.sira, g.ad, k.sira, k.ad")->fetchAll();
+$liste  = $pdo->query("
+    SELECT k.*, g.ad AS grup_adi,
+           (SELECT COUNT(*) FROM irsaliyeler WHERE ana_is_kalemi_id = k.id) AS irsaliye_sayisi
+    FROM ana_is_kalemleri k
+    LEFT JOIN imalat_gruplari g ON g.id = k.imalat_grup_id
+    $where ORDER BY g.sira, g.ad, k.sira, k.ad
+")->fetchAll();
 require_once __DIR__ . '/includes/header.php';
 ?>
 <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
@@ -89,21 +95,32 @@ require_once __DIR__ . '/includes/header.php';
 <?php endif; ?>
 <div class="card"><div class="card-body p-0"><div class="table-responsive">
 <table class="table table-hover align-middle mb-0">
-<thead class="table-light"><tr><th>Ad</th><th>İmalat Grubu</th><th class="text-center">Sıra</th><th class="text-end">İşlem</th></tr></thead>
+<thead class="table-light"><tr><th>Ad</th><th>İmalat Grubu</th><th class="text-center">Sıra</th><th class="text-center">İrsaliye</th><th class="text-end">İşlem</th></tr></thead>
 <tbody>
 <?php foreach($liste as $r): ?>
 <tr>
     <td class="fw-semibold"><?= h($r['ad']) ?></td>
     <td><span class="badge bg-secondary"><?= h($r['grup_adi']??'-') ?></span></td>
     <td class="text-center"><?= (int)$r['sira'] ?></td>
+    <td class="text-center">
+        <?php if ($r['irsaliye_sayisi'] > 0): ?>
+            <a href="#" class="badge bg-primary text-white text-decoration-none btn-tanim-modal"
+               data-tip="kalem" data-id="<?= $r['id'] ?>" data-ad="<?= h($r['ad']) ?>">
+                <?= (int)$r['irsaliye_sayisi'] ?>
+            </a>
+        <?php else: ?>
+            <span class="text-muted small">—</span>
+        <?php endif; ?>
+    </td>
     <td class="text-end text-nowrap">
         <a href="?duzenle=<?= $r['id'] ?><?= $filtreGrup?"&grup_id=$filtreGrup":'' ?>" class="btn btn-xs btn-outline-primary me-1"><i class="bi bi-pencil"></i></a>
         <a href="?sil=<?= $r['id'] ?><?= $filtreGrup?"&grup_id=$filtreGrup":'' ?>" class="btn btn-xs btn-outline-danger btn-confirm" data-msg="Bu kalemi silmek istiyor musunuz?"><i class="bi bi-trash"></i></a>
     </td>
 </tr>
 <?php endforeach; ?>
-<?php if(!$liste): ?><tr><td colspan="4" class="text-center text-muted py-4">Kayıt yok</td></tr><?php endif; ?>
+<?php if(!$liste): ?><tr><td colspan="5" class="text-center text-muted py-4">Kayıt yok</td></tr><?php endif; ?>
 </tbody>
 </table>
 </div></div></div>
+<?php require_once __DIR__ . '/includes/tanim_modal.php'; ?>
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

@@ -42,7 +42,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 $formAcik = isset($_GET['ekle']) || $duzenle;
-$liste = $pdo->query("SELECT g.*, COUNT(k.id) AS kalem_adet FROM imalat_gruplari g LEFT JOIN ana_is_kalemleri k ON k.imalat_grup_id=g.id GROUP BY g.id ORDER BY g.sira,g.ad")->fetchAll();
+$liste = $pdo->query("
+    SELECT g.*,
+           COUNT(DISTINCT k.id) AS kalem_adet,
+           (SELECT COUNT(*) FROM irsaliyeler WHERE imalat_grup_id = g.id) AS irsaliye_sayisi
+    FROM imalat_gruplari g
+    LEFT JOIN ana_is_kalemleri k ON k.imalat_grup_id = g.id
+    GROUP BY g.id ORDER BY g.sira, g.ad
+")->fetchAll();
 require_once __DIR__ . '/includes/header.php';
 ?>
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -77,13 +84,23 @@ require_once __DIR__ . '/includes/header.php';
 <?php endif; ?>
 <div class="card"><div class="card-body p-0"><div class="table-responsive">
 <table class="table table-hover align-middle mb-0">
-<thead class="table-light"><tr><th>Ad</th><th class="text-center">Sıra</th><th class="text-center">İş Kalemi</th><th class="text-end">İşlem</th></tr></thead>
+<thead class="table-light"><tr><th>Ad</th><th class="text-center">Sıra</th><th class="text-center">İş Kalemi</th><th class="text-center">İrsaliye</th><th class="text-end">İşlem</th></tr></thead>
 <tbody>
 <?php foreach($liste as $r): ?>
 <tr>
     <td class="fw-semibold"><?= h($r['ad']) ?></td>
     <td class="text-center"><?= (int)$r['sira'] ?></td>
     <td class="text-center"><?= (int)$r['kalem_adet'] ?></td>
+    <td class="text-center">
+        <?php if ($r['irsaliye_sayisi'] > 0): ?>
+            <a href="#" class="badge bg-primary text-white text-decoration-none btn-tanim-modal"
+               data-tip="imalat" data-id="<?= $r['id'] ?>" data-ad="<?= h($r['ad']) ?>">
+                <?= (int)$r['irsaliye_sayisi'] ?>
+            </a>
+        <?php else: ?>
+            <span class="text-muted small">—</span>
+        <?php endif; ?>
+    </td>
     <td class="text-end text-nowrap">
         <a href="?duzenle=<?= $r['id'] ?>" class="btn btn-xs btn-outline-primary me-1"><i class="bi bi-pencil"></i></a>
         <a href="?sil=<?= $r['id'] ?>" class="btn btn-xs btn-outline-danger btn-confirm" data-msg="Grubu silmek istediğinize emin misiniz?"><i class="bi bi-trash"></i></a>
@@ -94,4 +111,5 @@ require_once __DIR__ . '/includes/header.php';
 </tbody>
 </table>
 </div></div></div>
+<?php require_once __DIR__ . '/includes/tanim_modal.php'; ?>
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

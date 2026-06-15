@@ -60,7 +60,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $formAcik = isset($_GET['ekle']) || $duzenle;
 
 // ── Liste ─────────────────────────────────────────────────────────────────────
-$liste = $pdo->query("SELECT * FROM firmalar ORDER BY ad")->fetchAll();
+$liste = $pdo->query("
+    SELECT f.*,
+           (SELECT COUNT(*) FROM irsaliyeler WHERE firma_id = f.id) AS irsaliye_sayisi
+    FROM firmalar f ORDER BY f.ad
+")->fetchAll();
 
 require_once __DIR__ . '/includes/header.php';
 ?>
@@ -113,6 +117,7 @@ require_once __DIR__ . '/includes/header.php';
                     <tr>
                         <th>#</th>
                         <th>Ad</th>
+                        <th class="text-center">İrsaliye</th>
                         <th class="text-end">İşlem</th>
                     </tr>
                 </thead>
@@ -121,6 +126,16 @@ require_once __DIR__ . '/includes/header.php';
                     <tr>
                         <td class="text-muted small"><?= (int)$r['id'] ?></td>
                         <td class="fw-semibold"><?= h($r['ad']) ?></td>
+                        <td class="text-center">
+                            <?php if ($r['irsaliye_sayisi'] > 0): ?>
+                                <a href="#" class="badge bg-primary text-white text-decoration-none btn-tanim-modal"
+                                   data-tip="firma" data-id="<?= $r['id'] ?>" data-ad="<?= h($r['ad']) ?>">
+                                    <?= (int)$r['irsaliye_sayisi'] ?>
+                                </a>
+                            <?php else: ?>
+                                <span class="text-muted small">—</span>
+                            <?php endif; ?>
+                        </td>
                         <td class="text-end text-nowrap">
                             <a href="firmalar.php?duzenle=<?= $r['id'] ?>" class="btn btn-xs btn-outline-primary me-1">
                                 <i class="bi bi-pencil"></i>
@@ -142,4 +157,5 @@ require_once __DIR__ . '/includes/header.php';
     </div>
 </div>
 
+<?php require_once __DIR__ . '/includes/tanim_modal.php'; ?>
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

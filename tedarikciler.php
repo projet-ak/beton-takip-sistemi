@@ -164,7 +164,16 @@ require_once __DIR__ . '/includes/header.php';
                         <td class="font-monospace small"><?= h(($r['vkn'] ?? '') ?: '-') ?></td>
                         <td><?= h($r['telefon'] ?: '-') ?></td>
                         <td class="small"><?= h($r['adres'] ?: '-') ?></td>
-                        <td class="text-center"><?= (int)$r['irsaliye_adet'] ?></td>
+                        <td class="text-center">
+                            <?php if ($r['irsaliye_adet'] > 0): ?>
+                                <a href="#" class="badge bg-primary text-white text-decoration-none btn-tanim-modal"
+                                   data-tip="tedarikci" data-id="<?= $r['id'] ?>" data-ad="<?= h($r['ad']) ?>">
+                                    <?= (int)$r['irsaliye_adet'] ?>
+                                </a>
+                            <?php else: ?>
+                                <span class="text-muted">0</span>
+                            <?php endif; ?>
+                        </td>
                         <td class="text-end"><?= format_number($r['toplam_m3'], 2) ?></td>
                         <td class="text-center">
                             <a href="tedarikciler.php?toggle=<?= $r['id'] ?>"
@@ -193,4 +202,5 @@ require_once __DIR__ . '/includes/header.php';
     </div>
 </div>
 
+<?php require_once __DIR__ . '/includes/tanim_modal.php'; ?>
 <?php require_once __DIR__ . '/includes/footer.php'; ?>
