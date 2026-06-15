@@ -24,10 +24,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (($_POST['csrf'] ?? '') !== ($_SESSION['csrf'] ?? '')) {
         $hata = 'Geçersiz istek (CSRF).';
     } else {
-        $provider  = in_array($_POST['ai_provider'] ?? '', ['claude', 'gemini'], true)
-                     ? $_POST['ai_provider'] : 'claude';
-        $claudeKey = trim($_POST['claude_api_key'] ?? '');
-        $geminiKey = trim($_POST['gemini_api_key'] ?? '');
+        $provider       = in_array($_POST['ai_provider'] ?? '', ['claude', 'gemini', 'openrouter'], true)
+                          ? $_POST['ai_provider'] : 'claude';
+        $claudeKey      = trim($_POST['claude_api_key']      ?? '');
+        $geminiKey      = trim($_POST['gemini_api_key']      ?? '');
+        $openrouterKey  = trim($_POST['openrouter_api_key']  ?? '');
 
         if ($claudeKey !== '' && !str_starts_with($claudeKey, 'sk-ant-')) {
             $hata = 'Claude API anahtarı "sk-ant-" ile başlamalıdır.';
@@ -36,7 +37,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             // Boş bırakılırsa mevcut değeri koru
             if ($claudeKey === '') $claudeKey = defined('CLAUDE_API_KEY') ? CLAUDE_API_KEY : '';
-            if ($geminiKey === '') $geminiKey = defined('GEMINI_API_KEY') ? GEMINI_API_KEY : '';
+            if ($geminiKey     === '') $geminiKey     = defined('GEMINI_API_KEY')     ? GEMINI_API_KEY     : '';
+            if ($openrouterKey === '') $openrouterKey = defined('OPENROUTER_API_KEY') ? OPENROUTER_API_KEY : '';
 
             $config = file_get_contents($configFile);
             if ($config === false) {
@@ -55,9 +57,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 };
 
-                $setDefine($config, 'AI_PROVIDER',   $provider);
-                $setDefine($config, 'CLAUDE_API_KEY', $claudeKey);
-                $setDefine($config, 'GEMINI_API_KEY', $geminiKey);
+                $setDefine($config, 'AI_PROVIDER',       $provider);
+                $setDefine($config, 'CLAUDE_API_KEY',    $claudeKey);
+                $setDefine($config, 'GEMINI_API_KEY',    $geminiKey);
+                $setDefine($config, 'OPENROUTER_API_KEY', $openrouterKey);
 
                 if (file_put_contents($configFile, $config) === false) {
                     $hata = 'config.php yazılamadı. Sunucu dosya izinlerini kontrol edin.';
@@ -71,9 +74,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Aktif değerleri oku
-$curProvider = defined('AI_PROVIDER')    ? AI_PROVIDER    : 'claude';
-$curClaude   = defined('CLAUDE_API_KEY') ? CLAUDE_API_KEY : '';
-$curGemini   = defined('GEMINI_API_KEY') ? GEMINI_API_KEY : '';
+$curProvider    = defined('AI_PROVIDER')       ? AI_PROVIDER       : 'claude';
+$curClaude      = defined('CLAUDE_API_KEY')    ? CLAUDE_API_KEY    : '';
+$curGemini      = defined('GEMINI_API_KEY')    ? GEMINI_API_KEY    : '';
+$curOpenrouter  = defined('OPENROUTER_API_KEY') ? OPENROUTER_API_KEY : '';
 
 if (empty($_SESSION['csrf'])) {
     $_SESSION['csrf'] = bin2hex(random_bytes(16));
@@ -124,7 +128,17 @@ require_once __DIR__ . '/includes/header.php';
                                        <?= $curProvider === 'gemini' ? 'checked' : '' ?>>
                                 <label class="form-check-label" for="provGemini">
                                     <strong>Gemini</strong>
-                                    <span class="text-muted small ms-1">(Google 2.0 Flash — ücretsiz quota)</span>
+                                    <span class="text-muted small ms-1">(Google 2.0 Flash)</span>
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="ai_provider"
+                                       id="provOpenrouter" value="openrouter"
+                                       <?= $curProvider === 'openrouter' ? 'checked' : '' ?>>
+                                <label class="form-check-label" for="provOpenrouter">
+                                    <strong>OpenRouter</strong>
+                                    <span class="text-muted small ms-1">(Qwen / DeepSeek —
+                                        <span class="text-success fw-semibold">ücretsiz</span>)</span>
                                 </label>
                             </div>
                         </div>
@@ -182,6 +196,33 @@ require_once __DIR__ . '/includes/header.php';
                             <?php endif; ?>
                             — <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com</a>
                             <span class="badge bg-success-subtle text-success fw-normal">Ücretsiz</span>
+                        </div>
+                    </div>
+
+                    <!-- OpenRouter Key -->
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">
+                            <i class="bi bi-key me-1 text-secondary"></i> OpenRouter API Anahtarı
+                        </label>
+                        <div class="input-group">
+                            <input type="password" id="openrouterKeyInput" name="openrouter_api_key"
+                                   class="form-control font-monospace"
+                                   placeholder="<?= $curOpenrouter ? 'Değiştirmek için yeni anahtarı yazın' : 'sk-or-v1-...' ?>"
+                                   autocomplete="new-password">
+                            <button class="btn btn-outline-secondary" type="button"
+                                    onclick="toggleVis('openrouterKeyInput',this)">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
+                        <div class="form-text">
+                            <?php if ($curOpenrouter): ?>
+                                <i class="bi bi-check-circle-fill text-success"></i>
+                                Kayıtlı: <code><?= h(maskKey($curOpenrouter)) ?></code>
+                            <?php else: ?>
+                                <i class="bi bi-x-circle text-danger"></i> Girilmedi.
+                            <?php endif; ?>
+                            — <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>
+                            <span class="badge bg-success-subtle text-success fw-normal">Ücretsiz modeller mevcut</span>
                         </div>
                     </div>
 
