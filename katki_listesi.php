@@ -40,7 +40,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$ad) {
         $formError = 'Ad alanı zorunludur.';
     } else {
-        try {
+        // Aynı isim var mı kontrol et (büyük/küçük harf duyarsız)
+        $dupSql = $id
+            ? "SELECT COUNT(*) FROM katki_listesi WHERE UPPER(ad) = UPPER(?) AND id != ?"
+            : "SELECT COUNT(*) FROM katki_listesi WHERE UPPER(ad) = UPPER(?)";
+        $dupStmt = $pdo->prepare($dupSql);
+        $dupStmt->execute($id ? [$ad, $id] : [$ad]);
+        if ($dupStmt->fetchColumn() > 0) {
+            $formError = '"' . h($ad) . '" adında bir katkı zaten mevcut. Lütfen farklı bir ad girin.';
+        } else {
             if ($id) {
                 $pdo->prepare("UPDATE katki_listesi SET ad = ? WHERE id = ?")->execute([$ad, $id]);
                 flash('success', 'Katkı güncellendi.');
@@ -49,12 +57,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash('success', 'Katkı eklendi.');
             }
             redirect('katki_listesi.php');
-        } catch (PDOException $e) {
-            if ($e->getCode() == 23000) {
-                $formError = 'Bu isim zaten kayıtlı.';
-            } else {
-                throw $e;
-            }
         }
     }
 }
@@ -63,6 +65,11 @@ $formAcik = isset($_GET['ekle']) || $duzenle;
 
 // ── Liste ─────────────────────────────────────────────────────────────────────
 $liste = $pdo->query("SELECT * FROM katki_listesi ORDER BY ad")->fetchAll();
+
+// Mevcut duplikatları tespit et
+$duplar = $pdo->query(
+    "SELECT UPPER(ad) as ad_upper, COUNT(*) as adet FROM katki_listesi GROUP BY UPPER(ad) HAVING COUNT(*) > 1"
+)->fetchAll(PDO::FETCH_COLUMN, 0);
 
 require_once __DIR__ . '/includes/header.php';
 ?>
@@ -77,6 +84,17 @@ require_once __DIR__ . '/includes/header.php';
 <?php foreach(['success','error','warning','info'] as $t): $m=get_flash($t); if($m): ?>
 <div class="alert alert-<?= $t ?>"><?= h($m) ?></div>
 <?php endif; endforeach; ?>
+
+<?php if ($duplar): ?>
+<div class="alert alert-warning d-flex align-items-start gap-2">
+    <i class="bi bi-exclamation-triangle-fill fs-5 mt-1"></i>
+    <div>
+        <strong>Mükerrer kayıtlar tespit edildi!</strong>
+        Listede aynı isimli birden fazla katkı var: <strong><?= implode(', ', array_map('h', $duplar)) ?></strong>.
+        Lütfen fazlalıkları silin.
+    </div>
+</div>
+<?php endif; ?>
 
 <?php if ($formAcik): ?>
 <div class="card mb-4">
@@ -120,9 +138,15 @@ require_once __DIR__ . '/includes/header.php';
                 </thead>
                 <tbody>
                     <?php foreach ($liste as $r): ?>
-                    <tr>
+                    <?php $isDup = in_array(strtoupper($r['ad']), $duplar); ?>
+                    <tr <?= $isDup ? 'class="table-warning"' : '' ?>>
                         <td class="text-muted small"><?= (int)$r['id'] ?></td>
-                        <td class="fw-semibold"><?= h($r['ad']) ?></td>
+                        <td class="fw-semibold">
+                            <?= h($r['ad']) ?>
+                            <?php if ($isDup): ?>
+                                <span class="badge bg-warning text-dark ms-1"><i class="bi bi-exclamation-triangle me-1"></i>Mükerrer</span>
+                            <?php endif; ?>
+                        </td>
                         <td class="text-end text-nowrap">
                             <a href="katki_listesi.php?duzenle=<?= $r['id'] ?>" class="btn btn-xs btn-outline-primary me-1">
                                 <i class="bi bi-pencil"></i>
