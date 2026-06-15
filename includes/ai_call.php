@@ -105,8 +105,8 @@ function _ai_openrouter(string $system, array $parts, int $maxTokens): array
         if (in_array($p['type'], ['image', 'document'], true)) { $hasMedia = true; break; }
     }
     $model = $hasMedia
-        ? 'meta-llama/llama-4-maverick:free'               // görsel OCR
-        : 'nvidia/llama-3.1-nemotron-ultra-253b-v1:free';  // metin Q&A
+        ? 'google/gemma-4-26b-a4b-it:free'             // görsel OCR
+        : 'meta-llama/llama-3.3-70b-instruct:free';    // metin Q&A
 
     $content = [];
     foreach ($parts as $p) {
