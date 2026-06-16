@@ -56,20 +56,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!$ad) {
         $formError = 'Tedarikçi adı zorunludur.';
     } else {
-        if ($id) {
-            $pdo->prepare("UPDATE tedarikciler SET ad=?, vkn=?, telefon=?, adres=?, aktif=? WHERE id=?")
-                ->execute([$ad, $vkn ?: null, $telefon ?: null, $adres ?: null, $aktif, $id]);
-            flash('success', 'Tedarikçi güncellendi.');
+        $dupSql  = $id
+            ? "SELECT COUNT(*) FROM tedarikciler WHERE UPPER(ad) = UPPER(?) AND id != ?"
+            : "SELECT COUNT(*) FROM tedarikciler WHERE UPPER(ad) = UPPER(?)";
+        $dupStmt = $pdo->prepare($dupSql);
+        $dupStmt->execute($id ? [$ad, $id] : [$ad]);
+        if ($dupStmt->fetchColumn() > 0) {
+            $formError = '"' . h($ad) . '" adında bir tedarikçi zaten mevcut. Lütfen farklı bir ad girin.';
         } else {
-            $pdo->prepare("INSERT INTO tedarikciler (ad, vkn, telefon, adres, aktif) VALUES (?,?,?,?,?)")
-                ->execute([$ad, $vkn ?: null, $telefon ?: null, $adres ?: null, $aktif]);
-            flash('success', 'Tedarikçi eklendi.');
+            if ($id) {
+                $pdo->prepare("UPDATE tedarikciler SET ad=?, vkn=?, telefon=?, adres=?, aktif=? WHERE id=?")
+                    ->execute([$ad, $vkn ?: null, $telefon ?: null, $adres ?: null, $aktif, $id]);
+                flash('success', 'Tedarikçi güncellendi.');
+            } else {
+                $pdo->prepare("INSERT INTO tedarikciler (ad, vkn, telefon, adres, aktif) VALUES (?,?,?,?,?)")
+                    ->execute([$ad, $vkn ?: null, $telefon ?: null, $adres ?: null, $aktif]);
+                flash('success', 'Tedarikçi eklendi.');
+            }
+            redirect('tedarikciler.php');
         }
-        redirect('tedarikciler.php');
     }
 }
 
 $formAcik = isset($_GET['ekle']) || $duzenle;
+
+// ── Mükerrer kontrolü ─────────────────────────────────────────────────────────
+$duplar = $pdo->query(
+    "SELECT UPPER(ad) FROM tedarikciler GROUP BY UPPER(ad) HAVING COUNT(*) > 1"
+)->fetchAll(PDO::FETCH_COLUMN, 0);
 
 // ── Liste ────────────────────────────────────────────────────────────────────
 $liste = $pdo->query("
@@ -89,6 +103,21 @@ require_once __DIR__ . '/includes/header.php';
         <i class="bi bi-plus-circle me-1"></i> Yeni Tedarikçi
     </a>
 </div>
+
+<?php foreach(['success','error','warning','info'] as $t): $m=get_flash($t); if($m): ?>
+<div class="alert alert-<?= $t ?>"><?= h($m) ?></div>
+<?php endif; endforeach; ?>
+
+<?php if ($duplar): ?>
+<div class="alert alert-warning d-flex align-items-start gap-2">
+    <i class="bi bi-exclamation-triangle-fill fs-5 mt-1"></i>
+    <div>
+        <strong>Mükerrer kayıtlar tespit edildi!</strong>
+        Listede aynı isimli birden fazla tedarikçi var: <strong><?= implode(', ', array_map('h', $duplar)) ?></strong>.
+        Lütfen fazlalıkları silin.
+    </div>
+</div>
+<?php endif; ?>
 
 <?php if ($formAcik): ?>
 <div class="card mb-4">
@@ -159,8 +188,14 @@ require_once __DIR__ . '/includes/header.php';
                 </thead>
                 <tbody>
                     <?php foreach ($liste as $r): ?>
-                    <tr class="<?= $r['aktif'] ? '' : 'text-muted bg-light' ?>">
-                        <td class="fw-semibold"><?= h($r['ad']) ?></td>
+                    <?php $isDup = in_array(strtoupper($r['ad']), $duplar); ?>
+                    <tr class="<?= $isDup ? 'table-warning' : ($r['aktif'] ? '' : 'text-muted bg-light') ?>">
+                        <td class="fw-semibold">
+                            <?= h($r['ad']) ?>
+                            <?php if ($isDup): ?>
+                                <span class="badge bg-warning text-dark ms-1"><i class="bi bi-exclamation-triangle me-1"></i>Mükerrer</span>
+                            <?php endif; ?>
+                        </td>
                         <td class="font-monospace small"><?= h(($r['vkn'] ?? '') ?: '-') ?></td>
                         <td><?= h($r['telefon'] ?: '-') ?></td>
                         <td class="small"><?= h($r['adres'] ?: '-') ?></td>
