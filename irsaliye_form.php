@@ -1876,8 +1876,11 @@ function redGonder(aksiyon) {
         tedarikci_vkn:      'Tedarikçi VKN',
         beton_sinifi:       'Beton Sınıfı',
         kivam:              'Kıvam',
+        ettn:               'ETTN',
         fatura_no:          'Fatura No',
         mikser_cikis_saati: 'Mikser Çıkış Saati',
+        katki1:             'Katkı 1',
+        katki2:             'Katkı 2',
     };
 
     document.getElementById('btnAiOku')?.addEventListener('click', async function () {
@@ -1997,6 +2000,34 @@ function redGonder(aksiyon) {
             const sel = document.querySelector('[name="tedarikci_id"]');
             if (sel) for (const opt of sel.options) {
                 if (String(opt.getAttribute('data-vkn') || '').trim() === vkn) {
+                    sel.value = opt.value; doldurulan++; break;
+                }
+            }
+        }
+
+        // ETTN → fatura_no (sadece fatura_no boşsa veya ETTN ayrıca belirtilmişse)
+        if (aiAlanlar.ettn && !aiAlanlar.fatura_no) {
+            const el = document.querySelector('[name="fatura_no"]');
+            if (el) { el.value = String(aiAlanlar.ettn); doldurulan++; }
+        }
+
+        // Katkı 1 — select option metni ile eşleştir
+        if (aiAlanlar.katki1) {
+            const kn  = String(aiAlanlar.katki1).toUpperCase().replace(/\s+/g, '');
+            const sel = document.querySelector('[name="katki1_id"]');
+            if (sel) for (const opt of sel.options) {
+                if (opt.value && opt.textContent.replace(/\s+/g, '').toUpperCase().includes(kn)) {
+                    sel.value = opt.value; doldurulan++; break;
+                }
+            }
+        }
+
+        // Katkı 2 — select option metni ile eşleştir
+        if (aiAlanlar.katki2) {
+            const kn  = String(aiAlanlar.katki2).toUpperCase().replace(/\s+/g, '');
+            const sel = document.querySelector('[name="katki2_id"]');
+            if (sel) for (const opt of sel.options) {
+                if (opt.value && opt.textContent.replace(/\s+/g, '').toUpperCase().includes(kn)) {
                     sel.value = opt.value; doldurulan++; break;
                 }
             }

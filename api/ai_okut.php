@@ -64,21 +64,24 @@ $prompt = <<<'PROMPT'
 Bu belge bir beton irsaliyesidir. Belgeden aşağıdaki alanları çıkar ve YALNIZCA geçerli bir JSON nesnesi döndür (başka açıklama, markdown ya da ek metin yazma):
 
 {
-  "irsaliye_no": "irsaliye/sevk irsaliyesi numarası",
-  "tarih": "YYYY-MM-DD formatında tarih",
-  "arac_plaka": "araç plakası büyük harf boşluksuz (örn: 34ABC123)",
-  "miktar": sayısal m³ değeri (string değil, örn: 7.5),
-  "tedarikci_vkn": "tedarikçinin 10 haneli VKN",
-  "beton_sinifi": "beton sınıfı (örn: C25/30)",
-  "kivam": "kıvam sınıfı (örn: S3)",
-  "fatura_no": "fatura numarası",
-  "mikser_cikis_saati": "HH:MM formatında saat"
+  "irsaliye_no":        "irsaliye/sevk irsaliyesi numarası (örn: SAM2024000024921)",
+  "tarih":              "YYYY-MM-DD formatında tarih",
+  "arac_plaka":         "araç plakası büyük harf boşluksuz (örn: 34ABC123)",
+  "miktar":             sayısal m³ değeri (string değil, örn: 7.5),
+  "tedarikci_vkn":      "tedarikçi/üretici firmanın 10 haneli vergi kimlik numarası",
+  "beton_sinifi":       "beton basınç dayanım sınıfı (örn: C30, C37, C25/30)",
+  "kivam":              "kıvam/slump sınıfı (örn: S3, S4)",
+  "ettn":               "ETTN veya e-irsaliye UUID kodu (örn: 2AFA1679-EDA8-420C-822F-...)",
+  "fatura_no":          "ayrı bir fatura numarası varsa, yoksa null",
+  "mikser_cikis_saati": "mikser/üretim çıkış saati HH:MM formatında",
+  "katki1":             "belgede geçen 1. katkı madde adı (örn: DMAX, BRÜT BETON, SU GEÇİRİMSİZLİK, ANTİFRİZ)",
+  "katki2":             "belgede geçen 2. katkı madde adı, yoksa null"
 }
 
 Bulunamayan alan için null kullan. Yalnızca JSON döndür.
 PROMPT;
 
-$result = ai_call('', [$contentPart, ['type' => 'text', 'text' => $prompt]], 512);
+$result = ai_call('', [$contentPart, ['type' => 'text', 'text' => $prompt]], 800);
 
 if (!$result['ok']) {
     echo json_encode(['ok' => false, 'msg' => $result['msg']]);
