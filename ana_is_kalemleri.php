@@ -30,17 +30,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $sira     = (int)($_POST['sira'] ?? 0);
     if (!$ad || !$grupId) { $formError = 'Ad ve İmalat Grubu zorunludur.'; }
     else {
-        try {
-            if ($id) { $pdo->prepare("UPDATE ana_is_kalemleri SET ad=?,imalat_grup_id=?,sira=? WHERE id=?")->execute([$ad,$grupId,$sira,$id]); flash('success','Güncellendi.'); }
-            else      { $pdo->prepare("INSERT INTO ana_is_kalemleri (ad,imalat_grup_id,sira) VALUES (?,?,?)")->execute([$ad,$grupId,$sira]); flash('success','Eklendi.'); }
-            redirect('ana_is_kalemleri.php' . ($grupId ? "?grup_id=$grupId" : ''));
-        } catch (PDOException $e) {
-            $formError = h($e->getMessage());
+        $dupSql  = $id
+            ? "SELECT COUNT(*) FROM ana_is_kalemleri WHERE UPPER(ad) = UPPER(?) AND imalat_grup_id = ? AND id != ?"
+            : "SELECT COUNT(*) FROM ana_is_kalemleri WHERE UPPER(ad) = UPPER(?) AND imalat_grup_id = ?";
+        $dupStmt = $pdo->prepare($dupSql);
+        $dupStmt->execute($id ? [$ad, $grupId, $id] : [$ad, $grupId]);
+        if ($dupStmt->fetchColumn() > 0) {
+            $formError = '"' . h($ad) . '" adında bir kalem bu grupta zaten mevcut.';
+        } else {
+            try {
+                if ($id) { $pdo->prepare("UPDATE ana_is_kalemleri SET ad=?,imalat_grup_id=?,sira=? WHERE id=?")->execute([$ad,$grupId,$sira,$id]); flash('success','Güncellendi.'); }
+                else      { $pdo->prepare("INSERT INTO ana_is_kalemleri (ad,imalat_grup_id,sira) VALUES (?,?,?)")->execute([$ad,$grupId,$sira]); flash('success','Eklendi.'); }
+                redirect('ana_is_kalemleri.php' . ($grupId ? "?grup_id=$grupId" : ''));
+            } catch (PDOException $e) {
+                $formError = h($e->getMessage());
+            }
         }
     }
 }
 $formAcik = isset($_GET['ekle']) || $duzenle;
 $gruplar  = $pdo->query("SELECT id,ad FROM imalat_gruplari ORDER BY sira,ad")->fetchAll();
+$duplar   = $pdo->query(
+    "SELECT CONCAT(imalat_grup_id,'|',UPPER(ad)) FROM ana_is_kalemleri GROUP BY imalat_grup_id, UPPER(ad) HAVING COUNT(*) > 1"
+)->fetchAll(PDO::FETCH_COLUMN, 0);
 
 $where  = $filtreGrup ? "WHERE k.imalat_grup_id = $filtreGrup" : '';
 $liste  = $pdo->query("
@@ -65,6 +77,12 @@ require_once __DIR__ . '/includes/header.php';
     </div>
 </div>
 <?php foreach(['success','error','warning','info'] as $t): $m=get_flash($t); if($m): ?><div class="alert alert-<?= $t ?>"><?= h($m) ?></div><?php endif; endforeach; ?>
+<?php if ($duplar): ?>
+<div class="alert alert-warning d-flex align-items-start gap-2">
+    <i class="bi bi-exclamation-triangle-fill fs-5 mt-1"></i>
+    <div><strong>Mükerrer kayıtlar tespit edildi!</strong> Aynı grupta aynı isimli birden fazla kalem var. Lütfen fazlalıkları silin.</div>
+</div>
+<?php endif; ?>
 <?php if ($formAcik): ?>
 <div class="card mb-4">
     <div class="card-header <?= $duzenle?'bg-warning text-dark':'bg-primary text-white' ?> fw-semibold">
@@ -98,8 +116,12 @@ require_once __DIR__ . '/includes/header.php';
 <thead class="table-light"><tr><th>Ad</th><th>İmalat Grubu</th><th class="text-center">Sıra</th><th class="text-center">İrsaliye</th><th class="text-end">İşlem</th></tr></thead>
 <tbody>
 <?php foreach($liste as $r): ?>
-<tr>
-    <td class="fw-semibold"><?= h($r['ad']) ?></td>
+<?php $isDup = in_array($r['imalat_grup_id'].'|'.strtoupper($r['ad']), $duplar); ?>
+<tr <?= $isDup ? 'class="table-warning"' : '' ?>>
+    <td class="fw-semibold">
+        <?= h($r['ad']) ?>
+        <?php if ($isDup): ?><span class="badge bg-warning text-dark ms-1"><i class="bi bi-exclamation-triangle me-1"></i>Mükerrer</span><?php endif; ?>
+    </td>
     <td><span class="badge bg-secondary"><?= h($r['grup_adi']??'-') ?></span></td>
     <td class="text-center"><?= (int)$r['sira'] ?></td>
     <td class="text-center">

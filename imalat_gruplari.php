@@ -32,16 +32,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $sira = (int)($_POST['sira'] ?? 0);
     if (!$ad) { $formError = 'Ad zorunludur.'; }
     else {
-        try {
-            if ($id) { $pdo->prepare("UPDATE imalat_gruplari SET ad=?,sira=? WHERE id=?")->execute([$ad,$sira,$id]); flash('success','Güncellendi.'); }
-            else      { $pdo->prepare("INSERT INTO imalat_gruplari (ad,sira) VALUES (?,?)")->execute([$ad,$sira]); flash('success','Eklendi.'); }
-            redirect('imalat_gruplari.php');
-        } catch (PDOException $e) {
-            $formError = $e->getCode()==23000 ? 'Bu isim zaten kayıtlı.' : h($e->getMessage());
+        $dupSql  = $id
+            ? "SELECT COUNT(*) FROM imalat_gruplari WHERE UPPER(ad) = UPPER(?) AND id != ?"
+            : "SELECT COUNT(*) FROM imalat_gruplari WHERE UPPER(ad) = UPPER(?)";
+        $dupStmt = $pdo->prepare($dupSql);
+        $dupStmt->execute($id ? [$ad, $id] : [$ad]);
+        if ($dupStmt->fetchColumn() > 0) {
+            $formError = '"' . h($ad) . '" adında bir imalat grubu zaten mevcut. Lütfen farklı bir ad girin.';
+        } else {
+            try {
+                if ($id) { $pdo->prepare("UPDATE imalat_gruplari SET ad=?,sira=? WHERE id=?")->execute([$ad,$sira,$id]); flash('success','Güncellendi.'); }
+                else      { $pdo->prepare("INSERT INTO imalat_gruplari (ad,sira) VALUES (?,?)")->execute([$ad,$sira]); flash('success','Eklendi.'); }
+                redirect('imalat_gruplari.php');
+            } catch (PDOException $e) {
+                $formError = h($e->getMessage());
+            }
         }
     }
 }
 $formAcik = isset($_GET['ekle']) || $duzenle;
+$duplar = $pdo->query(
+    "SELECT UPPER(ad) FROM imalat_gruplari GROUP BY UPPER(ad) HAVING COUNT(*) > 1"
+)->fetchAll(PDO::FETCH_COLUMN, 0);
 $liste = $pdo->query("
     SELECT g.*,
            COUNT(DISTINCT k.id) AS kalem_adet,
@@ -59,6 +71,17 @@ require_once __DIR__ . '/includes/header.php';
 <?php foreach(['success','error','warning','info'] as $t): $m=get_flash($t); if($m): ?>
 <div class="alert alert-<?= $t ?>"><?= h($m) ?></div>
 <?php endif; endforeach; ?>
+
+<?php if ($duplar): ?>
+<div class="alert alert-warning d-flex align-items-start gap-2">
+    <i class="bi bi-exclamation-triangle-fill fs-5 mt-1"></i>
+    <div>
+        <strong>Mükerrer kayıtlar tespit edildi!</strong>
+        Listede aynı isimli birden fazla imalat grubu var: <strong><?= implode(', ', array_map('h', $duplar)) ?></strong>.
+        Lütfen fazlalıkları silin.
+    </div>
+</div>
+<?php endif; ?>
 <?php if ($formAcik): ?>
 <div class="card mb-4">
     <div class="card-header <?= $duzenle?'bg-warning text-dark':'bg-primary text-white' ?> fw-semibold">
@@ -87,8 +110,14 @@ require_once __DIR__ . '/includes/header.php';
 <thead class="table-light"><tr><th>Ad</th><th class="text-center">Sıra</th><th class="text-center">İş Kalemi</th><th class="text-center">İrsaliye</th><th class="text-end">İşlem</th></tr></thead>
 <tbody>
 <?php foreach($liste as $r): ?>
-<tr>
-    <td class="fw-semibold"><?= h($r['ad']) ?></td>
+<?php $isDup = in_array(strtoupper($r['ad']), $duplar); ?>
+<tr <?= $isDup ? 'class="table-warning"' : '' ?>>
+    <td class="fw-semibold">
+        <?= h($r['ad']) ?>
+        <?php if ($isDup): ?>
+            <span class="badge bg-warning text-dark ms-1"><i class="bi bi-exclamation-triangle me-1"></i>Mükerrer</span>
+        <?php endif; ?>
+    </td>
     <td class="text-center"><?= (int)$r['sira'] ?></td>
     <td class="text-center"><?= (int)$r['kalem_adet'] ?></td>
     <td class="text-center">
