@@ -186,6 +186,126 @@ html[data-dark="1"] .scan-result-header.err { background: rgba(224,84,84,.12); c
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';</script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
+<!-- PDF İşleme Paneli -->
+<div class="row g-3 mb-4">
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="card-header p-0">
+        <ul class="nav nav-tabs border-bottom-0 px-3 pt-2">
+          <li class="nav-item">
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabPdfQr">
+              <i class="bi bi-qr-code text-danger me-1"></i> QR Kodu Tara
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPdfOcr">
+              <i class="bi bi-file-text text-primary me-1"></i> OCR ile Oku
+            </button>
+          </li>
+        </ul>
+      </div>
+      <div class="card-body">
+        <div class="tab-content">
+
+          <!-- QR Tab -->
+          <div class="tab-pane fade show active" id="tabPdfQr">
+            <div class="row g-3 align-items-end">
+              <div class="col-sm-8">
+                <label class="form-label fw-semibold small">PDF Dosyası Seç</label>
+                <input type="file" id="pdfDosya" class="form-control" accept=".pdf" onchange="pdfSecildi(this)">
+                <div class="form-text">Her sayfadaki QR kodlar otomatik taranır ve tabloya eklenir.</div>
+              </div>
+              <div class="col-sm-4">
+                <button id="btnPdfTara" class="btn btn-danger w-100 d-none" onclick="pdfTara()">
+                  <i class="bi bi-qr-code-scan me-1"></i> QR Kodları Tara
+                </button>
+              </div>
+            </div>
+            <div id="pdfProgress" class="d-none mt-3">
+              <div class="d-flex justify-content-between small mb-1">
+                <span id="pdfProgressText">Sayfa taranıyor...</span>
+                <span id="pdfProgressPct">0%</span>
+              </div>
+              <div class="progress" style="height:6px;">
+                <div id="pdfProgressBar" class="progress-bar bg-danger progress-bar-striped progress-bar-animated" style="width:0%"></div>
+              </div>
+            </div>
+            <div id="pdfSonuc" class="d-none mt-3"></div>
+            <canvas id="pdfCanvas" class="d-none"></canvas>
+          </div>
+
+          <!-- OCR Tab -->
+          <div class="tab-pane fade" id="tabPdfOcr">
+            <div class="alert alert-info py-2 small mb-3">
+              <i class="bi bi-info-circle me-1"></i>
+              PDF içindeki metin okunur; <strong>İrsaliye No, Tarih, Plaka, Miktar, Beton Sınıfı ve Tedarikçi</strong> otomatik çıkartılır. Her sayfa = 1 irsaliye kaydı.
+              Dijital (taranmış değil) PDF dosyalarında çalışır.
+            </div>
+            <div class="row g-3 align-items-end">
+              <div class="col-sm-8">
+                <label class="form-label fw-semibold small">PDF Dosyası Seç</label>
+                <input type="file" id="ocrDosya" class="form-control" accept=".pdf" onchange="ocrSecildi(this)">
+                <div class="form-text">Çok sayfalı PDF desteklenir — her sayfa ayrı irsaliye satırı olarak eklenir.</div>
+              </div>
+              <div class="col-sm-4">
+                <button id="btnOcrTara" class="btn btn-primary w-100 d-none" onclick="ocrTara()">
+                  <i class="bi bi-file-text me-1"></i> Metni Oku &amp; Ekle
+                </button>
+              </div>
+            </div>
+            <div id="ocrProgress" class="d-none mt-3">
+              <div class="d-flex justify-content-between small mb-1">
+                <span id="ocrProgressText">Sayfa okunuyor...</span>
+                <span id="ocrProgressPct">0%</span>
+              </div>
+              <div class="progress" style="height:6px;">
+                <div id="ocrProgressBar" class="progress-bar bg-primary progress-bar-striped progress-bar-animated" style="width:0%"></div>
+              </div>
+            </div>
+            <div id="ocrSonuc" class="d-none mt-3"></div>
+          </div>
+
+          <!-- AI Tab -->
+          <div class="tab-pane fade" id="tabAiOku">
+            <div class="alert alert-info py-2 small mb-3">
+              <i class="bi bi-stars me-1"></i>
+              Bir irsaliye fotoğrafı veya PDF yükleyin — yapay zeka alanları otomatik okur ve tabloya ekler.
+            </div>
+            <div class="row g-3">
+              <div class="col-sm-8">
+                <label class="form-label fw-semibold small">Dosya Seç</label>
+                <input type="file" id="aiDosya" class="form-control" accept=".jpg,.jpeg,.png,.webp,.pdf" onchange="aiDosyaSecildi(this)">
+                <div class="form-text">JPG, PNG, WEBP veya PDF (maks. 20 MB)</div>
+              </div>
+              <div class="col-sm-4 d-flex align-items-end">
+                <button id="btnAiOku" class="btn btn-success w-100 d-none" onclick="aiOku()">
+                  <i class="bi bi-stars me-1"></i> Belgeden Oku
+                </button>
+              </div>
+            </div>
+            <div id="aiProgress" class="d-none mt-3">
+              <div class="d-flex align-items-center gap-2 text-muted small">
+                <div class="spinner-border spinner-border-sm"></div> AI belgeyi analiz ediyor...
+              </div>
+            </div>
+            <div id="aiHataHT" class="alert alert-danger mt-3 d-none small py-2"></div>
+            <div id="aiSonucHT" class="d-none mt-3">
+              <p class="fw-semibold small text-muted mb-2">Okunan Alanlar</p>
+              <table class="table table-sm table-bordered small mb-2">
+                <tbody id="aiSonucTbodyHT"></tbody>
+              </table>
+              <button class="btn btn-primary btn-sm w-100" onclick="aiListeyeEkle()">
+                <i class="bi bi-plus-circle me-1"></i> Tabloya Ekle
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── Kamera Paneli ──────────────────────────────────────────── -->
 <div class="row g-3 mb-4">
   <div class="col-12">
@@ -302,91 +422,6 @@ html[data-dark="1"] .scan-result-header.err { background: rgba(224,84,84,.12); c
 
         <!-- Durum / log -->
         <div id="durumEl" class="px-3 pb-2 text-center small" style="color:var(--bt-text-muted);min-height:24px;"></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- PDF İşleme Paneli -->
-<div class="row g-3 mb-4">
-  <div class="col-12">
-    <div class="card shadow-sm">
-      <div class="card-header p-0">
-        <ul class="nav nav-tabs border-bottom-0 px-3 pt-2">
-          <li class="nav-item">
-            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabPdfQr">
-              <i class="bi bi-qr-code text-danger me-1"></i> QR Kodu Tara
-            </button>
-          </li>
-          <li class="nav-item">
-            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPdfOcr">
-              <i class="bi bi-file-text text-primary me-1"></i> OCR ile Oku
-            </button>
-          </li>
-        </ul>
-      </div>
-      <div class="card-body">
-        <div class="tab-content">
-
-          <!-- QR Tab -->
-          <div class="tab-pane fade show active" id="tabPdfQr">
-            <div class="row g-3 align-items-end">
-              <div class="col-sm-8">
-                <label class="form-label fw-semibold small">PDF Dosyası Seç</label>
-                <input type="file" id="pdfDosya" class="form-control" accept=".pdf" onchange="pdfSecildi(this)">
-                <div class="form-text">Her sayfadaki QR kodlar otomatik taranır ve tabloya eklenir.</div>
-              </div>
-              <div class="col-sm-4">
-                <button id="btnPdfTara" class="btn btn-danger w-100 d-none" onclick="pdfTara()">
-                  <i class="bi bi-qr-code-scan me-1"></i> QR Kodları Tara
-                </button>
-              </div>
-            </div>
-            <div id="pdfProgress" class="d-none mt-3">
-              <div class="d-flex justify-content-between small mb-1">
-                <span id="pdfProgressText">Sayfa taranıyor...</span>
-                <span id="pdfProgressPct">0%</span>
-              </div>
-              <div class="progress" style="height:6px;">
-                <div id="pdfProgressBar" class="progress-bar bg-danger progress-bar-striped progress-bar-animated" style="width:0%"></div>
-              </div>
-            </div>
-            <div id="pdfSonuc" class="d-none mt-3"></div>
-            <canvas id="pdfCanvas" class="d-none"></canvas>
-          </div>
-
-          <!-- OCR Tab -->
-          <div class="tab-pane fade" id="tabPdfOcr">
-            <div class="alert alert-info py-2 small mb-3">
-              <i class="bi bi-info-circle me-1"></i>
-              PDF içindeki metin okunur; <strong>İrsaliye No, Tarih, Plaka, Miktar, Beton Sınıfı ve Tedarikçi</strong> otomatik çıkartılır. Her sayfa = 1 irsaliye kaydı.
-              Dijital (taranmış değil) PDF dosyalarında çalışır.
-            </div>
-            <div class="row g-3 align-items-end">
-              <div class="col-sm-8">
-                <label class="form-label fw-semibold small">PDF Dosyası Seç</label>
-                <input type="file" id="ocrDosya" class="form-control" accept=".pdf" onchange="ocrSecildi(this)">
-                <div class="form-text">Çok sayfalı PDF desteklenir — her sayfa ayrı irsaliye satırı olarak eklenir.</div>
-              </div>
-              <div class="col-sm-4">
-                <button id="btnOcrTara" class="btn btn-primary w-100 d-none" onclick="ocrTara()">
-                  <i class="bi bi-file-text me-1"></i> Metni Oku &amp; Ekle
-                </button>
-              </div>
-            </div>
-            <div id="ocrProgress" class="d-none mt-3">
-              <div class="d-flex justify-content-between small mb-1">
-                <span id="ocrProgressText">Sayfa okunuyor...</span>
-                <span id="ocrProgressPct">0%</span>
-              </div>
-              <div class="progress" style="height:6px;">
-                <div id="ocrProgressBar" class="progress-bar bg-primary progress-bar-striped progress-bar-animated" style="width:0%"></div>
-              </div>
-            </div>
-            <div id="ocrSonuc" class="d-none mt-3"></div>
-          </div>
-
-        </div>
       </div>
     </div>
   </div>
@@ -2119,6 +2154,143 @@ function parseIrsaliyeMetin(text) {
 }
 
 // tabloSatirEkleOcr kaldırıldı, tek tabloSatirEkle kullanılıyor.
+
+// ── AI ile Oku (Hızlı Tarama) ────────────────────────────────────────
+var aiDosyaObj = null;
+var aiSonucAlanlar = {};
+
+var AI_ETIKETLER = {
+    irsaliye_no:        'İrsaliye No',
+    tarih:              'Tarih',
+    arac_plaka:         'Araç Plaka',
+    miktar:             'Miktar (m³)',
+    tedarikci_vkn:      'Tedarikçi VKN',
+    beton_sinifi:       'Beton Sınıfı',
+    kivam:              'Kıvam',
+    ettn:               'ETTN',
+    fatura_no:          'Fatura No',
+    mikser_cikis_saati: 'Mikser Çıkış Saati',
+    katki1:             'Katkı 1',
+    katki2:             'Katkı 2',
+};
+
+function aiDosyaSecildi(input) {
+    aiDosyaObj = input.files[0] || null;
+    document.getElementById('btnAiOku').classList.toggle('d-none', !aiDosyaObj);
+    document.getElementById('aiSonucHT').classList.add('d-none');
+    document.getElementById('aiHataHT').classList.add('d-none');
+}
+
+async function aiOku() {
+    if (!aiDosyaObj) return;
+    var btn = document.getElementById('btnAiOku');
+    btn.disabled = true;
+    document.getElementById('aiProgress').classList.remove('d-none');
+    document.getElementById('aiSonucHT').classList.add('d-none');
+    document.getElementById('aiHataHT').classList.add('d-none');
+
+    try {
+        var fd = new FormData();
+        fd.append('dosya', aiDosyaObj);
+        var res  = await fetch('api/ai_okut.php', { method: 'POST', body: fd });
+        var json = await res.json();
+
+        if (!json.ok) {
+            document.getElementById('aiHataHT').textContent = json.msg || 'AI hatası';
+            document.getElementById('aiHataHT').classList.remove('d-none');
+            return;
+        }
+
+        aiSonucAlanlar = json.alanlar || {};
+
+        var rows = '';
+        for (var key in AI_ETIKETLER) {
+            var val = aiSonucAlanlar[key];
+            var goster = (val !== null && val !== undefined && val !== '') ? escHtml(String(val)) : '<span class="text-muted">—</span>';
+            rows += '<tr><td class="text-muted" style="width:45%">' + AI_ETIKETLER[key] + '</td><td class="fw-semibold">' + goster + '</td></tr>';
+        }
+        document.getElementById('aiSonucTbodyHT').innerHTML = rows;
+        document.getElementById('aiSonucHT').classList.remove('d-none');
+
+    } catch(e) {
+        document.getElementById('aiHataHT').textContent = 'Bağlantı hatası: ' + e.message;
+        document.getElementById('aiHataHT').classList.remove('d-none');
+    } finally {
+        document.getElementById('aiProgress').classList.add('d-none');
+        btn.disabled = false;
+    }
+}
+
+function aiListeyeEkle() {
+    var a = aiSonucAlanlar;
+
+    var irsaliyeNo = a.irsaliye_no || '';
+    var tarih      = a.tarih       || '';
+    var plaka      = a.arac_plaka  ? String(a.arac_plaka).toUpperCase().replace(/\s+/g,'') : '';
+    var saat       = a.mikser_cikis_saati || '';
+    var faturaNo   = a.ettn || a.fatura_no || '';
+    var miktar     = a.miktar != null ? String(a.miktar) : '';
+
+    // Duplicate kontrol
+    if (irsaliyeNo && taranmisList.some(function(r){ return r.irsaliye_no === irsaliyeNo; })) {
+        setDurum('<i class="bi bi-exclamation-circle text-warning me-1"></i> Bu irsaliye zaten listede: ' + irsaliyeNo);
+        beepSes(true); return;
+    }
+
+    // Tedarikçi VKN eşleştir
+    var tedarikciId = '';
+    if (a.tedarikci_vkn) {
+        var vkn = String(a.tedarikci_vkn).trim();
+        for (var ti = 0; ti < TEDARIKCILER.length; ti++) {
+            if (String(TEDARIKCILER[ti].vkn || '').trim() === vkn) {
+                tedarikciId = String(TEDARIKCILER[ti].id); break;
+            }
+        }
+    }
+
+    // Beton sınıfı eşleştir
+    var betonSinifiId = '';
+    if (a.beton_sinifi) {
+        var bn = String(a.beton_sinifi).toUpperCase().replace(/\s+/g,'');
+        for (var bi = 0; bi < BETON_SINIFLARI.length; bi++) {
+            var bc = BETON_SINIFLARI[bi].ad.replace(/\s+/g,'').toUpperCase();
+            if (bc === bn || bc.startsWith(bn+'/') || bc.startsWith(bn+'-')) {
+                betonSinifiId = String(BETON_SINIFLARI[bi].id); break;
+            }
+        }
+    }
+
+    // Kıvam sınıfı eşleştir
+    var kivamSinifiId = '';
+    if (a.kivam) {
+        var kn = String(a.kivam).toUpperCase().replace(/\s+/g,'');
+        for (var ki = 0; ki < KIVAM_SINIFLARI.length; ki++) {
+            if (KIVAM_SINIFLARI[ki].ad.toUpperCase() === kn) {
+                kivamSinifiId = String(KIVAM_SINIFLARI[ki].id); break;
+            }
+        }
+    }
+
+    rowSayac++;
+    var item = {
+        rowId: rowSayac, irsaliye_no: irsaliyeNo, tarih: tarih,
+        arac_plaka: plaka, mikser_cikis_saati: saat, fatura_no: faturaNo,
+        miktar: miktar, tedarikci_id: tedarikciId, beton_sinifi_id: betonSinifiId,
+        kivam_sinifi_id: kivamSinifiId, kantar_net_yildizlar: '',
+        kantar_net_tedarikci: '', proje_id: '', qrKullanildi: false
+    };
+    taranmisList.push(item);
+    tabloSatirEkle(item);
+    sayacGuncelle();
+    beepSes(false);
+
+    document.getElementById('aiSonucHT').classList.add('d-none');
+    document.getElementById('aiDosya').value = '';
+    aiDosyaObj = null;
+    aiSonucAlanlar = {};
+    document.getElementById('btnAiOku').classList.add('d-none');
+    setDurum('<i class="bi bi-check-circle-fill text-success me-1"></i> AI ile okunan irsaliye eklendi: ' + (irsaliyeNo || 'yeni kayıt'));
+}
 </script>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>
