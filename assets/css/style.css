@@ -316,7 +316,7 @@ a { text-decoration: none; }
 /* ── Sidebar ──────────────────────────────────────────────────────── */
 .ern-sidebar {
     width: var(--sidebar-w);
-    min-height: 100vh;
+    height: 100vh;
     position: fixed;
     left: 0; top: 0;
     z-index: 200;
@@ -370,7 +370,13 @@ a { text-decoration: none; }
     overflow-y: auto;
     overflow-x: hidden;
     padding: .75rem 0;
+    -webkit-overflow-scrolling: touch; /* iOS momentum scroll */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,.15) transparent;
 }
+.sidebar-scroll::-webkit-scrollbar { width: 4px; }
+.sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+.sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 2px; }
 
 /* Nav Başlık (bölüm adı) */
 .nav-section {
