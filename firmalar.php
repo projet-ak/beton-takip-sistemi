@@ -38,26 +38,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$ad) {
         $formError = 'Ad alanı zorunludur.';
     } else {
-        try {
-            if ($id) {
-                $pdo->prepare("UPDATE firmalar SET ad = ? WHERE id = ?")->execute([$ad, $id]);
-                flash('success', 'Firma güncellendi.');
-            } else {
-                $pdo->prepare("INSERT INTO firmalar (ad) VALUES (?)")->execute([$ad]);
-                flash('success', 'Firma eklendi.');
-            }
-            redirect('firmalar.php');
-        } catch (PDOException $e) {
-            if ($e->getCode() == 23000) {
-                $formError = 'Bu isim zaten kayıtlı.';
-            } else {
-                throw $e;
+        $dupSql  = $id
+            ? "SELECT COUNT(*) FROM firmalar WHERE UPPER(ad) = UPPER(?) AND id != ?"
+            : "SELECT COUNT(*) FROM firmalar WHERE UPPER(ad) = UPPER(?)";
+        $dupStmt = $pdo->prepare($dupSql);
+        $dupStmt->execute($id ? [$ad, $id] : [$ad]);
+        if ($dupStmt->fetchColumn() > 0) {
+            $formError = '"' . h($ad) . '" adında bir firma zaten mevcut. Lütfen farklı bir ad girin.';
+        } else {
+            try {
+                if ($id) {
+                    $pdo->prepare("UPDATE firmalar SET ad = ? WHERE id = ?")->execute([$ad, $id]);
+                    flash('success', 'Firma güncellendi.');
+                } else {
+                    $pdo->prepare("INSERT INTO firmalar (ad) VALUES (?)")->execute([$ad]);
+                    flash('success', 'Firma eklendi.');
+                }
+                redirect('firmalar.php');
+            } catch (PDOException $e) {
+                $formError = h($e->getMessage());
             }
         }
     }
 }
 
 $formAcik = isset($_GET['ekle']) || $duzenle;
+
+// ── Mükerrer kontrolü ─────────────────────────────────────────────────────────
+$duplar = $pdo->query(
+    "SELECT UPPER(ad) FROM firmalar GROUP BY UPPER(ad) HAVING COUNT(*) > 1"
+)->fetchAll(PDO::FETCH_COLUMN, 0);
 
 // ── Liste ─────────────────────────────────────────────────────────────────────
 $liste = $pdo->query("
@@ -79,6 +89,17 @@ require_once __DIR__ . '/includes/header.php';
 <?php foreach(['success','error','warning','info'] as $t): $m=get_flash($t); if($m): ?>
 <div class="alert alert-<?= $t ?>"><?= h($m) ?></div>
 <?php endif; endforeach; ?>
+
+<?php if ($duplar): ?>
+<div class="alert alert-warning d-flex align-items-start gap-2">
+    <i class="bi bi-exclamation-triangle-fill fs-5 mt-1"></i>
+    <div>
+        <strong>Mükerrer kayıtlar tespit edildi!</strong>
+        Listede aynı isimli birden fazla firma var: <strong><?= implode(', ', array_map('h', $duplar)) ?></strong>.
+        Lütfen fazlalıkları silin.
+    </div>
+</div>
+<?php endif; ?>
 
 <?php if ($formAcik): ?>
 <div class="card mb-4">
@@ -123,9 +144,15 @@ require_once __DIR__ . '/includes/header.php';
                 </thead>
                 <tbody>
                     <?php foreach ($liste as $r): ?>
-                    <tr>
+                    <?php $isDup = in_array(strtoupper($r['ad']), $duplar); ?>
+                    <tr <?= $isDup ? 'class="table-warning"' : '' ?>>
                         <td class="text-muted small"><?= (int)$r['id'] ?></td>
-                        <td class="fw-semibold"><?= h($r['ad']) ?></td>
+                        <td class="fw-semibold">
+                            <?= h($r['ad']) ?>
+                            <?php if ($isDup): ?>
+                                <span class="badge bg-warning text-dark ms-1"><i class="bi bi-exclamation-triangle me-1"></i>Mükerrer</span>
+                            <?php endif; ?>
+                        </td>
                         <td class="text-center">
                             <?php if ($r['irsaliye_sayisi'] > 0): ?>
                                 <a href="#" class="badge bg-primary text-white text-decoration-none btn-tanim-modal"
