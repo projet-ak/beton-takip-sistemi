@@ -327,287 +327,11 @@ if ($editId && isset($row['durum'])):
 </div>
 <?php endif; ?>
 
-<form method="post" id="irsaliyeForm" action="?id=<?= $editId ?>&tip=<?= h($tip) ?>">
-<input type="hidden" name="onay_aksiyonu" id="mainOnayAksiyonu" value="">
-<div class="row g-4">
-
-    <!-- Sol kolon -->
-    <div class="col-lg-8">
-
-        <!-- Genel Bilgiler -->
-        <div class="card mb-4 border-0">
-            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark d-flex align-items-center justify-content-between"
-                 role="button" data-bs-toggle="collapse" data-bs-target="#accGenel" aria-expanded="true">
-                <span><i class="bi bi-info-circle text-primary me-2"></i> Genel Bilgiler</span>
-                <i class="bi bi-chevron-down text-muted d-md-none" style="transition:.2s" id="chevGenel"></i>
-            </div>
-            <div class="collapse show" id="accGenel">
-            <div class="card-body px-4 pb-4 pt-3">
-                <div class="row g-4">
-                    <div class="col-md-4">
-                        <label class="form-label">Tip <span class="text-danger">*</span></label>
-                        <select name="tip" class="form-select" required>
-                            <option value="alis" <?= sel($row['tip'] ?? $tip, 'alis') ?>>Alış</option>
-                            <option value="iade" <?= sel($row['tip'] ?? $tip, 'iade') ?>>İade</option>
-                        </select>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Tarih <span class="text-danger">*</span></label>
-                        <input type="date" name="tarih" class="form-control" required value="<?= val($row, 'tarih', date('Y-m-d')) ?>">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Sıra No</label>
-                        <input type="number" name="sira_no" class="form-control" min="1" value="<?= val($row, 'sira_no') ?>">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Tedarikçi <span class="text-danger">*</span></label>
-                        <select name="tedarikci_id" class="form-select" required>
-                            <option value="">— Seçin —</option>
-                            <?php foreach ($tedarikciler as $t): ?>
-                                <option value="<?= $t['id'] ?>" data-vkn="<?= h($t['vkn'] ?? '') ?>" <?= sel($row['tedarikci_id'] ?? '', $t['id']) ?>><?= h($t['ad']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">İrsaliye No</label>
-                        <input type="text" name="irsaliye_no" class="form-control" value="<?= val($row, 'irsaliye_no') ?>">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Fatura No</label>
-                        <input type="text" name="fatura_no" class="form-control" value="<?= val($row, 'fatura_no') ?>">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Araç Plaka</label>
-                        <input type="text" name="arac_plaka" class="form-control text-uppercase" value="<?= val($row, 'arac_plaka') ?>">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Proje</label>
-                        <select name="proje_id" class="form-select">
-                            <option value="">— Seçin —</option>
-                            <?php foreach ($projeler as $p): ?>
-                                <option value="<?= $p['id'] ?>" <?= sel($row['proje_id'] ?? '', $p['id']) ?>>
-                                    <?= h($p['kod']) ?> — <?= h($p['aciklama']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Kıvam Sınıfı</label>
-                        <select name="kivam_sinifi_id" class="form-select">
-                            <option value="">—</option>
-                            <?php foreach ($kivamSiniflari as $ks): ?>
-                                <option value="<?= $ks['id'] ?>" <?= sel($row['kivam_sinifi_id'] ?? '', $ks['id']) ?>><?= h($ks['ad']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            </div><!-- /accGenel -->
-        </div>
-
-        <!-- Beton & Miktar -->
-        <div class="card mb-4 border-0">
-            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark d-flex align-items-center justify-content-between"
-                 role="button" data-bs-toggle="collapse" data-bs-target="#accBeton" aria-expanded="true">
-                <span><i class="bi bi-layers text-primary me-2"></i> Beton & Miktar</span>
-                <i class="bi bi-chevron-down text-muted d-md-none"></i>
-            </div>
-            <div class="collapse show" id="accBeton">
-            <div class="card-body px-4 pb-4 pt-3">
-                <div class="row g-4">
-                    <div class="col-md-4">
-                        <label class="form-label">Beton Sınıfı</label>
-                        <select name="beton_sinifi_id" class="form-select">
-                            <option value="">—</option>
-                            <?php foreach ($betonSiniflari as $bs): ?>
-                                <option value="<?= $bs['id'] ?>" <?= sel($row['beton_sinifi_id'] ?? '', $bs['id']) ?>><?= h($bs['ad']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">Miktar <span class="text-danger">*</span></label>
-                        <input type="number" name="miktar" class="form-control" step="0.01" min="0.01" required value="<?= val($row, 'miktar') ?>">
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label">Birim</label>
-                        <input type="text" name="birim" class="form-control text-uppercase" value="<?= val($row, 'birim', 'M3') ?>">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Pompa Türü</label>
-                        <select name="pompa_id" class="form-select">
-                            <option value="">—</option>
-                            <?php foreach ($pompaTurleri as $pt): ?>
-                                <option value="<?= $pt['id'] ?>" <?= sel($row['pompa_id'] ?? '', $pt['id']) ?>><?= h($pt['ad']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Katkı 1</label>
-                        <select name="katki1_id" class="form-select">
-                            <option value="">—</option>
-                            <?php foreach ($katkiListesi as $kl): ?>
-                                <option value="<?= $kl['id'] ?>" <?= sel($row['katki1_id'] ?? '', $kl['id']) ?>><?= h($kl['ad']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Katkı 2</label>
-                        <select name="katki2_id" class="form-select">
-                            <option value="">—</option>
-                            <?php foreach ($katkiListesi as $kl): ?>
-                                <option value="<?= $kl['id'] ?>" <?= sel($row['katki2_id'] ?? '', $kl['id']) ?>><?= h($kl['ad']) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            </div><!-- /accBeton -->
-        </div>
-
-        <!-- Kantar Bilgileri -->
-        <div class="card mb-4 border-0">
-            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark d-flex align-items-center justify-content-between"
-                 role="button" data-bs-toggle="collapse" data-bs-target="#accKantar" aria-expanded="false">
-                <span><i class="bi bi-speedometer text-primary me-2"></i> Kantar & Saat Bilgileri</span>
-                <i class="bi bi-chevron-down text-muted d-md-none"></i>
-            </div>
-            <div class="collapse" id="accKantar">
-            <div class="card-body px-4 pb-4 pt-3">
-                <div class="row g-4">
-                    <div class="col-md-4">
-                        <label class="form-label">Mikser Çıkış Saati</label>
-                        <input type="time" name="mikser_cikis_saati" class="form-control" value="<?= val($row, 'mikser_cikis_saati') ?>">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Kantar Giriş Saati</label>
-                        <input type="time" name="kantar_giris_saati" class="form-control" value="<?= val($row, 'kantar_giris_saati') ?>">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Kantar Çıkış Saati</label>
-                        <input type="time" name="kantar_cikis_saati" class="form-control" value="<?= val($row, 'kantar_cikis_saati') ?>">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Kantar Net — Yıldızlar (kg)</label>
-                        <input type="number" name="kantar_net_yildizlar" id="kantar_yildiz" class="form-control" step="0.01" value="<?= val($row, 'kantar_net_yildizlar') ?>" oninput="hesaplaFark()">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Kantar Net — Tedarikçi (kg)</label>
-                        <input type="number" name="kantar_net_tedarikci" id="kantar_tedarikci" class="form-control" step="0.01" value="<?= val($row, 'kantar_net_tedarikci') ?>" oninput="hesaplaFark()">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Kantar Farkı (kg)</label>
-                        <input type="number" id="kantar_farki_display" class="form-control bg-light" step="0.01" readonly value="<?= val($row, 'kantar_farki') ?>">
-                        <div class="form-text">Otomatik hesaplanır</div>
-                    </div>
-                </div>
-            </div>
-            </div><!-- /accKantar -->
-        </div>
-
-    </div>
-
-    <!-- Sağ kolon -->
-    <div class="col-lg-4">
-
-        <!-- Konum -->
-        <div class="card mb-4 border-0">
-            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark">
-                <i class="bi bi-map text-primary me-2"></i> Konum
-            </div>
-            <div class="card-body px-4 pb-4 pt-3">
-                <div class="mb-3">
-                    <label class="form-label">Parsel</label>
-                    <select name="parsel_id" id="selParsel" class="form-select">
-                        <option value="">—</option>
-                        <?php foreach ($parseller as $p): ?>
-                            <option value="<?= $p['id'] ?>" <?= sel($row['parsel_id'] ?? '', $p['id']) ?>><?= h($p['ad']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Blok</label>
-                    <select name="blok_id" id="selBlok" class="form-select">
-                        <option value="">—</option>
-                        <?php foreach ($bloklarData as $b): ?>
-                            <option value="<?= $b['id'] ?>" <?= sel($row['blok_id'] ?? '', $b['id']) ?>><?= h($b['ad']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Kot</label>
-                    <select name="kot_id" id="selKot" class="form-select">
-                        <option value="">—</option>
-                        <?php foreach ($kotlarData as $k): ?>
-                            <option value="<?= $k['id'] ?>" <?= sel($row['kot_id'] ?? '', $k['id']) ?>><?= h($k['kot_degeri']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-            </div>
-        </div>
-
-        <!-- İş Kalemi -->
-        <div class="card mb-4 border-0">
-            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark">
-                <i class="bi bi-list-task text-primary me-2"></i> İş Kalemi
-            </div>
-            <div class="card-body px-4 pb-4 pt-3">
-                <div class="mb-3">
-                    <label class="form-label">Firma</label>
-                    <select name="firma_id" class="form-select">
-                        <option value="">—</option>
-                        <?php foreach ($firmalar as $f): ?>
-                            <option value="<?= $f['id'] ?>" <?= sel($row['firma_id'] ?? '', $f['id']) ?>><?= h($f['ad']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">İmalat Grubu</label>
-                    <select name="imalat_grup_id" id="selGrup" class="form-select">
-                        <option value="">—</option>
-                        <?php foreach ($imalatGruplari as $ig): ?>
-                            <option value="<?= $ig['id'] ?>" <?= sel($row['imalat_grup_id'] ?? '', $ig['id']) ?>><?= h($ig['ad']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Ana İş Kalemi</label>
-                    <select name="ana_is_kalemi_id" id="selKalem" class="form-select">
-                        <option value="">—</option>
-                        <?php foreach ($anaKalemData as $k): ?>
-                            <option value="<?= $k['id'] ?>" <?= sel($row['ana_is_kalemi_id'] ?? '', $k['id']) ?>><?= h($k['ad']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-            </div>
-        </div>
-
-        <!-- Açıklama -->
-        <div class="card mb-4 border-0">
-            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark">
-                <i class="bi bi-chat-text text-primary me-2"></i> Açıklama
-            </div>
-            <div class="card-body px-4 pb-4 pt-3">
-                <textarea name="aciklama" class="form-control" rows="3" placeholder="İsteğe bağlı not..."><?= val($row, 'aciklama') ?></textarea>
-            </div>
-        </div>
-
-        <div class="d-grid gap-3">
-            <button type="submit" class="btn btn-primary btn-lg shadow-sm">
-                <i class="bi bi-save me-1"></i> <?= $editId ? 'Güncelle' : 'Kaydet' ?>
-            </button>
-            <a href="irsaliyeler.php?tip=<?= h($tip) ?>" class="btn btn-outline-secondary">
-                <i class="bi bi-x-circle me-1"></i> İptal
-            </a>
-        </div>
-    </div>
-
-</div>
-</form>
 
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
 <!-- BELGE / KAMERA / QR PANEL (kayıttan bağımsız çalışır)                -->
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
-<div class="card mt-4 border-0 shadow-sm" id="belgePanel">
+<div class="card mb-4 border-0 shadow-sm" id="belgePanel">
     <div class="card-header bg-transparent border-0 fw-semibold p-0 pt-2">
         <ul class="nav nav-tabs border-0" id="belgeTabs" role="tablist">
             <li class="nav-item" role="presentation">
@@ -866,6 +590,283 @@ if ($editId && isset($row['durum'])):
         </div>
     </div>
 </div>
+
+<form method="post" id="irsaliyeForm" action="?id=<?= $editId ?>&tip=<?= h($tip) ?>">
+<input type="hidden" name="onay_aksiyonu" id="mainOnayAksiyonu" value="">
+<div class="row g-4">
+
+    <!-- Sol kolon -->
+    <div class="col-lg-8">
+
+        <!-- Genel Bilgiler -->
+        <div class="card mb-4 border-0">
+            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark d-flex align-items-center justify-content-between"
+                 role="button" data-bs-toggle="collapse" data-bs-target="#accGenel" aria-expanded="true">
+                <span><i class="bi bi-info-circle text-primary me-2"></i> Genel Bilgiler</span>
+                <i class="bi bi-chevron-down text-muted d-md-none" style="transition:.2s" id="chevGenel"></i>
+            </div>
+            <div class="collapse show" id="accGenel">
+            <div class="card-body px-4 pb-4 pt-3">
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <label class="form-label">Tip <span class="text-danger">*</span></label>
+                        <select name="tip" class="form-select" required>
+                            <option value="alis" <?= sel($row['tip'] ?? $tip, 'alis') ?>>Alış</option>
+                            <option value="iade" <?= sel($row['tip'] ?? $tip, 'iade') ?>>İade</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Tarih <span class="text-danger">*</span></label>
+                        <input type="date" name="tarih" class="form-control" required value="<?= val($row, 'tarih', date('Y-m-d')) ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Sıra No</label>
+                        <input type="number" name="sira_no" class="form-control" min="1" value="<?= val($row, 'sira_no') ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Tedarikçi <span class="text-danger">*</span></label>
+                        <select name="tedarikci_id" class="form-select" required>
+                            <option value="">— Seçin —</option>
+                            <?php foreach ($tedarikciler as $t): ?>
+                                <option value="<?= $t['id'] ?>" data-vkn="<?= h($t['vkn'] ?? '') ?>" <?= sel($row['tedarikci_id'] ?? '', $t['id']) ?>><?= h($t['ad']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">İrsaliye No</label>
+                        <input type="text" name="irsaliye_no" class="form-control" value="<?= val($row, 'irsaliye_no') ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Fatura No</label>
+                        <input type="text" name="fatura_no" class="form-control" value="<?= val($row, 'fatura_no') ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Araç Plaka</label>
+                        <input type="text" name="arac_plaka" class="form-control text-uppercase" value="<?= val($row, 'arac_plaka') ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Proje</label>
+                        <select name="proje_id" class="form-select">
+                            <option value="">— Seçin —</option>
+                            <?php foreach ($projeler as $p): ?>
+                                <option value="<?= $p['id'] ?>" <?= sel($row['proje_id'] ?? '', $p['id']) ?>>
+                                    <?= h($p['kod']) ?> — <?= h($p['aciklama']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Kıvam Sınıfı</label>
+                        <select name="kivam_sinifi_id" class="form-select">
+                            <option value="">—</option>
+                            <?php foreach ($kivamSiniflari as $ks): ?>
+                                <option value="<?= $ks['id'] ?>" <?= sel($row['kivam_sinifi_id'] ?? '', $ks['id']) ?>><?= h($ks['ad']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            </div><!-- /accGenel -->
+        </div>
+
+        <!-- Beton & Miktar -->
+        <div class="card mb-4 border-0">
+            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark d-flex align-items-center justify-content-between"
+                 role="button" data-bs-toggle="collapse" data-bs-target="#accBeton" aria-expanded="true">
+                <span><i class="bi bi-layers text-primary me-2"></i> Beton & Miktar</span>
+                <i class="bi bi-chevron-down text-muted d-md-none"></i>
+            </div>
+            <div class="collapse show" id="accBeton">
+            <div class="card-body px-4 pb-4 pt-3">
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <label class="form-label">Beton Sınıfı</label>
+                        <select name="beton_sinifi_id" class="form-select">
+                            <option value="">—</option>
+                            <?php foreach ($betonSiniflari as $bs): ?>
+                                <option value="<?= $bs['id'] ?>" <?= sel($row['beton_sinifi_id'] ?? '', $bs['id']) ?>><?= h($bs['ad']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Miktar <span class="text-danger">*</span></label>
+                        <input type="number" name="miktar" class="form-control" step="0.01" min="0.01" required value="<?= val($row, 'miktar') ?>">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Birim</label>
+                        <input type="text" name="birim" class="form-control text-uppercase" value="<?= val($row, 'birim', 'M3') ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Pompa Türü</label>
+                        <select name="pompa_id" class="form-select">
+                            <option value="">—</option>
+                            <?php foreach ($pompaTurleri as $pt): ?>
+                                <option value="<?= $pt['id'] ?>" <?= sel($row['pompa_id'] ?? '', $pt['id']) ?>><?= h($pt['ad']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Katkı 1</label>
+                        <select name="katki1_id" class="form-select">
+                            <option value="">—</option>
+                            <?php foreach ($katkiListesi as $kl): ?>
+                                <option value="<?= $kl['id'] ?>" <?= sel($row['katki1_id'] ?? '', $kl['id']) ?>><?= h($kl['ad']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Katkı 2</label>
+                        <select name="katki2_id" class="form-select">
+                            <option value="">—</option>
+                            <?php foreach ($katkiListesi as $kl): ?>
+                                <option value="<?= $kl['id'] ?>" <?= sel($row['katki2_id'] ?? '', $kl['id']) ?>><?= h($kl['ad']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            </div><!-- /accBeton -->
+        </div>
+
+        <!-- Kantar Bilgileri -->
+        <div class="card mb-4 border-0">
+            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark d-flex align-items-center justify-content-between"
+                 role="button" data-bs-toggle="collapse" data-bs-target="#accKantar" aria-expanded="true">
+                <span><i class="bi bi-speedometer text-primary me-2"></i> Kantar & Saat Bilgileri</span>
+                <i class="bi bi-chevron-down text-muted d-md-none"></i>
+            </div>
+            <div class="collapse show" id="accKantar">
+            <div class="card-body px-4 pb-4 pt-3">
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <label class="form-label">Mikser Çıkış Saati</label>
+                        <input type="time" name="mikser_cikis_saati" class="form-control" value="<?= val($row, 'mikser_cikis_saati') ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Kantar Giriş Saati</label>
+                        <input type="time" name="kantar_giris_saati" class="form-control" value="<?= val($row, 'kantar_giris_saati') ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Kantar Çıkış Saati</label>
+                        <input type="time" name="kantar_cikis_saati" class="form-control" value="<?= val($row, 'kantar_cikis_saati') ?>">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Kantar Net — Yıldızlar (kg)</label>
+                        <input type="number" name="kantar_net_yildizlar" id="kantar_yildiz" class="form-control" step="0.01" value="<?= val($row, 'kantar_net_yildizlar') ?>" oninput="hesaplaFark()">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Kantar Net — Tedarikçi (kg)</label>
+                        <input type="number" name="kantar_net_tedarikci" id="kantar_tedarikci" class="form-control" step="0.01" value="<?= val($row, 'kantar_net_tedarikci') ?>" oninput="hesaplaFark()">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Kantar Farkı (kg)</label>
+                        <input type="number" id="kantar_farki_display" class="form-control bg-light" step="0.01" readonly value="<?= val($row, 'kantar_farki') ?>">
+                        <div class="form-text">Otomatik hesaplanır</div>
+                    </div>
+                </div>
+            </div>
+            </div><!-- /accKantar -->
+        </div>
+
+    </div>
+
+    <!-- Sağ kolon -->
+    <div class="col-lg-4">
+
+        <!-- Konum -->
+        <div class="card mb-4 border-0">
+            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark">
+                <i class="bi bi-map text-primary me-2"></i> Konum
+            </div>
+            <div class="card-body px-4 pb-4 pt-3">
+                <div class="mb-3">
+                    <label class="form-label">Parsel</label>
+                    <select name="parsel_id" id="selParsel" class="form-select">
+                        <option value="">—</option>
+                        <?php foreach ($parseller as $p): ?>
+                            <option value="<?= $p['id'] ?>" <?= sel($row['parsel_id'] ?? '', $p['id']) ?>><?= h($p['ad']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Blok</label>
+                    <select name="blok_id" id="selBlok" class="form-select">
+                        <option value="">—</option>
+                        <?php foreach ($bloklarData as $b): ?>
+                            <option value="<?= $b['id'] ?>" <?= sel($row['blok_id'] ?? '', $b['id']) ?>><?= h($b['ad']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Kot</label>
+                    <select name="kot_id" id="selKot" class="form-select">
+                        <option value="">—</option>
+                        <?php foreach ($kotlarData as $k): ?>
+                            <option value="<?= $k['id'] ?>" <?= sel($row['kot_id'] ?? '', $k['id']) ?>><?= h($k['kot_degeri']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- İş Kalemi -->
+        <div class="card mb-4 border-0">
+            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark">
+                <i class="bi bi-list-task text-primary me-2"></i> İş Kalemi
+            </div>
+            <div class="card-body px-4 pb-4 pt-3">
+                <div class="mb-3">
+                    <label class="form-label">Firma</label>
+                    <select name="firma_id" class="form-select">
+                        <option value="">—</option>
+                        <?php foreach ($firmalar as $f): ?>
+                            <option value="<?= $f['id'] ?>" <?= sel($row['firma_id'] ?? '', $f['id']) ?>><?= h($f['ad']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">İmalat Grubu</label>
+                    <select name="imalat_grup_id" id="selGrup" class="form-select">
+                        <option value="">—</option>
+                        <?php foreach ($imalatGruplari as $ig): ?>
+                            <option value="<?= $ig['id'] ?>" <?= sel($row['imalat_grup_id'] ?? '', $ig['id']) ?>><?= h($ig['ad']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Ana İş Kalemi</label>
+                    <select name="ana_is_kalemi_id" id="selKalem" class="form-select">
+                        <option value="">—</option>
+                        <?php foreach ($anaKalemData as $k): ?>
+                            <option value="<?= $k['id'] ?>" <?= sel($row['ana_is_kalemi_id'] ?? '', $k['id']) ?>><?= h($k['ad']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Açıklama -->
+        <div class="card mb-4 border-0">
+            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark">
+                <i class="bi bi-chat-text text-primary me-2"></i> Açıklama
+            </div>
+            <div class="card-body px-4 pb-4 pt-3">
+                <textarea name="aciklama" class="form-control" rows="3" placeholder="İsteğe bağlı not..."><?= val($row, 'aciklama') ?></textarea>
+            </div>
+        </div>
+
+        <div class="d-grid gap-3">
+            <button type="submit" class="btn btn-primary btn-lg shadow-sm">
+                <i class="bi bi-save me-1"></i> <?= $editId ? 'Güncelle' : 'Kaydet' ?>
+            </button>
+            <a href="irsaliyeler.php?tip=<?= h($tip) ?>" class="btn btn-outline-secondary">
+                <i class="bi bi-x-circle me-1"></i> İptal
+            </a>
+        </div>
+    </div>
+
+</div>
+</form>
 
 <!-- jsQR (CDN) -->
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
