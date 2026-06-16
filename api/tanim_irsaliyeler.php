@@ -58,7 +58,7 @@ try {
     // İrsaliyeleri çek
     $baseSelect = "
         SELECT i.id, i.irsaliye_no, i.tarih, i.arac_plaka, i.miktar, i.tip,
-               p.ad  AS proje_adi,
+               CONCAT(p.kod, IF(p.aciklama IS NOT NULL AND p.aciklama != '', CONCAT(' — ', p.aciklama), '')) AS proje_adi,
                t.ad  AS tedarikci_adi,
                bs.ad AS beton_sinifi_adi
         FROM irsaliyeler i

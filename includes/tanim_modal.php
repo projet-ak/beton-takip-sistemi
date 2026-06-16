@@ -118,7 +118,7 @@
                             '<td class="small">' + esc(r.arac_plaka) + '</td>' +
                             '<td class="text-end small">' + miktar + '</td>' +
                             '<td class="text-center">' + tipBadge + '</td>' +
-                            '<td><a href="irsaliye_goruntule.php?id=' + r.id + '" target="_blank" class="btn btn-xs btn-outline-secondary"><i class="bi bi-eye"></i></a></td>' +
+                            '<td><a href="irsaliye_detay.php?id=' + r.id + '" target="_blank" class="btn btn-xs btn-outline-secondary"><i class="bi bi-eye"></i></a></td>' +
                             '</tr>'
                         );
                     });
