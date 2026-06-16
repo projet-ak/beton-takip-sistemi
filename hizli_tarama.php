@@ -191,18 +191,34 @@ html[data-dark="1"] .scan-result-header.err { background: rgba(224,84,84,.12); c
   <div class="col-12">
     <div class="card shadow-sm">
       <div class="card-header p-0">
-        <ul class="nav nav-tabs border-bottom-0 px-3 pt-2">
-          <li class="nav-item">
-            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabPdfQr">
-              <i class="bi bi-qr-code text-danger me-1"></i> QR Kodu Tara
-            </button>
-          </li>
-          <li class="nav-item">
-            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPdfOcr">
-              <i class="bi bi-file-text text-primary me-1"></i> OCR ile Oku
-            </button>
-          </li>
-        </ul>
+        <div class="d-flex align-items-center justify-content-between flex-wrap">
+          <ul class="nav nav-tabs border-bottom-0 px-3 pt-2">
+            <li class="nav-item">
+              <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabPdfQr">
+                <i class="bi bi-qr-code text-danger me-1"></i> QR Kodu Tara
+              </button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPdfOcr">
+                <i class="bi bi-file-text text-primary me-1"></i> OCR ile Oku
+              </button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabAiOku">
+                <i class="bi bi-stars text-success me-1"></i> AI ile Oku
+              </button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabKamera">
+                <i class="bi bi-camera text-primary me-1"></i> Fotoğraf Çek &amp; Tara
+              </button>
+            </li>
+          </ul>
+          <div class="d-flex align-items-center gap-2 px-3 pb-1">
+            <span id="sayacBadge" class="badge" style="background:var(--ern);font-size:.8rem;padding:.4em .8em;">0 kayıt</span>
+            <span id="scannerBadge" class="badge bg-secondary d-none" style="font-size:.72rem;"></span>
+          </div>
+        </div>
       </div>
       <div class="card-body">
         <div class="tab-content">
@@ -300,128 +316,116 @@ html[data-dark="1"] .scan-result-header.err { background: rgba(224,84,84,.12); c
             </div>
           </div>
 
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
 
-<!-- ── Kamera Paneli ──────────────────────────────────────────── -->
-<div class="row g-3 mb-4">
-  <div class="col-12">
-    <div class="card">
-      <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-        <span class="fw-semibold"><i class="bi bi-camera text-primary me-1"></i> Fotoğraf Çek &amp; Tara</span>
-        <div class="d-flex align-items-center gap-2">
-          <span id="sayacBadge" class="badge" style="background:var(--ern);font-size:.8rem;padding:.4em .8em;">0 kayıt</span>
-          <span id="scannerBadge" class="badge bg-secondary d-none" style="font-size:.72rem;"></span>
-        </div>
-      </div>
-      <div class="card-body p-0">
+          <!-- Kamera Tab -->
+          <div class="tab-pane fade" id="tabKamera">
 
-        <!-- Kamera Görüntü Alanı -->
-        <div class="cam-viewport" id="camViewport">
-          <video id="videoEl" autoplay playsinline muted></video>
+            <!-- Kamera Görüntü Alanı -->
+            <div class="cam-viewport" id="camViewport">
+              <video id="videoEl" autoplay playsinline muted></video>
 
-          <!-- Belge kılavuzu -->
-          <div class="doc-guide" id="docGuide" style="display:none">
-            <div class="doc-guide-box">
-              <div class="doc-corner-br"></div>
-              <div class="doc-corner-bl"></div>
-              <!-- Kod pozisyon ipuçları -->
-              <div class="code-hint">
-                <div class="code-hint-box">E1<br>KGS</div>
-                <div class="code-hint-box" style="padding:3px 8px;">QR<br>GİB</div>
+              <!-- Belge kılavuzu -->
+              <div class="doc-guide" id="docGuide" style="display:none">
+                <div class="doc-guide-box">
+                  <div class="doc-corner-br"></div>
+                  <div class="doc-corner-bl"></div>
+                  <!-- Kod pozisyon ipuçları -->
+                  <div class="code-hint">
+                    <div class="code-hint-box">E1<br>KGS</div>
+                    <div class="code-hint-box" style="padding:3px 8px;">QR<br>GİB</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Yönlendirme metni (kamera açıkken) -->
+              <div class="doc-hint-text" id="hintText" style="display:none">
+                İrsaliyeyi çerçeveye hizalayın • Sağ üstteki iki kare kodu göreceğinizden emin olun
+              </div>
+
+              <!-- Kamera kapalıyken placeholder -->
+              <div id="camPlaceholder" style="min-height:240px;display:flex;align-items:center;justify-content:center;background:var(--bt-bg,#EEF3F2);">
+                <div class="text-center" style="color:var(--bt-text-muted)">
+                  <i class="bi bi-camera" style="font-size:3rem;opacity:.3;display:block;margin-bottom:.75rem"></i>
+                  <div style="font-size:.85rem;font-weight:500">Kamerayı açmak için aşağıdaki butona basın</div>
+                </div>
+              </div>
+
+              <!-- Fullscreen butonu -->
+              <button class="btn-cam-fullscreen d-md-none" id="btnFullscreen" onclick="toggleCamFullscreen()" title="Tam Ekran">
+                <i class="bi bi-fullscreen" id="fsIcon"></i>
+              </button>
+
+              <!-- Flash efekti -->
+              <div id="flashEl" style="position:absolute;inset:0;background:rgba(255,255,255,.8);pointer-events:none;display:none;"></div>
+            </div>
+
+            <!-- Alt Kontrol Çubuğu -->
+            <div class="cam-controls" id="camControls" style="display:none;">
+              <!-- Sol: Kamera çevir + Torch -->
+              <div class="cam-side-btns">
+                <button class="btn-cam-side" id="btnCevir" title="Kamerayı Çevir" onclick="kameraCevir()">
+                  <i class="bi bi-arrow-repeat"></i>
+                </button>
+                <button class="btn-cam-side d-none" id="btnTorch" onclick="torchToggle()" title="Flaş">
+                  <i class="bi bi-lightning-charge"></i>
+                </button>
+              </div>
+
+              <!-- Orta: Ana Çek Butonu -->
+              <button class="btn-capture" id="btnCapture" onclick="fotoCekVeTara()" title="Fotoğraf Çek ve Tara">
+                <i class="bi bi-camera-fill"></i>
+              </button>
+
+              <!-- Sağ: Kapat -->
+              <div class="cam-side-btns">
+                <select id="kameraSec" class="form-select form-select-sm" style="width:auto;max-width:120px;background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff;font-size:.72rem;" onchange="kameraAc()">
+                </select>
               </div>
             </div>
-          </div>
 
-          <!-- Yönlendirme metni (kamera açıkken) -->
-          <div class="doc-hint-text" id="hintText" style="display:none">
-            İrsaliyeyi çerçeveye hizalayın • Sağ üstteki iki kare kodu göreceğinizden emin olun
-          </div>
-
-          <!-- Kamera kapalıyken placeholder -->
-          <div id="camPlaceholder" style="min-height:240px;display:flex;align-items:center;justify-content:center;background:var(--bt-bg,#EEF3F2);">
-            <div class="text-center" style="color:var(--bt-text-muted)">
-              <i class="bi bi-camera" style="font-size:3rem;opacity:.3;display:block;margin-bottom:.75rem"></i>
-              <div style="font-size:.85rem;font-weight:500">Kamerayı açmak için aşağıdaki butona basın</div>
-            </div>
-          </div>
-
-          <!-- Fullscreen butonu -->
-          <button class="btn-cam-fullscreen d-md-none" id="btnFullscreen" onclick="toggleCamFullscreen()" title="Tam Ekran">
-            <i class="bi bi-fullscreen" id="fsIcon"></i>
-          </button>
-
-          <!-- Flash efekti -->
-          <div id="flashEl" style="position:absolute;inset:0;background:rgba(255,255,255,.8);pointer-events:none;display:none;"></div>
-        </div>
-
-        <!-- Alt Kontrol Çubuğu -->
-        <div class="cam-controls" id="camControls" style="display:none;">
-          <!-- Sol: Kamera çevir + Torch -->
-          <div class="cam-side-btns">
-            <button class="btn-cam-side" id="btnCevir" title="Kamerayı Çevir" onclick="kameraCevir()">
-              <i class="bi bi-arrow-repeat"></i>
-            </button>
-            <button class="btn-cam-side d-none" id="btnTorch" onclick="torchToggle()" title="Flaş">
-              <i class="bi bi-lightning-charge"></i>
-            </button>
-          </div>
-
-          <!-- Orta: Ana Çek Butonu -->
-          <button class="btn-capture" id="btnCapture" onclick="fotoCekVeTara()" title="Fotoğraf Çek ve Tara">
-            <i class="bi bi-camera-fill"></i>
-          </button>
-
-          <!-- Sağ: Kapat -->
-          <div class="cam-side-btns">
-            <select id="kameraSec" class="form-select form-select-sm" style="width:auto;max-width:120px;background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff;font-size:.72rem;" onchange="kameraAc()">
-            </select>
-          </div>
-        </div>
-
-        <!-- Kamera Aç / Kapat Buton (görüntü alanı dışı) -->
-        <div class="p-3 d-flex gap-2" id="camOpenArea">
-          <button id="btnAc" class="btn btn-primary flex-fill" onclick="kameraAc()">
-            <i class="bi bi-camera-fill me-1"></i> Kamerayı Aç
-          </button>
-          <button id="btnKapat" class="btn btn-outline-secondary d-none" onclick="kameraKapat()">
-            <i class="bi bi-x-circle me-1"></i> Kapat
-          </button>
-        </div>
-
-        <!-- Tarama Sonuçları (fotoğraf çekince görünür) -->
-        <div id="taramaSonuc" class="p-3 border-top d-none">
-          <div class="d-flex align-items-center justify-content-between mb-2">
-            <span class="fw-semibold small"><i class="bi bi-search me-1"></i>Tarama Sonuçları</span>
-            <div class="d-flex gap-2">
-              <button class="btn btn-sm btn-outline-secondary" onclick="tekrarCek()">
-                <i class="bi bi-arrow-counterclockwise me-1"></i>Tekrar Çek
+            <!-- Kamera Aç / Kapat Buton (görüntü alanı dışı) -->
+            <div class="p-3 d-flex gap-2" id="camOpenArea">
+              <button id="btnAc" class="btn btn-primary flex-fill" onclick="kameraAc()">
+                <i class="bi bi-camera-fill me-1"></i> Kamerayı Aç
               </button>
-              <button class="btn btn-sm btn-primary d-none" id="btnSonucEkle" onclick="sonucuEkle()">
-                <i class="bi bi-plus-circle me-1"></i>Listeye Ekle
+              <button id="btnKapat" class="btn btn-outline-secondary d-none" onclick="kameraKapat()">
+                <i class="bi bi-x-circle me-1"></i> Kapat
               </button>
             </div>
-          </div>
 
-          <div class="row g-2">
-            <!-- Fotoğraf önizleme -->
-            <div class="col-md-4">
-              <div class="photo-preview">
-                <img id="photoPreviewImg" src="" alt="Çekilen fotoğraf">
+            <!-- Tarama Sonuçları (fotoğraf çekince görünür) -->
+            <div id="taramaSonuc" class="p-3 border-top d-none">
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <span class="fw-semibold small"><i class="bi bi-search me-1"></i>Tarama Sonuçları</span>
+                <div class="d-flex gap-2">
+                  <button class="btn btn-sm btn-outline-secondary" onclick="tekrarCek()">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i>Tekrar Çek
+                  </button>
+                  <button class="btn btn-sm btn-primary d-none" id="btnSonucEkle" onclick="sonucuEkle()">
+                    <i class="bi bi-plus-circle me-1"></i>Listeye Ekle
+                  </button>
+                </div>
+              </div>
+
+              <div class="row g-2">
+                <!-- Fotoğraf önizleme -->
+                <div class="col-md-4">
+                  <div class="photo-preview">
+                    <img id="photoPreviewImg" src="" alt="Çekilen fotoğraf">
+                  </div>
+                </div>
+                <!-- Kod sonuçları -->
+                <div class="col-md-8">
+                  <div id="kodSonuclar" class="d-flex flex-column gap-2"></div>
+                </div>
               </div>
             </div>
-            <!-- Kod sonuçları -->
-            <div class="col-md-8">
-              <div id="kodSonuclar" class="d-flex flex-column gap-2"></div>
-            </div>
-          </div>
-        </div>
 
-        <!-- Durum / log -->
-        <div id="durumEl" class="px-3 pb-2 text-center small" style="color:var(--bt-text-muted);min-height:24px;"></div>
+            <!-- Durum / log -->
+            <div id="durumEl" class="px-3 pb-2 text-center small" style="color:var(--bt-text-muted);min-height:24px;"></div>
+          </div>
+
+        </div>
       </div>
     </div>
   </div>
