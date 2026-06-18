@@ -81,9 +81,13 @@ function parseTarih(?string $tarih): ?string {
     if ($tarih === null || trim($tarih) === '') return null;
     $tarih = trim($tarih);
 
-    // Format: YYYY-MM-DD
+    // Format: YYYY-MM-DD (exact)
     if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $tarih)) {
         return $tarih;
+    }
+    // Format: YYYY-MM-DD HH:MM:SS  veya  YYYY-MM-DDThh:mm:ss  (saat bileşeni varsa at)
+    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})[T\s]/', $tarih, $m)) {
+        return "{$m[1]}-{$m[2]}-{$m[3]}";
     }
     // Format: DD.MM.YYYY
     if (preg_match('/^(\d{2})\.(\d{2})\.(\d{4})$/', $tarih, $m)) {
@@ -567,8 +571,8 @@ require_once __DIR__ . '/includes/header.php';
                                     $dupQ = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler WHERE irsaliye_no = ?");
                                     $dupQ->execute([$irsaliyeNo]);
                                     if ($dupQ->fetchColumn() > 0) {
-                                        $dupColor = 'table-warning';
-                                        $dupText = 'Mükerrer';
+                                        $dupColor = 'table-success';
+                                        $dupText = 'Zaten Kayıtlı';
                                         $canImport = false;
                                     }
                                 }
@@ -600,8 +604,8 @@ require_once __DIR__ . '/includes/header.php';
                                 <td>
                                     <?php if ($dupText === 'Hazır'): ?>
                                         <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i> Hazır</span>
-                                    <?php elseif ($dupText === 'Mükerrer'): ?>
-                                        <span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle me-1"></i> Mükerrer</span>
+                                    <?php elseif ($dupText === 'Zaten Kayıtlı'): ?>
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check2-circle me-1"></i> Zaten Kayıtlı</span>
                                     <?php else: ?>
                                         <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i> Hatalı</span>
                                     <?php endif; ?>
