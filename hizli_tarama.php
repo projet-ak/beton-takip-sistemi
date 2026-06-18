@@ -1179,7 +1179,8 @@ function satirSil(rowId) {
 function sayacGuncelle() {
     var n = taranmisList.length;
     document.getElementById('sayacBadge').textContent = n + ' kayıt tarandı';
-    document.getElementById('kaydetSayac').textContent = n;
+    var sc = document.getElementById('kaydetSayac');
+    if (sc) sc.textContent = n;
     document.getElementById('btnTopluKaydet').classList.toggle('d-none', n === 0);
 }
 
