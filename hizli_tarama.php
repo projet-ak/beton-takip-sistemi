@@ -2433,6 +2433,7 @@ async function cakismaGuncelle() {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Kaydediliyor...';
 
+    var cakYeni  = (cakismaKuyruk[cakismaIdx] || {}).yeni || {};
     var alanlar = {
         tarih:               document.getElementById('cak_tarih').value,
         arac_plaka:          document.getElementById('cak_arac_plaka').value,
@@ -2443,6 +2444,8 @@ async function cakismaGuncelle() {
         beton_sinifi_id:     document.getElementById('cak_beton_sinifi_id').value,
         kivam_sinifi_id:     document.getElementById('cak_kivam_sinifi_id').value,
         proje_id:            document.getElementById('cak_proje_id').value,
+        docUrl:              cakYeni.docUrl        || '',
+        scanImageUrl:        cakYeni.scanImageUrl  || '',
     };
 
     try {
