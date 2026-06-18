@@ -218,6 +218,27 @@ require_once __DIR__ . '/includes/header.php';
 
     <div class="col-lg-4">
 
+        <?php if (!empty($row['scan_image_url'])): ?>
+        <?php $isImg = !str_ends_with(strtolower($row['scan_image_url']), '.pdf'); ?>
+        <div class="card mb-3">
+            <div class="card-header bg-white fw-semibold small">
+                <i class="bi bi-<?= $isImg ? 'camera' : 'file-pdf text-danger' ?> me-1"></i>
+                Tarama <?= $isImg ? 'Fotoğrafı' : 'Belgesi' ?>
+            </div>
+            <div class="card-body p-2 text-center">
+                <?php if ($isImg): ?>
+                    <a href="<?= h($row['scan_image_url']) ?>" target="_blank">
+                        <img src="<?= h($row['scan_image_url']) ?>" class="img-fluid rounded" style="max-height:200px;object-fit:contain;" alt="Tarama">
+                    </a>
+                <?php else: ?>
+                    <a href="<?= h($row['scan_image_url']) ?>" target="_blank" class="btn btn-outline-danger">
+                        <i class="bi bi-file-pdf me-1"></i> PDF Belgeyi Görüntüle
+                    </a>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <!-- Konum -->
         <div class="card mb-3">
             <div class="card-header bg-white fw-semibold"><i class="bi bi-map text-primary me-1"></i> Konum</div>

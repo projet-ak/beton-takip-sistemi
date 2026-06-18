@@ -555,6 +555,9 @@ function beepSes(isWarning) {
 // ── Kamera Durum Değişkenleri ───────────────────────────────────────
 var stream = null, torchAktif = false, facingUser = false;
 var pendingScanData = null; // fotoğraf tarama sonucu bekliyor
+var pendingUploadPromise = null; // kamera fotoğrafı yükleme promise
+var ocrPdfUrl  = ''; // OCR için yüklenen PDF URL
+var aiDosyaUrl = ''; // AI için yüklenen dosya URL
 
 // ── Kamera cihazı listeleme ─────────────────────────────────────────
 async function kameralariListele() {
@@ -690,6 +693,7 @@ async function fotoCekVeTara() {
 
     // Sonuçları parse et
     pendingScanData = kodlariIsle(bulunanKodlar);
+    pendingUploadPromise = sayfaGorselKaydet(capCanvas);
     sonuclariGoster(pendingScanData);
 }
 
@@ -818,7 +822,7 @@ function scanField(label, val) {
 }
 
 // Taranan fotoğraf sonucunu kayıt listesine ekle
-function sonucuEkle() {
+async function sonucuEkle() {
     if (!pendingScanData) return;
     var data = pendingScanData;
     var json = data.json, e1 = data.e1;
@@ -870,13 +874,16 @@ function sonucuEkle() {
         beepSes(true); return;
     }
 
+    var scanUrl = '';
+    try { if (pendingUploadPromise) scanUrl = (await pendingUploadPromise) || ''; } catch(e) {}
+    pendingUploadPromise = null;
     rowSayac++;
     var item = {
         rowId: rowSayac, irsaliye_no: irsaliyeNo, tarih: tarih,
         arac_plaka: plaka, mikser_cikis_saati: saat, fatura_no: ettn,
         miktar: miktar, tedarikci_id: tedarikciId, beton_sinifi_id: betonSinifiId,
         kivam_sinifi_id: kivamSinifiId, kantar_net_yildizlar: '', kantar_net_tedarikci: '',
-        proje_id: '', qrKullanildi: true
+        proje_id: '', qrKullanildi: true, scanImageUrl: scanUrl, docUrl: scanUrl
     };
     taranmisList.push(item);
     tabloSatirEkle(item);
@@ -1107,10 +1114,11 @@ function tabloSatirEkle(item) {
     });
 
     // Sayfa görseli hücresi
+    var isPdfUrl = item.scanImageUrl && item.scanImageUrl.toLowerCase().endsWith('.pdf');
     var gorselTd = item.scanImageUrl
-        ? '<td><a href="' + escHtml(item.scanImageUrl) + '" target="_blank" title="Sayfayı Görüntüle">'
-          + '<img src="' + escHtml(item.scanImageUrl) + '" style="width:46px;height:34px;object-fit:cover;border-radius:4px;border:1px solid var(--bt-border)">'
-          + '</a></td>'
+        ? (isPdfUrl
+            ? '<td><a href="' + escHtml(item.scanImageUrl) + '" target="_blank" title="PDF Görüntüle" style="width:46px;height:34px;display:inline-flex;align-items:center;justify-content:center;background:var(--bt-bg-soft);border-radius:4px;border:1px solid var(--bt-border);text-decoration:none"><i class="bi bi-file-pdf text-danger"></i></a></td>'
+            : '<td><a href="' + escHtml(item.scanImageUrl) + '" target="_blank" title="Görüntüle"><img src="' + escHtml(item.scanImageUrl) + '" style="width:46px;height:34px;object-fit:cover;border-radius:4px;border:1px solid var(--bt-border)"></a></td>')
         : '<td><span style="width:46px;height:34px;display:inline-block;background:var(--bt-bg-soft);border-radius:4px;border:1px solid var(--bt-border);"></span></td>';
 
     tr.innerHTML =
@@ -1643,9 +1651,17 @@ var ocrDosyaObj = null;
 
 function ocrSecildi(input) {
     ocrDosyaObj = input.files[0] || null;
+    ocrPdfUrl   = '';
     document.getElementById('btnOcrTara').classList.toggle('d-none', !ocrDosyaObj);
     document.getElementById('ocrSonuc').classList.add('d-none');
     document.getElementById('ocrProgress').classList.add('d-none');
+    if (ocrDosyaObj) {
+        var fd = new FormData(); fd.append('dosya', ocrDosyaObj);
+        fetch('api/pdf_kaydet.php', { method: 'POST', body: fd })
+            .then(function(r){ return r.json(); })
+            .then(function(d){ if (d.ok) ocrPdfUrl = d.url; })
+            .catch(function(){});
+    }
 }
 
 // Sayfadan PDF metin katmanını çıkar (dijital PDF için anında — OCR gerektirmez)
@@ -1868,7 +1884,8 @@ async function ocrTara() {
                     kantar_net_tedarikci: parsed.kantar_net_tedarikci || '',
                     proje_id: '',
                     qrKullanildi: qrVarMi,
-                    scanImageUrl: scanImageUrl || ''
+                    scanImageUrl: scanImageUrl || '',
+                    docUrl: ocrPdfUrl || ''
                 };
                 taranmisList.push(item);
                 tabloSatirEkle(item);
@@ -2184,10 +2201,30 @@ var AI_ETIKETLER = {
 };
 
 function aiDosyaSecildi(input) {
-    aiDosyaObj = input.files[0] || null;
+    aiDosyaObj  = input.files[0] || null;
+    aiDosyaUrl  = '';
     document.getElementById('btnAiOku').classList.toggle('d-none', !aiDosyaObj);
     document.getElementById('aiSonucHT').classList.add('d-none');
     document.getElementById('aiHataHT').classList.add('d-none');
+    if (!aiDosyaObj) return;
+    var isPdf = aiDosyaObj.type === 'application/pdf' || aiDosyaObj.name.toLowerCase().endsWith('.pdf');
+    if (isPdf) {
+        var fd = new FormData(); fd.append('dosya', aiDosyaObj);
+        fetch('api/pdf_kaydet.php', { method: 'POST', body: fd })
+            .then(function(r){ return r.json(); })
+            .then(function(d){ if (d.ok) aiDosyaUrl = d.url; })
+            .catch(function(){});
+    } else {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            var fd2 = new FormData(); fd2.append('image', e.target.result);
+            fetch('api/scan_kaydet.php', { method: 'POST', body: fd2 })
+                .then(function(r){ return r.json(); })
+                .then(function(d){ if (d.ok) aiDosyaUrl = d.url; })
+                .catch(function(){});
+        };
+        reader.readAsDataURL(aiDosyaObj);
+    }
 }
 
 async function aiOku() {
@@ -2286,7 +2323,8 @@ function aiListeyeEkle() {
         arac_plaka: plaka, mikser_cikis_saati: saat, fatura_no: faturaNo,
         miktar: miktar, tedarikci_id: tedarikciId, beton_sinifi_id: betonSinifiId,
         kivam_sinifi_id: kivamSinifiId, kantar_net_yildizlar: '',
-        kantar_net_tedarikci: '', proje_id: '', qrKullanildi: false
+        kantar_net_tedarikci: '', proje_id: '', qrKullanildi: false,
+        scanImageUrl: aiDosyaUrl || '', docUrl: aiDosyaUrl || ''
     };
     taranmisList.push(item);
     tabloSatirEkle(item);

@@ -28,6 +28,7 @@ try {
     $kantarYild  = ($k['kantar_net_yildizlar']  ?? '') !== '' ? (float)str_replace(',', '.', $k['kantar_net_yildizlar'])  : null;
     $kantarTed   = ($k['kantar_net_tedarikci']  ?? '') !== '' ? (float)str_replace(',', '.', $k['kantar_net_tedarikci'])  : null;
     $kantarFark  = ($kantarYild !== null && $kantarTed !== null) ? round($kantarYild - $kantarTed, 2) : null;
+    $scanImageUrl = trim($k['docUrl'] ?? '') ?: (trim($k['scanImageUrl'] ?? '') ?: null);
 
     if (!$tarih)       { echo json_encode(['ok'=>false,'msg'=>'Tarih eksik']);        exit; }
     if (!$tedarikciId) { echo json_encode(['ok'=>false,'msg'=>'Tedarikçi seçilmedi']); exit; }
@@ -35,11 +36,13 @@ try {
     $pdo->prepare("UPDATE irsaliyeler SET
         tarih=?, arac_plaka=?, mikser_cikis_saati=?, fatura_no=?,
         miktar=?, tedarikci_id=?, beton_sinifi_id=?, kivam_sinifi_id=?,
-        proje_id=?, kantar_net_yildizlar=?, kantar_net_tedarikci=?, kantar_farki=?
+        proje_id=?, kantar_net_yildizlar=?, kantar_net_tedarikci=?, kantar_farki=?,
+        scan_image_url=?
         WHERE id=?")
         ->execute([$tarih, $aracPlaka, $mikserCikis, $faturaNo,
                    $miktar ?: 0, $tedarikciId, $betonId, $kivamId,
-                   $projeId, $kantarYild, $kantarTed, $kantarFark, $id]);
+                   $projeId, $kantarYild, $kantarTed, $kantarFark,
+                   $scanImageUrl, $id]);
 
     echo json_encode(['ok'=>true]);
 } catch (PDOException $e) {

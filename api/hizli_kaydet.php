@@ -32,6 +32,7 @@ foreach ($body['kayitlar'] as $k) {
         $kantarYildiz = ($k['kantar_net_yildizlar'] ?? '') !== '' ? (float)str_replace(',','.',$k['kantar_net_yildizlar']) : null;
         $kantarTed    = ($k['kantar_net_tedarikci'] ?? '') !== '' ? (float)str_replace(',','.',$k['kantar_net_tedarikci']) : null;
         $kantarFark   = ($kantarYildiz !== null && $kantarTed !== null) ? round($kantarYildiz - $kantarTed, 2) : null;
+        $scanImageUrl = trim($k['docUrl'] ?? '') ?: (trim($k['scanImageUrl'] ?? '') ?: null);
 
         if (!$tarih) { $atlanan++; $hatalar[] = ($irsaliyeNo ?: '?') . ': Tarih eksik'; continue; }
         if ($miktar <= 0) $miktar = 0;
@@ -64,11 +65,13 @@ foreach ($body['kayitlar'] as $k) {
         $pdo->prepare("INSERT INTO irsaliyeler
             (tip, irsaliye_no, fatura_no, arac_plaka, tedarikci_id, tarih,
              mikser_cikis_saati, miktar, birim, beton_sinifi_id, proje_id,
-             kivam_sinifi_id, kantar_net_yildizlar, kantar_net_tedarikci, kantar_farki, created_by)
-            VALUES ('alis',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+             kivam_sinifi_id, kantar_net_yildizlar, kantar_net_tedarikci, kantar_farki, created_by,
+             scan_image_url)
+            VALUES ('alis',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
             ->execute([$irsaliyeNo, $faturaNo, $aracPlaka, $tedarikciId, $tarih,
                        $mikserCikis, $miktar ?: 0, 'M3', $betonId, $projeId,
-                       $kivamId, $kantarYildiz, $kantarTed, $kantarFark, $uid]);
+                       $kivamId, $kantarYildiz, $kantarTed, $kantarFark, $uid,
+                       $scanImageUrl]);
         $eklenen++;
     } catch (PDOException $e) {
         $atlanan++;
