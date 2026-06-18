@@ -1217,14 +1217,18 @@ async function topluKaydet() {
             var html = '<div class="alert alert-success"><i class="bi bi-check-circle me-1"></i>';
             html += '<strong>' + data.eklenen + ' kayıt eklendi</strong>';
             if (data.atlanan) html += ', ' + data.atlanan + ' atlandı';
+            if (data.cakismalar && data.cakismalar.length) html += ', <strong>' + data.cakismalar.length + ' çakışan</strong>';
             if (data.hatalar && data.hatalar.length) {
                 html += '<ul class="mb-0 mt-1 small">' + data.hatalar.map(function(e){ return '<li>' + escHtml(e) + '</li>'; }).join('') + '</ul>';
             }
             html += '</div>';
             sonucEl.innerHTML = html;
             sonucEl.classList.remove('d-none');
-            // Kaydedilenleri listeden çıkar
             listeTemizle();
+            // Çakışanları modal ile göster
+            if (data.cakismalar && data.cakismalar.length) {
+                cakismalariGoster(data.cakismalar);
+            }
         } else {
             sonucEl.innerHTML = '<div class="alert alert-danger">Hata: ' + escHtml(data.msg) + '</div>';
             sonucEl.classList.remove('d-none');
@@ -2296,6 +2300,159 @@ function aiListeyeEkle() {
     document.getElementById('btnAiOku').classList.add('d-none');
     setDurum('<i class="bi bi-check-circle-fill text-success me-1"></i> AI ile okunan irsaliye eklendi: ' + (irsaliyeNo || 'yeni kayıt'));
 }
+
+// ── Çakışma Yönetimi ─────────────────────────────────────────────────
+var cakismaKuyruk  = [];
+var cakismaIdx     = 0;
+var cakismaModalObj = null;
+
+function cakismalariGoster(cakismalar) {
+    cakismaKuyruk = cakismalar;
+    cakismaIdx    = 0;
+    if (!cakismaModalObj) cakismaModalObj = new bootstrap.Modal(document.getElementById('cakismaModal'));
+    cakismaModalDoldur();
+    cakismaModalObj.show();
+}
+
+function cakismaModalDoldur() {
+    if (cakismaIdx >= cakismaKuyruk.length) { cakismaModalObj.hide(); return; }
+
+    var c      = cakismaKuyruk[cakismaIdx];
+    var mv     = c.mevcut;  // DB kaydı (tedarikci_ad, beton_sinifi_ad vb. dahil)
+    var yn     = c.yeni;    // taranan veri (ID'ler)
+
+    document.getElementById('cakismaSayac').textContent = (cakismaIdx + 1) + ' / ' + cakismaKuyruk.length;
+
+    function adBul(arr, id) {
+        var x = arr.find(function(a){ return String(a.id) === String(id); });
+        return x ? (x.ad || x.kod || String(id)) : (id ? String(id) : '—');
+    }
+    function prjAdBul(id) {
+        var x = PROJELER.find(function(a){ return String(a.id) === String(id); });
+        return x ? (x.kod + (x.aciklama ? ' — ' + x.aciklama : '')) : (id ? String(id) : '—');
+    }
+    function selOpts(arr, selId, emptyLabel) {
+        var html = '<option value="">' + escHtml(emptyLabel || '— Seçin —') + '</option>';
+        arr.forEach(function(a) {
+            var lbl = a.ad || (a.kod + (a.aciklama ? ' — ' + a.aciklama : ''));
+            html += '<option value="' + a.id + '"' + (String(a.id) === String(selId) ? ' selected' : '') + '>' + escHtml(lbl) + '</option>';
+        });
+        return html;
+    }
+
+    // yeni değer yoksa mevcut değeri varsayılan al
+    function yeniOrMevcut(yeniVal, mevcutVal) { return (yeniVal !== undefined && yeniVal !== null && yeniVal !== '') ? yeniVal : mevcutVal; }
+
+    var fields = [
+        { label:'Tarih',              id:'cak_tarih',              type:'date',   mevcutDisp: mv.tarih||'—',             yeniDisp: yn.tarih||'—',                       defaultVal: yeniOrMevcut(yn.tarih, mv.tarih||''),               input: function(v){ return '<input type="date" class="form-control form-control-sm" id="cak_tarih" value="'+escHtml(v)+'">'; }, mevcutCmp: mv.tarih||'', yeniCmp: yn.tarih||'' },
+        { label:'Araç Plaka',         id:'cak_arac_plaka',         type:'text',   mevcutDisp: mv.arac_plaka||'—',        yeniDisp: (yn.arac_plaka||'—').toUpperCase(),   defaultVal: yeniOrMevcut(yn.arac_plaka, mv.arac_plaka||'').toUpperCase(), input: function(v){ return '<input type="text" class="form-control form-control-sm text-uppercase" id="cak_arac_plaka" value="'+escHtml(v)+'">'; }, mevcutCmp: (mv.arac_plaka||'').toUpperCase(), yeniCmp: (yn.arac_plaka||'').toUpperCase() },
+        { label:'Çıkış Saati',        id:'cak_mikser_cikis_saati', type:'time',   mevcutDisp: mv.mikser_cikis_saati||'—',yeniDisp: yn.mikser_cikis_saati||'—',           defaultVal: yeniOrMevcut(yn.mikser_cikis_saati, mv.mikser_cikis_saati||''), input: function(v){ return '<input type="time" class="form-control form-control-sm" id="cak_mikser_cikis_saati" value="'+escHtml(v)+'">'; }, mevcutCmp: mv.mikser_cikis_saati||'', yeniCmp: yn.mikser_cikis_saati||'' },
+        { label:'Fatura No / ETTN',   id:'cak_fatura_no',          type:'text',   mevcutDisp: mv.fatura_no||'—',         yeniDisp: yn.fatura_no||'—',                    defaultVal: yeniOrMevcut(yn.fatura_no, mv.fatura_no||''),               input: function(v){ return '<input type="text" class="form-control form-control-sm" id="cak_fatura_no" value="'+escHtml(v)+'">'; }, mevcutCmp: mv.fatura_no||'', yeniCmp: yn.fatura_no||'' },
+        { label:'Miktar (m³)',        id:'cak_miktar',             type:'number', mevcutDisp: mv.miktar||'—',            yeniDisp: yn.miktar||'—',                       defaultVal: yeniOrMevcut(yn.miktar, mv.miktar||''),                    input: function(v){ return '<input type="number" step="0.01" min="0" class="form-control form-control-sm" id="cak_miktar" value="'+escHtml(v)+'">'; }, mevcutCmp: String(mv.miktar||''), yeniCmp: String(yn.miktar||'') },
+        { label:'Tedarikçi',          id:'cak_tedarikci_id',       type:'select', mevcutDisp: mv.tedarikci_ad||'—',      yeniDisp: adBul(TEDARIKCILER, yn.tedarikci_id), defaultVal: yeniOrMevcut(yn.tedarikci_id, mv.tedarikci_id||''),        input: function(v){ return '<select class="form-select form-select-sm" id="cak_tedarikci_id">'+selOpts(TEDARIKCILER, v)+'</select>'; }, mevcutCmp: String(mv.tedarikci_id||''), yeniCmp: String(yn.tedarikci_id||'') },
+        { label:'Beton Sınıfı',       id:'cak_beton_sinifi_id',    type:'select', mevcutDisp: mv.beton_sinifi_ad||'—',   yeniDisp: adBul(BETON_SINIFLARI, yn.beton_sinifi_id), defaultVal: yeniOrMevcut(yn.beton_sinifi_id, mv.beton_sinifi_id||''), input: function(v){ return '<select class="form-select form-select-sm" id="cak_beton_sinifi_id">'+selOpts(BETON_SINIFLARI, v)+'</select>'; }, mevcutCmp: String(mv.beton_sinifi_id||''), yeniCmp: String(yn.beton_sinifi_id||'') },
+        { label:'Kıvam',              id:'cak_kivam_sinifi_id',    type:'select', mevcutDisp: mv.kivam_ad||'—',          yeniDisp: adBul(KIVAM_SINIFLARI, yn.kivam_sinifi_id), defaultVal: yeniOrMevcut(yn.kivam_sinifi_id, mv.kivam_sinifi_id||''), input: function(v){ return '<select class="form-select form-select-sm" id="cak_kivam_sinifi_id">'+selOpts(KIVAM_SINIFLARI, v)+'</select>'; }, mevcutCmp: String(mv.kivam_sinifi_id||''), yeniCmp: String(yn.kivam_sinifi_id||'') },
+        { label:'Proje',              id:'cak_proje_id',           type:'select', mevcutDisp: mv.proje_kod||'—',         yeniDisp: prjAdBul(yn.proje_id),                defaultVal: yeniOrMevcut(yn.proje_id, mv.proje_id||''),                input: function(v){ return '<select class="form-select form-select-sm" id="cak_proje_id">'+selOpts(PROJELER, v, '— Seçin —')+'</select>'; }, mevcutCmp: String(mv.proje_id||''), yeniCmp: String(yn.proje_id||'') },
+    ];
+
+    var html = '<div class="d-flex align-items-center gap-2 mb-3">';
+    html += '<i class="bi bi-file-earmark-text text-warning fs-5"></i>';
+    html += '<span class="fw-semibold">İrsaliye No: <code>' + escHtml(mv.irsaliye_no||'?') + '</code></span>';
+    html += '<span class="badge bg-warning text-dark">Veritabanında Kayıtlı</span>';
+    html += '</div>';
+    html += '<div class="table-responsive"><table class="table table-sm table-bordered align-middle mb-1">';
+    html += '<thead class="table-light small"><tr><th>Alan</th><th class="text-muted">Kayıtlı (DB)</th><th>Yeni Taranan</th><th>Kullanılacak Değer</th></tr></thead><tbody>';
+
+    fields.forEach(function(f) {
+        var differ = f.mevcutCmp !== f.yeniCmp && f.yeniCmp !== '';
+        html += '<tr' + (differ ? ' class="table-warning"' : '') + '>';
+        html += '<td class="fw-semibold small text-nowrap">' + escHtml(f.label);
+        if (differ) html += ' <i class="bi bi-arrow-left-right text-warning small"></i>';
+        html += '</td>';
+        html += '<td class="small text-muted">' + escHtml(String(f.mevcutDisp)) + '</td>';
+        html += '<td class="small">' + escHtml(String(f.yeniDisp)) + '</td>';
+        html += '<td>' + f.input(f.defaultVal) + '</td>';
+        html += '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+    html += '<input type="hidden" id="cak_id" value="' + escHtml(String(mv.id||'')) + '">';
+
+    document.getElementById('cakismaBody').innerHTML = html;
+    var btn = document.getElementById('btnCakismaGuncelle');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-pencil-square me-1"></i> Güncelle &amp; Devam';
+}
+
+function cakismaAtla() {
+    cakismaIdx++;
+    cakismaModalDoldur();
+}
+
+async function cakismaGuncelle() {
+    var id  = document.getElementById('cak_id').value;
+    var btn = document.getElementById('btnCakismaGuncelle');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Kaydediliyor...';
+
+    var alanlar = {
+        tarih:               document.getElementById('cak_tarih').value,
+        arac_plaka:          document.getElementById('cak_arac_plaka').value,
+        mikser_cikis_saati:  document.getElementById('cak_mikser_cikis_saati').value,
+        fatura_no:           document.getElementById('cak_fatura_no').value,
+        miktar:              document.getElementById('cak_miktar').value,
+        tedarikci_id:        document.getElementById('cak_tedarikci_id').value,
+        beton_sinifi_id:     document.getElementById('cak_beton_sinifi_id').value,
+        kivam_sinifi_id:     document.getElementById('cak_kivam_sinifi_id').value,
+        proje_id:            document.getElementById('cak_proje_id').value,
+    };
+
+    try {
+        var resp = await fetch('api/hizli_guncelle.php', {
+            method:  'POST',
+            headers: {'Content-Type':'application/json'},
+            body:    JSON.stringify({id: id, alanlar: alanlar})
+        });
+        var data = await resp.json();
+        if (data.ok) {
+            cakismaIdx++;
+            cakismaModalDoldur();
+        } else {
+            alert('Güncelleme hatası: ' + (data.msg || 'Bilinmeyen hata'));
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-pencil-square me-1"></i> Güncelle &amp; Devam';
+        }
+    } catch(e) {
+        alert('Bağlantı hatası: ' + e.message);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-pencil-square me-1"></i> Güncelle &amp; Devam';
+    }
+}
 </script>
+
+<!-- Çakışma Çözümleme Modalı -->
+<div class="modal fade" id="cakismaModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-warning text-dark py-2">
+        <h5 class="modal-title fw-semibold">
+          <i class="bi bi-exclamation-triangle me-2"></i> Çakışan İrsaliye
+          <span id="cakismaSayac" class="badge bg-dark ms-2"></span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="cakismaBody"></div>
+      <div class="modal-footer">
+        <small class="text-muted me-auto">Sarı satırlar mevcut kayıtla farklı alanları gösterir.</small>
+        <button class="btn btn-outline-secondary" onclick="cakismaAtla()">
+          <i class="bi bi-skip-forward me-1"></i> Atla
+        </button>
+        <button class="btn btn-warning" id="btnCakismaGuncelle" onclick="cakismaGuncelle()">
+          <i class="bi bi-pencil-square me-1"></i> Güncelle &amp; Devam
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

@@ -15,7 +15,7 @@ if (!$body || !isset($body['kayitlar']) || !is_array($body['kayitlar'])) {
 }
 
 $uid = current_user_id();
-$eklenen = 0; $atlanan = 0; $hatalar = [];
+$eklenen = 0; $atlanan = 0; $hatalar = []; $cakismalar = [];
 
 foreach ($body['kayitlar'] as $k) {
     try {
@@ -36,16 +36,29 @@ foreach ($body['kayitlar'] as $k) {
         if (!$tarih) { $atlanan++; $hatalar[] = ($irsaliyeNo ?: '?') . ': Tarih eksik'; continue; }
         if ($miktar <= 0) $miktar = 0;
 
-        // Tedarikçi zorunlu değilse, null bırak — ama INSERT NOT NULL hatası verebilir
-        // tedarikci_id NOT NULL ise en azından dummy bir değer gerekli,
-        // bu yüzden tedarikciId yoksa atlıyoruz
         if (!$tedarikciId) { $atlanan++; $hatalar[] = ($irsaliyeNo ?: '?') . ': Tedarikçi seçilmedi'; continue; }
 
-        // Duplicate check
+        // Duplicate check — çakışma varsa atla değil, karşılaştırma için döndür
         if ($irsaliyeNo) {
-            $dup = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler WHERE irsaliye_no=?");
+            $dup = $pdo->prepare("
+                SELECT i.id, i.irsaliye_no, i.tarih, i.arac_plaka, i.mikser_cikis_saati,
+                       i.fatura_no, i.miktar, i.tedarikci_id, i.beton_sinifi_id,
+                       i.kivam_sinifi_id, i.proje_id, i.kantar_net_yildizlar, i.kantar_net_tedarikci,
+                       t.ad AS tedarikci_ad, bs.ad AS beton_sinifi_ad,
+                       ks.ad AS kivam_ad, p.kod AS proje_kod
+                FROM irsaliyeler i
+                LEFT JOIN tedarikciler    t  ON t.id  = i.tedarikci_id
+                LEFT JOIN beton_siniflari bs ON bs.id = i.beton_sinifi_id
+                LEFT JOIN kivam_siniflari ks ON ks.id = i.kivam_sinifi_id
+                LEFT JOIN projeler        p  ON p.id  = i.proje_id
+                WHERE i.irsaliye_no = ? LIMIT 1
+            ");
             $dup->execute([$irsaliyeNo]);
-            if ($dup->fetchColumn() > 0) { $atlanan++; $hatalar[] = $irsaliyeNo . ': Zaten mevcut'; continue; }
+            $mevcut = $dup->fetch(PDO::FETCH_ASSOC);
+            if ($mevcut) {
+                $cakismalar[] = ['mevcut' => $mevcut, 'yeni' => $k];
+                continue;
+            }
         }
 
         $pdo->prepare("INSERT INTO irsaliyeler
@@ -63,4 +76,4 @@ foreach ($body['kayitlar'] as $k) {
     }
 }
 
-echo json_encode(['ok'=>true, 'eklenen'=>$eklenen, 'atlanan'=>$atlanan, 'hatalar'=>$hatalar]);
+echo json_encode(['ok'=>true, 'eklenen'=>$eklenen, 'atlanan'=>$atlanan, 'hatalar'=>$hatalar, 'cakismalar'=>$cakismalar]);
