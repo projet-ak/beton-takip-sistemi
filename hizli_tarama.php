@@ -1129,7 +1129,7 @@ function tabloSatirEkle(item) {
         '<td><input type="text" class="form-control form-control-sm text-uppercase" style="min-width:100px" value="' + escHtml(item.arac_plaka || '') + '" oninput="satirGuncelle(' + item.rowId + ',\'arac_plaka\',this.value)"></td>' +
         '<td><input type="time" class="form-control form-control-sm" style="min-width:85px" value="' + escHtml(item.mikser_cikis_saati || '') + '" onchange="satirGuncelle(' + item.rowId + ',\'mikser_cikis_saati\',this.value)"></td>' +
         '<td><input type="text" class="form-control form-control-sm" style="min-width:150px" value="' + escHtml(item.fatura_no || '') + '" oninput="satirGuncelle(' + item.rowId + ',\'fatura_no\',this.value)"></td>' +
-        '<td><select class="form-select form-select-sm" style="min-width:160px" onchange="satirGuncelle(' + item.rowId + ',\'tedarikci_id\',this.value)">' + tedOpts + '</select></td>' +
+        '<td><select class="form-select form-select-sm' + (!item.tedarikci_id && item.qrVkn ? ' border-warning' : '') + '" style="min-width:160px" onchange="satirGuncelle(' + item.rowId + ',\'tedarikci_id\',this.value)" title="' + (item.qrVkn && !item.tedarikci_id ? 'QR\'dan VKN okundu: ' + escHtml(item.qrVkn) + ' — Tedarikçiler sayfasında bu VKN\'i ilgili tedarikçiye ekleyin' : '') + '">' + tedOpts + '</select>' + (!item.tedarikci_id && item.qrVkn ? '<div class="text-warning small mt-1" style="font-size:0.7rem"><i class="bi bi-exclamation-circle me-1"></i>VKN: ' + escHtml(item.qrVkn) + '</div>' : '') + '</td>' +
         '<td><select class="form-select form-select-sm" style="min-width:120px" onchange="satirGuncelle(' + item.rowId + ',\'beton_sinifi_id\',this.value)">' + betOpts + '</select></td>' +
         '<td><select class="form-select form-select-sm" style="min-width:90px" onchange="satirGuncelle(' + item.rowId + ',\'kivam_sinifi_id\',this.value)">' + kivOpts + '</select></td>' +
         '<td><input type="number" class="form-control form-control-sm" style="min-width:85px" step="0.01" min="0" placeholder="0.0" value="' + escHtml(item.miktar || '') + '" oninput="satirGuncelle(' + item.rowId + ',\'miktar\',this.value)"></td>' +
@@ -1301,8 +1301,9 @@ function qrVerileriniUygula(parsed, qrJson, qrE1) {
             }
         }
         if (qrE1.vkn) {
+            parsed.qrVkn = String(qrE1.vkn).trim();
             for (var te = 0; te < TEDARIKCILER.length; te++) {
-                if (TEDARIKCILER[te].vkn && String(TEDARIKCILER[te].vkn).trim() === String(qrE1.vkn).trim()) {
+                if (TEDARIKCILER[te].vkn && String(TEDARIKCILER[te].vkn).trim() === parsed.qrVkn) {
                     parsed.tedarikci_id = String(TEDARIKCILER[te].id); break;
                 }
             }
@@ -1323,10 +1324,13 @@ function qrVerileriniUygula(parsed, qrJson, qrE1) {
         if (qrJson.plaka)      parsed.plaka         = String(qrJson.plaka).replace(/\s+/g,'').toUpperCase();
         if (qrJson.sevkzamani) parsed.sevkZamani   = String(qrJson.sevkzamani).substring(0, 5);
         if (qrJson.ettn)       parsed.ettn          = String(qrJson.ettn).trim();
-        if (qrJson.vkntckn && !parsed.tedarikci_id) {
-            for (var ti = 0; ti < TEDARIKCILER.length; ti++) {
-                if (TEDARIKCILER[ti].vkn && String(TEDARIKCILER[ti].vkn).trim() === String(qrJson.vkntckn).trim()) {
-                    parsed.tedarikci_id = String(TEDARIKCILER[ti].id); break;
+        if (qrJson.vkntckn) {
+            if (!parsed.qrVkn) parsed.qrVkn = String(qrJson.vkntckn).trim();
+            if (!parsed.tedarikci_id) {
+                for (var ti = 0; ti < TEDARIKCILER.length; ti++) {
+                    if (TEDARIKCILER[ti].vkn && String(TEDARIKCILER[ti].vkn).trim() === parsed.qrVkn) {
+                        parsed.tedarikci_id = String(TEDARIKCILER[ti].id); break;
+                    }
                 }
             }
         }
@@ -1385,7 +1389,8 @@ async function pdfTara() {
                     var qrSonuc = qrSonucListesi[g];
                     var parsed  = { irsaliye_no:'', tarih:'', plaka:'', miktar:'',
                                     sevkZamani:'', ettn:'', beton_sinifi_id:'', tedarikci_id:'',
-                                    kivam_sinifi_id:'', kantar_net_yildizlar:'', kantar_net_tedarikci:'' };
+                                    kivam_sinifi_id:'', kantar_net_yildizlar:'', kantar_net_tedarikci:'',
+                                    qrVkn:'' };
                     qrVerileriniUygula(parsed, qrSonuc.json, qrSonuc.e1);
 
                     if (!parsed.irsaliye_no && !qrSonuc.e1) {
@@ -1415,7 +1420,8 @@ async function pdfTara() {
                         kantar_net_yildizlar: parsed.kantar_net_yildizlar || '',
                         kantar_net_tedarikci: parsed.kantar_net_tedarikci || '',
                         proje_id: '',
-                        qrKullanildi: true
+                        qrKullanildi: true,
+                        qrVkn: parsed.qrVkn || ''
                     };
                     taranmisList.push(item);
                     tabloSatirEkle(item);
