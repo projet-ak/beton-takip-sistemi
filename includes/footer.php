@@ -38,6 +38,10 @@ $__rp   = $rootPath ?? '';
   </a>
 </nav>
 
+<?php if (function_exists('current_user') && current_user()): ?>
+<?php require_once __DIR__ . '/ai_chat_widget.php'; ?>
+<?php endif; ?>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="<?= $rootPath ?? '' ?>assets/js/app.js?v=<?= time() ?>"></script>
 <script>
