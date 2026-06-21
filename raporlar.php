@@ -193,7 +193,7 @@ $stm = $pdo->prepare("
            t.ad AS tedarikci, bs.ad AS beton_sinifi, i.miktar, i.birim,
            pt.ad AS pompa, ig.ad AS imalat_grup, aik.ad AS ana_is_kalemi,
            par.ad AS parsel, blk.ad AS blok, ko.kot_degeri AS kot,
-           f.ad AS firma, i.arac_plaka, i.aciklama, p.kod AS proje_kod
+           f.ad AS firma, i.arac_plaka, i.aciklama, p.kod AS proje_kod, p.ad AS proje_ad
     FROM irsaliyeler i
     LEFT JOIN tedarikciler t       ON t.id   = i.tedarikci_id
     LEFT JOIN beton_siniflari bs   ON bs.id  = i.beton_sinifi_id
@@ -793,6 +793,7 @@ const RAPOR_DETAY = <?= json_encode(array_map(function($d) {
         'firma'        => $d['firma'] ?? '',
         'arac_plaka'   => $d['arac_plaka'] ?? '',
         'proje_kod'    => $d['proje_kod'] ?? '',
+        'proje_ad'     => $d['proje_ad']  ?? '',
         'aciklama'     => $d['aciklama'] ?? '',
     ];
 }, $detayRows), JSON_UNESCAPED_UNICODE) ?>;
@@ -946,6 +947,8 @@ async function buildDetaySheet(wb) {
     });
 
     const cols = [
+        { key: 'proje_kod',    header: 'Proje Kodu',   width: 12 },
+        { key: 'proje_ad',     header: 'Proje Adı',    width: 28 },
         { key: 'tarih',        header: 'Tarih',        width: 13 },
         { key: 'irsaliye_no',  header: 'İrsaliye No',  width: 26 },
         { key: 'tip',          header: 'Tip',           width: 8  },
@@ -960,13 +963,12 @@ async function buildDetaySheet(wb) {
         { key: 'kot',          header: 'Kot',           width: 12 },
         { key: 'firma',        header: 'Firma',         width: 14 },
         { key: 'arac_plaka',   header: 'Araç Plaka',   width: 13 },
-        { key: 'proje_kod',    header: 'Proje',         width: 10 },
         { key: 'aciklama',     header: 'Açıklama',      width: 22 },
     ];
     ws.columns = cols;
 
     // ── Satır 1: ERN Logo Başlık ──────────────────────────────────────────────
-    ws.mergeCells('A1:P1');
+    ws.mergeCells('A1:Q1');
     const r1 = ws.getRow(1);
     r1.height = 36;
     const c1 = ws.getCell('A1');
@@ -976,7 +978,7 @@ async function buildDetaySheet(wb) {
     c1.alignment = xlAlign('center');
 
     // ── Satır 2: Rapor Dönemi ─────────────────────────────────────────────────
-    ws.mergeCells('A2:P2');
+    ws.mergeCells('A2:Q2');
     const r2 = ws.getRow(2);
     r2.height = 22;
     const c2 = ws.getCell('A2');
@@ -987,7 +989,7 @@ async function buildDetaySheet(wb) {
     c2.alignment = xlAlign('center');
 
     // ── Satır 3: Boş ayırıcı ─────────────────────────────────────────────────
-    ws.mergeCells('A3:P3');
+    ws.mergeCells('A3:Q3');
     ws.getCell('A3').fill = xlFill(XL.ernTealBg);
     ws.getRow(3).height = 6;
 
@@ -1017,6 +1019,8 @@ async function buildDetaySheet(wb) {
         const bgArgb = even ? XL.rowEven : XL.rowOdd;
 
         const vals = [
+            d.proje_kod,
+            d.proje_ad,
             d.tarih ? d.tarih.split('-').reverse().join('.') : '',
             d.irsaliye_no,
             d.tip === 'alis' ? 'Alış' : 'İade',
@@ -1031,7 +1035,6 @@ async function buildDetaySheet(wb) {
             d.kot,
             d.firma,
             d.arac_plaka,
-            d.proje_kod,
             d.aciklama,
         ];
         vals.forEach((v, ci) => {
@@ -1040,7 +1043,7 @@ async function buildDetaySheet(wb) {
             cell.fill      = xlFill(bgArgb);
             cell.font      = xlFont({ size: 9.5, color: { argb: XL.darkText } });
             cell.border    = xlBorder('hair', XL.midGray);
-            if (ci === 5) {
+            if (ci === 7) {
                 // Miktar: sağa hizalı, sayı formatı
                 cell.numFmt    = '#,##0.00';
                 cell.alignment = xlAlign('right');
@@ -1049,7 +1052,7 @@ async function buildDetaySheet(wb) {
                 cell.alignment = xlAlign('left');
             }
             // Tip renklendirme
-            if (ci === 2) {
+            if (ci === 4) {
                 cell.font = xlFont({ size: 9.5, bold: true,
                     color: { argb: d.tip === 'alis' ? 'FF198754' : XL.red } });
             }
@@ -1059,7 +1062,7 @@ async function buildDetaySheet(wb) {
     // ── Toplam Satırı ─────────────────────────────────────────────────────────
     const totalRow = RAPOR_DETAY.length + 6;
     ws.getRow(totalRow).height = 22;
-    ws.mergeCells(`A${totalRow}:E${totalRow}`);
+    ws.mergeCells(`A${totalRow}:G${totalRow}`);
     const tc = ws.getCell(`A${totalRow}`);
     tc.value     = `TOPLAM  (${RAPOR_DETAY.length} Kayıt)`;
     tc.font      = xlFont({ bold: true, size: 10, color: { argb: XL.ernDark } });
@@ -1067,7 +1070,7 @@ async function buildDetaySheet(wb) {
     tc.alignment = xlAlign('right');
     tc.border    = xlBorder('medium', XL.ernGreen);
 
-    const miktarCell = ws.getCell(totalRow, 6);
+    const miktarCell = ws.getCell(totalRow, 8);
     const toplamHesap = RAPOR_DETAY.reduce((s, d) => s + (d.miktar || 0), 0);
     miktarCell.value     = toplamHesap;
     miktarCell.numFmt    = '#,##0.00';
@@ -1076,7 +1079,7 @@ async function buildDetaySheet(wb) {
     miktarCell.alignment = xlAlign('right');
     miktarCell.border    = xlBorder('medium', XL.ernGreen);
 
-    for (let ci = 7; ci <= cols.length; ci++) {
+    for (let ci = 9; ci <= cols.length; ci++) {
         const c = ws.getCell(totalRow, ci);
         c.fill   = xlFill(XL.totalBg);
         c.border = xlBorder('medium', XL.ernGreen);
@@ -1208,16 +1211,19 @@ function exportPDF() {
         var bg  = i%2===0?'#F0F6F5':'#FFFFFF';
         var tc  = d.tip==='alis'?'#198754':'#dc3545';
         var pb  = [d.parsel,d.blok].filter(Boolean).join(' / ');
-        return '<tr style="background:'+bg+'"><td style="text-align:center">'+(d.tarih?d.tarih.split('-').reverse().join('.'):'')
-            +'</td><td style="font-size:7pt;font-family:monospace">'+escH(d.irsaliye_no)+'</td>'
+        return '<tr style="background:'+bg+'">'
+            +'<td style="text-align:center;font-size:7pt;font-weight:700">'+escH(d.proje_kod)+'</td>'
+            +'<td style="font-size:7pt">'+escH(d.proje_ad)+'</td>'
+            +'<td style="text-align:center">'+(d.tarih?d.tarih.split('-').reverse().join('.'):'')+'</td>'
+            +'<td style="font-size:7pt;font-family:monospace">'+escH(d.irsaliye_no)+'</td>'
             +'<td style="text-align:center;font-weight:700;color:'+tc+'">'+(d.tip==='alis'?'Alış':'İade')+'</td>'
-            +'<td>'+escH(d.tedarikci)+'</td><td style="text-align:center">'+escH(d.beton_sinifi)+'</td>'
+            +'<td>'+escH(d.tedarikci)+'</td>'
+            +'<td style="text-align:center">'+escH(d.beton_sinifi)+'</td>'
             +'<td style="text-align:right;font-weight:700;color:#00584E">'+fmt(d.miktar)+'</td>'
             +'<td style="text-align:center;font-size:7pt">'+escH(d.pompa)+'</td>'
             +'<td style="font-size:7pt">'+escH(d.imalat_grup)+'</td>'
             +'<td style="font-size:7pt">'+escH(pb)+'</td>'
-            +'<td style="text-align:center;font-size:7pt">'+escH(d.arac_plaka)+'</td>'
-            +'<td style="text-align:center;font-size:7pt">'+escH(d.proje_kod)+'</td></tr>';
+            +'<td style="text-align:center;font-size:7pt">'+escH(d.arac_plaka)+'</td></tr>';
     }).join('');
 
     var aylikRows = RAPOR_AYLIK.map(function(a,i){
@@ -1290,22 +1296,23 @@ function exportPDF() {
         +'<div class="sub">Dönem: '+escH(donem)+'  |  Toplam: '+fmt(toplam)+' m³  |  '+RAPOR_DETAY.length+' İrsaliye  |  '+escH(tarih)+'</div>'
         +'<div class="sec">📋  Detay Rapor</div>'
         +'<table><thead><tr>'
+        +'<th style="width:22px;text-align:center">Proje Kodu</th>'
+        +'<th style="width:70px">Proje Adı</th>'
         +'<th style="width:32px;text-align:center">Tarih</th>'
-        +'<th style="width:86px">İrsaliye No</th>'
+        +'<th style="width:80px">İrsaliye No</th>'
         +'<th style="width:20px;text-align:center">Tip</th>'
-        +'<th style="width:75px">Tedarikçi</th>'
+        +'<th style="width:70px">Tedarikçi</th>'
         +'<th style="width:26px;text-align:center">Beton</th>'
         +'<th style="width:26px;text-align:right">m³</th>'
-        +'<th style="width:38px;text-align:center">Pompa</th>'
-        +'<th style="width:58px">İmalat</th>'
-        +'<th style="width:78px">Parsel/Blok</th>'
-        +'<th style="width:36px;text-align:center">Plaka</th>'
-        +'<th style="width:22px;text-align:center">Proje</th>'
+        +'<th style="width:36px;text-align:center">Pompa</th>'
+        +'<th style="width:55px">İmalat</th>'
+        +'<th style="width:70px">Parsel/Blok</th>'
+        +'<th style="width:34px;text-align:center">Plaka</th>'
         +'</tr></thead><tbody>'+detayRows+'</tbody>'
         +'<tfoot><tr class="tot">'
-        +'<td colspan="5" style="text-align:right">TOPLAM ('+RAPOR_DETAY.length+' Kayıt)</td>'
+        +'<td colspan="7" style="text-align:right">TOPLAM ('+RAPOR_DETAY.length+' Kayıt)</td>'
         +'<td style="text-align:right">'+fmt(toplam)+'</td>'
-        +'<td colspan="5"></td></tr></tfoot></table></div>'
+        +'<td colspan="4"></td></tr></tfoot></table></div>'
         // Sayfa 2
         +'<div class="page p2">'
         +'<div class="hdr">ERN HOLDİNG — BETON TAKİP SİSTEMİ</div>'
