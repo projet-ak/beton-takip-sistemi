@@ -179,6 +179,34 @@ html[data-dark="1"] .scan-result-header.err { background: rgba(224,84,84,.12); c
     object-fit: contain;
     display: block;
 }
+
+/* ── Drop Zone ─────────────────────────────────────────────────── */
+.drop-zone {
+    border: 2px dashed var(--bs-border-color, #dee2e6);
+    border-radius: 12px;
+    padding: 28px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+    user-select: none;
+}
+.drop-zone:hover, .drop-zone.dragging {
+    border-color: var(--ern, #00584E);
+    background: rgba(0,88,78,.04);
+}
+.drop-zone-icon { font-size: 2.4rem; color: var(--bt-text-muted,#4E7068); display: block; margin-bottom: .5rem; opacity: .6; }
+.drop-zone-text { font-weight: 600; color: var(--bs-body-color); margin-bottom: .2rem; font-size: .9rem; }
+.drop-zone-hint { font-size: .78rem; color: var(--bt-text-muted,#4E7068); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { display: inline-block; animation: spin 1s linear infinite; }
+.yontem-badge {
+    font-size: .74rem;
+    padding: .25em .7em;
+    border-radius: 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+}
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
@@ -186,252 +214,180 @@ html[data-dark="1"] .scan-result-header.err { background: rgba(224,84,84,.12); c
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';</script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
-<!-- PDF İşleme Paneli -->
+<!-- Belge Okuma Paneli -->
 <div class="row g-3 mb-4">
   <div class="col-12">
     <div class="card shadow-sm">
       <div class="card-header p-0">
-        <div class="d-flex align-items-center justify-content-between flex-wrap">
-          <ul class="nav nav-tabs border-bottom-0 px-3 pt-2">
-            <li class="nav-item">
-              <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabPdfQr">
-                <i class="bi bi-qr-code text-danger me-1"></i> QR Kodu Tara
-              </button>
-            </li>
-            <li class="nav-item">
-              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabPdfOcr">
-                <i class="bi bi-file-text text-primary me-1"></i> OCR ile Oku
-              </button>
-            </li>
-            <li class="nav-item">
-              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabAiOku">
-                <i class="bi bi-stars text-success me-1"></i> AI ile Oku
-              </button>
-            </li>
-            <li class="nav-item">
-              <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabKamera">
-                <i class="bi bi-camera text-primary me-1"></i> Fotoğraf Çek &amp; Tara
-              </button>
-            </li>
-          </ul>
-          <div class="d-flex align-items-center gap-2 px-3 pb-1">
-            <span id="sayacBadge" class="badge" style="background:var(--ern);font-size:.8rem;padding:.4em .8em;">0 kayıt</span>
+        <div class="d-flex align-items-center justify-content-between px-3 py-2">
+          <span class="fw-semibold">
+            <i class="bi bi-file-earmark-search text-primary me-2"></i>Belge Oku
+          </span>
+          <div class="d-flex align-items-center gap-2">
+            <span id="sayacBadge" class="badge" style="background:var(--ern);font-size:.8rem;padding:.4em .8em;">0 kayit</span>
             <span id="scannerBadge" class="badge bg-secondary d-none" style="font-size:.72rem;"></span>
           </div>
         </div>
       </div>
       <div class="card-body">
-        <div class="tab-content">
 
-          <!-- QR Tab -->
-          <div class="tab-pane fade show active" id="tabPdfQr">
-            <div class="row g-3 align-items-end">
-              <div class="col-sm-8">
-                <label class="form-label fw-semibold small">PDF Dosyası Seç</label>
-                <input type="file" id="pdfDosya" class="form-control" accept=".pdf" onchange="pdfSecildi(this)">
-                <div class="form-text">Her sayfadaki QR kodlar otomatik taranır ve tabloya eklenir.</div>
-              </div>
-              <div class="col-sm-4">
-                <button id="btnPdfTara" class="btn btn-danger w-100 d-none" onclick="pdfTara()">
-                  <i class="bi bi-qr-code-scan me-1"></i> QR Kodları Tara
-                </button>
-              </div>
-            </div>
-            <div id="pdfProgress" class="d-none mt-3">
-              <div class="d-flex justify-content-between small mb-1">
-                <span id="pdfProgressText">Sayfa taranıyor...</span>
-                <span id="pdfProgressPct">0%</span>
-              </div>
-              <div class="progress" style="height:6px;">
-                <div id="pdfProgressBar" class="progress-bar bg-danger progress-bar-striped progress-bar-animated" style="width:0%"></div>
-              </div>
-            </div>
-            <div id="pdfSonuc" class="d-none mt-3"></div>
-            <canvas id="pdfCanvas" class="d-none"></canvas>
-          </div>
-
-          <!-- OCR Tab -->
-          <div class="tab-pane fade" id="tabPdfOcr">
-            <div class="alert alert-info py-2 small mb-3">
-              <i class="bi bi-info-circle me-1"></i>
-              PDF içindeki metin okunur; <strong>İrsaliye No, Tarih, Plaka, Miktar, Beton Sınıfı ve Tedarikçi</strong> otomatik çıkartılır. Her sayfa = 1 irsaliye kaydı.
-              Dijital (taranmış değil) PDF dosyalarında çalışır.
-            </div>
-            <div class="row g-3 align-items-end">
-              <div class="col-sm-8">
-                <label class="form-label fw-semibold small">PDF Dosyası Seç</label>
-                <input type="file" id="ocrDosya" class="form-control" accept=".pdf" onchange="ocrSecildi(this)">
-                <div class="form-text">Çok sayfalı PDF desteklenir — her sayfa ayrı irsaliye satırı olarak eklenir.</div>
-              </div>
-              <div class="col-sm-4">
-                <button id="btnOcrTara" class="btn btn-primary w-100 d-none" onclick="ocrTara()">
-                  <i class="bi bi-file-text me-1"></i> Metni Oku &amp; Ekle
-                </button>
-              </div>
-            </div>
-            <div id="ocrProgress" class="d-none mt-3">
-              <div class="d-flex justify-content-between small mb-1">
-                <span id="ocrProgressText">Sayfa okunuyor...</span>
-                <span id="ocrProgressPct">0%</span>
-              </div>
-              <div class="progress" style="height:6px;">
-                <div id="ocrProgressBar" class="progress-bar bg-primary progress-bar-striped progress-bar-animated" style="width:0%"></div>
-              </div>
-            </div>
-            <div id="ocrSonuc" class="d-none mt-3"></div>
-          </div>
-
-          <!-- AI Tab -->
-          <div class="tab-pane fade" id="tabAiOku">
-            <div class="alert alert-info py-2 small mb-3">
-              <i class="bi bi-stars me-1"></i>
-              Bir irsaliye fotoğrafı veya PDF yükleyin — yapay zeka alanları otomatik okur ve tabloya ekler.
-            </div>
-            <div class="row g-3">
-              <div class="col-sm-8">
-                <label class="form-label fw-semibold small">Dosya Seç</label>
-                <input type="file" id="aiDosya" class="form-control" accept=".jpg,.jpeg,.png,.webp,.pdf" onchange="aiDosyaSecildi(this)">
-                <div class="form-text">JPG, PNG, WEBP veya PDF (maks. 20 MB)</div>
-              </div>
-              <div class="col-sm-4 d-flex align-items-end">
-                <button id="btnAiOku" class="btn btn-success w-100 d-none" onclick="aiOku()">
-                  <i class="bi bi-stars me-1"></i> Belgeden Oku
-                </button>
-              </div>
-            </div>
-            <div id="aiProgress" class="d-none mt-3">
-              <div class="d-flex align-items-center gap-2 text-muted small">
-                <div class="spinner-border spinner-border-sm"></div> AI belgeyi analiz ediyor...
-              </div>
-            </div>
-            <div id="aiHataHT" class="alert alert-danger mt-3 d-none small py-2"></div>
-            <div id="aiSonucHT" class="d-none mt-3">
-              <p class="fw-semibold small text-muted mb-2">Okunan Alanlar</p>
-              <table class="table table-sm table-bordered small mb-2">
-                <tbody id="aiSonucTbodyHT"></tbody>
-              </table>
-              <button class="btn btn-primary btn-sm w-100" onclick="aiListeyeEkle()">
-                <i class="bi bi-plus-circle me-1"></i> Tabloya Ekle
-              </button>
-            </div>
-          </div>
-
-
-          <!-- Kamera Tab -->
-          <div class="tab-pane fade" id="tabKamera">
-
-            <!-- Kamera Görüntü Alanı -->
-            <div class="cam-viewport" id="camViewport">
-              <video id="videoEl" autoplay playsinline muted></video>
-
-              <!-- Belge kılavuzu -->
-              <div class="doc-guide" id="docGuide" style="display:none">
-                <div class="doc-guide-box">
-                  <div class="doc-corner-br"></div>
-                  <div class="doc-corner-bl"></div>
-                  <!-- Kod pozisyon ipuçları -->
-                  <div class="code-hint">
-                    <div class="code-hint-box">E1<br>KGS</div>
-                    <div class="code-hint-box" style="padding:3px 8px;">QR<br>GİB</div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Yönlendirme metni (kamera açıkken) -->
-              <div class="doc-hint-text" id="hintText" style="display:none">
-                İrsaliyeyi çerçeveye hizalayın • Sağ üstteki iki kare kodu göreceğinizden emin olun
-              </div>
-
-              <!-- Kamera kapalıyken placeholder -->
-              <div id="camPlaceholder" style="min-height:240px;display:flex;align-items:center;justify-content:center;background:var(--bt-bg,#EEF3F2);">
-                <div class="text-center" style="color:var(--bt-text-muted)">
-                  <i class="bi bi-camera" style="font-size:3rem;opacity:.3;display:block;margin-bottom:.75rem"></i>
-                  <div style="font-size:.85rem;font-weight:500">Kamerayı açmak için aşağıdaki butona basın</div>
-                </div>
-              </div>
-
-              <!-- Fullscreen butonu -->
-              <button class="btn-cam-fullscreen d-md-none" id="btnFullscreen" onclick="toggleCamFullscreen()" title="Tam Ekran">
-                <i class="bi bi-fullscreen" id="fsIcon"></i>
-              </button>
-
-              <!-- Flash efekti -->
-              <div id="flashEl" style="position:absolute;inset:0;background:rgba(255,255,255,.8);pointer-events:none;display:none;"></div>
-            </div>
-
-            <!-- Alt Kontrol Çubuğu -->
-            <div class="cam-controls" id="camControls" style="display:none;">
-              <!-- Sol: Kamera çevir + Torch -->
-              <div class="cam-side-btns">
-                <button class="btn-cam-side" id="btnCevir" title="Kamerayı Çevir" onclick="kameraCevir()">
-                  <i class="bi bi-arrow-repeat"></i>
-                </button>
-                <button class="btn-cam-side d-none" id="btnTorch" onclick="torchToggle()" title="Flaş">
-                  <i class="bi bi-lightning-charge"></i>
-                </button>
-              </div>
-
-              <!-- Orta: Ana Çek Butonu -->
-              <button class="btn-capture" id="btnCapture" onclick="fotoCekVeTara()" title="Fotoğraf Çek ve Tara">
-                <i class="bi bi-camera-fill"></i>
-              </button>
-
-              <!-- Sağ: Kapat -->
-              <div class="cam-side-btns">
-                <select id="kameraSec" class="form-select form-select-sm" style="width:auto;max-width:120px;background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff;font-size:.72rem;" onchange="kameraAc()">
-                </select>
-              </div>
-            </div>
-
-            <!-- Kamera Aç / Kapat Buton (görüntü alanı dışı) -->
-            <div class="p-3 d-flex gap-2" id="camOpenArea">
-              <button id="btnAc" class="btn btn-primary flex-fill" onclick="kameraAc()">
-                <i class="bi bi-camera-fill me-1"></i> Kamerayı Aç
-              </button>
-              <button id="btnKapat" class="btn btn-outline-secondary d-none" onclick="kameraKapat()">
-                <i class="bi bi-x-circle me-1"></i> Kapat
-              </button>
-            </div>
-
-            <!-- Tarama Sonuçları (fotoğraf çekince görünür) -->
-            <div id="taramaSonuc" class="p-3 border-top d-none">
-              <div class="d-flex align-items-center justify-content-between mb-2">
-                <span class="fw-semibold small"><i class="bi bi-search me-1"></i>Tarama Sonuçları</span>
-                <div class="d-flex gap-2">
-                  <button class="btn btn-sm btn-outline-secondary" onclick="tekrarCek()">
-                    <i class="bi bi-arrow-counterclockwise me-1"></i>Tekrar Çek
-                  </button>
-                  <button class="btn btn-sm btn-primary d-none" id="btnSonucEkle" onclick="sonucuEkle()">
-                    <i class="bi bi-plus-circle me-1"></i>Listeye Ekle
-                  </button>
-                </div>
-              </div>
-
-              <div class="row g-2">
-                <!-- Fotoğraf önizleme -->
-                <div class="col-md-4">
-                  <div class="photo-preview">
-                    <img id="photoPreviewImg" src="" alt="Çekilen fotoğraf">
-                  </div>
-                </div>
-                <!-- Kod sonuçları -->
-                <div class="col-md-8">
-                  <div id="kodSonuclar" class="d-flex flex-column gap-2"></div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Durum / log -->
-            <div id="durumEl" class="px-3 pb-2 text-center small" style="color:var(--bt-text-muted);min-height:24px;"></div>
-          </div>
-
+        <!-- Drop Zone -->
+        <div id="dropZone" class="drop-zone"
+             onclick="document.getElementById('belgeDosya').click()"
+             ondragover="dropZoneOver(event)"
+             ondragleave="dropZoneLeave(event)"
+             ondrop="dropZoneDrop(event)">
+          <input type="file" id="belgeDosya" hidden
+                 accept=".pdf,.jpg,.jpeg,.png,.webp,.heic"
+                 onchange="dosyaSecildi(this)">
+          <i class="bi bi-cloud-upload drop-zone-icon"></i>
+          <div class="drop-zone-text">Dosya secin veya surukleyip birakin</div>
+          <div class="drop-zone-hint">PDF, JPG, PNG, WEBP &middot; Maks 20 MB</div>
         </div>
+
+        <!-- Secilen Dosya Bilgisi -->
+        <div id="dosyaBilgi" class="d-none mt-3">
+          <div class="d-flex align-items-center gap-2 py-2 px-3 rounded"
+               style="background:var(--bs-success-bg-subtle,#d1e7dd);border:1px solid var(--bs-success-border-subtle,#a3cfbb);">
+            <i id="dosyaIcon" class="bi bi-file-earmark-pdf text-danger fs-5"></i>
+            <div class="flex-grow-1 overflow-hidden">
+              <div id="dosyaAdi" class="fw-semibold small text-truncate"></div>
+              <div id="dosyaBoyut" class="text-muted" style="font-size:.72rem;"></div>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" onclick="dosyaTemizle()">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Kamera Toggle -->
+        <div class="mt-3">
+          <button id="btnKameraToggle" class="btn btn-outline-secondary w-100" onclick="kameraToggle()">
+            <i class="bi bi-camera me-1"></i> Kamera ile Cek
+          </button>
+        </div>
+
+        <!-- Kamera Alani (gizli baslar) -->
+        <div id="kameraAlani" class="d-none mt-3">
+          <div class="cam-viewport" id="camViewport">
+            <video id="videoEl" autoplay playsinline muted></video>
+            <div class="doc-guide" id="docGuide" style="display:none">
+              <div class="doc-guide-box">
+                <div class="doc-corner-br"></div>
+                <div class="doc-corner-bl"></div>
+                <div class="code-hint">
+                  <div class="code-hint-box">E1<br>KGS</div>
+                  <div class="code-hint-box" style="padding:3px 8px;">QR<br>GIB</div>
+                </div>
+              </div>
+            </div>
+            <div class="doc-hint-text" id="hintText" style="display:none">
+              Irsaliyeyi cercevelere hizalayin &bull; Sag ustteki iki kare kodu gordugunuzden emin olun
+            </div>
+            <div id="camPlaceholder" style="min-height:240px;display:flex;align-items:center;justify-content:center;background:var(--bt-bg,#EEF3F2);">
+              <div class="text-center" style="color:var(--bt-text-muted)">
+                <i class="bi bi-camera" style="font-size:3rem;opacity:.3;display:block;margin-bottom:.75rem"></i>
+                <div style="font-size:.85rem;font-weight:500">Kamerayi acmak icin asagidaki butona basin</div>
+              </div>
+            </div>
+            <div id="flashEl" style="position:absolute;inset:0;background:rgba(255,255,255,.8);pointer-events:none;display:none;"></div>
+          </div>
+
+          <div class="cam-controls" id="camControls" style="display:none;">
+            <div class="cam-side-btns">
+              <button class="btn-cam-side" id="btnCevir" title="Kamerayi Cevir" onclick="kameraCevir()">
+                <i class="bi bi-arrow-repeat"></i>
+              </button>
+              <button class="btn-cam-side d-none" id="btnTorch" onclick="torchToggle()" title="Flas">
+                <i class="bi bi-lightning-charge"></i>
+              </button>
+            </div>
+            <button class="btn-capture" id="btnCapture" onclick="fotoCekVeTara()" title="Fotograf Cek ve Tara">
+              <i class="bi bi-camera-fill"></i>
+            </button>
+            <div class="cam-side-btns">
+              <select id="kameraSec" class="form-select form-select-sm"
+                      style="width:auto;max-width:120px;background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff;font-size:.72rem;"
+                      onchange="kameraAc()">
+              </select>
+            </div>
+          </div>
+
+          <div class="p-2 d-flex gap-2" id="camOpenArea">
+            <button id="btnAc" class="btn btn-primary flex-fill" onclick="kameraAc()">
+              <i class="bi bi-camera-fill me-1"></i> Kamerayi Ac
+            </button>
+            <button id="btnKapat" class="btn btn-outline-secondary d-none" onclick="kameraKapat()">
+              <i class="bi bi-x-circle me-1"></i> Kapat
+            </button>
+          </div>
+
+          <!-- Tarama Sonuclari (fotograf cekince gorunur) -->
+          <div id="taramaSonuc" class="p-3 border-top d-none">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <span class="fw-semibold small"><i class="bi bi-search me-1"></i>Tarama Sonuclari</span>
+              <div class="d-flex gap-2">
+                <button class="btn btn-sm btn-outline-secondary" onclick="tekrarCek()">
+                  <i class="bi bi-arrow-counterclockwise me-1"></i>Tekrar Cek
+                </button>
+                <button class="btn btn-sm btn-primary d-none" id="btnSonucEkle" onclick="sonucuEkle()">
+                  <i class="bi bi-plus-circle me-1"></i>Listeye Ekle
+                </button>
+              </div>
+            </div>
+            <div class="row g-2">
+              <div class="col-md-4">
+                <div class="photo-preview">
+                  <img id="photoPreviewImg" src="" alt="Cekilen fotograf">
+                </div>
+              </div>
+              <div class="col-md-8">
+                <div id="kodSonuclar" class="d-flex flex-column gap-2"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="durumEl" class="px-3 pb-2 text-center small"
+               style="color:var(--bt-text-muted);min-height:24px;"></div>
+        </div>
+
+        <!-- Belge Oku Ana Buton -->
+        <div id="belgeOkuArea" class="mt-3" style="display:none;">
+          <button id="btnBelgeOku" class="btn btn-primary btn-lg w-100" onclick="belgeyiOku()">
+            <i class="bi bi-search me-2"></i> Belge Oku
+          </button>
+        </div>
+
+        <!-- Ilerleme -->
+        <div id="belgeProgress" class="d-none mt-3">
+          <div class="d-flex justify-content-between small mb-1">
+            <span id="belgeProgressText">Isleniyor...</span>
+            <span id="belgeProgressPct"></span>
+          </div>
+          <div class="progress mb-2" style="height:7px;">
+            <div id="belgeProgressBar"
+                 class="progress-bar bg-primary progress-bar-striped progress-bar-animated"
+                 style="width:0%"></div>
+          </div>
+          <div class="d-flex gap-2 flex-wrap small justify-content-center">
+            <span id="durQr"  class="yontem-badge bg-light text-muted border"><i class="bi bi-circle"></i> QR Kodu</span>
+            <span id="durOcr" class="yontem-badge bg-light text-muted border"><i class="bi bi-circle"></i> OCR</span>
+            <span id="durAi"  class="yontem-badge bg-light text-muted border"><i class="bi bi-circle"></i> AI Okuma</span>
+          </div>
+        </div>
+
+        <!-- Sonuc -->
+        <div id="okuSonucEl" class="d-none mt-3"></div>
+
+        <!-- PDF isleme icin gizli canvas -->
+        <canvas id="pdfCanvas" class="d-none"></canvas>
+
       </div>
     </div>
   </div>
 </div>
 
-<!-- Taranan Kayıtlar Tablosu -->
+<!-- Taranan Kayitlar Tablosu -->
 <div class="card shadow-sm" id="kayitlarCard">
   <div class="card-header fw-semibold d-flex align-items-center justify-content-between flex-wrap gap-2">
     <span><i class="bi bi-table text-success me-1"></i> Taranan Kayıtlar</span>
@@ -2343,6 +2299,387 @@ function aiListeyeEkle() {
     aiSonucAlanlar = {};
     document.getElementById('btnAiOku').classList.add('d-none');
     setDurum('<i class="bi bi-check-circle-fill text-success me-1"></i> AI ile okunan irsaliye eklendi: ' + (irsaliyeNo || 'yeni kayıt'));
+}
+
+
+// ── Birleşik Dosya/Belge Okuma ──────────────────────────────────
+var belgeDosyaObj = null;
+
+function dosyaSecildi(input) {
+    belgeDosyaObj = input.files[0] || null;
+    dosyaBilgiGuncelle();
+}
+
+function dosyaBilgiGuncelle() {
+    var bilgi   = document.getElementById('dosyaBilgi');
+    var okuArea = document.getElementById('belgeOkuArea');
+    document.getElementById('okuSonucEl').classList.add('d-none');
+    if (belgeDosyaObj) {
+        var isPdf = /\.pdf$/i.test(belgeDosyaObj.name) || belgeDosyaObj.type === 'application/pdf';
+        document.getElementById('dosyaIcon').className =
+            'bi bi-file-earmark-' + (isPdf ? 'pdf text-danger' : 'image text-primary') + ' fs-5';
+        document.getElementById('dosyaAdi').textContent  = belgeDosyaObj.name;
+        document.getElementById('dosyaBoyut').textContent =
+            (belgeDosyaObj.size / 1024 / 1024).toFixed(1) + ' MB';
+        bilgi.classList.remove('d-none');
+        okuArea.style.display = '';
+    } else {
+        bilgi.classList.add('d-none');
+        okuArea.style.display = 'none';
+    }
+}
+
+function dosyaTemizle() {
+    belgeDosyaObj = null;
+    document.getElementById('belgeDosya').value = '';
+    dosyaBilgiGuncelle();
+}
+
+function kameraToggle() {
+    var alan = document.getElementById('kameraAlani');
+    var btn  = document.getElementById('btnKameraToggle');
+    if (alan.classList.contains('d-none')) {
+        alan.classList.remove('d-none');
+        btn.innerHTML = '<i class="bi bi-camera-fill me-1"></i> Kamerayi Kapat';
+        btn.classList.replace('btn-outline-secondary','btn-secondary');
+        kameralariListele();
+    } else {
+        alan.classList.add('d-none');
+        kameraKapat();
+        btn.innerHTML = '<i class="bi bi-camera me-1"></i> Kamera ile Cek';
+        btn.classList.replace('btn-secondary','btn-outline-secondary');
+    }
+}
+
+function dropZoneOver(e)  { e.preventDefault(); document.getElementById('dropZone').classList.add('dragging'); }
+function dropZoneLeave(e) { document.getElementById('dropZone').classList.remove('dragging'); }
+function dropZoneDrop(e)  {
+    e.preventDefault();
+    document.getElementById('dropZone').classList.remove('dragging');
+    var f = e.dataTransfer.files[0];
+    if (f) { belgeDosyaObj = f; dosyaBilgiGuncelle(); }
+}
+
+// ── Yontem durum badge'leri ───────────────────────────────────────
+function _durSet(id, icon, cls, text) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.className = 'yontem-badge ' + cls;
+    el.innerHTML = '<i class="bi bi-' + icon + '"></i> ' + text;
+}
+function _durBekle(id, t) { _durSet(id,'hourglass-split','bg-primary-subtle text-primary border border-primary-subtle',t); }
+function _durOk(id, t)    { _durSet(id,'check-circle-fill','bg-success-subtle text-success border border-success-subtle',t); }
+function _durAtla(id, t)  { _durSet(id,'dash','bg-light text-muted border',t); }
+function _durHata(id, t)  { _durSet(id,'x-circle','bg-danger-subtle text-danger border border-danger-subtle',t); }
+
+// ── Ana Dispatcher ───────────────────────────────────────────────────────────
+async function belgeyiOku() {
+    if (!belgeDosyaObj) return;
+    var isPdf = /\.pdf$/i.test(belgeDosyaObj.name) || belgeDosyaObj.type === 'application/pdf';
+    if (isPdf) { await belgeyiOkuPdf(); } else { await belgeyiOkuGorsel(); }
+}
+
+// ── PDF: QR + OCR sayfa sayfa ─────────────────────────────────────────
+async function belgeyiOkuPdf() {
+    var btn  = document.getElementById('btnBelgeOku');
+    var pEl  = document.getElementById('belgeProgress');
+    var pBar = document.getElementById('belgeProgressBar');
+    var pTxt = document.getElementById('belgeProgressText');
+    var pPct = document.getElementById('belgeProgressPct');
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Okunuyor...';
+    pEl.classList.remove('d-none');
+    document.getElementById('okuSonucEl').classList.add('d-none');
+    pBar.style.width = '2%'; pPct.textContent = '';
+
+    _durBekle('durQr','QR Kodu'); _durBekle('durOcr','OCR'); _durBekle('durAi','AI Okuma');
+
+    // PDF'i sunucuya paralel yukle
+    var pdfUploadP = (function(){
+        var fd = new FormData(); fd.append('dosya', belgeDosyaObj);
+        return fetch('api/pdf_kaydet.php',{method:'POST',body:fd})
+            .then(function(r){return r.json();}).then(function(d){return d.ok?d.url:'';}).catch(function(){return '';});
+    })();
+
+    // AI'yi paralel basalt
+    var aiP = (function(){
+        var fd = new FormData(); fd.append('dosya', belgeDosyaObj);
+        return fetch('api/ai_okut.php',{method:'POST',body:fd})
+            .then(function(r){return r.json();}).catch(function(){return{ok:false};});
+    })();
+
+    var bulunan = 0, atlanan = 0, hatalar = [], sayfaItemler = [], worker = null;
+
+    try {
+        if (typeof pdfjsLib === 'undefined') throw new Error('PDF.js yuklenemedi, sayfayi yenileyin.');
+        var buf  = await belgeDosyaObj.arrayBuffer();
+        var pdf  = await pdfjsLib.getDocument({data:buf}).promise;
+        var topS = pdf.numPages;
+
+        pTxt.textContent = 'PDF analiz ediliyor (' + topS + ' sayfa)...';
+        var ilkS    = await pdf.getPage(1);
+        var textKat = await sayfadanTextAl(ilkS);
+        var ocrGerekli = !textKat;
+
+        if (ocrGerekli) {
+            pTxt.textContent = 'OCR motoru baslatiliyor (taranmis PDF)...';
+            pBar.style.width = '3%';
+            worker = await Tesseract.createWorker('tur', 1, {
+                workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+                langPath:   'https://tessdata.projectnaptha.com/4.0.0',
+                logger: function(m){
+                    if(m.status==='loading tesseract core'||m.status==='loading language traineddata')
+                        pTxt.textContent='Dil paketi indiriliyor...';
+                }
+            });
+        } else {
+            pTxt.textContent = 'Dijital PDF — metin katmani kullaniliyor';
+        }
+
+        var ocrC = document.createElement('canvas');
+        var ocrCtx = ocrC.getContext('2d');
+
+        for (var i = 1; i <= topS; i++) {
+            var pct = Math.round(((i-1)/topS)*90);
+            pBar.style.width = Math.max(pct,4)+'%'; pPct.textContent = pct+'%';
+            pTxt.textContent = topS+' sayfadan '+i+'. sayfa isleniyor...';
+
+            try {
+                var page = (i===1) ? ilkS : await pdf.getPage(i);
+                var vp   = page.getViewport({scale: ocrGerekli?2.0:3.0});
+                ocrC.width=vp.width; ocrC.height=vp.height;
+                await page.render({canvasContext:ocrCtx,viewport:vp}).promise;
+
+                var scanP = sayfaGorselKaydet(ocrC);
+
+                var qrJson=null, qrE1=null;
+                try {
+                    var ql = await sayfadakiTumQrlar(page, ocrC, ocrCtx);
+                    var qr = qrListesindenVeriAl(ql);
+                    if (qr.length>0){qrJson=qr[0].json; qrE1=qr[0].e1;}
+                } catch(e){}
+
+                var text='';
+                if (!ocrGerekli) {
+                    text = (await sayfadanTextAl(page)) || '';
+                } else {
+                    pTxt.textContent = topS+' sayfadan '+i+'. OCR yapiliyor...';
+                    var kc=document.createElement('canvas');
+                    kc.width=ocrC.width; kc.height=ocrC.height;
+                    var kctx=kc.getContext('2d');
+                    kctx.filter='grayscale(100%) contrast(200%) brightness(1.05)';
+                    kctx.drawImage(ocrC,0,0);
+                    var r1=await worker.recognize(kc); text=r1.data.text||'';
+                    if(text.replace(/\s/g,'').length<30){
+                        kctx.filter='grayscale(100%) contrast(250%) brightness(0.95)';
+                        kctx.drawImage(ocrC,0,0);
+                        var r2=await worker.recognize(kc);
+                        if((r2.data.text||'').length>text.length) text=r2.data.text;
+                    }
+                }
+
+                var scanUrl = await scanP;
+                var parsed  = parseIrsaliyeMetin(text);
+                qrVerileriniUygula(parsed, qrJson, qrE1);
+
+                var qrVarMi = !!(qrJson||qrE1);
+                if (!qrVarMi && (!text||text.replace(/\s/g,'').length<10)){
+                    hatalar.push('Sayfa '+i+': QR ve OCR metni okunamadi'); continue;
+                }
+                if (parsed.irsaliye_no && taranmisList.some(function(r){return r.irsaliye_no===parsed.irsaliye_no;})){
+                    atlanan++; hatalar.push('Sayfa '+i+': '+parsed.irsaliye_no+' zaten listede (atlandi)'); continue;
+                }
+
+                beepSes(); rowSayac++;
+                var item = {
+                    rowId:rowSayac, irsaliye_no:parsed.irsaliye_no, tarih:parsed.tarih,
+                    arac_plaka:parsed.plaka, mikser_cikis_saati:parsed.sevkZamani,
+                    fatura_no:parsed.ettn, miktar:parsed.miktar,
+                    tedarikci_id:parsed.tedarikci_id, beton_sinifi_id:parsed.beton_sinifi_id,
+                    kivam_sinifi_id:parsed.kivam_sinifi_id||'',
+                    kantar_net_yildizlar:parsed.kantar_net_yildizlar||'',
+                    kantar_net_tedarikci:parsed.kantar_net_tedarikci||'',
+                    proje_id:'', qrKullanildi:qrVarMi, qrVkn:parsed.qrVkn||'',
+                    scanImageUrl:scanUrl||'', docUrl:''
+                };
+                taranmisList.push(item); sayfaItemler.push(item);
+                tabloSatirEkle(item); sayacGuncelle(); bulunan++;
+
+            } catch(pe){ hatalar.push('Sayfa '+i+' okunamadi: '+pe.message); }
+        }
+
+        if (worker){ try{await worker.terminate();}catch(e){} worker=null; }
+        _durOk('durQr','QR Kodu'); _durOk('durOcr','OCR');
+
+        var pdfUrl = await pdfUploadP;
+        if (pdfUrl) sayfaItemler.forEach(function(it){it.docUrl=pdfUrl;});
+
+        try {
+            var aiData = await aiP;
+            if (aiData && aiData.ok){ _durOk('durAi','AI Okuma'); }
+            else { _durAtla('durAi','AI Okuma'); }
+        } catch(e){ _durAtla('durAi','AI Okuma'); }
+
+        pBar.style.width='100%'; pPct.textContent='100%';
+
+        var at  = bulunan>0 ? 'success' : 'warning';
+        var html= '<div class="alert alert-'+at+' mb-0">';
+        html   += '<i class="bi bi-'+(bulunan>0?'check-circle':'exclamation-circle')+' me-1"></i>';
+        html   += '<strong>'+topS+' sayfa islendi.</strong> '+bulunan+' irsaliye eklendi';
+        if (atlanan) html += ', '+atlanan+' atlandi';
+        html += '.';
+        if (hatalar.length) html += '<ul class="mb-0 mt-2 small">'+hatalar.map(function(e){return'<li>'+escHtml(e)+'</li>';}).join('')+'</ul>';
+        html += '</div>';
+        document.getElementById('okuSonucEl').innerHTML = html;
+        document.getElementById('okuSonucEl').classList.remove('d-none');
+        if (bulunan>0) document.getElementById('kayitlarCard').scrollIntoView({behavior:'smooth'});
+
+    } catch(err) {
+        if (worker) try{await worker.terminate();}catch(e){}
+        document.getElementById('okuSonucEl').innerHTML =
+            '<div class="alert alert-danger mb-0"><i class="bi bi-exclamation-triangle me-1"></i>Hata: '+escHtml(err.message)+'</div>';
+        document.getElementById('okuSonucEl').classList.remove('d-none');
+        _durHata('durQr','QR Kodu'); _durHata('durOcr','OCR');
+    } finally {
+        btn.disabled=false; btn.innerHTML='<i class="bi bi-search me-2"></i> Belge Oku';
+        pEl.classList.add('d-none'); dosyaTemizle();
+    }
+}
+
+// ── Gorsel: QR + AI paralel ────────────────────────────────────────────
+async function belgeyiOkuGorsel() {
+    var btn  = document.getElementById('btnBelgeOku');
+    var pEl  = document.getElementById('belgeProgress');
+    var pBar = document.getElementById('belgeProgressBar');
+    var pTxt = document.getElementById('belgeProgressText');
+
+    btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span> Okunuyor...';
+    pEl.classList.remove('d-none');
+    document.getElementById('okuSonucEl').classList.add('d-none');
+    pBar.style.width='5%';
+
+    _durBekle('durQr','QR Kodu'); _durAtla('durOcr','OCR'); _durBekle('durAi','AI Okuma');
+
+    try {
+        var dataUrl = await new Promise(function(resolve,reject){
+            var rd=new FileReader(); rd.onload=function(e){resolve(e.target.result);}; rd.onerror=reject;
+            rd.readAsDataURL(belgeDosyaObj);
+        });
+
+        var canvas=document.createElement('canvas'), ctx=canvas.getContext('2d');
+        var img = await new Promise(function(resolve,reject){
+            var el=new Image(); el.onload=function(){resolve(el);}; el.onerror=reject; el.src=dataUrl;
+        });
+        canvas.width=img.width; canvas.height=img.height; ctx.drawImage(img,0,0);
+
+        pBar.style.width='25%'; pTxt.textContent='QR kodu araniyor...';
+
+        var qrList  = await tumKodlariBul(canvas, ctx);
+        var sonuclar = kodlariIsle(qrList);
+        _durOk('durQr','QR Kodu');
+
+        pBar.style.width='45%'; pTxt.textContent='AI ile analiz ediliyor...';
+
+        var aiAlanlar = {};
+        try {
+            var fdAi = new FormData(); fdAi.append('dosya', belgeDosyaObj);
+            var aiResp = await fetch('api/ai_okut.php',{method:'POST',body:fdAi});
+            var aiData = await aiResp.json();
+            if (aiData.ok){ aiAlanlar=aiData.alanlar||{}; _durOk('durAi','AI Okuma'); }
+            else { _durHata('durAi','AI Okuma'); }
+        } catch(e){ _durHata('durAi','AI Okuma'); }
+
+        pBar.style.width='75%'; pTxt.textContent='Gorsel yukleniyor...';
+
+        var gorselUrl='';
+        try {
+            var fdUp=new FormData(); fdUp.append('image',dataUrl);
+            var upR=await fetch('api/scan_kaydet.php',{method:'POST',body:fdUp});
+            var upD=await upR.json(); if(upD.ok) gorselUrl=upD.url;
+        } catch(e){}
+
+        var qrJson=sonuclar.json, qrE1=sonuclar.e1;
+        var vkn=(qrJson&&qrJson.vkntckn)||(qrE1&&qrE1.vkn)
+                ||(aiAlanlar.tedarikci_vkn?String(aiAlanlar.tedarikci_vkn):'')||'';
+
+        var irsaliyeNo = (qrJson&&qrJson.no)||aiAlanlar.irsaliye_no||(qrE1&&qrE1.irsaliye_no)||'';
+        var tarih      = (qrJson&&qrJson.tarih)||aiAlanlar.tarih||(qrE1&&qrE1.tarih)||'';
+        var plaka      = (qrJson&&qrJson.plaka) ? String(qrJson.plaka).replace(/\s+/g,'').toUpperCase()
+                         : (aiAlanlar.arac_plaka ? String(aiAlanlar.arac_plaka).toUpperCase().replace(/\s+/g,'')
+                            : ((qrE1&&qrE1.plaka)||''));
+        var saat       = (qrJson&&qrJson.sevkzamani) ? String(qrJson.sevkzamani).substring(0,5)
+                         : (aiAlanlar.mikser_cikis_saati||(qrE1&&qrE1.sevkZamani)||'');
+        var ettn       = (qrJson&&qrJson.ettn)||aiAlanlar.ettn||aiAlanlar.fatura_no||'';
+        var miktar     = (qrE1&&qrE1.miktar)||(aiAlanlar.miktar!=null?String(aiAlanlar.miktar):'')||'';
+
+        var tedarikciId='';
+        if (vkn) {
+            for(var ti=0;ti<TEDARIKCILER.length;ti++){
+                if(String(TEDARIKCILER[ti].vkn||'').trim()===String(vkn).trim()){
+                    tedarikciId=String(TEDARIKCILER[ti].id); break;
+                }
+            }
+        }
+        var betonSinifiId='', betonAdi=(qrE1&&qrE1.beton_sinifi)||aiAlanlar.beton_sinifi||'';
+        if (betonAdi){
+            var bn=String(betonAdi).toUpperCase().replace(/\s+/g,'');
+            for(var bi=0;bi<BETON_SINIFLARI.length;bi++){
+                var bc=BETON_SINIFLARI[bi].ad.replace(/\s+/g,'').toUpperCase();
+                if(bc===bn||bc.startsWith(bn+'/')||bc.startsWith(bn+'-')){betonSinifiId=String(BETON_SINIFLARI[bi].id);break;}
+            }
+        }
+        var kivamSinifiId='', kivamAdi=(qrE1&&qrE1.kivam)||aiAlanlar.kivam||'';
+        if (kivamAdi){
+            var kn=String(kivamAdi).toUpperCase().replace(/\s+/g,'');
+            for(var ki=0;ki<KIVAM_SINIFLARI.length;ki++){
+                if(KIVAM_SINIFLARI[ki].ad.toUpperCase()===kn){kivamSinifiId=String(KIVAM_SINIFLARI[ki].id);break;}
+            }
+        }
+
+        if (!irsaliyeNo && !qrE1 && Object.keys(aiAlanlar).length===0){
+            document.getElementById('okuSonucEl').innerHTML=
+                '<div class="alert alert-warning mb-0"><i class="bi bi-exclamation-circle me-1"></i>'+
+                'QR kodu veya AI ile veri okunamadi. Goruntu kalitesini kontrol edin.</div>';
+            document.getElementById('okuSonucEl').classList.remove('d-none');
+            return;
+        }
+        if (irsaliyeNo && taranmisList.some(function(r){return r.irsaliye_no===irsaliyeNo;})){
+            document.getElementById('okuSonucEl').innerHTML=
+                '<div class="alert alert-warning mb-0"><i class="bi bi-exclamation-circle me-1"></i>'+
+                'Bu irsaliye zaten listede: '+escHtml(irsaliyeNo)+'</div>';
+            document.getElementById('okuSonucEl').classList.remove('d-none');
+            return;
+        }
+
+        pBar.style.width='100%';
+        rowSayac++;
+        var item={
+            rowId:rowSayac, irsaliye_no:irsaliyeNo, tarih:tarih,
+            arac_plaka:plaka, mikser_cikis_saati:saat, fatura_no:ettn,
+            miktar:miktar, tedarikci_id:tedarikciId, beton_sinifi_id:betonSinifiId,
+            kivam_sinifi_id:kivamSinifiId, kantar_net_yildizlar:'',
+            kantar_net_tedarikci:'', proje_id:'',
+            qrKullanildi:!!(qrJson||qrE1), qrVkn:vkn||'',
+            scanImageUrl:gorselUrl, docUrl:gorselUrl
+        };
+        taranmisList.push(item); tabloSatirEkle(item); sayacGuncelle(); beepSes(false);
+
+        document.getElementById('okuSonucEl').innerHTML=
+            '<div class="alert alert-success mb-0"><i class="bi bi-check-circle me-1"></i>'+
+            'Irsaliye okundu: <strong>'+escHtml(irsaliyeNo||'Yeni kayit')+'</strong></div>';
+        document.getElementById('okuSonucEl').classList.remove('d-none');
+        document.getElementById('kayitlarCard').scrollIntoView({behavior:'smooth'});
+
+    } catch(err){
+        document.getElementById('okuSonucEl').innerHTML=
+            '<div class="alert alert-danger mb-0"><i class="bi bi-exclamation-triangle me-1"></i>Hata: '+escHtml(err.message)+'</div>';
+        document.getElementById('okuSonucEl').classList.remove('d-none');
+        _durHata('durQr','QR Kodu'); _durHata('durAi','AI Okuma');
+    } finally {
+        btn.disabled=false; btn.innerHTML='<i class="bi bi-search me-2"></i> Belge Oku';
+        pEl.classList.add('d-none'); dosyaTemizle();
+    }
 }
 
 // ── Çakışma Yönetimi ─────────────────────────────────────────────────
