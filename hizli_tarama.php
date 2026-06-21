@@ -512,6 +512,7 @@ function beepSes(isWarning) {
 var stream = null, torchAktif = false, facingUser = false;
 var pendingScanData = null; // fotoğraf tarama sonucu bekliyor
 var pendingUploadPromise = null; // kamera fotoğrafı yükleme promise
+var pendingAiData = null; // kamera fotoğrafı AI OCR sonucu
 var ocrPdfUrl  = ''; // OCR için yüklenen PDF URL
 var aiDosyaUrl = ''; // AI için yüklenen dosya URL
 
@@ -565,7 +566,7 @@ async function kameraAc() {
         document.getElementById('btnAc').classList.add('d-none');
         document.getElementById('btnKapat').classList.remove('d-none');
         document.getElementById('taramaSonuc').classList.add('d-none');
-        pendingScanData = null;
+        pendingScanData = null; pendingAiData = null;
 
         var badge = document.getElementById('scannerBadge');
         badge.textContent = nativeDetector ? '⚡ BarcodeDetector' : 'jsQR (QR only)';
@@ -643,6 +644,20 @@ async function fotoCekVeTara() {
     document.getElementById('btnSonucEkle').classList.add('d-none');
 
     setDurum('Taranıyor...');
+    pendingAiData = null;
+
+    // QR tarama + AI OCR + görsel yükleme paralel başlat
+    var dataUrl = capCanvas.toDataURL('image/jpeg', 0.85);
+
+    // AI OCR paralel çalıştır
+    var aiPromise = (function() {
+        var blob = dataURLtoBlob(dataUrl);
+        if (!blob) return Promise.resolve(null);
+        var fd = new FormData(); fd.append('dosya', blob, 'foto.jpg');
+        return fetch('api/ai_okut.php', {method:'POST', body:fd})
+            .then(function(r){ return r.json(); })
+            .catch(function(){ return null; });
+    })();
 
     // Tüm kodları tara
     var bulunanKodlar = await tumKodlariBul(capCanvas, ctx);
@@ -651,6 +666,15 @@ async function fotoCekVeTara() {
     pendingScanData = kodlariIsle(bulunanKodlar);
     pendingUploadPromise = sayfaGorselKaydet(capCanvas);
     sonuclariGoster(pendingScanData);
+
+    // AI sonucu arka planda bekle, gelince durumu güncelle
+    aiPromise.then(function(aiData) {
+        pendingAiData = (aiData && aiData.ok) ? (aiData.alanlar || {}) : null;
+        if (pendingAiData && Object.keys(pendingAiData).length > 0) {
+            // AI'dan gelen verilerle sonuç alanını güncelle
+            sonuclariGosterAi(pendingScanData, pendingAiData);
+        }
+    });
 }
 
 // Bir canvas'tan QR + DataMatrix kodlarını toplar
@@ -777,21 +801,64 @@ function scanField(label, val) {
          + '<span class="scan-field-val">' + escHtml(String(val || '')) + '</span></div>';
 }
 
+// AI verisi gelince sonuç kartına ek alan ekle
+function sonuclariGosterAi(qrData, ai) {
+    var el = document.getElementById('kodSonuclar');
+    if (!el) return;
+    // Zaten AI kartı varsa güncelleme
+    var eskiAi = document.getElementById('aiSonucKarti');
+    if (eskiAi) eskiAi.remove();
+
+    var alanlar = [];
+    if (ai.irsaliye_no && !(qrData.json && qrData.json.no)) alanlar.push(['İrsaliye No', ai.irsaliye_no]);
+    if (ai.tarih       && !(qrData.json && qrData.json.tarih)) alanlar.push(['Tarih', ai.tarih]);
+    if (ai.arac_plaka  && !(qrData.json && qrData.json.plaka)) alanlar.push(['Araç Plaka', ai.arac_plaka]);
+    if (ai.miktar      && !(qrData.e1   && qrData.e1.miktar))  alanlar.push(['Miktar', ai.miktar + ' m³']);
+    if (ai.beton_sinifi && !(qrData.e1  && qrData.e1.beton_sinifi)) alanlar.push(['Beton Sınıfı', ai.beton_sinifi]);
+    if (ai.tedarikci_vkn && !(qrData.json && qrData.json.vkntckn)) alanlar.push(['VKN', ai.tedarikci_vkn]);
+
+    if (alanlar.length === 0) return;
+
+    var html = '<div id="aiSonucKarti" class="scan-result-card mt-2">';
+    html += '<div class="scan-result-header ok"><i class="bi bi-stars"></i> AI OCR ile tamamlandı</div>';
+    html += '<div class="scan-result-body">';
+    alanlar.forEach(function(a){ html += scanField(a[0], a[1]); });
+    html += '</div></div>';
+    el.insertAdjacentHTML('beforeend', html);
+
+    // Listeye ekle butonu göster
+    document.getElementById('btnSonucEkle').classList.remove('d-none');
+    setDurum('<i class="bi bi-stars text-primary me-1"></i> AI OCR ile ek veri bulundu — listeye ekleyin');
+}
+
+// dataURL → Blob
+function dataURLtoBlob(dataUrl) {
+    try {
+        var arr = dataUrl.split(','), mime = arr[0].match(/:(.*?);/)[1];
+        var bstr = atob(arr[1]), n = bstr.length, u8 = new Uint8Array(n);
+        for (var i = 0; i < n; i++) u8[i] = bstr.charCodeAt(i);
+        return new Blob([u8], {type: mime});
+    } catch(e) { return null; }
+}
+
 // Taranan fotoğraf sonucunu kayıt listesine ekle
 async function sonucuEkle() {
     if (!pendingScanData) return;
     var data = pendingScanData;
     var json = data.json, e1 = data.e1;
+    var ai = pendingAiData || {};
 
-    var irsaliyeNo = (json && json.no) || (e1 && e1.irsaliye_no) || '';
-    var tarih = (json && json.tarih) || (e1 && e1.tarih) || '';
-    var plaka = (json && json.plaka) ? json.plaka.replace(/\s+/g,'').toUpperCase() : (e1 && e1.plaka) || '';
-    var saat  = (json && json.sevkzamani) ? json.sevkzamani.substring(0,5) : (e1 && e1.sevkZamani) || '';
-    var ettn  = (json && json.ettn) || '';
-    var miktar = (e1 && e1.miktar) || '';
+    var irsaliyeNo = (json && json.no) || (e1 && e1.irsaliye_no) || ai.irsaliye_no || '';
+    var tarih = (json && json.tarih) || (e1 && e1.tarih) || ai.tarih || '';
+    var plaka = (json && json.plaka) ? json.plaka.replace(/\s+/g,'').toUpperCase()
+              : (e1 && e1.plaka) || (ai.arac_plaka ? String(ai.arac_plaka).toUpperCase().replace(/\s+/g,'') : '') || '';
+    var saat  = (json && json.sevkzamani) ? json.sevkzamani.substring(0,5)
+              : (e1 && e1.sevkZamani) || ai.mikser_cikis_saati || '';
+    var ettn  = (json && json.ettn) || ai.fatura_no || ai.ettn || '';
+    var miktar = (e1 && e1.miktar) || (ai.miktar != null ? String(ai.miktar) : '') || '';
 
     // Tedarikçi VKN eşleştir
-    var vkn = (json && json.vkntckn) || (e1 && e1.vkn) || '';
+    var vkn = (json && json.vkntckn) || (e1 && e1.vkn) || (ai.tedarikci_vkn ? String(ai.tedarikci_vkn) : '') || '';
     var tedarikciId = '';
     if (vkn) {
         for (var i = 0; i < TEDARIKCILER.length; i++) {
@@ -801,10 +868,11 @@ async function sonucuEkle() {
         }
     }
 
-    // Beton sınıfı eşleştir
+    // Beton sınıfı eşleştir (QR yoksa AI'dan dene)
     var betonSinifiId = '';
-    if (e1 && e1.beton_sinifi) {
-        var bn = e1.beton_sinifi.toUpperCase();
+    var betonAdi = (e1 && e1.beton_sinifi) || ai.beton_sinifi || '';
+    if (betonAdi) {
+        var bn = String(betonAdi).toUpperCase().replace(/\s+/g,'');
         for (var b = 0; b < BETON_SINIFLARI.length; b++) {
             var bc = BETON_SINIFLARI[b].ad.replace(/\s+/g,'').toUpperCase();
             if (bc === bn || bc.startsWith(bn+'/') || bc.startsWith(bn+'-')) {
@@ -813,10 +881,11 @@ async function sonucuEkle() {
         }
     }
 
-    // Kıvam sınıfı eşleştir
+    // Kıvam sınıfı eşleştir (QR yoksa AI'dan dene)
     var kivamSinifiId = '';
-    if (e1 && e1.kivam) {
-        var kn = e1.kivam.toUpperCase();
+    var kivamAdi = (e1 && e1.kivam) || ai.kivam || '';
+    if (kivamAdi) {
+        var kn = String(kivamAdi).toUpperCase();
         for (var k = 0; k < KIVAM_SINIFLARI.length; k++) {
             if (KIVAM_SINIFLARI[k].ad.toUpperCase() === kn) {
                 kivamSinifiId = String(KIVAM_SINIFLARI[k].id); break;
@@ -847,14 +916,14 @@ async function sonucuEkle() {
     beepSes(false);
 
     document.getElementById('taramaSonuc').classList.add('d-none');
-    pendingScanData = null;
+    pendingScanData = null; pendingAiData = null;
     setDurum('<i class="bi bi-check-circle-fill text-success me-1"></i> Listeye eklendi: ' + (irsaliyeNo || 'yeni kayıt'));
 }
 
 // Sonuçları temizle, tekrar çekmeye hazırla
 function tekrarCek() {
     document.getElementById('taramaSonuc').classList.add('d-none');
-    pendingScanData = null;
+    pendingScanData = null; pendingAiData = null;
     setDurum('Hazır — tekrar fotoğraf çekebilirsiniz');
 }
 
