@@ -193,7 +193,7 @@ $stm = $pdo->prepare("
            t.ad AS tedarikci, bs.ad AS beton_sinifi, i.miktar, i.birim,
            pt.ad AS pompa, ig.ad AS imalat_grup, aik.ad AS ana_is_kalemi,
            par.ad AS parsel, blk.ad AS blok, ko.kot_degeri AS kot,
-           f.ad AS firma, i.arac_plaka, i.aciklama, p.kod AS proje_kod, p.ad AS proje_ad
+           f.ad AS firma, i.arac_plaka, i.aciklama, p.kod AS proje_kod, p.aciklama AS proje_ad
     FROM irsaliyeler i
     LEFT JOIN tedarikciler t       ON t.id   = i.tedarikci_id
     LEFT JOIN beton_siniflari bs   ON bs.id  = i.beton_sinifi_id
