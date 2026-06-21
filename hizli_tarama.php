@@ -1887,8 +1887,31 @@ async function ocrTara() {
                 }
 
                 var qrVarMi = !!(qrJson || qrE1);
-                if (!qrVarMi && (!text || text.replace(/\s/g, '').length < 10)) {
-                    hatalar.push('Sayfa ' + i + ': QR ve OCR metni okunamadı');
+
+                // ── 3. KADEME: Karekod + OCR irsaliye no veremediyse AI devreye girer
+                if (!parsed.irsaliye_no) {
+                    try {
+                        progressText.textContent = toplamSayfa + ' sayfadan ' + i + '. sayfa AI ile okunuyor...';
+                        var aiAlan = await sayfayiAiOku(ocrCanvas);
+                        if (aiAlan && aiAlan.irsaliye_no) {
+                            var aiItem = aiAlanlardanItem(aiAlan, scanImageUrl);
+                            if (taranmisList.some(function(r){ return r.irsaliye_no === aiItem.irsaliye_no; })) {
+                                atlanan++;
+                                hatalar.push('Sayfa ' + i + ': ' + aiItem.irsaliye_no + ' zaten listede (atlandı)');
+                                continue;
+                            }
+                            beepSes();
+                            taranmisList.push(aiItem);
+                            tabloSatirEkle(aiItem);
+                            sayacGuncelle();
+                            bulunan++;
+                            continue; // sayfa AI ile tamamlandı
+                        }
+                    } catch(aiErr) { /* AI başarısız — normal akışa düş */ }
+                }
+
+                if (!qrVarMi && (!text || text.replace(/\s/g, '').length < 10) && !parsed.irsaliye_no) {
+                    hatalar.push('Sayfa ' + i + ': QR, OCR ve AI ile okunamadı');
                     continue;
                 }
 
@@ -2298,21 +2321,24 @@ async function aiOku() {
     }
 }
 
-function aiListeyeEkle() {
-    var a = aiSonucAlanlar;
+// ── AI yardımcıları (hem tekli AI hem toplu OCR yedeği için ORTAK) ───────────
+// Bir canvas görselini ai_okut.php'ye gönderip alanları döndürür (yoksa null)
+async function sayfayiAiOku(canvas) {
+    var blob = await new Promise(function(resolve){ canvas.toBlob(resolve, 'image/jpeg', 0.85); });
+    if (!blob) return null;
+    var fd = new FormData();
+    fd.append('dosya', blob, 'sayfa.jpg');
+    var res  = await fetch('api/ai_okut.php', { method: 'POST', body: fd });
+    var json = await res.json();
+    return (json && json.ok && json.alanlar) ? json.alanlar : null;
+}
 
-    var irsaliyeNo = a.irsaliye_no || '';
-    var tarih      = a.tarih       || '';
-    var plaka      = a.arac_plaka  ? String(a.arac_plaka).toUpperCase().replace(/\s+/g,'') : '';
-    var saat       = a.mikser_cikis_saati || '';
-    var faturaNo   = a.ettn || a.fatura_no || '';
-    var miktar     = a.miktar != null ? String(a.miktar) : '';
-
-    // Duplicate kontrol
-    if (irsaliyeNo && taranmisList.some(function(r){ return r.irsaliye_no === irsaliyeNo; })) {
-        setDurum('<i class="bi bi-exclamation-circle text-warning me-1"></i> Bu irsaliye zaten listede: ' + irsaliyeNo);
-        beepSes(true); return;
-    }
+// ai_okut.php alanlarını tablo satırı item'ına çevirir (ID eşleştirmeleri dahil)
+function aiAlanlardanItem(a, scanUrl) {
+    a = a || {};
+    var plaka    = a.arac_plaka ? String(a.arac_plaka).toUpperCase().replace(/\s+/g,'') : '';
+    var faturaNo = a.ettn || a.fatura_no || '';
+    var miktar   = a.miktar != null ? String(a.miktar) : '';
 
     // Tedarikçi VKN eşleştir
     var tedarikciId = '';
@@ -2324,7 +2350,6 @@ function aiListeyeEkle() {
             }
         }
     }
-
     // Beton sınıfı eşleştir
     var betonSinifiId = '';
     if (a.beton_sinifi) {
@@ -2336,7 +2361,6 @@ function aiListeyeEkle() {
             }
         }
     }
-
     // Kıvam sınıfı eşleştir
     var kivamSinifiId = '';
     if (a.kivam) {
@@ -2349,14 +2373,38 @@ function aiListeyeEkle() {
     }
 
     rowSayac++;
-    var item = {
-        rowId: rowSayac, irsaliye_no: irsaliyeNo, tarih: tarih,
-        arac_plaka: plaka, mikser_cikis_saati: saat, fatura_no: faturaNo,
-        miktar: miktar, tedarikci_id: tedarikciId, beton_sinifi_id: betonSinifiId,
-        kivam_sinifi_id: kivamSinifiId, kantar_net_yildizlar: '',
-        kantar_net_tedarikci: '', proje_id: '', qrKullanildi: false,
-        scanImageUrl: aiDosyaUrl || '', docUrl: aiDosyaUrl || ''
+    return {
+        rowId: rowSayac,
+        irsaliye_no: a.irsaliye_no || '',
+        tarih: a.tarih || '',
+        arac_plaka: plaka,
+        mikser_cikis_saati: a.mikser_cikis_saati || '',
+        fatura_no: faturaNo,
+        miktar: miktar,
+        tedarikci_id: tedarikciId,
+        beton_sinifi_id: betonSinifiId,
+        kivam_sinifi_id: kivamSinifiId,
+        kantar_net_yildizlar: '',
+        kantar_net_tedarikci: '',
+        proje_id: '',
+        qrKullanildi: false,
+        aiKullanildi: true,
+        scanImageUrl: scanUrl || '',
+        docUrl: scanUrl || ''
     };
+}
+
+function aiListeyeEkle() {
+    var a = aiSonucAlanlar;
+    var irsaliyeNo = a.irsaliye_no || '';
+
+    // Duplicate kontrol
+    if (irsaliyeNo && taranmisList.some(function(r){ return r.irsaliye_no === irsaliyeNo; })) {
+        setDurum('<i class="bi bi-exclamation-circle text-warning me-1"></i> Bu irsaliye zaten listede: ' + irsaliyeNo);
+        beepSes(true); return;
+    }
+
+    var item = aiAlanlardanItem(a, aiDosyaUrl);
     taranmisList.push(item);
     tabloSatirEkle(item);
     sayacGuncelle();
