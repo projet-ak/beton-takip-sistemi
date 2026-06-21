@@ -1,11 +1,26 @@
 <?php
+ob_start();
 require_once dirname(__DIR__) . '/includes/functions.php';
 require_once dirname(__DIR__) . '/includes/auth.php';
-if (!file_exists(dirname(__DIR__) . '/config.php')) { http_response_code(403); die('{}'); }
-require_auth();
-require_once dirname(__DIR__) . '/includes/db.php';
 
-header('Content-Type: application/json');
+header('Content-Type: application/json; charset=utf-8');
+
+if (empty($_SESSION['user'])) {
+    ob_end_clean();
+    http_response_code(401);
+    echo json_encode(['ok' => false, 'msg' => 'Oturum süresi doldu. Sayfayı yenileyin.']);
+    exit;
+}
+
+if (!file_exists(dirname(__DIR__) . '/config.php')) {
+    ob_end_clean();
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'msg' => 'Yapılandırma eksik.']);
+    exit;
+}
+
+require_once dirname(__DIR__) . '/includes/db.php';
+ob_end_clean();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { echo json_encode(['ok'=>false,'msg'=>'POST gerekli']); exit; }
 
@@ -16,6 +31,13 @@ if (!$body || !isset($body['kayitlar']) || !is_array($body['kayitlar'])) {
 
 $uid = current_user_id();
 $eklenen = 0; $atlanan = 0; $hatalar = []; $cakismalar = [];
+
+// scan_image_url kolonu yoksa oluştur (kademeli migration)
+try {
+    $pdo->query("ALTER TABLE irsaliyeler ADD COLUMN scan_image_url varchar(500) DEFAULT NULL");
+} catch (PDOException $e) {
+    // Zaten varsa hata yok say (1060 = Duplicate column)
+}
 
 foreach ($body['kayitlar'] as $k) {
     try {
