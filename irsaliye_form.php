@@ -510,6 +510,29 @@ if ($editId && isset($row['durum'])):
     <!-- Sağ kolon -->
     <div class="col-lg-4">
 
+        <?php if (!empty($row['scan_image_url'])): ?>
+        <?php $__isImg = !str_ends_with(strtolower($row['scan_image_url']), '.pdf'); ?>
+        <!-- Tarama Belgesi / Fotoğrafı -->
+        <div class="card mb-4 border-0">
+            <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark">
+                <i class="bi bi-<?= $__isImg ? 'camera' : 'file-pdf text-danger' ?> text-primary me-2"></i>
+                Tarama <?= $__isImg ? 'Fotoğrafı' : 'Belgesi' ?>
+            </div>
+            <div class="card-body px-4 pb-4 pt-3 text-center">
+                <?php if ($__isImg): ?>
+                    <a href="<?= h($row['scan_image_url']) ?>" target="_blank" title="Büyüt">
+                        <img src="<?= h($row['scan_image_url']) ?>" class="img-fluid rounded border" style="max-height:240px;object-fit:contain;" alt="Tarama belgesi">
+                    </a>
+                <?php else: ?>
+                    <a href="<?= h($row['scan_image_url']) ?>" target="_blank" class="btn btn-outline-danger w-100">
+                        <i class="bi bi-file-pdf me-1"></i> PDF Belgeyi Görüntüle
+                    </a>
+                <?php endif; ?>
+                <div class="form-text mt-2">Bu irsaliye taramadan oluşturuldu.</div>
+            </div>
+        </div>
+        <?php endif; ?>
+
         <!-- Konum -->
         <div class="card mb-4 border-0">
             <div class="card-header fw-bold bg-transparent border-0 pt-4 px-4 pb-0 fs-5 text-dark">
