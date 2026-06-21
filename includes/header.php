@@ -201,6 +201,13 @@ if ($__user) {
       ?>
     </div>
     <div class="topbar-actions ms-auto">
+      <?php if($__user): ?>
+      <?php $__sessRemain = max(0, SESSION_LIFETIME - (time() - ($_SESSION['last_activity'] ?? time()))); ?>
+      <div class="session-timer" id="sessionTimer" title="Oturum süresi — her işlemde yenilenir. Bitince otomatik çıkış yapılır.">
+        <i class="bi bi-clock-history"></i>
+        <span id="sessionTimerText">--:--</span>
+      </div>
+      <?php endif; ?>
       <button class="btn-topbar" id="darkToggleBtn" title="Tema"><i class="bi bi-moon-stars-fill" id="darkToggleIcon"></i></button>
       <?php if($__user): ?>
       <div class="dropdown">
@@ -233,3 +240,56 @@ foreach(['success'=>'check-circle-fill','error'=>'exclamation-triangle-fill','wa
     if($__fm) echo '<div class="alert alert-'.($__fk==='error'?'danger':$__fk).' alert-dismissible fade show d-flex align-items-center gap-2 mb-3"><i class="bi bi-'.$__fi.'"></i><span>'.h($__fm).'</span><button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button></div>';
 }
 ?>
+<?php if($__user): ?>
+<style>
+.session-timer{display:inline-flex;align-items:center;gap:.35rem;font-size:.78rem;font-weight:600;
+  font-variant-numeric:tabular-nums;padding:.28rem .6rem;border-radius:999px;line-height:1;
+  color:var(--bt-text-soft,#64748b);background:var(--bt-surface-2,rgba(0,0,0,.04));
+  border:1px solid var(--bt-border,rgba(0,0,0,.08));white-space:nowrap;transition:color .2s,background .2s,border-color .2s;}
+.session-timer i{font-size:.85rem;}
+.session-timer.warn{color:#b54708;background:rgba(251,189,35,.16);border-color:rgba(251,189,35,.5);}
+.session-timer.danger{color:#fff;background:#dc3545;border-color:#dc3545;animation:sessionPulse 1s ease-in-out infinite;}
+@keyframes sessionPulse{0%,100%{opacity:1}50%{opacity:.55}}
+@media (max-width:575.98px){.session-timer span{display:none;}.session-timer{padding:.28rem .45rem;}}
+</style>
+<script>
+(function(){
+  var el = document.getElementById('sessionTimer');
+  if(!el) return;
+  var txt = document.getElementById('sessionTimerText');
+  var TOTAL = <?= (int)SESSION_LIFETIME ?>;
+  var remaining = <?= (int)$__sessRemain ?>;
+  var logoutUrl = '<?= $__rootPath ?>logout.php';
+
+  function reset(){ remaining = TOTAL; }
+  function pad(n){ return (n < 10 ? '0' : '') + n; }
+  function fmt(s){
+    var h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+    return h > 0 ? h + ':' + pad(m) + ':' + pad(sec) : pad(m) + ':' + pad(sec);
+  }
+  function render(){
+    txt.textContent = fmt(Math.max(0, remaining));
+    el.classList.toggle('warn', remaining <= 300 && remaining > 60);
+    el.classList.toggle('danger', remaining <= 60);
+  }
+  function tick(){
+    remaining--;
+    if(remaining <= 0){ window.location.href = logoutUrl; return; }
+    render();
+  }
+  render();
+  setInterval(tick, 1000);
+
+  // Sunucuya giden her istek (tarama, kaydet, AI vb.) sayacı sıfırlasın —
+  // çünkü sunucu tarafında da last_activity her istekte yenileniyor.
+  if(window.fetch){
+    var _fetch = window.fetch;
+    window.fetch = function(){ reset(); render(); return _fetch.apply(this, arguments); };
+  }
+  if(window.XMLHttpRequest){
+    var _send = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.send = function(){ reset(); render(); return _send.apply(this, arguments); };
+  }
+})();
+</script>
+<?php endif; ?>
