@@ -7,15 +7,15 @@
  *   ?token=TOKEN&ghpat=github_pat_xxxx
  */
 
-define('DEPLOY_TOKEN', '9fe41d55f7324123586fd5a2be2fee6b3f5355ff4993fa1f');
+define('DEPLOY_TOKEN', 'd4b55f9613fad96acaf7cd2b950bf00b7a483da3c38c8d1d');
 define('REPO',   'projet-ak/beton-takip-sistemi');
 define('BRANCH', 'claude/organize-control-panel-hUe4z');
 
 header('Content-Type: application/json; charset=utf-8');
 
-if (($_GET['token'] ?? '') !== DEPLOY_TOKEN) {
+if (!hash_equals(DEPLOY_TOKEN, (string)($_GET['token'] ?? ''))) {
     http_response_code(403);
-    echo json_encode(['ok' => false, 'msg' => 'Unauthorized']);
+    echo json_encode(['ok' => false, 'msg' => 'Unauthorized — geçersiz veya eksik token']);
     exit;
 }
 
@@ -69,11 +69,18 @@ if ($curlErr) {
 if ($httpCode !== 200) {
     $size = filesize($zipFile);
     @unlink($zipFile);
+    $hint = match (true) {
+        $httpCode === 401 => 'GitHub PAT geçersiz/süresi dolmuş — &ghpat=TOKEN değerini güncelleyin.',
+        $httpCode === 404 => 'Branch veya repo bulunamadı; repo private ise &ghpat=TOKEN ekleyin (token "repo" yetkisine sahip olmalı).',
+        $httpCode === 403 => 'GitHub erişimi reddetti — PAT yetkisi yetersiz veya rate limit.',
+        default           => 'GitHub zip indirilemedi.',
+    };
     echo json_encode([
-        'ok'   => false,
-        'msg'  => 'GitHub HTTP ' . $httpCode . ' — repo private ise &ghpat=TOKEN ekleyin',
-        'url'  => $zipUrl,
-        'size' => $size,
+        'ok'     => false,
+        'msg'    => 'GitHub HTTP ' . $httpCode . ' — ' . $hint,
+        'branch' => $branch,
+        'url'    => $zipUrl,
+        'size'   => $size,
     ]);
     exit;
 }
