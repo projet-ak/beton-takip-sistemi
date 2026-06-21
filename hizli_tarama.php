@@ -210,6 +210,8 @@ html[data-dark="1"] .scan-result-header.err { background: rgba(224,84,84,.12); c
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<!-- zxing: 2. karekod (Data Matrix / KGS-THBB) cross-browser çözümü (Safari/Firefox dahil) -->
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';</script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -719,6 +721,12 @@ async function tumKodlariBul(canvas, ctx) {
         if (bulunan.size >= 2) break;
     }
 
+    // 3) 2. karekod (DataMatrix) native okunamadıysa zxing ile dene
+    if (!_e1Var(bulunan)) {
+        var dm = zxingDataMatrixDene(canvas);
+        if (dm) ekle(dm);
+    }
+
     return Array.from(bulunan);
 }
 
@@ -738,6 +746,30 @@ function kodlariIsle(liste) {
         }
     });
     return { json: jsonVeri, e1: e1Veri, raw: liste };
+}
+
+// ── DataMatrix (2. karekod: KGS/THBB reçete) cross-browser çözücü (zxing) ────
+// Native BarcodeDetector DataMatrix okuyamadığında (iPhone Safari/Firefox) yedek.
+function zxingDataMatrixDene(canvas) {
+    if (typeof ZXing === 'undefined' || !ZXing.MultiFormatReader) return null;
+    try {
+        var hints = new Map();
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.DATA_MATRIX]);
+        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+        var reader = new ZXing.MultiFormatReader();
+        reader.setHints(hints);
+        var lum    = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
+        var bitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(lum));
+        var result = reader.decode(bitmap, hints);
+        return result ? result.getText() : null;
+    } catch(e) { return null; } // NotFoundException dahil → null
+}
+
+// Bir Set içinde E1 (DataMatrix) kodu var mı?
+function _e1Var(set) {
+    var v = false;
+    set.forEach(function(s){ if (s && s.replace(/\s+/g,'').substring(0,2) === 'E1') v = true; });
+    return v;
 }
 
 // Sonuçları HTML olarak göster
@@ -1103,6 +1135,26 @@ function qrBulundu(rawData) {
 }
 
 // ── Tablo satırı ekleme ─────────────────────────────────────────────
+// Satır için düşük-güven uyarıları döndürür (insan kontrolü için)
+function irsaliyeUyarilari(item) {
+    var u = [];
+    if (!item.irsaliye_no || !String(item.irsaliye_no).trim()) u.push('İrsaliye no boş');
+    if (item.tarih && !/^\d{4}-\d{2}-\d{2}$/.test(String(item.tarih))) u.push('Tarih biçimi şüpheli');
+    if (item.arac_plaka) {
+        var pl = String(item.arac_plaka).toUpperCase().replace(/\s+/g,'');
+        if (!/^\d{2}[A-Z]{1,3}\d{2,4}$/.test(pl)) u.push('Plaka biçimi şüpheli');
+    }
+    if (item.miktar !== '' && item.miktar != null) {
+        var m = parseFloat(String(item.miktar).replace(',','.'));
+        if (isNaN(m) || m <= 0)      u.push('Miktar geçersiz');
+        else if (m > 100)            u.push('Miktar olağandışı (' + m + ' m³)');
+    }
+    if (item.qrVkn && !item.tedarikci_id) u.push('Tedarikçi VKN eşleşmedi: ' + item.qrVkn);
+    if (!item.tedarikci_id)    u.push('Tedarikçi seçili değil');
+    if (!item.beton_sinifi_id) u.push('Beton sınıfı seçili değil');
+    return u;
+}
+
 function tabloSatirEkle(item) {
     // Boş satırı kaldır
     var bosRow = document.getElementById('bosRow');
@@ -1146,8 +1198,14 @@ function tabloSatirEkle(item) {
             : '<td><a href="' + escHtml(item.scanImageUrl) + '" target="_blank" title="Görüntüle"><img src="' + escHtml(item.scanImageUrl) + '" style="width:46px;height:34px;object-fit:cover;border-radius:4px;border:1px solid var(--bt-border)"></a></td>')
         : '<td><span style="width:46px;height:34px;display:inline-block;background:var(--bt-bg-soft);border-radius:4px;border:1px solid var(--bt-border);"></span></td>';
 
+    // Düşük-güven uyarıları + AI rozeti
+    var uyarilar = irsaliyeUyarilari(item);
+    var rozet = '';
+    if (item.aiKullanildi) rozet += ' <span class="badge bg-info-subtle text-info border border-info-subtle" style="font-size:.6rem" title="AI ile okundu — lütfen kontrol edin">AI</span>';
+    if (uyarilar.length) rozet += ' <i class="bi bi-exclamation-triangle-fill text-warning" style="cursor:help" title="' + escHtml(uyarilar.join(' • ')) + '"></i>';
+
     tr.innerHTML =
-        '<td class="text-muted small">' + item.rowId + '</td>' +
+        '<td class="text-muted small" style="white-space:nowrap">' + item.rowId + rozet + '</td>' +
         gorselTd +
         '<td><input type="text" class="form-control form-control-sm font-monospace" style="min-width:125px" value="' + escHtml(item.irsaliye_no || '') + '" oninput="satirGuncelle(' + item.rowId + ',\'irsaliye_no\',this.value)"></td>' +
         '<td><input type="date" class="form-control form-control-sm" style="min-width:120px" value="' + escHtml(item.tarih || '') + '" onchange="satirGuncelle(' + item.rowId + ',\'tarih\',this.value)"></td>' +
@@ -1164,6 +1222,9 @@ function tabloSatirEkle(item) {
         '<td><button class="btn btn-xs btn-outline-danger" onclick="satirSil(' + item.rowId + ')"><i class="bi bi-trash"></i></button></td>';
 
     tbody.insertBefore(tr, tbody.firstChild); // En üste ekle
+
+    // Uyarı varsa kalıcı sol kenar çizgisi (2sn'lik renk vurgusu geçse de kalır)
+    if (uyarilar.length) tr.style.boxShadow = 'inset 3px 0 0 var(--bs-warning,#ffc107)';
 
     // Tabloya scroll
     tr.scrollIntoView({behavior:'smooth', block:'center'});
@@ -1564,6 +1625,18 @@ async function sayfadakiTumQrlar(page, canvas, ctx) {
         });
         if (bulunanlar.size >= 6) break;
     }
+
+    // 2. karekod (DataMatrix/KGS) native okunamadıysa zxing ile dene
+    if (!_e1Var(bulunanlar) && typeof ZXing !== 'undefined') {
+        try {
+            var vpDM = page.getViewport({ scale: 4.0 });
+            canvas.width = vpDM.width; canvas.height = vpDM.height;
+            await page.render({ canvasContext: ctx, viewport: vpDM }).promise;
+            var dmp = zxingDataMatrixDene(canvas);
+            if (dmp) tryAdd(dmp);
+        } catch(e) {}
+    }
+
     return Array.from(bulunanlar);
 }
 
