@@ -400,16 +400,17 @@ body {
     background:transparent; padding:0; margin:0 auto 2.2rem;
     animation:slideInLeft .6s ease backwards;
 }
-.logo-lockup img{ height:50px; width:auto; max-width:150px; object-fit:contain; display:block; }
-.logo-sep{ width:1px; height:42px; align-self:center; background:linear-gradient(180deg,transparent,rgba(255,255,255,.35),transparent); }
+.logo-lockup img{ height:72px; width:auto; max-width:210px; object-fit:contain; display:block; }
+.logo-sep{ width:1px; height:58px; align-self:center; background:linear-gradient(180deg,transparent,rgba(255,255,255,.35),transparent); }
 
-/* ── Dalgalanma efekti ──────────────────────────────────────── */
-.waves{ position:absolute; left:0; right:0; bottom:0; height:130px; z-index:1; overflow:hidden; pointer-events:none; }
+/* ── Dalgalanma efekti — tüm yeşil paneli kaplar ────────────── */
+.waves{ position:absolute; inset:0; z-index:1; overflow:hidden; pointer-events:none; }
 .waves svg{ width:100%; height:100%; }
 .wave-parallax > use{ animation:waveMove 12s cubic-bezier(.55,.5,.45,.5) infinite; }
 .wave-parallax > use:nth-child(1){ animation-delay:-2s;  animation-duration:9s;  }
 .wave-parallax > use:nth-child(2){ animation-delay:-4s;  animation-duration:13s; }
 .wave-parallax > use:nth-child(3){ animation-delay:-3s;  animation-duration:17s; }
+.wave-parallax > use:nth-child(4){ animation-delay:-5s;  animation-duration:21s; }
 @keyframes waveMove{
     0%   { transform:translate3d(-90px,0,0); }
     100% { transform:translate3d(85px,0,0); }
@@ -469,16 +470,17 @@ body {
         </div>
     </div>
 
-    <!-- Dalgalanma efekti -->
+    <!-- Dalgalanma efekti — tüm yeşil paneli kaplayan katmanlı dalgalar -->
     <div class="waves">
-        <svg viewBox="0 24 150 28" preserveAspectRatio="none">
+        <svg viewBox="0 0 150 80" preserveAspectRatio="none">
             <defs>
-                <path id="wv" d="M-160 44c30 0 58-18 88-18s 58 18 88 18 58-18 88-18 58 18 88 18 v44h-352z"></path>
+                <path id="wv" d="M-160 16c30 0 58-12 88-12s 58 12 88 12 58-12 88-12 58 12 88 12 v90h-352z"></path>
             </defs>
             <g class="wave-parallax">
-                <use href="#wv" x="48" y="0" fill="rgba(0,201,177,.10)"></use>
-                <use href="#wv" x="48" y="3" fill="rgba(255,255,255,.06)"></use>
-                <use href="#wv" x="48" y="5" fill="rgba(0,61,53,.30)"></use>
+                <use href="#wv" x="48" y="6"  fill="rgba(0,201,177,.12)"></use>
+                <use href="#wv" x="48" y="20" fill="rgba(255,255,255,.07)"></use>
+                <use href="#wv" x="48" y="34" fill="rgba(0,201,177,.10)"></use>
+                <use href="#wv" x="48" y="48" fill="rgba(0,61,53,.34)"></use>
             </g>
         </svg>
     </div>
