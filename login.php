@@ -82,13 +82,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $flashInfo = get_flash('login_info');
 
-// ── Logolar ───────────────────────────────────────────────────────────────────
-// Kendi logolarınızı sunucuya yükleyip aşağıdaki yolları güncelleyin
-// (örn. assets/img/ern-taahhut.png). Dosya yoksa onerror ile otomatik gizlenir.
-$LOGO_HOLDING = 'assets/img/ern-holding.png';
-$LOGO_TAAHHUT = 'assets/img/ern-taahhut.png';
-// ERN Holding yerel dosyası henüz yoksa uzaktaki kurumsal logoyu yedek kullan
-$LOGO_HOLDING_FALLBACK = 'https://portal.ern.com.tr/assets/assets/images/ern_holding.613de732dd156fc8c966aeb8159822be.png';
+// ── Logolar (beyaz versiyonlar — koyu yeşil panel üzerinde) ───────────────────
+// Dosya adlarında boşluk olduğu için rawurlencode ile güvenli URL üretiyoruz.
+$LOGO_TAAHHUT = 'uploads/' . rawurlencode('ERN Taahhut_Logo_Beyaz.png');
+$LOGO_HOLDING = 'uploads/' . rawurlencode('ERN Holding_Logo_Beyaz.png');
 ?>
 <!DOCTYPE html>
 <html lang="tr">
@@ -397,16 +394,14 @@ body {
     .login-right { padding: 2rem 1.25rem; }
 }
 
-/* ── İki logolu kurumsal kart (renkler korunur) ─────────────── */
+/* ── İki beyaz logo — koyu yeşil panel üzerinde ─────────────── */
 .logo-lockup{
-    display:inline-flex; align-items:center; gap:1.1rem;
-    background:#fff; border-radius:16px;
-    padding:.85rem 1.4rem; margin:0 auto 2rem;
-    box-shadow:0 12px 30px rgba(0,0,0,.25);
+    display:inline-flex; align-items:center; gap:1.6rem;
+    background:transparent; padding:0; margin:0 auto 2.2rem;
     animation:slideInLeft .6s ease backwards;
 }
-.logo-lockup img{ height:46px; width:auto; max-width:130px; object-fit:contain; display:block; }
-.logo-sep{ width:1px; align-self:stretch; background:linear-gradient(180deg,transparent,rgba(0,88,78,.25),transparent); }
+.logo-lockup img{ height:50px; width:auto; max-width:150px; object-fit:contain; display:block; }
+.logo-sep{ width:1px; height:42px; align-self:center; background:linear-gradient(180deg,transparent,rgba(255,255,255,.35),transparent); }
 
 /* ── Dalgalanma efekti ──────────────────────────────────────── */
 .waves{ position:absolute; left:0; right:0; bottom:0; height:130px; z-index:1; overflow:hidden; pointer-events:none; }
@@ -438,7 +433,7 @@ body {
                  onerror="this.style.display='none'">
             <span class="logo-sep"></span>
             <img src="<?= h($LOGO_HOLDING) ?>" alt="ERN Holding"
-                 onerror="this.onerror=null;this.src='<?= h($LOGO_HOLDING_FALLBACK) ?>'">
+                 onerror="this.style.display='none'">
         </div>
 
         <div class="brand-tagline">
