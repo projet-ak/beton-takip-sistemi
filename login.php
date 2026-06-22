@@ -81,378 +81,161 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $flashInfo = get_flash('login_info');
+
+// ── Logolar ───────────────────────────────────────────────────────────────────
+// Renkli ERN Holding logosu. Yerel dosya kullanmak isterseniz buraya
+// 'assets/img/ern-holding.png' gibi bir yol yazın (logoyu sunucuya yükledikten sonra).
+$ERN_LOGO        = 'https://portal.ern.com.tr/assets/assets/images/ern_holding.613de732dd156fc8c966aeb8159822be.png';
+$ERN_LOGO_WHITE  = $ERN_LOGO; // koyu zeminde beyaza çevrilerek kullanılır (CSS filter)
 ?>
 <!DOCTYPE html>
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Giriş — Beton Takip Sistemi</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#00584E">
+<title>Giriş — ERN Holding Beton Takip Sistemi</title>
 <link rel="icon" type="image/png" href="https://ern.com.tr/favicon.png">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap">
 <style>
-/* ── ERN Login Page ─────────────────────────────────────── */
-:root {
-    --ern:       #00584E;
-    --ern-dark:  #003D35;
-    --ern-light: #007A6A;
-    --ern-teal:  #00C9B1;
-    --ern-gold:  #C9A84C;
+:root{
+    --ern:#00584E; --ern-dark:#003D35; --ern-light:#007A6A;
+    --ern-teal:#00C9B1; --ern-gold:#C9A84C;
+    --ink:#0D2E28; --muted:#5C7872;
+}
+*,*::before,*::after{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+    font-family:'Outfit',system-ui,-apple-system,sans-serif;
+    margin:0; min-height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    padding:1.5rem;
+    position:relative; overflow:hidden;
+    background:radial-gradient(1200px 600px at 15% 10%, var(--ern-light) 0%, transparent 55%),
+               radial-gradient(1000px 700px at 90% 90%, #00352e 0%, transparent 50%),
+               linear-gradient(145deg, var(--ern-dark) 0%, var(--ern) 100%);
+}
+/* Animasyonlu arka plan baloncukları */
+.blob{position:absolute; border-radius:50%; filter:blur(8px); opacity:.5; pointer-events:none; animation:floaty 14s ease-in-out infinite;}
+.blob.b1{width:520px;height:520px;top:-180px;right:-120px;background:radial-gradient(circle,rgba(0,201,177,.22),transparent 70%);}
+.blob.b2{width:420px;height:420px;bottom:-160px;left:-120px;background:radial-gradient(circle,rgba(201,168,76,.16),transparent 70%);animation-duration:18s;animation-direction:reverse;}
+.blob.b3{width:300px;height:300px;top:40%;left:55%;background:radial-gradient(circle,rgba(255,255,255,.07),transparent 70%);animation-duration:22s;}
+@keyframes floaty{0%,100%{transform:translateY(0) scale(1);}50%{transform:translateY(-30px) scale(1.08);}}
+/* İnce ışık ızgarası */
+body::before{
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);
+    background-size:46px 46px;
+    mask-image:radial-gradient(circle at 50% 40%, #000 0%, transparent 75%);
 }
 
-*, *::before, *::after { box-sizing: border-box; }
+/* ── Kart ─────────────────────────────────────────────── */
+.card-login{
+    position:relative; z-index:2;
+    width:100%; max-width:430px;
+    background:rgba(255,255,255,.98);
+    border:1px solid rgba(255,255,255,.6);
+    border-radius:26px;
+    box-shadow:0 30px 80px rgba(0,40,35,.45), 0 2px 0 rgba(255,255,255,.4) inset;
+    padding:2.6rem 2.4rem 1.8rem;
+    animation:rise .55s cubic-bezier(.2,.7,.2,1);
+}
+@keyframes rise{from{opacity:0;transform:translateY(22px);}to{opacity:1;transform:none;}}
 
-body {
-    font-family: 'Outfit', system-ui, -apple-system, sans-serif;
-    margin: 0;
-    min-height: 100vh;
-    display: flex;
-    overflow: hidden;
-    background: var(--ern-dark);
+/* Logo başlığı */
+.brand-head{text-align:center; margin-bottom:1.6rem;}
+.brand-logo{height:62px; width:auto; max-width:80%; object-fit:contain; margin-bottom:1rem;}
+.brand-chip{
+    display:inline-flex; align-items:center; gap:.45rem;
+    padding:.35rem .85rem; border-radius:999px;
+    background:rgba(0,88,78,.08); color:var(--ern);
+    font-size:.74rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
 }
+.brand-chip i{font-size:.9rem;}
 
-/* ── Sol taraf — marka paneli ─── */
-.login-left {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    padding: 3rem;
-    position: relative;
-    overflow: hidden;
-    background: linear-gradient(145deg, var(--ern-dark) 0%, var(--ern) 60%, var(--ern-light) 100%);
-}
+.divider{height:1px; background:linear-gradient(90deg,transparent,rgba(0,88,78,.18),transparent); margin:1.4rem 0;}
 
-/* Geometrik arka plan şekilleri */
-.login-left::before {
-    content: '';
-    position: absolute;
-    width: 600px; height: 600px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(0,200,180,.18) 0%, transparent 70%);
-    top: -200px; right: -200px;
-    animation: pulse-bg 8s ease-in-out infinite;
-}
-.login-left::after {
-    content: '';
-    position: absolute;
-    width: 400px; height: 400px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(201,168,76,.12) 0%, transparent 70%);
-    bottom: -150px; left: -100px;
-    animation: pulse-bg 10s ease-in-out infinite reverse;
-}
-@keyframes pulse-bg {
-    0%,100% { transform: scale(1); }
-    50%      { transform: scale(1.15); }
-}
+.login-title{font-size:1.5rem; font-weight:800; color:var(--ink); letter-spacing:-.03em; text-align:center; margin:0 0 .25rem;}
+.login-sub{font-size:.86rem; color:var(--muted); text-align:center; margin:0 0 1.6rem;}
 
-/* Yüzen hexagon şekilleri */
-.hex {
-    position: absolute;
-    border: 1px solid rgba(255,255,255,.08);
-    border-radius: 18px;
-    animation: hexFloat linear infinite;
-    transform-origin: center;
-}
-@keyframes hexFloat {
-    0%   { transform: translateY(0) rotate(0deg); opacity: .6; }
-    50%  { opacity: .15; }
-    100% { transform: translateY(-100px) rotate(180deg); opacity: .6; }
-}
+/* Form */
+.lbl{font-size:.78rem; font-weight:700; color:var(--ink); margin-bottom:.4rem; display:block;}
+.input-wrap{display:flex; align-items:center; border:1.5px solid #DCE8E6; border-radius:13px; background:#F5F9F8; overflow:hidden; transition:.2s;}
+.input-wrap:focus-within{border-color:var(--ern); background:#fff; box-shadow:0 0 0 4px rgba(0,88,78,.12);}
+.input-wrap-icon{width:46px; display:flex; align-items:center; justify-content:center; color:#8AA9A3; font-size:1rem; flex-shrink:0; transition:.2s;}
+.input-wrap:focus-within .input-wrap-icon{color:var(--ern);}
+.input-wrap input{flex:1; border:none; background:transparent; padding:.78rem .3rem .78rem 0; font-size:.94rem; color:var(--ink); font-family:inherit; outline:none;}
+.input-wrap input::placeholder{color:#B0C8C4;}
+.input-wrap-btn{background:none; border:none; padding:0 .8rem; color:#8AA9A3; font-size:.95rem; cursor:pointer; transition:.2s; display:flex; align-items:center;}
+.input-wrap-btn:hover{color:var(--ern);}
 
-.login-left-content {
-    position: relative;
-    z-index: 2;
-    text-align: center;
-    max-width: 380px;
+.btn-login{
+    width:100%; height:51px; border:none; border-radius:14px;
+    background:linear-gradient(135deg,var(--ern-light) 0%,var(--ern) 100%);
+    color:#fff; font-family:inherit; font-size:1rem; font-weight:700;
+    cursor:pointer; box-shadow:0 8px 22px rgba(0,88,78,.35);
+    transition:.22s cubic-bezier(.4,0,.2,1);
+    display:flex; align-items:center; justify-content:center; gap:.5rem;
+    position:relative; overflow:hidden;
 }
+.btn-login:hover{transform:translateY(-2px); box-shadow:0 12px 30px rgba(0,88,78,.45);}
+.btn-login:active{transform:translateY(0);}
+.btn-login.loading{pointer-events:none;}
+.btn-login.loading .btn-text{opacity:0;}
+.btn-login.loading::before{content:''; position:absolute; width:22px; height:22px; border:2.5px solid rgba(255,255,255,.3); border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
 
-.brand-logo {
-    display: block;
-    margin: 0 auto 2rem;
-    height: 44px;
-    filter: brightness(0) invert(1);
-}
+.login-alert{padding:.72rem 1rem; border-radius:12px; font-size:.84rem; font-weight:500; display:flex; align-items:center; gap:.6rem; margin-bottom:1.2rem; animation:shake .4s ease;}
+@keyframes shake{0%,100%{transform:translateX(0);}20%,60%{transform:translateX(-5px);}40%,80%{transform:translateX(5px);}}
+.login-alert.error{background:#FEF2F2; color:#991B1B; border:1px solid #FECACA;}
+.login-alert.info{background:#F0FDF9; color:#065F46; border:1px solid #A7F3D0;}
 
-.brand-tagline {
-    font-size: 2rem;
-    font-weight: 800;
-    color: #fff;
-    line-height: 1.2;
-    letter-spacing: -.03em;
-    margin-bottom: .75rem;
+/* Footer / geliştirici */
+.login-footer{margin-top:1.8rem; text-align:center;}
+.login-footer .copy{font-size:.74rem; color:var(--muted);}
+.dev-credit{
+    margin-top:.55rem; display:inline-flex; align-items:center; gap:.4rem;
+    font-size:.72rem; color:var(--muted);
+    padding:.3rem .7rem; border-radius:999px; background:rgba(0,88,78,.06);
 }
-.brand-tagline span {
-    background: linear-gradient(90deg, var(--ern-teal), #a8f0e8);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+.dev-credit strong{color:var(--ern);}
+/* Sayfa altı holding imzası */
+.page-sign{
+    position:absolute; bottom:1.1rem; left:0; right:0; z-index:2;
+    text-align:center; font-size:.72rem; color:rgba(255,255,255,.55);
+    display:flex; align-items:center; justify-content:center; gap:.5rem;
 }
+.page-sign img{height:16px; filter:brightness(0) invert(1); opacity:.8;}
 
-.brand-sub {
-    font-size: .95rem;
-    color: rgba(255,255,255,.55);
-    font-weight: 400;
-    margin-bottom: 2.5rem;
-    line-height: 1.6;
-}
-
-/* Feature pills */
-.feature-pills { display: flex; flex-direction: column; gap: .65rem; text-align: left; }
-.feature-pill {
-    display: flex;
-    align-items: center;
-    gap: .75rem;
-    padding: .65rem 1rem;
-    background: rgba(255,255,255,.07);
-    border: 1px solid rgba(255,255,255,.1);
-    border-radius: 12px;
-    backdrop-filter: blur(8px);
-    animation: slideInLeft .5s ease backwards;
-}
-.feature-pill:nth-child(1) { animation-delay: .1s; }
-.feature-pill:nth-child(2) { animation-delay: .2s; }
-.feature-pill:nth-child(3) { animation-delay: .3s; }
-@keyframes slideInLeft {
-    from { opacity: 0; transform: translateX(-20px); }
-    to   { opacity: 1; transform: none; }
-}
-.feature-pill-icon {
-    width: 34px; height: 34px;
-    background: rgba(0,200,180,.15);
-    border-radius: 9px;
-    display: flex; align-items: center; justify-content: center;
-    color: var(--ern-teal);
-    font-size: 1rem;
-    flex-shrink: 0;
-}
-.feature-pill-text { font-size: .82rem; color: rgba(255,255,255,.75); font-weight: 500; line-height: 1.3; }
-.feature-pill-text strong { display: block; color: #fff; font-size: .88rem; }
-
-/* ── Sağ taraf — form ─── */
-.login-right {
-    width: 480px;
-    flex-shrink: 0;
-    background: #fff;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    padding: 3rem 3.5rem;
-    position: relative;
-    box-shadow: -20px 0 60px rgba(0,0,0,.2);
-}
-
-.login-right-logo {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 2.5rem;
-}
-.login-right-logo-icon {
-    width: 42px; height: 42px;
-    background: linear-gradient(135deg, var(--ern-light), var(--ern));
-    border-radius: 12px;
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 4px 14px rgba(0,88,78,.3);
-}
-.login-right-logo-icon i { color: #fff; font-size: 1.2rem; }
-.login-right-logo-text strong { display: block; font-size: .9rem; font-weight: 700; color: #0D2E28; letter-spacing: -.01em; }
-.login-right-logo-text span { font-size: .72rem; color: #5C7872; font-weight: 500; }
-
-.login-title { font-size: 1.65rem; font-weight: 800; color: #0D2E28; letter-spacing: -.03em; margin-bottom: .35rem; }
-.login-sub { font-size: .88rem; color: #5C7872; margin-bottom: 2rem; }
-
-/* Form elemanları */
-.lbl { font-size: .8rem; font-weight: 700; color: #0D2E28; margin-bottom: .4rem; display: block; }
-
-.input-wrap {
-    display: flex;
-    align-items: center;
-    border: 1.5px solid #DCE8E6;
-    border-radius: 12px;
-    background: #F5F9F8;
-    overflow: hidden;
-    transition: .2s;
-}
-.input-wrap:focus-within {
-    border-color: var(--ern);
-    background: #fff;
-    box-shadow: 0 0 0 4px rgba(0,88,78,.12);
-}
-.input-wrap-icon {
-    width: 44px;
-    display: flex; align-items: center; justify-content: center;
-    color: #8AA9A3;
-    font-size: 1rem;
-    flex-shrink: 0;
-    transition: .2s;
-}
-.input-wrap:focus-within .input-wrap-icon { color: var(--ern); }
-.input-wrap input {
-    flex: 1;
-    border: none;
-    background: transparent;
-    padding: .72rem .3rem .72rem 0;
-    font-size: .93rem;
-    color: #0D2E28;
-    font-family: inherit;
-    outline: none;
-}
-.input-wrap input::placeholder { color: #B0C8C4; }
-.input-wrap-btn {
-    background: none; border: none; padding: 0 .75rem;
-    color: #8AA9A3; font-size: .95rem; cursor: pointer;
-    transition: .2s; height: 100%;
-    display: flex; align-items: center;
-}
-.input-wrap-btn:hover { color: var(--ern); }
-
-.btn-login {
-    width: 100%;
-    height: 50px;
-    border: none;
-    border-radius: 13px;
-    background: linear-gradient(135deg, var(--ern-light) 0%, var(--ern) 100%);
-    color: #fff;
-    font-family: inherit;
-    font-size: 1rem;
-    font-weight: 700;
-    letter-spacing: .1px;
-    cursor: pointer;
-    box-shadow: 0 6px 20px rgba(0,88,78,.35);
-    transition: .22s cubic-bezier(.4,0,.2,1);
-    display: flex; align-items: center; justify-content: center; gap: .5rem;
-    position: relative;
-    overflow: hidden;
-}
-.btn-login::after {
-    content: '';
-    position: absolute; inset: 0;
-    background: linear-gradient(135deg, rgba(255,255,255,.15), transparent);
-    opacity: 0;
-    transition: opacity .2s;
-}
-.btn-login:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(0,88,78,.45); }
-.btn-login:hover::after { opacity: 1; }
-.btn-login:active { transform: translateY(0); }
-
-/* Loading state */
-.btn-login.loading { pointer-events: none; }
-.btn-login.loading .btn-text { opacity: 0; }
-.btn-login.loading::before {
-    content: '';
-    position: absolute;
-    width: 22px; height: 22px;
-    border: 2.5px solid rgba(255,255,255,.3);
-    border-top-color: #fff;
-    border-radius: 50%;
-    animation: spin .7s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.login-alert {
-    padding: .72rem 1rem;
-    border-radius: 11px;
-    font-size: .85rem;
-    font-weight: 500;
-    display: flex; align-items: center; gap: .6rem;
-    margin-bottom: 1.25rem;
-    animation: shake .4s ease;
-}
-@keyframes shake {
-    0%,100% { transform: translateX(0); }
-    20%,60%  { transform: translateX(-5px); }
-    40%,80%  { transform: translateX(5px); }
-}
-.login-alert.error { background: #FEF2F2; color: #991B1B; border: 1px solid #FECACA; }
-.login-alert.info  { background: #F0FDF9; color: #065F46; border: 1px solid #A7F3D0; }
-
-.login-footer {
-    margin-top: auto;
-    padding-top: 1.5rem;
-    font-size: .75rem;
-    color: #8AA9A3;
-    text-align: center;
-}
-
-/* ── Responsive ──────────────────────────────────────────── */
-@media (max-width: 860px) {
-    .login-left { display: none; }
-    .login-right { width: 100%; padding: 2.5rem 2rem; }
-}
-@media (max-width: 420px) {
-    .login-right { padding: 2rem 1.25rem; }
+@media (max-width:480px){
+    .card-login{padding:2.1rem 1.5rem 1.5rem; border-radius:22px;}
+    .brand-logo{height:52px;}
+    .page-sign{display:none;}
 }
 </style>
 </head>
 <body>
 
-<!-- Sol Marka Paneli -->
-<div class="login-left">
-    <!-- Floating hex shapes -->
-    <div class="hex" style="width:80px;height:80px;bottom:20%;left:8%;animation-duration:12s;"></div>
-    <div class="hex" style="width:50px;height:50px;bottom:35%;left:20%;animation-duration:9s;animation-delay:-3s;"></div>
-    <div class="hex" style="width:110px;height:110px;top:15%;right:12%;animation-duration:15s;animation-delay:-5s;"></div>
-    <div class="hex" style="width:40px;height:40px;top:40%;left:5%;animation-duration:8s;animation-delay:-2s;"></div>
+<div class="blob b1"></div>
+<div class="blob b2"></div>
+<div class="blob b3"></div>
 
-    <div class="login-left-content">
-        <img src="https://portal.ern.com.tr/assets/assets/images/ern_holding.613de732dd156fc8c966aeb8159822be.png"
-             alt="ERN Holding" class="brand-logo">
+<div class="card-login">
 
-        <div class="brand-tagline">
-            Beton Takip<br><span>Sistemi</span>
-        </div>
-        <p class="brand-sub">
-            İrsaliye yönetimini dijitalleştirin.<br>
-            QR okuma, raporlama ve çok kullanıcılı erişim tek platformda.
-        </p>
-
-        <div class="feature-pills">
-            <div class="feature-pill">
-                <div class="feature-pill-icon"><i class="bi bi-qr-code-scan"></i></div>
-                <div class="feature-pill-text">
-                    <strong>QR & Data Matrix Okuma</strong>
-                    E-İrsaliye + KGS/THBB otomatik tanıma
-                </div>
-            </div>
-            <div class="feature-pill">
-                <div class="feature-pill-icon"><i class="bi bi-bar-chart-line"></i></div>
-                <div class="feature-pill-text">
-                    <strong>Anlık Raporlama</strong>
-                    Proje, tedarikçi ve beton sınıfı bazında analiz
-                </div>
-            </div>
-            <div class="feature-pill">
-                <div class="feature-pill-icon"><i class="bi bi-shield-check"></i></div>
-                <div class="feature-pill-text">
-                    <strong>Rol Tabanlı Erişim</strong>
-                    Admin, teknik ofis, saha şefi yetkileri
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Sağ Form Paneli -->
-<div class="login-right">
-
-    <div class="login-right-logo">
-        <div class="login-right-logo-icon">
-            <i class="bi bi-building-fill-check"></i>
-        </div>
-        <div class="login-right-logo-text">
-            <strong>ERN Holding</strong>
-            <span>Beton Takip Sistemi</span>
-        </div>
+    <div class="brand-head">
+        <img src="<?= h($ERN_LOGO) ?>" alt="ERN Holding" class="brand-logo"
+             onerror="this.style.display='none'">
+        <div class="brand-chip"><i class="bi bi-building-fill-check"></i> Beton Takip Sistemi</div>
     </div>
 
-    <div class="login-title">Hoş Geldiniz</div>
-    <p class="login-sub">Hesabınıza giriş yapın</p>
+    <div class="divider"></div>
+
+    <h1 class="login-title">Hoş Geldiniz</h1>
+    <p class="login-sub">Devam etmek için hesabınıza giriş yapın</p>
 
     <?php if ($error): ?>
     <div class="login-alert error">
@@ -484,7 +267,7 @@ body {
             </div>
         </div>
 
-        <div style="margin-bottom:1.5rem">
+        <div style="margin-bottom:1.6rem">
             <label class="lbl" for="password">Şifre</label>
             <div class="input-wrap">
                 <div class="input-wrap-icon"><i class="bi bi-lock"></i></div>
@@ -503,10 +286,16 @@ body {
     </form>
 
     <div class="login-footer">
-        ERN Holding &copy; <?= date('Y') ?> &nbsp;&mdash;&nbsp; Beton Takip Sistemi
-        <br>
-        <span style="font-size:.7rem;opacity:.6">Geliştirici: <strong style="color:var(--ern);opacity:1">Tayyar Akbulut</strong></span>
+        <div class="copy">ERN Holding &copy; <?= date('Y') ?> — Tüm hakları saklıdır</div>
+        <div class="dev-credit">
+            <i class="bi bi-code-slash"></i> Geliştirici: <strong>Tayyar Akbulut</strong>
+        </div>
     </div>
+</div>
+
+<div class="page-sign">
+    <img src="<?= h($ERN_LOGO_WHITE) ?>" alt="ERN Holding" onerror="this.style.display='none'">
+    <span>ERN Holding • Beton Takip Sistemi</span>
 </div>
 
 <script>
@@ -514,13 +303,8 @@ body {
 document.getElementById('togglePwd').addEventListener('click', function () {
     var pwd  = document.getElementById('password');
     var icon = document.getElementById('eyeIcon');
-    if (pwd.type === 'password') {
-        pwd.type = 'text';
-        icon.className = 'bi bi-eye-slash';
-    } else {
-        pwd.type = 'password';
-        icon.className = 'bi bi-eye';
-    }
+    if (pwd.type === 'password') { pwd.type = 'text';  icon.className = 'bi bi-eye-slash'; }
+    else                         { pwd.type = 'password'; icon.className = 'bi bi-eye'; }
 });
 
 // Submit loading state
