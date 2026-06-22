@@ -106,6 +106,41 @@ if ($filtreArama)  { $where[] = '(i.irsaliye_no LIKE ? OR i.arac_plaka LIKE ? OR
 
 $whereSQL = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
 
+// ── Sıralama (whitelist — SQL injection güvenli) ──────────────────────────────
+$sortMap = [
+    'durum'     => 'i.durum',
+    'tarih'     => 'i.tarih',
+    'irsaliye'  => 'i.irsaliye_no',
+    'plaka'     => 'i.arac_plaka',
+    'tedarikci' => 't.ad',
+    'beton'     => 'bs.ad',
+    'parsel'    => 'par.ad',
+    'pompa'     => 'pt.ad',
+    'firma'     => 'fr.ad',
+    'miktar'    => 'i.miktar',
+];
+$sort = isset($_GET['sort']) && isset($sortMap[$_GET['sort']]) ? $_GET['sort'] : '';
+$dir  = (($_GET['dir'] ?? '') === 'asc') ? 'ASC' : 'DESC';
+$orderSQL = $sort
+    ? "ORDER BY {$sortMap[$sort]} {$dir}, i.id DESC"
+    : "ORDER BY i.tarih DESC, i.sira_no DESC, i.id DESC";
+
+// Sıralama linkleri için korunacak query parametreleri (sort/dir hariç)
+$qsKeep = $_GET;
+unset($qsKeep['sort'], $qsKeep['dir'], $qsKeep['export'], $qsKeep['sil']);
+
+/** Sıralanabilir tablo başlığı (<a>) üretir */
+function sortBaslik(string $key, string $label): string {
+    global $sort, $dir, $qsKeep;
+    $aktif   = ($sort === $key);
+    $nextDir = ($aktif && $dir === 'ASC') ? 'desc' : 'asc';
+    $icon    = !$aktif ? 'bi-chevron-expand opacity-25'
+             : ($dir === 'ASC' ? 'bi-caret-up-fill text-primary' : 'bi-caret-down-fill text-primary');
+    $url = '?' . http_build_query(array_merge($qsKeep, ['sort' => $key, 'dir' => $nextDir]));
+    return '<a href="' . h($url) . '" class="text-reset text-decoration-none d-inline-flex align-items-center gap-1" style="white-space:nowrap">'
+         . h($label) . ' <i class="bi ' . $icon . '" style="font-size:.7rem"></i></a>';
+}
+
 $stmt = $pdo->prepare("
     SELECT i.*,
            t.ad  AS tedarikci_adi,
@@ -134,7 +169,7 @@ $stmt = $pdo->prepare("
     LEFT JOIN kotlar kot          ON kot.id = i.kot_id
     LEFT JOIN projeler pr         ON pr.id  = i.proje_id
     {$whereSQL}
-    ORDER BY i.tarih DESC, i.sira_no DESC, i.id DESC
+    {$orderSQL}
 ");
 $stmt->execute($params);
 $liste = $stmt->fetchAll();
@@ -447,16 +482,16 @@ require_once __DIR__ . '/includes/header.php';
                             <?php endif; ?>
                             <th class="text-center tbl-hide-mobile">#</th>
                             <?php if ($tip === 'tum'): ?><th>Tip</th><?php endif; ?>
-                            <th>Durum</th>
-                            <th>Tarih</th>
-                            <th>İrsaliye No</th>
-                            <th class="tbl-hide-tablet">Plaka</th>
-                            <th>Tedarikçi</th>
-                            <th>Beton Sınıfı</th>
-                            <th class="tbl-hide-tablet">Parsel / Blok / Kot</th>
-                            <th class="tbl-hide-mobile">Pompa</th>
-                            <th class="tbl-hide-mobile">Firma</th>
-                            <th class="text-end">Miktar</th>
+                            <th><?= sortBaslik('durum', 'Durum') ?></th>
+                            <th><?= sortBaslik('tarih', 'Tarih') ?></th>
+                            <th><?= sortBaslik('irsaliye', 'İrsaliye No') ?></th>
+                            <th class="tbl-hide-tablet"><?= sortBaslik('plaka', 'Plaka') ?></th>
+                            <th><?= sortBaslik('tedarikci', 'Tedarikçi') ?></th>
+                            <th><?= sortBaslik('beton', 'Beton Sınıfı') ?></th>
+                            <th class="tbl-hide-tablet"><?= sortBaslik('parsel', 'Parsel / Blok / Kot') ?></th>
+                            <th class="tbl-hide-mobile"><?= sortBaslik('pompa', 'Pompa') ?></th>
+                            <th class="tbl-hide-mobile"><?= sortBaslik('firma', 'Firma') ?></th>
+                            <th class="text-end"><?= sortBaslik('miktar', 'Miktar') ?></th>
                             <th class="tbl-hide-mobile">Açıklama</th>
                             <?php if (can_edit()): ?><th class="text-end">İşlem</th><?php endif; ?>
                         </tr>
