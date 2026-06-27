@@ -8,6 +8,8 @@
     </span>
     <span class="dev-credit">
       <i class="bi bi-code-slash me-1"></i>Geliştirici: <strong>Tayyar Akbulut</strong>
+      <br>
+      <i class="bi bi-lightbulb me-1"></i>Concept by: <strong>Coşkun Gengeç</strong>
     </span>
     <span style="opacity:.4;font-size:.7rem;">v<?= APP_VERSION ?></span>
   </footer>
