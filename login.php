@@ -554,8 +554,6 @@ body {
         ERN Holding &copy; <?= date('Y') ?> &nbsp;&mdash;&nbsp; Beton Takip Sistemi
         <br>
         <span style="font-size:.7rem;opacity:.6">Geliştirici: <strong style="color:var(--ern);opacity:1">Tayyar Akbulut</strong></span>
-        <br>
-        <span style="font-size:.7rem;opacity:.6">Concept by: <strong style="color:var(--ern);opacity:1">Coşkun Gengeç</strong></span>
     </div>
 </div>
 
