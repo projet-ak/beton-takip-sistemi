@@ -8,6 +8,8 @@ if (!function_exists('role_label'))    require_once __DIR__ . '/functions.php';
 $__user     = current_user();
 $__page     = basename($_SERVER['PHP_SELF']);
 $__rootPath = $rootPath ?? '';
+// Aktif modül: demir/ altındaki sayfalar "demir", diğerleri "beton"
+$__module   = (strpos($_SERVER['PHP_SELF'] ?? '', '/demir/') !== false) ? 'demir' : 'beton';
 
 function __isActive(string $page): string {
     global $__page; return $__page === $page ? 'active' : '';
@@ -48,7 +50,7 @@ if ($__user) {
 <aside class="ern-sidebar" id="ernSidebar">
 
   <div class="sidebar-brand-wrap">
-    <a href="<?= $__rootPath ?>index.php" class="sidebar-brand">
+    <a href="<?= $__rootPath ?><?= $__module==='demir' ? 'demir/index.php' : 'index.php' ?>" class="sidebar-brand">
       <!-- Tam logo (expanded modda) -->
       <img class="logo-full"
            src="https://portal.ern.com.tr/assets/assets/images/ern_holding.613de732dd156fc8c966aeb8159822be.png"
@@ -57,7 +59,7 @@ if ($__user) {
       <img class="logo-icon"
            src="https://ern.com.tr/favicon.png"
            alt="ERN" style="display:none;width:32px;height:32px;object-fit:contain;filter:brightness(0) invert(1);">
-      <div class="sidebar-brand-label"><strong>Beton Takip</strong>Sistemi</div>
+      <div class="sidebar-brand-label"><strong><?= $__module==='demir' ? 'Demir Takip' : 'Beton Takip' ?></strong>Sistemi</div>
     </a>
     <button class="sidebar-collapse-btn d-none d-lg-flex" id="sidebarCollapseBtn" title="Menüyü daralt">
       <i class="bi bi-layout-sidebar-reverse" id="sidebarCollapseIcon"></i>
@@ -65,6 +67,7 @@ if ($__user) {
   </div>
 
   <div class="sidebar-scroll">
+    <?php if($__module==='beton'): ?>
     <ul class="list-unstyled mb-0">
 
       <li class="sidebar-nav-item">
@@ -158,6 +161,47 @@ if ($__user) {
       <?php endif; ?>
 
     </ul>
+    <?php else: /* ── DEMİR MODÜLÜ MENÜSÜ ── */ ?>
+    <ul class="list-unstyled mb-0">
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('index.php') ?>" href="<?= $__rootPath ?>demir/index.php" data-label="Dashboard">
+          <i class="bi bi-speedometer2"></i><span>Dashboard</span>
+        </a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('sevkiyatlar.php') ?>" href="<?= $__rootPath ?>demir/sevkiyatlar.php" data-label="Sevkiyatlar">
+          <i class="bi bi-truck"></i><span>Sevkiyatlar</span>
+        </a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('siparisler.php') ?>" href="<?= $__rootPath ?>demir/siparisler.php" data-label="Siparişler">
+          <i class="bi bi-cart-check"></i><span>Siparişler</span>
+        </a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('tutanaklar.php') ?>" href="<?= $__rootPath ?>demir/tutanaklar.php" data-label="Tutanaklar">
+          <i class="bi bi-file-earmark-check"></i><span>Tutanaklar</span>
+        </a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('icmal.php') ?>" href="<?= $__rootPath ?>demir/icmal.php" data-label="İcmal">
+          <i class="bi bi-clipboard-data"></i><span>İcmal</span>
+        </a>
+      </li>
+      <?php if(can_manage_definitions()): ?>
+      <li class="sidebar-nav-item mt-1"><div class="nav-section">Tanımlar</div></li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('caplar.php') ?>" href="<?= $__rootPath ?>demir/caplar.php"><i class="bi bi-rulers"></i><span>Çaplar</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('tedarikciler.php') ?>" href="<?= $__rootPath ?>demir/tedarikciler.php"><i class="bi bi-shop"></i><span>Tedarikçiler</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('taseronlar.php') ?>" href="<?= $__rootPath ?>demir/taseronlar.php"><i class="bi bi-people"></i><span>Taşeronlar</span></a>
+      </li>
+      <?php endif; ?>
+    </ul>
+    <?php endif; ?>
   </div>
 
   <?php if($__user): ?>
@@ -194,7 +238,27 @@ if ($__user) {
 
   <header class="ern-topbar">
     <button class="topbar-menu-btn" id="sidebarToggleBtn"><i class="bi bi-list fs-5"></i></button>
-    <div class="topbar-title d-none d-md-block">
+
+    <?php if($__user): ?>
+    <!-- Modül geçişi: Beton / Demir -->
+    <style>
+    .module-switch{display:inline-flex;gap:.2rem;background:var(--bt-surface-2,rgba(0,0,0,.05));border:1px solid var(--bt-border,rgba(0,0,0,.08));border-radius:999px;padding:.2rem;}
+    .module-switch-item{display:inline-flex;align-items:center;gap:.4rem;padding:.34rem .8rem;border-radius:999px;font-size:.8rem;font-weight:600;color:var(--bt-text-soft,#64748b);text-decoration:none;white-space:nowrap;transition:.15s;}
+    .module-switch-item.active{background:var(--ern,#00584E);color:#fff;box-shadow:0 2px 6px rgba(0,88,78,.3);}
+    .module-switch-item:not(.active):hover{color:var(--ern,#00584E);}
+    @media (max-width:575.98px){.module-switch-item span{display:none;}.module-switch-item{padding:.34rem .55rem;}}
+    </style>
+    <div class="module-switch">
+      <a href="<?= $__rootPath ?>index.php" class="module-switch-item <?= $__module==='beton'?'active':'' ?>">
+        <i class="bi bi-buildings"></i><span>Beton Takip</span>
+      </a>
+      <a href="<?= $__rootPath ?>demir/index.php" class="module-switch-item <?= $__module==='demir'?'active':'' ?>">
+        <i class="bi bi-rulers"></i><span>Demir Takip</span>
+      </a>
+    </div>
+    <?php endif; ?>
+
+    <div class="topbar-title d-none d-lg-block">
       <?php
       $__bc=['index.php'=>'Dashboard','irsaliyeler.php'=>'İrsaliyeler','irsaliye_form.php'=>'İrsaliye Formu','irsaliye_detay.php'=>'İrsaliye Detayı','hizli_tarama.php'=>'Hızlı Tarama','raporlar.php'=>'Raporlar','projeler.php'=>'Projeler','kullanicilar.php'=>'Kullanıcılar','tedarikciler.php'=>'Tedarikçiler','beton_siniflari.php'=>'Beton Sınıfları','yedek.php'=>'Yedekleme','import.php'=>'Excel Aktarımı','ai_ayarlar.php'=>'AI Ayarları'];
       echo '<span style="color:var(--bt-text-soft);font-size:.78rem;">ERN Holding</span><span style="color:var(--bt-border);margin:0 .4rem;">/</span><span style="font-weight:600;font-size:.85rem;">'.h($__bc[$__page]??ucfirst(basename($__page,'.php'))).'</span>';
