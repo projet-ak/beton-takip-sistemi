@@ -205,6 +205,19 @@ try {
 <body class="bg-light"><div class="container mt-5" style="max-width:640px">
 <div class="card shadow"><div class="card-header bg-dark text-white fw-bold fs-5">Demir Takip — Veritabanı Kurulumu</div>
 <div class="card-body">
+<?php
+$__aktifDb = defined('DEMIR_DB_NAME') && DEMIR_DB_NAME !== '' ? DEMIR_DB_NAME : DB_NAME;
+$__ayriMi  = defined('DEMIR_DB_NAME') && DEMIR_DB_NAME !== '' && DEMIR_DB_NAME !== DB_NAME;
+?>
+<div class="alert <?= $__ayriMi ? 'alert-success' : 'alert-warning' ?> py-2 mb-3 small">
+    <strong>Aktif veritabanı:</strong> <code><?= h($__aktifDb) ?></code>
+    <?php if ($__ayriMi): ?>
+        — ✓ Beton'dan ayrı veritabanı kullanılıyor.
+    <?php else: ?>
+        — ⚠ Beton ile <strong>aynı</strong> veritabanı. Ayırmak için config.php'ye
+        <code>define('DEMIR_DB_NAME','takbulut_demir');</code> ekleyip bu sayfayı tekrar açın.
+    <?php endif; ?>
+</div>
 <?php if ($hata): ?>
     <div class="alert alert-danger"><strong>HATA:</strong> <?= $hata ?></div>
 <?php else: ?>
