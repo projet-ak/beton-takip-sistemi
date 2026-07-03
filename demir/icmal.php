@@ -47,18 +47,35 @@ if (isset($_GET['cap_detay']) && ctype_digit($_GET['cap_detay'])) {
     $sq->execute($sp);
     $sevkler = $sq->fetchAll();
 
-    // Bu çapı içeren siparişler
+    // Bu çapı içeren siparişler + o çap için gelen/kalan bakiye
     $qp = $pdoDemir->prepare("
         SELECT sp.id, sp.ifs_siparis_no, ta.ad AS taseron, pr.kod AS proje,
-               sk.miktar_ton AS miktar
+               sk.miktar_ton AS siparis,
+               COALESCE((SELECT SUM(svk.irsaliye_miktar)
+                         FROM demir_sevkiyatlar sv
+                         JOIN demir_sevkiyat_kalemleri svk ON svk.sevkiyat_id = sv.id
+                         WHERE svk.cap_id = ? AND sv.ifs_siparis_no<>'' AND sv.ifs_siparis_no = sp.ifs_siparis_no),0) AS gelen
         FROM demir_siparis_kalemleri sk
         JOIN demir_siparisler sp ON sp.id = sk.siparis_id
         LEFT JOIN demir_taseronlar ta ON ta.id = sp.taseron_id
         LEFT JOIN demir_projeler pr ON pr.id = sp.proje_id
         WHERE sk.cap_id = ?
         ORDER BY sp.ifs_siparis_no");
-    $qp->execute([$capId]);
+    $qp->execute([$capId, $capId]);
     $sipler = $qp->fetchAll();
+
+    // Bu çapı içeren teslim tutanakları
+    $qt = $pdoDemir->prepare("
+        SELECT tu.id, tu.tutanak_no, tu.tutanak_tarih, ta.ad AS taseron, p.kod AS proje,
+               COALESCE(SUM(tk.miktar_ton),0) AS miktar
+        FROM demir_tutanak_kalemleri tk
+        JOIN demir_tutanaklar tu ON tu.id = tk.tutanak_id
+        LEFT JOIN demir_taseronlar ta ON ta.id = tu.taseron_id
+        LEFT JOIN demir_projeler p ON p.id = tu.proje_id
+        WHERE tk.cap_id = ?
+        GROUP BY tu.id ORDER BY tu.tutanak_tarih DESC, tu.id DESC");
+    $qt->execute([$capId]);
+    $tutlar = $qt->fetchAll();
 
     $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
     header('Content-Type: text/html; charset=utf-8');
@@ -85,22 +102,45 @@ if (isset($_GET['cap_detay']) && ctype_digit($_GET['cap_detay'])) {
         </table>
         </div>
     </div>
-    <div>
-        <h6 class="fw-bold mb-2"><i class="bi bi-cart-check text-primary me-1"></i> Bu çapı içeren siparişler — <?= count($sipler) ?></h6>
+    <div class="mb-3">
+        <h6 class="fw-bold mb-2"><i class="bi bi-cart-check text-primary me-1"></i> Bu çapı içeren siparişler — <?= count($sipler) ?> <span class="text-muted fw-normal small">(bu çap için bakiye)</span></h6>
         <div class="table-responsive" style="max-height:220px">
         <table class="table table-sm table-hover align-middle mb-0">
-            <thead class="table-light"><tr><th>IFS Sipariş No</th><th>Taşeron</th><th>Proje</th><th class="text-end">Sipariş (t)</th><th></th></tr></thead>
+            <thead class="table-light"><tr><th>IFS Sipariş No</th><th>Taşeron</th><th>Proje</th><th class="text-end">Sipariş (t)</th><th class="text-end">Gelen (t)</th><th class="text-end">Kalan (t)</th><th></th></tr></thead>
             <tbody>
-            <?php foreach ($sipler as $sp2): ?>
+            <?php foreach ($sipler as $sp2): $kalan = max(0, (float)$sp2['siparis'] - (float)$sp2['gelen']); $tam = $kalan < 0.0005; ?>
                 <tr>
                     <td class="font-monospace small fw-semibold"><?= h($sp2['ifs_siparis_no'] ?: '—') ?></td>
                     <td><?= h($sp2['taseron'] ?: '—') ?></td>
                     <td><?= $sp2['proje'] ? '<span class="badge bg-secondary">'.h($sp2['proje']).'</span>' : '—' ?></td>
-                    <td class="text-end"><?= $fmt($sp2['miktar']) ?></td>
+                    <td class="text-end"><?= $fmt($sp2['siparis']) ?></td>
+                    <td class="text-end"><?= $fmt($sp2['gelen']) ?></td>
+                    <td class="text-end fw-semibold <?= $tam?'text-success':'text-danger' ?>"><?= $tam?'<i class="bi bi-check-lg"></i> Tamam':$fmt($kalan) ?></td>
                     <td class="text-end"><a href="siparis_detay.php?id=<?= (int)$sp2['id'] ?>" class="btn btn-xs btn-outline-dark" title="Sipariş detayı"><i class="bi bi-box-arrow-up-right"></i></a></td>
                 </tr>
             <?php endforeach; ?>
-            <?php if (!$sipler): ?><tr><td colspan="5" class="text-center text-muted py-3">Bu çapı içeren sipariş yok.</td></tr><?php endif; ?>
+            <?php if (!$sipler): ?><tr><td colspan="7" class="text-center text-muted py-3">Bu çapı içeren sipariş yok.</td></tr><?php endif; ?>
+            </tbody>
+        </table>
+        </div>
+    </div>
+    <div>
+        <h6 class="fw-bold mb-2"><i class="bi bi-file-earmark-check text-primary me-1"></i> Bu çaptaki teslim tutanakları — <?= count($tutlar) ?></h6>
+        <div class="table-responsive" style="max-height:200px">
+        <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light"><tr><th>Tutanak No</th><th>Tarih</th><th>Taşeron</th><th>Proje</th><th class="text-end">Tonaj (t)</th><th></th></tr></thead>
+            <tbody>
+            <?php foreach ($tutlar as $tt): ?>
+                <tr>
+                    <td class="font-monospace small fw-semibold"><?= h($tt['tutanak_no'] ?: '—') ?></td>
+                    <td class="text-nowrap"><?= format_date($tt['tutanak_tarih']) ?></td>
+                    <td><?= h($tt['taseron'] ?: '—') ?></td>
+                    <td><?= $tt['proje'] ? '<span class="badge bg-secondary">'.h($tt['proje']).'</span>' : '—' ?></td>
+                    <td class="text-end"><?= $fmt($tt['miktar']) ?></td>
+                    <td class="text-end"><a href="tutanak_detay.php?id=<?= (int)$tt['id'] ?>" class="btn btn-xs btn-outline-secondary" title="Tutanağa git"><i class="bi bi-box-arrow-up-right"></i></a></td>
+                </tr>
+            <?php endforeach; ?>
+            <?php if (!$tutlar): ?><tr><td colspan="6" class="text-center text-muted py-3">Bu çapta teslim tutanağı yok.</td></tr><?php endif; ?>
             </tbody>
         </table>
         </div>

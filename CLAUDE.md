@@ -109,7 +109,7 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · Tutanaklar · **Tutanak Taki
 | `iade_detay.php` / `iade_pdf.php` | Görüntüleme + imzalı evrak (`uploads/demir_iade/{id}/`) / A4 PDF. |
 | `taseron_bakiye.php` | **Net Elinde = Teslim Alınan + Devraldığı − İade Ettiği** (çap bazında açılır). |
 | `_iade_ortak.php` | İade ortak: şema garantisi (`iade_semasi_kur`) + `iade_num` + `iade_no_uret`. |
-| `icmal.php` / `icmal_pdf.php` | Gelen demir mutabakatı (çap+tedarikçi) + Excel/PDF. **Çap değerine tıklayınca popup** (AJAX `?cap_detay=`): o çaptaki sevkiyatlar→irsaliyeye (`sevkiyat_form.php?id=`) + siparişler→(`siparis_detay.php?id=`) geçiş. |
+| `icmal.php` / `icmal_pdf.php` | Gelen demir mutabakatı (çap+tedarikçi) + Excel/PDF. **Çap değerine tıklayınca popup** (AJAX `?cap_detay=`): o çaptaki sevkiyatlar→irsaliyeye (`sevkiyat_form.php?id=`), siparişler→(`siparis_detay.php?id=`) **o çap için gelen/kalan bakiye ile**, teslim tutanakları→(`tutanak_detay.php?id=`). |
 | `raporlar.php` | Chart.js + **ExcelJS** (Özet/Aylık/Tedarikçi/Detay) + PDF (yazdırma penceresi). |
 | `projeler.php` | Proje CRUD (kod+ad), **mükerrer önleme (kod VEYA ad)**. |
 | `proje_detay.php` | Proje detayı: çap bazında gelen demir + siparişler+bakiye + sevkiyatlar. |
