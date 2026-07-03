@@ -268,8 +268,8 @@ $fmt = fn($n,$d=3) => number_format((float)$n, $d, ',', '.');
                 <td class="text-end text-nowrap">
                     <button class="btn btn-xs btn-outline-primary btn-duzenle"
                         data-json='<?= h(json_encode($r, JSON_UNESCAPED_UNICODE)) ?>' title="Düzenle"><i class="bi bi-pencil"></i></button>
-                    <?php if ($r['evrak_url']): ?><a href="tutanak_takip.php?evrak_sil=<?= $r['id'] ?>" class="btn btn-xs btn-outline-warning btn-confirm" data-msg="Evrak kaldırılsın mı?" title="Evrağı kaldır"><i class="bi bi-paperclip"></i></a><?php endif; ?>
-                    <?php if (has_role('admin','teknik_ofis_admin')): ?><a href="tutanak_takip.php?sil=<?= $r['id'] ?>" class="btn btn-xs btn-outline-danger btn-confirm" data-msg="Bu satır silinsin mi?"><i class="bi bi-trash"></i></a><?php endif; ?>
+                    <?php if ($r['evrak_url']): ?><a href="tutanak_takip.php?evrak_sil=<?= $r['id'] ?>" class="btn btn-xs btn-outline-warning" title="Evrağı kaldır" onclick="return confirm('Evrak kaldırılsın mı?')"><i class="bi bi-paperclip"></i></a><?php endif; ?>
+                    <?php if (has_role('admin','teknik_ofis_admin')): ?><a href="tutanak_takip.php?sil=<?= $r['id'] ?>" class="btn btn-xs btn-outline-danger" title="Sil" onclick="return confirm('Bu satır silinsin mi?')"><i class="bi bi-trash"></i></a><?php endif; ?>
                 </td>
                 <?php endif; ?>
             </tr>
@@ -328,11 +328,13 @@ $fmt = fn($n,$d=3) => number_format((float)$n, $d, ',', '.');
 </div>
 
 <script>
-(function(){
+document.addEventListener('DOMContentLoaded', function(){
+    if (typeof bootstrap === 'undefined') return;
     var satirModal = new bootstrap.Modal(document.getElementById('satirModal'));
     var evrakModal = new bootstrap.Modal(document.getElementById('evrakModal'));
     function set(id,v){ document.getElementById(id).value = (v===null||v===undefined)?'':v; }
-    document.getElementById('btnYeni').addEventListener('click', function(){
+    var btnYeni = document.getElementById('btnYeni');
+    if (btnYeni) btnYeni.addEventListener('click', function(){
         document.getElementById('m_baslik').textContent = 'Yeni Satır';
         set('m_id',''); set('m_firma',''); set('m_sira',''); set('m_proje',''); set('m_tip','teslim');
         set('m_tarih',''); set('m_cap',''); set('m_irs',''); set('m_tut',''); set('m_mik',''); set('m_bag','');
@@ -351,7 +353,7 @@ $fmt = fn($n,$d=3) => number_format((float)$n, $d, ',', '.');
     document.querySelectorAll('.btn-evrak').forEach(function(b){
         b.addEventListener('click', function(){ set('e_id', this.getAttribute('data-id')); evrakModal.show(); });
     });
-})();
+});
 </script>
 <?php endif; ?>
 

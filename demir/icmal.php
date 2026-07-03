@@ -312,7 +312,8 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
 </div>
 
 <script>
-(function(){
+document.addEventListener('DOMContentLoaded', function(){
+    if (typeof bootstrap === 'undefined') return;
     var filtreQS = <?= json_encode($__qs, JSON_UNESCAPED_UNICODE) ?>;
     var modalEl = document.getElementById('capModal');
     var modal = new bootstrap.Modal(modalEl);
@@ -332,7 +333,7 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
                 .catch(function(){ body.innerHTML = '<div class="alert alert-danger mb-0">İçerik yüklenemedi.</div>'; });
         });
     });
-})();
+});
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
