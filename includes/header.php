@@ -184,6 +184,11 @@ if ($__user) {
         </a>
       </li>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('tutanak_takip.php') ?>" href="<?= $__rootPath ?>demir/tutanak_takip.php" data-label="Tutanak Takip">
+          <i class="bi bi-journal-text"></i><span>Tutanak Takip</span>
+        </a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('iade_tutanaklar.php').__isActive('iade_form.php').__isActive('iade_detay.php') ?>" href="<?= $__rootPath ?>demir/iade_tutanaklar.php" data-label="İade Tutanakları">
           <i class="bi bi-arrow-return-left"></i><span>İade Tutanakları</span>
         </a>
