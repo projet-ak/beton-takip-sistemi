@@ -196,6 +196,95 @@ if ($canImport && ($_POST['action'] ?? '') === 'import' && !empty($_FILES['dosya
     }
 }
 
+// ── AJAX: tutanak detay (o tutanak no'nun tüm satırları + evrak) ──────────────
+if (isset($_GET['tutanak_detay'])) {
+    $tn = trim((string)$_GET['tutanak_detay']);
+    $fr = trim((string)($_GET['firma'] ?? ''));
+    $q = $pdoDemir->prepare("SELECT * FROM demir_tutanak_takip WHERE tutanak_no=? AND firma=? ORDER BY sira, id");
+    $q->execute([$tn, $fr]);
+    $satirlar = $q->fetchAll();
+    $evrak = ''; $toplam = 0; $proje = ''; $tarih = ''; $firstId = 0;
+    foreach ($satirlar as $s) {
+        $toplam += (float)$s['miktar_ton'];
+        if (!$evrak && $s['evrak_url']) $evrak = $s['evrak_url'];
+        if (!$proje && $s['proje']) $proje = $s['proje'];
+        if (!$tarih && $s['tarih']) $tarih = $s['tarih'];
+        if (!$firstId) $firstId = (int)$s['id'];
+    }
+    $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
+    $isImg = $evrak ? !str_ends_with(strtolower($evrak), '.pdf') : false;
+    header('Content-Type: text/html; charset=utf-8');
+    ?>
+    <div class="d-flex flex-wrap gap-4 mb-3 small">
+        <div><div class="text-muted">Firma</div><div class="fw-semibold"><?= h($fr) ?></div></div>
+        <div><div class="text-muted">Tutanak No</div><div class="fw-semibold font-monospace"><?= h($tn) ?></div></div>
+        <div><div class="text-muted">Proje</div><div class="fw-semibold"><?= $proje?h($proje):'—' ?></div></div>
+        <div><div class="text-muted">Tarih</div><div class="fw-semibold"><?= format_date($tarih) ?></div></div>
+        <div><div class="text-muted">Toplam</div><div class="fw-semibold"><?= $fmt($toplam) ?> t · <?= count($satirlar) ?> satır</div></div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header bg-white fw-semibold py-2"><i class="bi bi-paperclip text-primary me-1"></i> İmzalı Evrak</div>
+        <div class="card-body">
+            <?php if ($evrak): ?>
+                <div class="ratio ratio-16x9 mb-2 border rounded bg-light" style="max-height:420px">
+                    <?php if ($isImg): ?>
+                        <a href="<?= h($rootPath.$evrak) ?>" target="_blank" class="d-flex align-items-center justify-content-center"><img src="<?= h($rootPath.$evrak) ?>" class="img-fluid" style="max-height:100%;object-fit:contain" alt="Evrak"></a>
+                    <?php else: ?>
+                        <iframe src="<?= h($rootPath.$evrak) ?>#toolbar=1" style="border:0" title="Evrak"></iframe>
+                    <?php endif; ?>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="<?= h($rootPath.$evrak) ?>" target="_blank" class="btn btn-sm btn-outline-primary"><i class="bi bi-box-arrow-up-right me-1"></i>Yeni Sekmede Aç</a>
+                    <?php if ($canEdit): ?><a href="tutanak_takip.php?evrak_sil=<?= $firstId ?>" class="btn btn-sm btn-outline-danger" onclick="return confirm('“<?= h($tn) ?>” tutanağının evrağı tüm satırlardan kaldırılsın mı?')"><i class="bi bi-trash me-1"></i>Kaldır</a><?php endif; ?>
+                </div>
+                <?php if ($canEdit): ?><div class="form-text mt-2">Değiştirmek için aşağıya yeni dosya sürükleyip bırakın.</div><?php endif; ?>
+            <?php elseif (!$canEdit): ?>
+                <div class="text-muted small">Henüz imzalı evrak yüklenmemiş.</div>
+            <?php endif; ?>
+
+            <?php if ($canEdit): ?>
+            <form method="post" enctype="multipart/form-data" class="mt-2 dz-form">
+                <input type="hidden" name="action" value="evrak">
+                <input type="hidden" name="id" value="<?= $firstId ?>">
+                <label class="dz-zone d-flex flex-column align-items-center justify-content-center text-center p-4 border border-2 border-dashed rounded" style="cursor:pointer;background:#f8f9fa;border-style:dashed!important">
+                    <i class="bi bi-cloud-arrow-up fs-2 text-secondary"></i>
+                    <span class="fw-semibold mt-1">Dosyayı buraya sürükleyin ya da tıklayın</span>
+                    <span class="small text-muted dz-name">PDF, JPG, PNG — maks 15 MB · “<?= h($tn) ?>” tutanağının tüm satırlarına işlenir</span>
+                    <input type="file" name="evrak" accept="application/pdf,image/*" class="d-none dz-input" required>
+                </label>
+                <div class="text-end mt-2"><button class="btn btn-success btn-sm dz-submit" disabled><i class="bi bi-upload me-1"></i>Yükle</button></div>
+            </form>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header bg-white fw-semibold py-2"><i class="bi bi-list-check text-primary me-1"></i> Satırlar (<?= count($satirlar) ?>)</div>
+        <div class="table-responsive" style="max-height:280px">
+        <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light"><tr><th>#</th><th>Hareket</th><th>Çap</th><th>İrsaliye</th><th class="text-end">Miktar (t)</th><th class="text-end">Bağ</th><?php if($canEdit): ?><th></th><?php endif; ?></tr></thead>
+            <tbody>
+            <?php foreach ($satirlar as $s): $iade=$s['tip']==='iade'; ?>
+                <tr>
+                    <td class="text-muted"><?= (int)$s['sira'] ?></td>
+                    <td><?php if($iade): ?><span class="badge bg-danger-subtle text-danger border border-danger-subtle">İade</span><?php else: ?><span class="badge bg-success-subtle text-success border border-success-subtle">Teslim</span><?php endif; ?></td>
+                    <td><?= h($s['cap_label'] ?: '—') ?></td>
+                    <td class="font-monospace small"><?= h($s['irsaliye_no'] ?: '—') ?></td>
+                    <td class="text-end fw-semibold <?= $iade?'text-danger':'' ?>"><?= $fmt($s['miktar_ton']) ?></td>
+                    <td class="text-end"><?= $s['bag']!==null?(int)$s['bag']:'—' ?></td>
+                    <?php if($canEdit): ?><td class="text-end"><button class="btn btn-xs btn-outline-primary btn-duzenle" data-json='<?= h(json_encode($s, JSON_UNESCAPED_UNICODE)) ?>' title="Düzenle"><i class="bi bi-pencil"></i></button></td><?php endif; ?>
+                </tr>
+            <?php endforeach; ?>
+            <?php if(!$satirlar): ?><tr><td colspan="<?= $canEdit?7:6 ?>" class="text-center text-muted py-3">Satır bulunamadı.</td></tr><?php endif; ?>
+            </tbody>
+        </table>
+        </div>
+    </div>
+    <?php
+    exit;
+}
+
 // ── Filtreler ──────────────────────────────────────────────────────────────────
 $fFirma = trim($_GET['firma'] ?? '');
 $fProje = trim($_GET['proje'] ?? '');
@@ -283,7 +372,7 @@ $fmt = fn($n,$d=3) => number_format((float)$n, $d, ',', '.');
                 <td><?php if($iade): ?><span class="badge bg-danger-subtle text-danger border border-danger-subtle">İade</span><?php else: ?><span class="badge bg-success-subtle text-success border border-success-subtle">Teslim</span><?php endif; ?></td>
                 <td class="text-nowrap"><?= format_date($r['tarih']) ?></td>
                 <td class="font-monospace small"><?= h($r['irsaliye_no'] ?: '—') ?></td>
-                <td class="font-monospace small"><?= h($r['tutanak_no'] ?: '—') ?></td>
+                <td class="font-monospace small"><?php if ($r['tutanak_no']): ?><a href="#" class="tutanak-detay text-decoration-none fw-semibold" data-tutanak="<?= h($r['tutanak_no']) ?>" data-firma="<?= h($r['firma']) ?>" title="Tutanak detayı"><?= h($r['tutanak_no']) ?></a><?php else: ?>—<?php endif; ?></td>
                 <td><?= h($r['cap_label'] ?: '—') ?></td>
                 <td class="text-end fw-semibold <?= $iade?'text-danger':'' ?>"><?= $fmt($r['miktar_ton']) ?></td>
                 <td class="text-end"><?= $r['bag']!==null?(int)$r['bag']:'—' ?></td>
@@ -341,58 +430,123 @@ $fmt = fn($n,$d=3) => number_format((float)$n, $d, ',', '.');
   </div></div>
 </div>
 
-<!-- Evrak yükle modal -->
+<!-- Evrak yükle modal (sürükle-bırak) -->
 <div class="modal fade" id="evrakModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-sm"><div class="modal-content">
-    <form method="post" enctype="multipart/form-data">
+  <div class="modal-dialog"><div class="modal-content">
+    <form method="post" enctype="multipart/form-data" class="dz-form">
       <input type="hidden" name="action" value="evrak">
       <input type="hidden" name="id" id="e_id">
       <div class="modal-header"><h5 class="modal-title">İmzalı Evrak Yükle</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
         <div id="e_scope" class="alert alert-info py-2 px-3 small mb-2 d-none"></div>
-        <input type="file" name="evrak" class="form-control form-control-sm" accept="application/pdf,image/*" required>
-        <div class="form-text">PDF, JPG, PNG — maks 15 MB. Tek yüklemede ilgili tutanağın tüm satırlarına işlenir.</div>
+        <label class="dz-zone d-flex flex-column align-items-center justify-content-center text-center p-4 border border-2 border-dashed rounded" style="cursor:pointer;background:#f8f9fa;border-style:dashed!important">
+            <i class="bi bi-cloud-arrow-up fs-2 text-secondary"></i>
+            <span class="fw-semibold mt-1">Dosyayı buraya sürükleyin ya da tıklayın</span>
+            <span class="small text-muted dz-name">PDF, JPG, PNG — maks 15 MB</span>
+            <input type="file" name="evrak" accept="application/pdf,image/*" class="d-none dz-input" required>
+        </label>
       </div>
-      <div class="modal-footer"><button class="btn btn-primary w-100"><i class="bi bi-upload me-1"></i>Yükle</button></div>
+      <div class="modal-footer"><button class="btn btn-primary w-100 dz-submit" disabled><i class="bi bi-upload me-1"></i>Yükle</button></div>
     </form>
   </div></div>
+</div>
+<?php endif; ?>
+
+<!-- Tutanak detay modal (herkes görüntüleyebilir; düzenleme yetkilim ise aktif) -->
+<div class="modal fade" id="detayModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-journal-text me-1"></i> Tutanak Detay</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="detayBody">
+        <div class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Yükleniyor…</div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function(){
     if (typeof bootstrap === 'undefined') return;
-    var satirModal = new bootstrap.Modal(document.getElementById('satirModal'));
-    var evrakModal = new bootstrap.Modal(document.getElementById('evrakModal'));
-    function set(id,v){ document.getElementById(id).value = (v===null||v===undefined)?'':v; }
-    var btnYeni = document.getElementById('btnYeni');
-    if (btnYeni) btnYeni.addEventListener('click', function(){
-        document.getElementById('m_baslik').textContent = 'Yeni Satır';
+    function el(id){ return document.getElementById(id); }
+    function set(id,v){ var e=el(id); if(e) e.value = (v===null||v===undefined)?'':v; }
+
+    var satirModal = el('satirModal') ? new bootstrap.Modal(el('satirModal')) : null;
+    var evrakModal = el('evrakModal') ? new bootstrap.Modal(el('evrakModal')) : null;
+    var detayModal = el('detayModal') ? new bootstrap.Modal(el('detayModal')) : null;
+
+    // Sürükle-bırak: verilen form kapsamındaki .dz-zone / .dz-input / .dz-submit
+    function wireDropZone(form){
+        if (!form) return;
+        var zone = form.querySelector('.dz-zone'), input = form.querySelector('.dz-input'),
+            name = form.querySelector('.dz-name'), submit = form.querySelector('.dz-submit');
+        if (!zone || !input) return;
+        function refresh(){
+            if (input.files && input.files.length){
+                if (name) name.textContent = input.files[0].name;
+                zone.style.borderColor = '#198754'; zone.style.background = '#eafaf1';
+                if (submit) submit.disabled = false;
+            }
+        }
+        input.addEventListener('change', refresh);
+        ['dragenter','dragover'].forEach(function(ev){ zone.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); zone.style.borderColor='#0d6efd'; zone.style.background='#e7f1ff'; }); });
+        ['dragleave','dragend'].forEach(function(ev){ zone.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); zone.style.borderColor=''; zone.style.background='#f8f9fa'; }); });
+        zone.addEventListener('drop', function(e){
+            e.preventDefault(); e.stopPropagation();
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length){ input.files = e.dataTransfer.files; refresh(); }
+        });
+    }
+    // Statik evrak modalı için bağla
+    document.querySelectorAll('#evrakModal .dz-form').forEach(wireDropZone);
+
+    // Olay delegasyonu (enjekte edilen detay içeriği için de çalışır)
+    document.addEventListener('click', function(e){
+        var d = e.target.closest('.btn-duzenle');
+        if (d && satirModal){
+            var r = JSON.parse(d.getAttribute('data-json'));
+            el('m_baslik').textContent = 'Satır Düzenle';
+            set('m_id',r.id); set('m_firma',r.firma); set('m_sira',r.sira); set('m_proje',r.proje);
+            set('m_tip',r.tip==='iade'?'iade':'teslim'); set('m_tarih',r.tarih); set('m_cap',r.cap_label);
+            set('m_irs',r.irsaliye_no); set('m_tut',r.tutanak_no); set('m_mik',r.miktar_ton); set('m_bag',r.bag);
+            if (detayModal) detayModal.hide();
+            satirModal.show();
+            return;
+        }
+        var ev = e.target.closest('.btn-evrak');
+        if (ev && evrakModal){
+            set('e_id', ev.getAttribute('data-id'));
+            var tn = ev.getAttribute('data-tutanak') || '';
+            var scope = el('e_scope');
+            if (tn){ scope.innerHTML = '<i class="bi bi-paperclip me-1"></i><strong>'+tn+'</strong> tutanağının <strong>tüm satırlarına</strong> eklenecek.'; scope.classList.remove('d-none'); }
+            else { scope.classList.add('d-none'); }
+            evrakModal.show();
+            return;
+        }
+        var td = e.target.closest('.tutanak-detay');
+        if (td && detayModal){
+            e.preventDefault();
+            var body = el('detayBody');
+            body.innerHTML = '<div class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Yükleniyor…</div>';
+            detayModal.show();
+            var url = 'tutanak_takip.php?tutanak_detay=' + encodeURIComponent(td.getAttribute('data-tutanak')) + '&firma=' + encodeURIComponent(td.getAttribute('data-firma'));
+            fetch(url, {headers:{'X-Requested-With':'fetch'}})
+                .then(function(r){ return r.text(); })
+                .then(function(html){ body.innerHTML = html; body.querySelectorAll('.dz-form').forEach(wireDropZone); })
+                .catch(function(){ body.innerHTML = '<div class="alert alert-danger mb-0">İçerik yüklenemedi.</div>'; });
+            return;
+        }
+    });
+
+    var btnYeni = el('btnYeni');
+    if (btnYeni && satirModal) btnYeni.addEventListener('click', function(){
+        el('m_baslik').textContent = 'Yeni Satır';
         set('m_id',''); set('m_firma',''); set('m_sira',''); set('m_proje',''); set('m_tip','teslim');
         set('m_tarih',''); set('m_cap',''); set('m_irs',''); set('m_tut',''); set('m_mik',''); set('m_bag','');
         satirModal.show();
     });
-    document.querySelectorAll('.btn-duzenle').forEach(function(b){
-        b.addEventListener('click', function(){
-            var r = JSON.parse(this.getAttribute('data-json'));
-            document.getElementById('m_baslik').textContent = 'Satır Düzenle';
-            set('m_id',r.id); set('m_firma',r.firma); set('m_sira',r.sira); set('m_proje',r.proje);
-            set('m_tip',r.tip==='iade'?'iade':'teslim'); set('m_tarih',r.tarih); set('m_cap',r.cap_label);
-            set('m_irs',r.irsaliye_no); set('m_tut',r.tutanak_no); set('m_mik',r.miktar_ton); set('m_bag',r.bag);
-            satirModal.show();
-        });
-    });
-    document.querySelectorAll('.btn-evrak').forEach(function(b){
-        b.addEventListener('click', function(){
-            set('e_id', this.getAttribute('data-id'));
-            var tn = this.getAttribute('data-tutanak') || '';
-            var scope = document.getElementById('e_scope');
-            if (tn) { scope.innerHTML = '<i class="bi bi-paperclip me-1"></i><strong>' + tn + '</strong> tutanağının <strong>tüm satırlarına</strong> eklenecek.'; scope.classList.remove('d-none'); }
-            else { scope.classList.add('d-none'); }
-            evrakModal.show();
-        });
-    });
 });
 </script>
-<?php endif; ?>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
