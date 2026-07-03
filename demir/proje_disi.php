@@ -65,7 +65,7 @@ if ($canImport && $_SERVER['REQUEST_METHOD']==='POST' && !empty($_FILES['dosya']
                 $rows = $xlsx->rows($a34i, 4000);
                 $hr = pd_hdr($rows, 'ESKİ FİRMA'); if ($hr<0) $hr = pd_hdr($rows, 'AÇIKLAMA');
                 for ($ri=$hr+1; $ri<count($rows); $ri++) {
-                    $r=$rows[$ri]; if (pd_c($r,0)==='') continue;
+                    $r=$rows[$ri]; if (pd_c($r,0)==='' || pd_c($r,2)==='') continue; // boş şablon satırlarını atla (S.NO dolu ama içerik boş)
                     $poz = pd_c($r,1) ?: 'A.3';
                     $ins->execute([$poz, pd_c($r,2)?:null, pd_c($r,3)?:null, pd_c($r,5)?:null, pd_c($r,7)?:null, pd_c($r,4)?:null, pd_c($r,6)?:null, null, pd_tarih(pd_c($r,8)), pd_int(pd_c($r,11)), pd_int(pd_c($r,12)), pd_num(pd_c($r,13)), pd_num(pd_c($r,14)), null]);
                     $eklenen++;
