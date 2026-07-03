@@ -137,18 +137,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['dosya']['tmp_name']
                     return (int)$pdoDemir->lastInsertId();
                 };
 
-                $eklenen = 0; $atlanan = 0; $hataliSatir = []; $bosGecti = 0;
+                $eklenen = 0; $atlanan = 0; $hataliSatir = []; $bosGecti = 0; $silinen = 0;
                 $uid = current_user_id();
+                $reset = !empty($_POST['reset']); // "temizle ve yeniden yükle" seçilmişse
 
                 $pdoDemir->beginTransaction();
                 try {
+                    if ($reset) {
+                        // Excel ile birebir eşleşme için mevcut sevkiyatları sıfırla (kalemler + sevkiyatlar).
+                        // Tutanaklar/siparişler ayrı tablolardır, etkilenmez.
+                        $silinen = (int)$pdoDemir->query("SELECT COUNT(*) FROM demir_sevkiyatlar")->fetchColumn();
+                        $pdoDemir->exec("DELETE FROM demir_sevkiyat_kalemleri");
+                        $pdoDemir->exec("DELETE FROM demir_sevkiyatlar");
+                    }
                     $insSevk = $pdoDemir->prepare("INSERT INTO demir_sevkiyatlar
                         (kod, irsaliye_no, irsaliye_tarih, gelis_tarih, arac_plaka, dorse_plaka, kantar_fis_no,
                          tedarikci_id, ifs_siparis_no, getiren_firma, ifs_giris_durumu, tir_plaka, proje_id, taseron_id, created_by)
                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
                     $insKalem = $pdoDemir->prepare("INSERT INTO demir_sevkiyat_kalemleri
                         (sevkiyat_id, cap_id, irsaliye_miktar, kantar_miktar) VALUES (?,?,?,?)");
-                    $varMi = $pdoDemir->prepare("SELECT id FROM demir_sevkiyatlar WHERE irsaliye_no=? LIMIT 1");
+                    // Mükerrer kontrolü kod (proje+irsaliye) üzerinden: aynı irsaliye no birden fazla
+                    // projeye/siteye bölünmüş olabilir (ör. KBO...468 hem U030 hem U031) — ikisi de sevkiyattır.
+                    $varMi = $pdoDemir->prepare("SELECT id FROM demir_sevkiyatlar WHERE kod=? LIMIT 1");
 
                     for ($ri = $hdrRow + 1; $ri < count($rows); $ri++) {
                         $R = $rows[$ri];
@@ -167,17 +177,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['dosya']['tmp_name']
                         }
                         if (!$kalemler) { $hataliSatir[] = "Satır ".($ri+1).": $irsNo — miktar yok, atlandı"; continue; }
 
-                        // Mükerrer?
-                        $varMi->execute([$irsNo]);
+                        // Kod = proje(site) + irsaliye no → gerçek benzersiz kimlik
+                        $prjKod = $col['site']>=0 ? trim((string)($R[$col['site']] ?? '')) : '';
+                        $kod = $prjKod . $irsNo;
+
+                        // Mükerrer? (aynı proje + aynı irsaliye) — tekrar yüklemek güvenli, split teslimatlar korunur
+                        $varMi->execute([$kod]);
                         if ($varMi->fetchColumn()) { $atlanan++; continue; }
 
                         $tedId = $getTed((string)($R[$col['tedarik']] ?? ''));
                         $prjId = $col['site']>=0    ? $getPrj((string)($R[$col['site']] ?? '')) : null;
                         $tasId = $col['verilen']>=0 ? $getTas((string)($R[$col['verilen']] ?? '')) : null;
-                        $prjKod = $col['site']>=0 ? trim((string)($R[$col['site']] ?? '')) : '';
 
                         $insSevk->execute([
-                            $prjKod . $irsNo, $irsNo,
+                            $kod, $irsNo,
                             tarih_parse($R[$col['irs_tar']] ?? ''),
                             tarih_parse($R[$col['gelis']] ?? ''),
                             strtoupper(trim((string)($R[$col['arac']] ?? ''))) ?: null,
@@ -204,7 +217,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['dosya']['tmp_name']
                     $rapor = [
                         'eklenen' => $eklenen, 'atlanan' => $atlanan,
                         'hatali'  => $hataliSatir, 'olusturulan' => $olusturulan,
-                        'cap_sayi'=> count($capKol),
+                        'cap_sayi'=> count($capKol), 'silinen' => $silinen, 'reset' => $reset,
                     ];
                 }
             }
@@ -225,6 +238,7 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="alert alert-success">
     <h5 class="mb-2"><i class="bi bi-check-circle-fill me-1"></i>İçe aktarma tamamlandı</h5>
     <ul class="mb-0">
+        <?php if ($rapor['reset']): ?><li class="text-danger"><strong><?= $rapor['silinen'] ?></strong> mevcut sevkiyat silindi (temizle ve yeniden yükle)</li><?php endif; ?>
         <li><strong><?= $rapor['eklenen'] ?></strong> sevkiyat eklendi (<?= $rapor['cap_sayi'] ?> çap kolonu okundu)</li>
         <?php if ($rapor['atlanan']): ?><li><strong><?= $rapor['atlanan'] ?></strong> kayıt zaten vardı, atlandı (mükerrer irsaliye no)</li><?php endif; ?>
         <?php foreach (['tedarikci'=>'tedarikçi','taseron'=>'taşeron','proje'=>'proje'] as $k=>$lbl): if($rapor['olusturulan'][$k]): ?>
@@ -252,6 +266,14 @@ require_once __DIR__ . '/../includes/header.php';
                     çap bazında irsaliye/kantar miktarlarıyla eklenir. Aynı irsaliye no varsa atlanır (tekrar yüklemek güvenlidir).
                     Excel'deki tedarikçi/proje/taşeron sistemde yoksa otomatik oluşturulur.
                 </div>
+            </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" name="reset" value="1" id="resetChk"
+                       onchange="if(this.checked && !confirm('DİKKAT: Tüm mevcut sevkiyatlar (ve kalemleri) silinip Excel\'den yeniden yüklenecek. Karekod/elle girilen sevkiyatlar da silinir. Devam edilsin mi?')) this.checked=false;">
+                <label class="form-check-label" for="resetChk">
+                    <strong>Temizle ve yeniden yükle</strong> — mevcut tüm sevkiyatları silip Excel ile birebir eşitler
+                    (toplam tam olarak Excel GENEL TOPLAM'a eşit olur). Siparişler/tutanaklar etkilenmez.
+                </label>
             </div>
             <button class="btn btn-success"><i class="bi bi-cloud-arrow-up me-1"></i> İçe Aktar</button>
         </form>
