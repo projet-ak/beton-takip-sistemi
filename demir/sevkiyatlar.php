@@ -68,9 +68,14 @@ require_once __DIR__ . '/../includes/header.php';
         <h4 class="mb-0"><i class="bi bi-truck text-dark me-2"></i>Demir Sevkiyatları</h4>
         <small class="text-muted"><?= count($liste) ?> kayıt — Toplam <strong><?= number_format($topIrs,3,',','.') ?> t</strong> · Kantar farkı <strong class="<?= $topFark<0?'text-danger':($topFark>0?'text-success':'') ?>"><?= ($topFark>0?'+':'').number_format($topFark,3,',','.') ?> t</strong></small>
     </div>
-    <?php if (has_role('admin','teknik_ofis_admin','saha_sefi','depo')): ?>
-    <a href="sevkiyat_form.php" class="btn btn-dark"><i class="bi bi-plus-circle me-1"></i> Yeni Sevkiyat</a>
-    <?php endif; ?>
+    <div class="d-flex gap-2">
+        <?php if (has_role('admin','teknik_ofis_admin')): ?>
+        <a href="import.php" class="btn btn-outline-success"><i class="bi bi-file-earmark-excel me-1"></i> Excel İçe Aktar</a>
+        <?php endif; ?>
+        <?php if (has_role('admin','teknik_ofis_admin','saha_sefi','depo')): ?>
+        <a href="sevkiyat_form.php" class="btn btn-dark"><i class="bi bi-plus-circle me-1"></i> Yeni Sevkiyat</a>
+        <?php endif; ?>
+    </div>
 </div>
 
 <?php foreach(['success','error','warning','info'] as $t): $m=get_flash($t); if($m): ?>
