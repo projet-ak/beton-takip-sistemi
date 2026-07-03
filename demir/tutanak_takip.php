@@ -42,21 +42,33 @@ function tt_tarih($v){ $v=trim((string)$v); if($v==='')return null; $ts=strtotim
 
 $rapor = null; $hata = '';
 
-// ── Satır sil ─────────────────────────────────────────────────────────────────
+// ── Satır sil (paylaşılan evrak dosyasını yalnız son satırda kaldır) ───────────
 if ($canEdit && isset($_GET['sil']) && ctype_digit($_GET['sil'])) {
     $sid = (int)$_GET['sil'];
     $ev = $pdoDemir->prepare("SELECT evrak_url FROM demir_tutanak_takip WHERE id=?"); $ev->execute([$sid]);
-    if ($u = $ev->fetchColumn()) @unlink(__DIR__ . '/../' . $u);
+    $u = $ev->fetchColumn();
     $pdoDemir->prepare("DELETE FROM demir_tutanak_takip WHERE id=?")->execute([$sid]);
+    if ($u) {
+        $c = $pdoDemir->prepare("SELECT COUNT(*) FROM demir_tutanak_takip WHERE evrak_url=?"); $c->execute([$u]);
+        if (!$c->fetchColumn()) @unlink(__DIR__ . '/../' . $u); // başka satır kullanmıyorsa dosyayı sil
+    }
     flash('success', 'Satır silindi.');
     redirect('tutanak_takip.php');
 }
-// ── Evrak sil ─────────────────────────────────────────────────────────────────
+// ── Evrak sil (ilgili tutanağın TÜM satırlarından) ────────────────────────────
 if ($canEdit && isset($_GET['evrak_sil']) && ctype_digit($_GET['evrak_sil'])) {
     $sid = (int)$_GET['evrak_sil'];
-    $ev = $pdoDemir->prepare("SELECT evrak_url FROM demir_tutanak_takip WHERE id=?"); $ev->execute([$sid]);
-    if ($u = $ev->fetchColumn()) @unlink(__DIR__ . '/../' . $u);
-    $pdoDemir->prepare("UPDATE demir_tutanak_takip SET evrak_url=NULL WHERE id=?")->execute([$sid]);
+    $rw = $pdoDemir->prepare("SELECT firma, tutanak_no, evrak_url FROM demir_tutanak_takip WHERE id=?");
+    $rw->execute([$sid]); $rw = $rw->fetch();
+    if ($rw) {
+        if ($rw['evrak_url']) @unlink(__DIR__ . '/../' . $rw['evrak_url']);
+        $tutNo = trim((string)$rw['tutanak_no']);
+        if ($tutNo !== '') {
+            $pdoDemir->prepare("UPDATE demir_tutanak_takip SET evrak_url=NULL WHERE firma=? AND tutanak_no=?")->execute([$rw['firma'], $tutNo]);
+        } else {
+            $pdoDemir->prepare("UPDATE demir_tutanak_takip SET evrak_url=NULL WHERE id=?")->execute([$sid]);
+        }
+    }
     flash('success', 'Evrak kaldırıldı.');
     redirect('tutanak_takip.php');
 }
@@ -89,25 +101,43 @@ if ($canEdit && ($_POST['action'] ?? '') === 'kaydet') {
     redirect('tutanak_takip.php');
 }
 
-// ── Evrak yükle (satıra) ──────────────────────────────────────────────────────
+// ── Evrak yükle: ilgili TUTANAK NO'nun tüm satırlarına tek seferde ────────────
 if ($canEdit && ($_POST['action'] ?? '') === 'evrak' && ctype_digit($_POST['id'] ?? '')
     && isset($_FILES['evrak']) && $_FILES['evrak']['error']===UPLOAD_ERR_OK) {
     $sid = (int)$_POST['id'];
+    $rw = $pdoDemir->prepare("SELECT firma, tutanak_no, evrak_url FROM demir_tutanak_takip WHERE id=?");
+    $rw->execute([$sid]); $rw = $rw->fetch();
     $mime = mime_content_type($_FILES['evrak']['tmp_name']);
     $izin = ['application/pdf','image/jpeg','image/png','image/webp'];
-    if (!in_array($mime, $izin, true)) {
+    if (!$rw) {
+        flash('error', 'Satır bulunamadı.');
+    } elseif (!in_array($mime, $izin, true)) {
         flash('error', 'Sadece PDF, JPG, PNG, WebP yüklenebilir.');
     } elseif ($_FILES['evrak']['size'] > 15*1024*1024) {
         flash('error', 'Dosya çok büyük (maks 15 MB).');
     } else {
-        $dir = __DIR__ . '/../uploads/demir_tutanak_takip/' . $sid . '/';
+        $tutNo  = trim((string)$rw['tutanak_no']);
+        $firmaR = (string)$rw['firma'];
+        // Klasör tutanak no bazlı (sabit); yoksa satır id'si
+        $key = $tutNo !== '' ? preg_replace('/[^A-Za-z0-9_-]/', '_', $tutNo) : ('satir' . $sid);
+        $dir = __DIR__ . '/../uploads/demir_tutanak_takip/' . $key . '/';
         if (!is_dir($dir)) @mkdir($dir, 0755, true);
         $ext = pathinfo($_FILES['evrak']['name'], PATHINFO_EXTENSION) ?: ($mime==='application/pdf'?'pdf':'jpg');
         $ad  = 'evrak_' . date('Ymd_His') . '.' . strtolower($ext);
         if (move_uploaded_file($_FILES['evrak']['tmp_name'], $dir.$ad)) {
-            $url = 'uploads/demir_tutanak_takip/' . $sid . '/' . $ad;
-            $pdoDemir->prepare("UPDATE demir_tutanak_takip SET evrak_url=? WHERE id=?")->execute([$url, $sid]);
-            flash('success', 'Evrak yüklendi.');
+            $url = 'uploads/demir_tutanak_takip/' . $key . '/' . $ad;
+            // Eski evrak dosyasını (varsa) temizle
+            $eski = $rw['evrak_url'] ?: '';
+            if ($tutNo !== '') {
+                $upd = $pdoDemir->prepare("UPDATE demir_tutanak_takip SET evrak_url=? WHERE firma=? AND tutanak_no=?");
+                $upd->execute([$url, $firmaR, $tutNo]);
+                $n = $upd->rowCount();
+                flash('success', "İmzalı evrak “{$tutNo}” tutanağının {$n} satırına eklendi.");
+            } else {
+                $pdoDemir->prepare("UPDATE demir_tutanak_takip SET evrak_url=? WHERE id=?")->execute([$url, $sid]);
+                flash('success', 'Evrak yüklendi.');
+            }
+            if ($eski && $eski !== $url && realpath(__DIR__.'/../'.$eski) !== realpath($dir.$ad)) @unlink(__DIR__.'/../'.$eski);
         } else { flash('error', 'Dosya yüklenemedi.'); }
     }
     redirect('tutanak_takip.php');
@@ -261,7 +291,7 @@ $fmt = fn($n,$d=3) => number_format((float)$n, $d, ',', '.');
                     <?php if ($r['evrak_url']): ?>
                         <a href="<?= h($rootPath.$r['evrak_url']) ?>" target="_blank" class="badge bg-success text-decoration-none" title="Evrağı aç"><i class="bi bi-paperclip"></i> Var</a>
                     <?php elseif ($canEdit): ?>
-                        <button class="btn btn-xs btn-outline-secondary btn-evrak" data-id="<?= $r['id'] ?>" title="Evrak yükle"><i class="bi bi-upload"></i></button>
+                        <button class="btn btn-xs btn-outline-secondary btn-evrak" data-id="<?= $r['id'] ?>" data-tutanak="<?= h($r['tutanak_no'] ?: '') ?>" title="Evrak yükle (tutanağın tüm satırlarına)"><i class="bi bi-upload"></i></button>
                     <?php else: ?><span class="text-muted">—</span><?php endif; ?>
                 </td>
                 <?php if ($canEdit): ?>
@@ -319,8 +349,9 @@ $fmt = fn($n,$d=3) => number_format((float)$n, $d, ',', '.');
       <input type="hidden" name="id" id="e_id">
       <div class="modal-header"><h5 class="modal-title">İmzalı Evrak Yükle</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
+        <div id="e_scope" class="alert alert-info py-2 px-3 small mb-2 d-none"></div>
         <input type="file" name="evrak" class="form-control form-control-sm" accept="application/pdf,image/*" required>
-        <div class="form-text">PDF, JPG, PNG — maks 15 MB</div>
+        <div class="form-text">PDF, JPG, PNG — maks 15 MB. Tek yüklemede ilgili tutanağın tüm satırlarına işlenir.</div>
       </div>
       <div class="modal-footer"><button class="btn btn-primary w-100"><i class="bi bi-upload me-1"></i>Yükle</button></div>
     </form>
@@ -351,7 +382,14 @@ document.addEventListener('DOMContentLoaded', function(){
         });
     });
     document.querySelectorAll('.btn-evrak').forEach(function(b){
-        b.addEventListener('click', function(){ set('e_id', this.getAttribute('data-id')); evrakModal.show(); });
+        b.addEventListener('click', function(){
+            set('e_id', this.getAttribute('data-id'));
+            var tn = this.getAttribute('data-tutanak') || '';
+            var scope = document.getElementById('e_scope');
+            if (tn) { scope.innerHTML = '<i class="bi bi-paperclip me-1"></i><strong>' + tn + '</strong> tutanağının <strong>tüm satırlarına</strong> eklenecek.'; scope.classList.remove('d-none'); }
+            else { scope.classList.add('d-none'); }
+            evrakModal.show();
+        });
     });
 });
 </script>
