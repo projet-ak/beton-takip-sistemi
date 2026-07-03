@@ -76,7 +76,9 @@ function require_auth(array $roller = []): void
     if (empty($_SESSION['user'])) {
         $current  = $_SERVER['REQUEST_URI'] ?? '';
         $base     = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/';
-        header('Location: ' . $base . 'login.php?redirect=' . urlencode($current));
+        // Alt klasörlerden (ör. demir/) kök dizindeki login.php'ye ulaş: $rootPath ('../')
+        $root     = $base . ($GLOBALS['rootPath'] ?? '');
+        header('Location: ' . $root . 'login.php?redirect=' . urlencode($current));
         exit;
     }
     if (!empty($roller) && !in_array($_SESSION['user']['role'], $roller, true)) {
