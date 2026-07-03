@@ -288,7 +288,7 @@ async function qrFromPdf(file){
 function parseGib(raw){ if(!raw) return null; try{ var j=JSON.parse(raw); var o={}; for(var k in j)o[k.toLowerCase()]=j[k]; return o; }catch(e){ return null; } }
 async function scanKaydet(canvas,isPdf,file){
     try{
-        if(isPdf){ var fd=new FormData(); fd.append('pdf',file); var r=await fetch('../api/pdf_kaydet.php',{method:'POST',body:fd}); var j=await r.json(); return j.ok?j.url:null; }
+        if(isPdf){ var fd=new FormData(); fd.append('dosya',file); var r=await fetch('../api/pdf_kaydet.php',{method:'POST',body:fd}); var j=await r.json(); return j.ok?j.url:null; }
         var th=document.createElement('canvas'); var ra=Math.min(1000/canvas.width,1); th.width=Math.round(canvas.width*ra); th.height=Math.round(canvas.height*ra);
         th.getContext('2d').drawImage(canvas,0,0,th.width,th.height);
         var fd=new FormData(); fd.append('image',th.toDataURL('image/jpeg',0.8));
