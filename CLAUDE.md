@@ -93,7 +93,7 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · Tutanaklar · **Tutanak Taki
 
 | Dosya | Amaç |
 |---|---|
-| `index.php` | Dashboard (KPI + çap grafiği). Tablo yoksa `kurulum_demir.php` uyarısı. |
+| `index.php` | **Genel Bakış dashboard**: KPI kartları (gelen/kantar farkı/sevkiyat/kalan sipariş/tutanak/iade/taşeron net) + çap(bar)/proje(doughnut)/aylık(line) grafikleri + son sevkiyatlar. Opsiyonel tablolar try/catch. |
 | `sevkiyatlar.php` | Sevkiyat listesi; çap toplamı + **kantar farkı** (renkli); filtre; Excel dışa/içe aktar. |
 | `sevkiyat_form.php` | Çap bazında İrsaliye+Kantar (canlı fark). **Karekod+AI paneli** (QR→başlık, AI→çap/miktar). |
 | `siparisler.php` | Sipariş + **bakiye** (sipariş/gelen/kalan + % ilerleme). |
@@ -103,13 +103,13 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · Tutanaklar · **Tutanak Taki
 | `tutanak_form.php` | **Otomatik no** `{PROJE}-{TASKOD}-NNN` + dinamik kalem satırları. |
 | `tutanak_detay.php` | Görüntüleme + **imzalı evrak yükleme** (`uploads/demir_tutanak/{id}/`). |
 | `tutanak_pdf.php` | A4 yazdırılabilir tutanak (tarayıcı PDF kaydet). |
-| `tutanak_takip.php` | **Tutanak Takip defteri** (Excel "TUTANAK TAKİP" sayfası): firma bazında çap satırı hareket (teslim/iade). İçe aktar (tam yenileme) + filtre. Tablo `demir_tutanak_takip` (runtime). |
+| `tutanak_takip.php` | **Tutanak Takip defteri** (Excel "TUTANAK TAKİP" sayfası): firma bazında çap satırı hareket (teslim/iade). İçe aktar (tam yenileme, **evrak korunur**) + filtre + **satır ekle/düzenle/sil (modal)** + **satır bazında imzalı evrak yükleme** (`uploads/demir_tutanak_takip/{id}/`). Tablo `demir_tutanak_takip` (runtime, `evrak_url` kolonu). |
 | `iade_tutanaklar.php` | **İade tutanağı** listesi (iade eden/teslim alan, tonaj, evrak). |
 | `iade_form.php` | İade eden **zorunlu**, teslim alan **opsiyonel** (boş=depoya iade). Otomatik no `{PROJE}-{IADEEDEN_KOD}-IADE-NNN`. |
 | `iade_detay.php` / `iade_pdf.php` | Görüntüleme + imzalı evrak (`uploads/demir_iade/{id}/`) / A4 PDF. |
 | `taseron_bakiye.php` | **Net Elinde = Teslim Alınan + Devraldığı − İade Ettiği** (çap bazında açılır). |
 | `_iade_ortak.php` | İade ortak: şema garantisi (`iade_semasi_kur`) + `iade_num` + `iade_no_uret`. |
-| `icmal.php` / `icmal_pdf.php` | Gelen demir mutabakatı (çap+tedarikçi) + Excel/PDF. |
+| `icmal.php` / `icmal_pdf.php` | Gelen demir mutabakatı (çap+tedarikçi) + Excel/PDF. **Çap değerine tıklayınca popup** (AJAX `?cap_detay=`): o çaptaki sevkiyatlar→irsaliyeye (`sevkiyat_form.php?id=`) + siparişler→(`siparis_detay.php?id=`) geçiş. |
 | `raporlar.php` | Chart.js + **ExcelJS** (Özet/Aylık/Tedarikçi/Detay) + PDF (yazdırma penceresi). |
 | `projeler.php` | Proje CRUD (kod+ad), **mükerrer önleme (kod VEYA ad)**. |
 | `proje_detay.php` | Proje detayı: çap bazında gelen demir + siparişler+bakiye + sevkiyatlar. |
@@ -190,7 +190,7 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). `taseron_bakiye.
 
 ### uploads klasör yapısı
 - Beton: `uploads/images/` (scan), `uploads/pdf/`, `uploads/irsaliye_fotolar/`, `uploads/irsaliye_{id}/`.
-- **Demir (ayrı)**: `uploads/demir/gorseller/`, `uploads/demir/belgeler/`, `uploads/demir_tutanak/{id}/`, `uploads/demir_iade/{id}/`.
+- **Demir (ayrı)**: `uploads/demir/gorseller/`, `uploads/demir/belgeler/`, `uploads/demir_tutanak/{id}/`, `uploads/demir_iade/{id}/`, `uploads/demir_tutanak_takip/{id}/`.
 - Görseller **dosya olarak** tutulur; DB'ye yalnızca göreli URL yazılır (DB boyutu şişmez).
 - `uploads/.htaccess` PHP çalıştırmayı engeller (alt klasörlere de uygulanır).
 
