@@ -88,8 +88,8 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 
 ## 5. Demir Modülü (`demir/`)
 
-Sidebar: Dashboard · Sevkiyatlar · Siparişler · Tutanaklar · İcmal · Raporlar · Proje Dışı İşler ·
-Tanımlar(Projeler/Çaplar/Tedarikçiler/Taşeronlar).
+Sidebar: Dashboard · Sevkiyatlar · Siparişler · Tutanaklar · **İade Tutanakları** · **Taşeron Bakiye** ·
+İcmal · Raporlar · Proje Dışı İşler · Tanımlar(Projeler/Çaplar/Tedarikçiler/Taşeronlar).
 
 | Dosya | Amaç |
 |---|---|
@@ -103,6 +103,11 @@ Tanımlar(Projeler/Çaplar/Tedarikçiler/Taşeronlar).
 | `tutanak_form.php` | **Otomatik no** `{PROJE}-{TASKOD}-NNN` + dinamik kalem satırları. |
 | `tutanak_detay.php` | Görüntüleme + **imzalı evrak yükleme** (`uploads/demir_tutanak/{id}/`). |
 | `tutanak_pdf.php` | A4 yazdırılabilir tutanak (tarayıcı PDF kaydet). |
+| `iade_tutanaklar.php` | **İade tutanağı** listesi (iade eden/teslim alan, tonaj, evrak). |
+| `iade_form.php` | İade eden **zorunlu**, teslim alan **opsiyonel** (boş=depoya iade). Otomatik no `{PROJE}-{IADEEDEN_KOD}-IADE-NNN`. |
+| `iade_detay.php` / `iade_pdf.php` | Görüntüleme + imzalı evrak (`uploads/demir_iade/{id}/`) / A4 PDF. |
+| `taseron_bakiye.php` | **Net Elinde = Teslim Alınan + Devraldığı − İade Ettiği** (çap bazında açılır). |
+| `_iade_ortak.php` | İade ortak: şema garantisi (`iade_semasi_kur`) + `iade_num` + `iade_no_uret`. |
 | `icmal.php` / `icmal_pdf.php` | Gelen demir mutabakatı (çap+tedarikçi) + Excel/PDF. |
 | `raporlar.php` | Chart.js + **ExcelJS** (Özet/Aylık/Tedarikçi/Detay) + PDF (yazdırma penceresi). |
 | `projeler.php` | Proje CRUD (kod+ad), **mükerrer önleme (kod VEYA ad)**. |
@@ -135,6 +140,7 @@ tip/durum ENUM, kantar_net_*/kantar_farki, tüm tanım FK'leri, onay alanları, 
 - `demir_sevkiyatlar` (**ifs_siparis_no** [eşleşme anahtarı], scan_image_url, proje/taseron/tedarikci FK)
   + `demir_sevkiyat_kalemleri` (cap_id, **irsaliye_miktar**, **kantar_miktar**)
 - `demir_tutanaklar` (tutanak_no, evrak_url) + `demir_tutanak_kalemleri` (irsaliye_no, cap_id, miktar_ton, bag_adeti)
+- `demir_iade_tutanaklar` (iade_no, **iade_eden_id**, **teslim_alan_id** [NULL=depoya iade], proje_id, evrak_url) + `demir_iade_kalemleri` (cap_id, miktar_ton, bag_adeti). Runtime `iade_semasi_kur()` ile de oluşur (kurulum'a da eklendi).
 - `demir_proje_disi` (runtime, `proje_disi.php` içinde CREATE IF NOT EXISTS): tip A.2/A.3/A.4, proje/hedef_proje, firma/hedef_firma, cap_mm, adet, boy, metraj_ton, kantar_farki
 
 Çap seed (teorik kg/m ≈ 0.006165×d²): Ø8..Ø32 (duz), Q10/12/14 Kangal, Spiral Ø10/12, Çelik Hasır Q188/Q257.
@@ -173,10 +179,16 @@ kalan = sipariş − gelen. `import_siparis.php` teslimat satırlarındaki irsal
 
 ### Tutanak numaralandırma
 `{PROJE_KOD}-{TASERON_KOD}-{NNN}` (ör. U030-DNR-005). Önekteki max sıra +1, 3 hane. Düzenlemede sabit.
+İade tutanağı: `{PROJE_KOD}-{IADEEDEN_KOD}-IADE-{NNN}` (ör. U030-OSM-IADE-001).
+
+### İade tutanağı & taşeron bakiye
+Bir taşeronun iş sonunda elinde kalan demiri iade etmesi (ör. Osman Camcı 5 t iade → Dener'e). **İade eden**
+zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). `taseron_bakiye.php` bunu bakiyeye yansıtır:
+**Net Elinde = Σ teslim tutanağı (taseron_id) + Σ devraldığı (teslim_alan_id) − Σ iade ettiği (iade_eden_id)**, çap bazında.
 
 ### uploads klasör yapısı
 - Beton: `uploads/images/` (scan), `uploads/pdf/`, `uploads/irsaliye_fotolar/`, `uploads/irsaliye_{id}/`.
-- **Demir (ayrı)**: `uploads/demir/gorseller/`, `uploads/demir/belgeler/`, `uploads/demir_tutanak/{id}/`.
+- **Demir (ayrı)**: `uploads/demir/gorseller/`, `uploads/demir/belgeler/`, `uploads/demir_tutanak/{id}/`, `uploads/demir_iade/{id}/`.
 - Görseller **dosya olarak** tutulur; DB'ye yalnızca göreli URL yazılır (DB boyutu şişmez).
 - `uploads/.htaccess` PHP çalıştırmayı engeller (alt klasörlere de uygulanır).
 

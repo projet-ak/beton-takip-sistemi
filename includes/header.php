@@ -184,6 +184,16 @@ if ($__user) {
         </a>
       </li>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('iade_tutanaklar.php').__isActive('iade_form.php').__isActive('iade_detay.php') ?>" href="<?= $__rootPath ?>demir/iade_tutanaklar.php" data-label="İade Tutanakları">
+          <i class="bi bi-arrow-return-left"></i><span>İade Tutanakları</span>
+        </a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('taseron_bakiye.php') ?>" href="<?= $__rootPath ?>demir/taseron_bakiye.php" data-label="Taşeron Bakiye">
+          <i class="bi bi-wallet2"></i><span>Taşeron Bakiye</span>
+        </a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('icmal.php') ?>" href="<?= $__rootPath ?>demir/icmal.php" data-label="İcmal">
           <i class="bi bi-clipboard-data"></i><span>İcmal</span>
         </a>

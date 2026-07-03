@@ -149,6 +149,34 @@ try {
             FOREIGN KEY (sevkiyat_id) REFERENCES demir_sevkiyatlar(id) ON DELETE SET NULL,
             FOREIGN KEY (cap_id)      REFERENCES demir_caplar(id)      ON DELETE RESTRICT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        'demir_iade_tutanaklar' => "CREATE TABLE IF NOT EXISTS demir_iade_tutanaklar (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            iade_no VARCHAR(50) NULL,
+            iade_tarih DATE NULL,
+            iade_eden_id INT NULL,
+            teslim_alan_id INT NULL,
+            proje_id INT NULL,
+            arac_plaka VARCHAR(20) NULL,
+            dorse_plaka VARCHAR(20) NULL,
+            aciklama TEXT NULL,
+            evrak_url VARCHAR(500) NULL COMMENT 'imzalı yüklenen belge',
+            created_by INT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (iade_eden_id)   REFERENCES demir_taseronlar(id) ON DELETE SET NULL,
+            FOREIGN KEY (teslim_alan_id) REFERENCES demir_taseronlar(id) ON DELETE SET NULL,
+            FOREIGN KEY (proje_id)       REFERENCES demir_projeler(id)   ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        'demir_iade_kalemleri' => "CREATE TABLE IF NOT EXISTS demir_iade_kalemleri (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            iade_id INT NOT NULL,
+            cap_id INT NOT NULL,
+            miktar_ton DECIMAL(12,3) NOT NULL DEFAULT 0,
+            bag_adeti INT NULL,
+            FOREIGN KEY (iade_id) REFERENCES demir_iade_tutanaklar(id) ON DELETE CASCADE,
+            FOREIGN KEY (cap_id)  REFERENCES demir_caplar(id)          ON DELETE RESTRICT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
     ];
 
     foreach ($tablolar as $ad => $sql) {
