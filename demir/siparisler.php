@@ -41,9 +41,14 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
 ?>
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
     <h4 class="mb-0"><i class="bi bi-cart-check text-dark me-2"></i>Demir Siparişleri</h4>
-    <?php if (has_role('admin','teknik_ofis_admin','teknik_ofis')): ?>
-    <a href="siparis_form.php" class="btn btn-dark"><i class="bi bi-plus-circle me-1"></i> Yeni Sipariş</a>
-    <?php endif; ?>
+    <div class="d-flex gap-2">
+        <?php if (has_role('admin','teknik_ofis_admin')): ?>
+        <a href="import_siparis.php" class="btn btn-outline-success"><i class="bi bi-file-earmark-excel me-1"></i> Sipariş İçe Aktar</a>
+        <?php endif; ?>
+        <?php if (has_role('admin','teknik_ofis_admin','teknik_ofis')): ?>
+        <a href="siparis_form.php" class="btn btn-dark"><i class="bi bi-plus-circle me-1"></i> Yeni Sipariş</a>
+        <?php endif; ?>
+    </div>
 </div>
 
 <?php foreach(['success','error','warning','info'] as $t): $m=get_flash($t); if($m): ?>

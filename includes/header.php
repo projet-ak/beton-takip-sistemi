@@ -196,6 +196,9 @@ if ($__user) {
       <?php if(can_manage_definitions()): ?>
       <li class="sidebar-nav-item mt-1"><div class="nav-section">Tanımlar</div></li>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('projeler.php') ?>" href="<?= $__rootPath ?>demir/projeler.php"><i class="bi bi-diagram-3"></i><span>Projeler</span></a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('caplar.php') ?>" href="<?= $__rootPath ?>demir/caplar.php"><i class="bi bi-rulers"></i><span>Çaplar</span></a>
       </li>
       <li class="sidebar-nav-item">
