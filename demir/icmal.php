@@ -63,12 +63,44 @@ $totFark= $totKnt - $totIrs;
 
 $projeler = $pdoDemir->query("SELECT id,kod,aciklama FROM demir_projeler WHERE aktif=1 ORDER BY kod")->fetchAll();
 
+// ── Excel dışa aktarma ────────────────────────────────────────────────────────
+if (($_GET['export'] ?? '') === 'xlsx') {
+    require_once __DIR__ . '/../includes/XlsxWriter.php';
+    $xl = new XlsxWriter('Demir İcmal');
+    $xl->header(['Çap', 'Tür', 'İrsaliye (t)', 'Kantar (t)', 'Fark (t)']);
+    foreach ($capRows as $r) {
+        if ($r['irs'] == 0 && $r['knt'] == 0) continue;
+        $xl->row([
+            ['v'=>$r['ad'],'t'=>'text'], ['v'=>$r['tip'],'t'=>'text'],
+            ['v'=>(float)$r['irs'],'t'=>'number'], ['v'=>(float)$r['knt'],'t'=>'number'],
+            ['v'=>(float)$r['knt']-(float)$r['irs'],'t'=>'number'],
+        ]);
+    }
+    $xl->row([['v'=>'TOPLAM','t'=>'text'],['v'=>'','t'=>'text'],['v'=>$totIrs,'t'=>'number'],['v'=>$totKnt,'t'=>'number'],['v'=>$totFark,'t'=>'number']]);
+    $xl->row([['v'=>'','t'=>'text']]);
+    $xl->row([['v'=>'TEDARİKÇİ BAZINDA','t'=>'text']]);
+    $xl->row([['v'=>'Tedarikçi','t'=>'text'],['v'=>'','t'=>'text'],['v'=>'İrsaliye (t)','t'=>'text'],['v'=>'Kantar (t)','t'=>'text'],['v'=>'Fark (t)','t'=>'text']]);
+    foreach ($tedRows as $r) {
+        $xl->row([
+            ['v'=>$r['firma'] ?: '(tanımsız)','t'=>'text'], ['v'=>'','t'=>'text'],
+            ['v'=>(float)$r['irs'],'t'=>'number'], ['v'=>(float)$r['knt'],'t'=>'number'],
+            ['v'=>(float)$r['knt']-(float)$r['irs'],'t'=>'number'],
+        ]);
+    }
+    $xl->download('demir_icmal_' . date('Ymd_His') . '.xlsx');
+}
+
 require_once __DIR__ . '/../includes/header.php';
 $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
 ?>
 
+<?php $__qs = http_build_query(array_filter(['proje'=>$fProje,'tarih_bas'=>$tBas,'tarih_bit'=>$tBit])); ?>
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
     <h4 class="mb-0"><i class="bi bi-clipboard-data text-dark me-2"></i>Demir İcmal — Gelen Demir Mutabakatı</h4>
+    <div class="d-flex gap-2">
+        <a href="icmal.php?<?= $__qs ? $__qs.'&' : '' ?>export=xlsx" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i> Excel</a>
+        <a href="icmal_pdf.php?<?= h($__qs) ?>" target="_blank" class="btn btn-outline-dark btn-sm"><i class="bi bi-printer me-1"></i> PDF</a>
+    </div>
 </div>
 
 <div class="card mb-3">

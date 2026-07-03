@@ -60,6 +60,29 @@ $topFark = array_sum(array_column($liste, 'fark'));
 $projeler     = $pdoDemir->query("SELECT id,kod FROM demir_projeler WHERE aktif=1 ORDER BY kod")->fetchAll();
 $tedarikciler = $pdoDemir->query("SELECT id,ad FROM demir_tedarikciler WHERE aktif=1 ORDER BY ad")->fetchAll();
 
+// ── Excel dışa aktarma (filtreye göre) ────────────────────────────────────────
+if (($_GET['export'] ?? '') === 'xlsx') {
+    require_once __DIR__ . '/../includes/XlsxWriter.php';
+    $xl = new XlsxWriter('Demir Sevkiyatları');
+    $xl->header(['İrsaliye No','Tarih','Tedarikçi','Proje','Taşeron','Araç Plaka','Kantar Fiş','İrsaliye (t)','Kantar (t)','Fark (t)']);
+    foreach ($liste as $r) {
+        $xl->row([
+            ['v'=>$r['irsaliye_no'],'t'=>'text'],
+            ['v'=>$r['irsaliye_tarih'] ?: '','t'=>'date'],
+            ['v'=>$r['tedarikci_adi'] ?: '','t'=>'text'],
+            ['v'=>$r['proje_kod'] ?: '','t'=>'text'],
+            ['v'=>$r['taseron_adi'] ?: '','t'=>'text'],
+            ['v'=>$r['arac_plaka'] ?: '','t'=>'text'],
+            ['v'=>$r['kantar_fis_no'] ?: '','t'=>'text'],
+            ['v'=>(float)$r['top_irs'],'t'=>'number'],
+            ['v'=>(float)$r['top_knt'],'t'=>'number'],
+            ['v'=>(float)$r['fark'],'t'=>'number'],
+        ]);
+    }
+    $xl->row([['v'=>'TOPLAM','t'=>'text'],['v'=>'','t'=>'text'],['v'=>'','t'=>'text'],['v'=>'','t'=>'text'],['v'=>'','t'=>'text'],['v'=>'','t'=>'text'],['v'=>'','t'=>'text'],['v'=>$topIrs,'t'=>'number'],['v'=>array_sum(array_column($liste,'top_knt')),'t'=>'number'],['v'=>$topFark,'t'=>'number']]);
+    $xl->download('demir_sevkiyatlar_' . date('Ymd_His') . '.xlsx');
+}
+
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
@@ -68,7 +91,9 @@ require_once __DIR__ . '/../includes/header.php';
         <h4 class="mb-0"><i class="bi bi-truck text-dark me-2"></i>Demir Sevkiyatları</h4>
         <small class="text-muted"><?= count($liste) ?> kayıt — Toplam <strong><?= number_format($topIrs,3,',','.') ?> t</strong> · Kantar farkı <strong class="<?= $topFark<0?'text-danger':($topFark>0?'text-success':'') ?>"><?= ($topFark>0?'+':'').number_format($topFark,3,',','.') ?> t</strong></small>
     </div>
+    <?php $__qs = http_build_query(array_filter(['ara'=>$fAra,'proje'=>$fProje,'tedarikci'=>$fTed])); ?>
     <div class="d-flex gap-2">
+        <a href="sevkiyatlar.php?<?= $__qs ? $__qs.'&' : '' ?>export=xlsx" class="btn btn-outline-secondary"><i class="bi bi-download me-1"></i> Excel Dışa Aktar</a>
         <?php if (has_role('admin','teknik_ofis_admin')): ?>
         <a href="import.php" class="btn btn-outline-success"><i class="bi bi-file-earmark-excel me-1"></i> Excel İçe Aktar</a>
         <?php endif; ?>
