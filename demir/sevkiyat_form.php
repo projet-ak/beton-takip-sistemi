@@ -79,18 +79,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         foreach ($projeler as $p) { if ($p['id'] == $d['proje_id']) { $projeKod = $p['kod']; break; } }
         $kod = trim($projeKod . $d['irsaliye_no']);
 
+        $scanUrl = trim($_POST['scan_image_url'] ?? '') ?: null;
         $params = [
             $kod, $d['irsaliye_no'], $d['irsaliye_tarih'] ?: null, $d['gelis_tarih'] ?: null,
             $d['arac_plaka'] ?: null, $d['dorse_plaka'] ?: null, $d['kantar_fis_no'] ?: null,
             $d['tedarikci_id'], $d['ifs_siparis_no'] ?: null, $d['getiren_firma'] ?: null,
             $d['ifs_giris_durumu'] ?: null, $d['tir_plaka'] ?: null, $d['proje_id'], $d['taseron_id'],
-            $d['aciklama'] ?: null,
+            $d['aciklama'] ?: null, $scanUrl,
         ];
 
         if ($editId) {
             $sql = "UPDATE demir_sevkiyatlar SET kod=?, irsaliye_no=?, irsaliye_tarih=?, gelis_tarih=?,
                     arac_plaka=?, dorse_plaka=?, kantar_fis_no=?, tedarikci_id=?, ifs_siparis_no=?,
-                    getiren_firma=?, ifs_giris_durumu=?, tir_plaka=?, proje_id=?, taseron_id=?, aciklama=?
+                    getiren_firma=?, ifs_giris_durumu=?, tir_plaka=?, proje_id=?, taseron_id=?, aciklama=?,
+                    scan_image_url=COALESCE(?, scan_image_url)
                     WHERE id=?";
             $params[] = $editId;
             $pdoDemir->prepare($sql)->execute($params);
@@ -99,8 +101,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $sql = "INSERT INTO demir_sevkiyatlar
                     (kod, irsaliye_no, irsaliye_tarih, gelis_tarih, arac_plaka, dorse_plaka, kantar_fis_no,
-                     tedarikci_id, ifs_siparis_no, getiren_firma, ifs_giris_durumu, tir_plaka, proje_id, taseron_id, aciklama, created_by)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+                     tedarikci_id, ifs_siparis_no, getiren_firma, ifs_giris_durumu, tir_plaka, proje_id, taseron_id, aciklama, scan_image_url, created_by)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
             $params[] = current_user_id();
             $pdoDemir->prepare($sql)->execute($params);
             $sevkId = (int)$pdoDemir->lastInsertId();
@@ -133,6 +135,25 @@ $v = fn($k) => h($row[$k] ?? '');
 <?php if ($formError): ?><div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-1"></i><?= h($formError) ?></div><?php endif; ?>
 
 <form method="post" id="sevkForm">
+<input type="hidden" name="scan_image_url" id="scanImageUrl" value="<?= h($row['scan_image_url'] ?? '') ?>">
+
+<!-- Karekod / Belge ile otomatik doldur -->
+<div class="card mb-3 border-primary" style="border-style:dashed">
+    <div class="card-header bg-white fw-semibold"><i class="bi bi-qr-code-scan text-primary me-1"></i> Karekod / Belge ile Otomatik Doldur <span class="text-muted small">(isteğe bağlı)</span></div>
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-7">
+                <label class="form-label small mb-1">İrsaliye fotoğrafı veya PDF'i yükleyin</label>
+                <input type="file" id="taraDosya" class="form-control form-control-sm" accept="image/*,application/pdf">
+            </div>
+            <div class="col-md-5">
+                <button type="button" id="btnTara" class="btn btn-primary btn-sm"><i class="bi bi-magic me-1"></i> Karekod + AI ile Oku</button>
+            </div>
+        </div>
+        <div id="taraDurum" class="small mt-2 text-muted">Karekod başlığı (irsaliye no, tarih, plaka, tedarikçi) doldurur; AI belgeden çap/miktar/sipariş çıkarır. Sonuçları kontrol edip kaydedin.</div>
+    </div>
+</div>
+
 <div class="row g-4">
     <div class="col-lg-5">
         <div class="card mb-3">
@@ -227,6 +248,94 @@ function hesapla(){
 }
 document.querySelectorAll('.irs-inp,.knt-inp').forEach(function(el){ el.addEventListener('input',hesapla); });
 hesapla();
+</script>
+
+<?php
+// Karekod/AI için veri: tedarikçi VKN eşlemesi + çap listesi
+$tedVknMap = [];
+foreach ($pdoDemir->query("SELECT id, vkn FROM demir_tedarikciler WHERE vkn IS NOT NULL AND vkn<>''")->fetchAll() as $t) {
+    $tedVknMap[(string)$t['vkn']] = (int)$t['id'];
+}
+$capJs = array_map(function($c){
+    preg_match('/(\d+)/', $c['ad'], $m);
+    return ['id'=>(int)$c['id'], 'num'=>isset($m[1])?(int)$m[1]:0, 'tip'=>$c['tip']];
+}, $caplar);
+?>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script>
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+const TED_VKN = <?= json_encode($tedVknMap, JSON_UNESCAPED_UNICODE) ?>;
+const CAP_LIST = <?= json_encode($capJs, JSON_UNESCAPED_UNICODE) ?>;
+
+function capId(mm, tip){
+    mm = parseInt(mm); tip=(tip||'').toString().toLowerCase();
+    for (var c of CAP_LIST) if(c.num===mm && c.tip===tip) return c.id;
+    for (var c of CAP_LIST) if(c.num===mm) return c.id;
+    return null;
+}
+function setVal(name, val){ var el=document.querySelector('[name="'+name+'"]'); if(el && val!=null && val!=='') el.value=val; }
+function durum(html, cls){ var e=document.getElementById('taraDurum'); e.className='small mt-2 '+(cls||'text-muted'); e.innerHTML=html; }
+function jsqrDecode(canvas){ try{ var ctx=canvas.getContext('2d'); var d=ctx.getImageData(0,0,canvas.width,canvas.height); var r=jsQR(d.data,d.width,d.height,{inversionAttempts:'attemptBoth'}); return r?r.data:null; }catch(e){ return null; } }
+async function qrFromImage(file){
+    return await new Promise(function(res){ var img=new Image(); img.onload=function(){ var cv=document.createElement('canvas'); cv.width=img.width; cv.height=img.height; cv.getContext('2d').drawImage(img,0,0); res({qr:jsqrDecode(cv),canvas:cv}); }; img.onerror=function(){res({qr:null,canvas:null});}; img.src=URL.createObjectURL(file); });
+}
+async function qrFromPdf(file){
+    var buf=await file.arrayBuffer(); var pdf=await pdfjsLib.getDocument({data:buf}).promise; var page=await pdf.getPage(1);
+    var vp=page.getViewport({scale:3}); var cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height;
+    await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise; return {qr:jsqrDecode(cv),canvas:cv};
+}
+function parseGib(raw){ if(!raw) return null; try{ var j=JSON.parse(raw); var o={}; for(var k in j)o[k.toLowerCase()]=j[k]; return o; }catch(e){ return null; } }
+async function scanKaydet(canvas,isPdf,file){
+    try{
+        if(isPdf){ var fd=new FormData(); fd.append('pdf',file); var r=await fetch('../api/pdf_kaydet.php',{method:'POST',body:fd}); var j=await r.json(); return j.ok?j.url:null; }
+        var th=document.createElement('canvas'); var ra=Math.min(1000/canvas.width,1); th.width=Math.round(canvas.width*ra); th.height=Math.round(canvas.height*ra);
+        th.getContext('2d').drawImage(canvas,0,0,th.width,th.height);
+        var fd=new FormData(); fd.append('image',th.toDataURL('image/jpeg',0.8));
+        var r=await fetch('../api/scan_kaydet.php',{method:'POST',body:fd}); var j=await r.json(); return j.ok?j.url:null;
+    }catch(e){ return null; }
+}
+document.getElementById('btnTara').addEventListener('click', async function(){
+    var f=document.getElementById('taraDosya').files[0];
+    if(!f){ durum('Önce dosya seçin.','text-danger'); return; }
+    var btn=this; btn.disabled=true;
+    var isPdf=/\.pdf$/i.test(f.name)||f.type==='application/pdf';
+    durum('<span class="spinner-border spinner-border-sm me-1"></span> Karekod okunuyor...');
+    try{
+        var out = isPdf ? await qrFromPdf(f) : await qrFromImage(f);
+        var g=parseGib(out.qr); var bulundu=[];
+        if(g){
+            if(g.no){ setVal('irsaliye_no',g.no); bulundu.push('irsaliye no'); }
+            if(g.tarih){ setVal('irsaliye_tarih', String(g.tarih).substr(0,10)); bulundu.push('tarih'); }
+            if(g.plaka){ setVal('arac_plaka', String(g.plaka).toUpperCase().replace(/\s+/g,'')); bulundu.push('plaka'); }
+            if(g.vkntckn && TED_VKN[String(g.vkntckn)]){ setVal('tedarikci_id', TED_VKN[String(g.vkntckn)]); bulundu.push('tedarikçi'); }
+        }
+        durum('<span class="spinner-border spinner-border-sm me-1"></span> AI belgeyi okuyor (çap/miktar/sipariş)...');
+        var scanUrl=await scanKaydet(out.canvas,isPdf,f);
+        if(scanUrl) document.getElementById('scanImageUrl').value=scanUrl;
+        var fd=new FormData(); fd.append('dosya',f);
+        var r=await fetch('../api/demir_okut.php',{method:'POST',body:fd}); var j=await r.json();
+        if(j.ok && j.alanlar){
+            var a=j.alanlar;
+            if(!g){
+                if(a.irsaliye_no) setVal('irsaliye_no',a.irsaliye_no);
+                if(a.tarih) setVal('irsaliye_tarih',String(a.tarih).substr(0,10));
+                if(a.arac_plaka) setVal('arac_plaka',String(a.arac_plaka).toUpperCase().replace(/\s+/g,''));
+                if(a.tedarikci_vkn && TED_VKN[String(a.tedarikci_vkn)]) setVal('tedarikci_id',TED_VKN[String(a.tedarikci_vkn)]);
+            }
+            if(a.siparis_no) setVal('ifs_siparis_no', a.siparis_no);
+            var eklenen=0;
+            (a.kalemler||[]).forEach(function(k){ var cid=capId(k.cap_mm,k.tip); if(cid){ var inp=document.querySelector('.irs-inp[data-cap="'+cid+'"]'); if(inp && k.miktar_ton!=null){ inp.value=k.miktar_ton; eklenen++; } } });
+            if(typeof hesapla==='function') hesapla();
+            durum('<i class="bi bi-check-circle-fill text-success me-1"></i> Okundu. '+(bulundu.length?('Karekod: '+bulundu.join(', ')+'. '):'')+eklenen+' çap dolduruldu. <strong>Kontrol edip kaydedin.</strong>','text-success');
+        } else if(g){
+            durum('<i class="bi bi-exclamation-circle text-warning me-1"></i> Karekod okundu ('+bulundu.join(', ')+') ama AI çıkaramadı'+(j.msg?': '+j.msg:'')+'. Çapları elle girin.','text-warning');
+        } else {
+            durum('<i class="bi bi-x-circle text-danger me-1"></i> Karekod ve AI okunamadı'+(j.msg?': '+j.msg:'')+'. Elle girin.','text-danger');
+        }
+    }catch(e){ durum('<i class="bi bi-x-circle text-danger me-1"></i> Hata: '+e.message,'text-danger'); }
+    btn.disabled=false;
+});
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
