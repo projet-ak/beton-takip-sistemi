@@ -188,6 +188,11 @@ if ($__user) {
           <i class="bi bi-clipboard-data"></i><span>İcmal</span>
         </a>
       </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('raporlar.php') ?>" href="<?= $__rootPath ?>demir/raporlar.php" data-label="Raporlar">
+          <i class="bi bi-bar-chart-line"></i><span>Raporlar</span>
+        </a>
+      </li>
       <?php if(can_manage_definitions()): ?>
       <li class="sidebar-nav-item mt-1"><div class="nav-section">Tanımlar</div></li>
       <li class="sidebar-nav-item">
