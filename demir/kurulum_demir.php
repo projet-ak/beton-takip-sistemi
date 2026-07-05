@@ -180,10 +180,12 @@ try {
 
         'demir_hurda' => "CREATE TABLE IF NOT EXISTS demir_hurda (
             id INT AUTO_INCREMENT PRIMARY KEY,
+            hurda_no VARCHAR(50) NULL,
             taseron_id INT NOT NULL,
             tarih DATE NULL,
             miktar_ton DECIMAL(12,3) NOT NULL DEFAULT 0 COMMENT 'çaptan bağımsız hurda satışı',
             aciklama VARCHAR(300) NULL,
+            evrak_url VARCHAR(500) NULL COMMENT 'imzalı hurda tutanağı',
             created_by INT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (taseron_id) REFERENCES demir_taseronlar(id) ON DELETE CASCADE

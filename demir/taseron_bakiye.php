@@ -30,9 +30,12 @@ $pdoDemir->exec("CREATE TABLE IF NOT EXISTS demir_hurda (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     KEY (taseron_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-// Eski tabloya hurda_no ekle
+// Eski tabloya hurda_no / evrak_url ekle
 if (!$pdoDemir->query("SHOW COLUMNS FROM demir_hurda LIKE 'hurda_no'")->fetchColumn()) {
     $pdoDemir->exec("ALTER TABLE demir_hurda ADD COLUMN hurda_no VARCHAR(50) NULL AFTER id");
+}
+if (!$pdoDemir->query("SHOW COLUMNS FROM demir_hurda LIKE 'evrak_url'")->fetchColumn()) {
+    $pdoDemir->exec("ALTER TABLE demir_hurda ADD COLUMN evrak_url VARCHAR(500) NULL");
 }
 
 // ── Hurda kaydet (ekle/düzenle) ───────────────────────────────────────────────
@@ -59,10 +62,49 @@ if ($canEdit && ($_POST['action'] ?? '') === 'hurda_kaydet') {
     }
     redirect('taseron_bakiye.php');
 }
-// ── Hurda sil ─────────────────────────────────────────────────────────────────
+// ── Hurda sil (evrak dosyası da temizlenir) ───────────────────────────────────
 if (has_role('admin','teknik_ofis_admin') && isset($_GET['hurda_sil']) && ctype_digit($_GET['hurda_sil'])) {
-    $pdoDemir->prepare("DELETE FROM demir_hurda WHERE id=?")->execute([(int)$_GET['hurda_sil']]);
+    $hid = (int)$_GET['hurda_sil'];
+    $ev = $pdoDemir->prepare("SELECT evrak_url FROM demir_hurda WHERE id=?"); $ev->execute([$hid]);
+    if ($u = $ev->fetchColumn()) @unlink(__DIR__ . '/../' . $u);
+    $pdoDemir->prepare("DELETE FROM demir_hurda WHERE id=?")->execute([$hid]);
     flash('success', 'Hurda kaydı silindi.');
+    redirect('taseron_bakiye.php');
+}
+// ── Hurda evrak sil ───────────────────────────────────────────────────────────
+if ($canEdit && isset($_GET['hurda_evrak_sil']) && ctype_digit($_GET['hurda_evrak_sil'])) {
+    $hid = (int)$_GET['hurda_evrak_sil'];
+    $ev = $pdoDemir->prepare("SELECT evrak_url FROM demir_hurda WHERE id=?"); $ev->execute([$hid]);
+    if ($u = $ev->fetchColumn()) @unlink(__DIR__ . '/../' . $u);
+    $pdoDemir->prepare("UPDATE demir_hurda SET evrak_url=NULL WHERE id=?")->execute([$hid]);
+    flash('success', 'İmzalı evrak kaldırıldı.');
+    redirect('taseron_bakiye.php');
+}
+// ── Hurda evrak yükle (imzalı tutanak) ────────────────────────────────────────
+if ($canEdit && ($_POST['action'] ?? '') === 'hurda_evrak' && ctype_digit($_POST['id'] ?? '')
+    && isset($_FILES['evrak']) && $_FILES['evrak']['error']===UPLOAD_ERR_OK) {
+    $hid = (int)$_POST['id'];
+    $rw = $pdoDemir->prepare("SELECT hurda_no, evrak_url FROM demir_hurda WHERE id=?"); $rw->execute([$hid]); $rw = $rw->fetch();
+    $mime = mime_content_type($_FILES['evrak']['tmp_name']);
+    $izin = ['application/pdf','image/jpeg','image/png','image/webp'];
+    if (!$rw) {
+        flash('error', 'Hurda kaydı bulunamadı.');
+    } elseif (!in_array($mime, $izin, true)) {
+        flash('error', 'Sadece PDF, JPG, PNG, WebP yüklenebilir.');
+    } elseif ($_FILES['evrak']['size'] > 15*1024*1024) {
+        flash('error', 'Dosya çok büyük (maks 15 MB).');
+    } else {
+        $dir = __DIR__ . '/../uploads/demir_hurda/' . $hid . '/';
+        if (!is_dir($dir)) @mkdir($dir, 0755, true);
+        $ext = pathinfo($_FILES['evrak']['name'], PATHINFO_EXTENSION) ?: ($mime==='application/pdf'?'pdf':'jpg');
+        $ad  = 'imzali_' . date('Ymd_His') . '.' . strtolower($ext);
+        if (move_uploaded_file($_FILES['evrak']['tmp_name'], $dir.$ad)) {
+            if ($rw['evrak_url']) @unlink(__DIR__ . '/../' . $rw['evrak_url']); // eskiyi temizle
+            $url = 'uploads/demir_hurda/' . $hid . '/' . $ad;
+            $pdoDemir->prepare("UPDATE demir_hurda SET evrak_url=? WHERE id=?")->execute([$url, $hid]);
+            flash('success', 'İmzalı hurda tutanağı yüklendi' . ($rw['hurda_no'] ? ' ('.$rw['hurda_no'].')' : '') . '.');
+        } else { flash('error', 'Dosya yüklenemedi.'); }
+    }
     redirect('taseron_bakiye.php');
 }
 
@@ -252,7 +294,7 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
     <div class="card-header bg-white fw-semibold"><i class="bi bi-recycle text-warning me-1"></i> Hurda Satış Kayıtları (<?= count($hurdaListe) ?>)</div>
     <div class="card-body p-0"><div class="table-responsive" style="max-height:360px">
         <table class="table table-sm table-hover align-middle mb-0">
-            <thead class="table-light"><tr><th>Tutanak No</th><th>Taşeron</th><th>Tarih</th><th class="text-end">Miktar (t)</th><th>Açıklama</th><th class="text-end">İşlem</th></tr></thead>
+            <thead class="table-light"><tr><th>Tutanak No</th><th>Taşeron</th><th>Tarih</th><th class="text-end">Miktar (t)</th><th>Açıklama</th><th class="text-center">İmzalı Evrak</th><th class="text-end">İşlem</th></tr></thead>
             <tbody>
             <?php foreach ($hurdaListe as $hd): ?>
                 <tr>
@@ -261,10 +303,18 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
                     <td class="text-nowrap"><?= format_date($hd['tarih']) ?></td>
                     <td class="text-end fw-semibold text-warning">−<?= $fmt($hd['miktar_ton']) ?></td>
                     <td class="small"><?= h($hd['aciklama'] ?: '—') ?></td>
+                    <td class="text-center">
+                        <?php if ($hd['evrak_url']): ?>
+                            <a href="<?= h($rootPath.$hd['evrak_url']) ?>" target="_blank" class="badge bg-success text-decoration-none" title="İmzalı evrağı aç"><i class="bi bi-paperclip"></i> Var</a>
+                        <?php elseif ($canEdit): ?>
+                            <button class="btn btn-xs btn-outline-secondary btn-hurda-evrak" data-id="<?= $hd['id'] ?>" data-no="<?= h($hd['hurda_no'] ?: '') ?>" title="İmzalı tutanağı yükle"><i class="bi bi-upload"></i></button>
+                        <?php else: ?><span class="text-muted">—</span><?php endif; ?>
+                    </td>
                     <td class="text-end text-nowrap">
                         <a href="hurda_pdf.php?id=<?= $hd['id'] ?>" target="_blank" class="btn btn-xs btn-outline-dark" title="Tutanak Yazdır / PDF (imza için)"><i class="bi bi-printer"></i></a>
                         <?php if ($canEdit): ?>
                         <button class="btn btn-xs btn-outline-primary btn-hurda-duzenle" data-json='<?= h(json_encode($hd, JSON_UNESCAPED_UNICODE)) ?>' title="Düzenle"><i class="bi bi-pencil"></i></button>
+                        <?php if ($hd['evrak_url']): ?><a href="taseron_bakiye.php?hurda_evrak_sil=<?= $hd['id'] ?>" class="btn btn-xs btn-outline-warning" title="Evrağı kaldır" onclick="return confirm('İmzalı evrak kaldırılsın mı?')"><i class="bi bi-paperclip"></i></a><?php endif; ?>
                         <?php endif; ?>
                         <?php if (has_role('admin','teknik_ofis_admin')): ?>
                         <a href="taseron_bakiye.php?hurda_sil=<?= $hd['id'] ?>" class="btn btn-xs btn-outline-danger" onclick="return confirm('Bu hurda kaydı silinsin mi? (Bakiye geri yükselir)')"><i class="bi bi-trash"></i></a>
@@ -272,7 +322,7 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
                     </td>
                 </tr>
             <?php endforeach; ?>
-            <?php if (!$hurdaListe): ?><tr><td colspan="6" class="text-center text-muted py-4">Henüz hurda satışı kaydı yok.<?= $canEdit?' "Hurda Satışı Ekle" ile kaydedin.':'' ?></td></tr><?php endif; ?>
+            <?php if (!$hurdaListe): ?><tr><td colspan="7" class="text-center text-muted py-4">Henüz hurda satışı kaydı yok.<?= $canEdit?' "Hurda Satışı Ekle" ile kaydedin.':'' ?></td></tr><?php endif; ?>
             </tbody>
         </table>
     </div></div>
@@ -312,10 +362,32 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
   </div></div>
 </div>
 
+<!-- Hurda imzalı evrak yükle modal (sürükle-bırak) -->
+<div class="modal fade" id="hurdaEvrakModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog"><div class="modal-content">
+    <form method="post" enctype="multipart/form-data" class="dz-form">
+      <input type="hidden" name="action" value="hurda_evrak">
+      <input type="hidden" name="id" id="he_id">
+      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-paperclip me-1"></i>İmzalı Hurda Tutanağı Yükle</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div id="he_scope" class="alert alert-info py-2 px-3 small mb-2 d-none"></div>
+        <label class="dz-zone d-flex flex-column align-items-center justify-content-center text-center p-4 border border-2 rounded" style="cursor:pointer;background:#f8f9fa;border-style:dashed!important">
+            <i class="bi bi-cloud-arrow-up fs-2 text-secondary"></i>
+            <span class="fw-semibold mt-1">Taranmış imzalı tutanağı buraya sürükleyin ya da tıklayın</span>
+            <span class="small text-muted dz-name">PDF, JPG, PNG — maks 15 MB</span>
+            <input type="file" name="evrak" accept="application/pdf,image/*" class="d-none dz-input" required>
+        </label>
+      </div>
+      <div class="modal-footer"><button class="btn btn-primary w-100 dz-submit" disabled><i class="bi bi-upload me-1"></i>Yükle</button></div>
+    </form>
+  </div></div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function(){
     if (typeof bootstrap === 'undefined') return;
     var modal = new bootstrap.Modal(document.getElementById('hurdaModal'));
+    var evrakModal = new bootstrap.Modal(document.getElementById('hurdaEvrakModal'));
     function set(id,v){ document.getElementById(id).value = (v===null||v===undefined)?'':v; }
     var btn = document.getElementById('btnHurda');
     if (btn) btn.addEventListener('click', function(){
@@ -329,6 +401,36 @@ document.addEventListener('DOMContentLoaded', function(){
             document.getElementById('h_baslik').innerHTML = '<i class="bi bi-recycle me-1"></i>Hurda Kaydı Düzenle';
             set('h_id',r.id); set('h_tas',r.taseron_id); set('h_tarih',r.tarih); set('h_mik',r.miktar_ton); set('h_acik',r.aciklama);
             modal.show();
+        });
+    });
+    // İmzalı evrak yükleme (sürükle-bırak)
+    document.querySelectorAll('.btn-hurda-evrak').forEach(function(b){
+        b.addEventListener('click', function(){
+            set('he_id', this.getAttribute('data-id'));
+            var no = this.getAttribute('data-no') || '';
+            var scope = document.getElementById('he_scope');
+            if (no) { scope.innerHTML = '<i class="bi bi-file-earmark-check me-1"></i><strong>' + no + '</strong> numaralı hurda tutanağının imzalı hali yüklenecek.'; scope.classList.remove('d-none'); }
+            else { scope.classList.add('d-none'); }
+            evrakModal.show();
+        });
+    });
+    document.querySelectorAll('#hurdaEvrakModal .dz-form').forEach(function(form){
+        var zone = form.querySelector('.dz-zone'), input = form.querySelector('.dz-input'),
+            name = form.querySelector('.dz-name'), submit = form.querySelector('.dz-submit');
+        if (!zone || !input) return;
+        function refresh(){
+            if (input.files && input.files.length){
+                if (name) name.textContent = input.files[0].name;
+                zone.style.borderColor = '#198754'; zone.style.background = '#eafaf1';
+                if (submit) submit.disabled = false;
+            }
+        }
+        input.addEventListener('change', refresh);
+        ['dragenter','dragover'].forEach(function(ev){ zone.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); zone.style.borderColor='#0d6efd'; zone.style.background='#e7f1ff'; }); });
+        ['dragleave','dragend'].forEach(function(ev){ zone.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); zone.style.borderColor=''; zone.style.background='#f8f9fa'; }); });
+        zone.addEventListener('drop', function(e){
+            e.preventDefault(); e.stopPropagation();
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length){ input.files = e.dataTransfer.files; refresh(); }
         });
     });
 });
