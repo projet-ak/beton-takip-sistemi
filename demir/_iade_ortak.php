@@ -55,3 +55,15 @@ function iade_no_uret(PDO $pdo, string $projeKod, string $iadeEdenKod): string {
     }
     return $prefix . str_pad((string)($max + 1), 3, '0', STR_PAD_LEFT);
 }
+
+/** Hurda tutanak no üretir: {TASERON_KOD}-HRD-{NNN} (ör. DNR-HRD-001) */
+function hurda_no_uret(PDO $pdo, string $taseronKod): string {
+    $prefix = ($taseronKod ?: 'TSR') . '-HRD-';
+    $s = $pdo->prepare("SELECT hurda_no FROM demir_hurda WHERE hurda_no LIKE ?");
+    $s->execute([$prefix . '%']);
+    $max = 0;
+    foreach ($s->fetchAll(PDO::FETCH_COLUMN) as $no) {
+        if (preg_match('/-(\d+)$/', (string)$no, $m)) $max = max($max, (int)$m[1]);
+    }
+    return $prefix . str_pad((string)($max + 1), 3, '0', STR_PAD_LEFT);
+}

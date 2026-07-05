@@ -21,6 +21,7 @@ $canEdit = has_role('admin','teknik_ofis_admin','teknik_ofis','saha_sefi');
 // Hurda tablosu (çaptan bağımsız tonaj düşümü)
 $pdoDemir->exec("CREATE TABLE IF NOT EXISTS demir_hurda (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    hurda_no VARCHAR(50) NULL,
     taseron_id INT NOT NULL,
     tarih DATE NULL,
     miktar_ton DECIMAL(12,3) NOT NULL DEFAULT 0,
@@ -29,6 +30,10 @@ $pdoDemir->exec("CREATE TABLE IF NOT EXISTS demir_hurda (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     KEY (taseron_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+// Eski tabloya hurda_no ekle
+if (!$pdoDemir->query("SHOW COLUMNS FROM demir_hurda LIKE 'hurda_no'")->fetchColumn()) {
+    $pdoDemir->exec("ALTER TABLE demir_hurda ADD COLUMN hurda_no VARCHAR(50) NULL AFTER id");
+}
 
 // ── Hurda kaydet (ekle/düzenle) ───────────────────────────────────────────────
 if ($canEdit && ($_POST['action'] ?? '') === 'hurda_kaydet') {
@@ -44,9 +49,12 @@ if ($canEdit && ($_POST['action'] ?? '') === 'hurda_kaydet') {
             $pdoDemir->prepare("UPDATE demir_hurda SET taseron_id=?, tarih=?, miktar_ton=?, aciklama=? WHERE id=?")->execute($d);
             flash('success', 'Hurda kaydı güncellendi.');
         } else {
+            $tk = $pdoDemir->prepare("SELECT kod FROM demir_taseronlar WHERE id=?"); $tk->execute([$tas]);
+            $hurdaNo = hurda_no_uret($pdoDemir, (string)$tk->fetchColumn());
+            array_unshift($d, $hurdaNo);
             $d[] = current_user_id();
-            $pdoDemir->prepare("INSERT INTO demir_hurda (taseron_id, tarih, miktar_ton, aciklama, created_by) VALUES (?,?,?,?,?)")->execute($d);
-            flash('success', 'Hurda satışı kaydedildi (bakiyeden düşüldü).');
+            $pdoDemir->prepare("INSERT INTO demir_hurda (hurda_no, taseron_id, tarih, miktar_ton, aciklama, created_by) VALUES (?,?,?,?,?,?)")->execute($d);
+            flash('success', "Hurda satışı kaydedildi: {$hurdaNo} (bakiyeden düşüldü). Tutanağı yazdırıp imzalatabilirsiniz.");
         }
     }
     redirect('taseron_bakiye.php');
@@ -61,6 +69,7 @@ if (has_role('admin','teknik_ofis_admin') && isset($_GET['hurda_sil']) && ctype_
 $taseronlar = $pdoDemir->query("SELECT id, ad, kod FROM demir_taseronlar ORDER BY ad")->fetchAll();
 $caplar     = $pdoDemir->query("SELECT id, ad FROM demir_caplar ORDER BY sira, ad")->fetchAll();
 $capAd = []; foreach ($caplar as $c) $capAd[$c['id']] = $c['ad'];
+$capAd[-1] = '(çap belirsiz)';
 
 // bak[taseron_id][cap_id] = ['teslim'=>,'iade'=>,'devir'=>]
 $bak = [];
@@ -91,6 +100,41 @@ foreach ($pdoDemir->query("
     WHERE iu.teslim_alan_id IS NOT NULL GROUP BY iu.teslim_alan_id, ik.cap_id") as $r) {
     $ekle($r['tid'], $r['cid'], 'devir', $r['ton']);
 }
+
+// ── Tutanak Takip defteri (Excel) hareketleri — firmaların gerçek teslim/iade toplamı ──
+// Uygulamada aynı tutanak_no ile oluşturulmuş tutanak varsa o satır atlanır (çift sayım olmaz).
+try {
+    $norm = function($s){ $s=mb_strtoupper(trim((string)$s),'UTF-8'); return str_replace(['İ','I','ı','i'],'I',$s); };
+    $mevcutTutNo = [];
+    foreach ($pdoDemir->query("SELECT DISTINCT tutanak_no FROM demir_tutanaklar WHERE tutanak_no IS NOT NULL") as $r) {
+        $mevcutTutNo[$norm($r['tutanak_no'])] = 1;
+    }
+    $tasByAd = [];
+    foreach ($taseronlar as $t) $tasByAd[$norm($t['ad'])] = (int)$t['id'];
+    // Çap eşleyici (sayı + tip)
+    $capDb2 = $pdoDemir->query("SELECT id, ad, tip FROM demir_caplar")->fetchAll();
+    $capBul = function($label) use ($capDb2, $norm) {
+        $u = $norm($label);
+        if ($u === '') return 0;
+        preg_match('/(\d+)/', $u, $m); $num = isset($m[1]) ? (int)$m[1] : 0;
+        $tip = mb_stripos($u,'KANGAL')!==false ? 'kangal'
+             : (strpos($u,'/')!==false ? 'hasir'
+             : (mb_stripos($u,'SPIRAL')!==false || mb_stripos($u,'SPİRAL')!==false ? 'spiral' : 'duz'));
+        foreach ($capDb2 as $c){ preg_match('/(\d+)/',$c['ad'],$cm); if ((isset($cm[1])?(int)$cm[1]:0)===$num && $c['tip']===$tip) return (int)$c['id']; }
+        foreach ($capDb2 as $c){ preg_match('/(\d+)/',$c['ad'],$cm); if ((isset($cm[1])?(int)$cm[1]:0)===$num) return (int)$c['id']; }
+        return 0;
+    };
+    foreach ($pdoDemir->query("SELECT firma, tip, tutanak_no, cap_label, miktar_ton FROM demir_tutanak_takip") as $r) {
+        $tid = $tasByAd[$norm($r['firma'])] ?? null;
+        if (!$tid) continue;
+        $tn = trim((string)$r['tutanak_no']);
+        if ($tn !== '' && isset($mevcutTutNo[$norm($tn)])) continue; // uygulama tutanağı var → çift sayma
+        $cid = $capBul($r['cap_label'] ?? '');
+        $mik = (float)$r['miktar_ton'];
+        if ($r['tip'] === 'teslim') $ekle($tid, $cid === 0 ? -1 : $cid, 'teslim', $mik);
+        else                        $ekle($tid, $cid === 0 ? -1 : $cid, 'iade', abs($mik)); // defterde iade negatif tutulur
+    }
+} catch (Throwable $e) { /* demir_tutanak_takip yoksa sessiz geç */ }
 // Hurda satışları (çaptan bağımsız — taşeron bazında toplam)
 $hurdaByTas = [];
 foreach ($pdoDemir->query("SELECT taseron_id, SUM(miktar_ton) ton FROM demir_hurda GROUP BY taseron_id") as $r) {
@@ -208,26 +252,27 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
     <div class="card-header bg-white fw-semibold"><i class="bi bi-recycle text-warning me-1"></i> Hurda Satış Kayıtları (<?= count($hurdaListe) ?>)</div>
     <div class="card-body p-0"><div class="table-responsive" style="max-height:360px">
         <table class="table table-sm table-hover align-middle mb-0">
-            <thead class="table-light"><tr><th>#</th><th>Taşeron</th><th>Tarih</th><th class="text-end">Miktar (t)</th><th>Açıklama</th><?php if($canEdit): ?><th class="text-end">İşlem</th><?php endif; ?></tr></thead>
+            <thead class="table-light"><tr><th>Tutanak No</th><th>Taşeron</th><th>Tarih</th><th class="text-end">Miktar (t)</th><th>Açıklama</th><th class="text-end">İşlem</th></tr></thead>
             <tbody>
-            <?php foreach ($hurdaListe as $i=>$hd): ?>
+            <?php foreach ($hurdaListe as $hd): ?>
                 <tr>
-                    <td class="text-muted"><?= $i+1 ?></td>
+                    <td class="font-monospace small fw-semibold"><?= h($hd['hurda_no'] ?: '—') ?></td>
                     <td class="fw-semibold"><?= h($hd['taseron_adi'] ?: '—') ?></td>
                     <td class="text-nowrap"><?= format_date($hd['tarih']) ?></td>
                     <td class="text-end fw-semibold text-warning">−<?= $fmt($hd['miktar_ton']) ?></td>
                     <td class="small"><?= h($hd['aciklama'] ?: '—') ?></td>
-                    <?php if ($canEdit): ?>
                     <td class="text-end text-nowrap">
+                        <a href="hurda_pdf.php?id=<?= $hd['id'] ?>" target="_blank" class="btn btn-xs btn-outline-dark" title="Tutanak Yazdır / PDF (imza için)"><i class="bi bi-printer"></i></a>
+                        <?php if ($canEdit): ?>
                         <button class="btn btn-xs btn-outline-primary btn-hurda-duzenle" data-json='<?= h(json_encode($hd, JSON_UNESCAPED_UNICODE)) ?>' title="Düzenle"><i class="bi bi-pencil"></i></button>
+                        <?php endif; ?>
                         <?php if (has_role('admin','teknik_ofis_admin')): ?>
                         <a href="taseron_bakiye.php?hurda_sil=<?= $hd['id'] ?>" class="btn btn-xs btn-outline-danger" onclick="return confirm('Bu hurda kaydı silinsin mi? (Bakiye geri yükselir)')"><i class="bi bi-trash"></i></a>
                         <?php endif; ?>
                     </td>
-                    <?php endif; ?>
                 </tr>
             <?php endforeach; ?>
-            <?php if (!$hurdaListe): ?><tr><td colspan="<?= $canEdit?6:5 ?>" class="text-center text-muted py-4">Henüz hurda satışı kaydı yok.<?= $canEdit?' "Hurda Satışı Ekle" ile kaydedin.':'' ?></td></tr><?php endif; ?>
+            <?php if (!$hurdaListe): ?><tr><td colspan="6" class="text-center text-muted py-4">Henüz hurda satışı kaydı yok.<?= $canEdit?' "Hurda Satışı Ekle" ile kaydedin.':'' ?></td></tr><?php endif; ?>
             </tbody>
         </table>
     </div></div>
@@ -235,8 +280,10 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
 
 <p class="text-muted small mt-3">
     <i class="bi bi-info-circle me-1"></i>
-    <strong>Teslim Alınan</strong>: taşerona kesilen teslim tutanakları. <strong>Devraldığı</strong>: başka taşeronun
-    iade edip bu taşerona aktardığı demir. <strong>İade Ettiği</strong>: depoya/başka taşerona iade.
+    <strong>Teslim Alınan</strong>: taşerona kesilen teslim tutanakları + <strong>Tutanak Takip defterindeki</strong>
+    (Excel) teslim hareketleri (aynı tutanak no uygulamada da varsa çift sayılmaz).
+    <strong>Devraldığı</strong>: başka taşeronun iade edip bu taşerona aktardığı demir.
+    <strong>İade Ettiği</strong>: depoya/başka taşerona iade + defterdeki iade hareketleri.
     <strong>Hurda</strong>: iş sonunda hurda olarak satılan demir — tonaj bazında, <strong>çaptan bağımsız</strong> düşülür.
 </p>
 
