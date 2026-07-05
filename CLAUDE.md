@@ -77,6 +77,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 - **`irsaliye_form.php` / `irsaliye_detay.php`** — ekle/düzenle (durum bazlı yetki) / detay + foto yükleme.
 - **`hizli_tarama.php`** (~2900 satır) — **QR+DataMatrix+OCR+AI tarama motoru** (§7). Toplu irsaliye tarama.
 - **`raporlar.php`** — Chart.js + ExcelJS (formatlı xlsx) + jsPDF/AutoTable (PDF). `can_view_reports()`.
+- **`zayiat_takip.php`** — **Beton Zayiat Takibi** (`can_view_reports()`): Zayiat = Dökülen (alış−iade, reddedilen hariç) − Teorik Metraj. Teorik metraj **3 seviyede** girilir (kot/blok/imalat kalemi; modal, kademeli seçim), satır bazında **limit %** (varsayılan 5, fore kazık 15 — kalem adında FORE geçerse otomatik önerilir). Sekmeli görünüm + KPI + teorik-vs-dökülen bar grafik + satıra tıklayınca irsaliye popup (irsaliyeye geçişli). Tablo `beton_metraj` (runtime + kurulum). Durum: LİMİT AŞIMI (kırmızı) / Yaklaşıyor (>%80 limit) / Devam ediyor (dökülen<teorik) / Normal. |
 - **`login.php`** — iki beyaz ERN logolu koyu yeşil panel + dalga animasyonu + geliştirici kredisi.
   QR/AI beton = GİB e-İrsaliye QR (JSON) + KGS/THBB DataMatrix (E1) + tesseract + AI.
 - **Tanım sayfaları** (`can_manage_definitions()`): beton_siniflari, katki_listesi, pompa_turleri,

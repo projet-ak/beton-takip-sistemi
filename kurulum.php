@@ -199,6 +199,23 @@ try {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (kullanici_id) REFERENCES users(id) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        'beton_metraj' => "CREATE TABLE IF NOT EXISTS beton_metraj (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            seviye ENUM('kot','blok','kalem') NOT NULL,
+            firma_id INT NULL,
+            imalat_grup_id INT NULL,
+            ana_is_kalemi_id INT NULL,
+            parsel_id INT NULL,
+            blok_id INT NULL,
+            kot_id INT NULL,
+            teorik_m3 DECIMAL(12,3) NOT NULL DEFAULT 0,
+            limit_yuzde DECIMAL(5,2) NOT NULL DEFAULT 5.00 COMMENT 'fore kazık %15, diğerleri %5',
+            aciklama VARCHAR(300) NULL,
+            created_by INT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            KEY (seviye), KEY (kot_id), KEY (blok_id), KEY (ana_is_kalemi_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
     ];
 
     foreach ($tablolar as $ad => $sql) {

@@ -98,6 +98,11 @@ if ($__user) {
 
       <?php if(can_view_reports()): ?>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('zayiat_takip.php') ?>" href="<?= $__rootPath ?>zayiat_takip.php" data-label="Zayiat Takip">
+          <i class="bi bi-graph-down-arrow"></i><span>Zayiat Takip</span>
+        </a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('raporlar.php') ?>" href="<?= $__rootPath ?>raporlar.php" data-label="Raporlar">
           <i class="bi bi-bar-chart-line"></i><span>Raporlar</span>
         </a>
