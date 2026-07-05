@@ -64,6 +64,11 @@ $oz = $pdo->query("
            COALESCE(SUM(CASE WHEN tip='iade' THEN miktar END),0) iade
     FROM irsaliyeler")->fetch();
 
+// ── Dashboard tanılama: tip×durum kırılımı (hangi sorgu hangi rakamı üretir) ──
+$kirilim = $pdo->query("
+    SELECT tip, durum, COUNT(*) adet, COALESCE(SUM(miktar),0) m3
+    FROM irsaliyeler GROUP BY tip, durum ORDER BY tip, durum")->fetchAll();
+
 // ── Mükerrer irsaliye_no grupları ─────────────────────────────────────────────
 $mukerrer = $pdo->query("
     SELECT UPPER(TRIM(irsaliye_no)) no_norm, COUNT(*) adet, SUM(miktar) toplam_m3,
@@ -165,6 +170,31 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
     <div class="col-6 col-lg"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2"><div class="text-muted small">Reddedilen</div><div class="fs-5 fw-bold text-muted"><?= $fmt($oz['alis_red']) ?> m³</div></div></div></div>
     <div class="col-6 col-lg"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2"><div class="text-muted small">İade</div><div class="fs-5 fw-bold text-danger"><?= $fmt($oz['iade']) ?> m³</div></div></div></div>
     <div class="col-6 col-lg"><div class="card border-0 shadow-sm h-100 <?= $mukSayi?'border border-danger':'' ?>"><div class="card-body py-2"><div class="text-muted small">Mükerrer Fazlalık</div><div class="fs-5 fw-bold <?= $mukSayi?'text-danger':'text-success' ?>"><?= $mukSayi ?> kayıt / <?= $fmt($mukFazlaM3) ?> m³</div></div></div></div>
+</div>
+
+<!-- Dashboard tanılama -->
+<div class="card mb-4">
+    <div class="card-header bg-white fw-semibold"><i class="bi bi-speedometer2 text-primary me-1"></i> Dashboard Tanılama <span class="text-muted small fw-normal">— dashboard rakamı buradaki hangi satıra denk geliyorsa canlıdaki kod o mantığı kullanıyor</span></div>
+    <div class="card-body">
+        <div class="row g-2 small mb-3">
+            <div class="col-md-4"><div class="card bg-light"><div class="card-body py-2"><div class="text-muted">Güncel dashboard mantığı (tüm alışlar)</div><div class="fw-bold fs-6"><?= $fmt($oz['alis_tum']) ?> m³ · <?= (int)$pdo->query("SELECT COUNT(*) FROM irsaliyeler WHERE tip='alis'")->fetchColumn() ?> kayıt</div></div></div></div>
+            <div class="col-md-4"><div class="card bg-light"><div class="card-body py-2"><div class="text-muted">Eski dashboard mantığı (reddedilen hariç)</div><div class="fw-bold fs-6"><?= $fmt($oz['alis_gecerli']) ?> m³ · <?= (int)$pdo->query("SELECT COUNT(*) FROM irsaliyeler WHERE tip='alis' AND durum<>'reddedildi'")->fetchColumn() ?> kayıt</div></div></div></div>
+            <div class="col-md-4"><div class="card bg-light"><div class="card-body py-2"><div class="text-muted">Kod güncel mi?</div><div class="fw-bold fs-6">Dashboard'da <span class="badge bg-light text-muted border">kod: B0705</span> rozeti görünmeli — görünmüyorsa canlıda eski dosya/önbellek var → <a href="onbellek_temizle.php">Önbellek Temizle</a></div></div></div></div>
+        </div>
+        <div class="table-responsive">
+        <table class="table table-sm table-bordered mb-0" style="max-width:640px">
+            <thead class="table-light"><tr><th>Tip</th><th>Durum</th><th class="text-end">Kayıt</th><th class="text-end">m³</th></tr></thead>
+            <tbody>
+            <?php foreach ($kirilim as $k): ?>
+                <tr class="<?= $k['durum']==='reddedildi'?'table-warning':'' ?>">
+                    <td><?= h($k['tip']) ?></td><td><?= h($k['durum']) ?></td>
+                    <td class="text-end"><?= (int)$k['adet'] ?></td><td class="text-end"><?= $fmt($k['m3']) ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+    </div>
 </div>
 
 <!-- Mükerrer gruplar -->
