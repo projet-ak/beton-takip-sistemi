@@ -141,7 +141,7 @@ if (isset($_GET['reset'])) {
         @unlink($_SESSION['import_file']);
     }
     unset($_SESSION['import_file'], $_SESSION['import_col_mapping'],
-          $_SESSION['import_sheet_idx'], $_SESSION['import_header_row_idx']);
+          $_SESSION['import_sheet_idx'], $_SESSION['import_header_row_idx'], $_SESSION['import_sheets']);
     redirect('import.php');
 }
 
@@ -160,6 +160,68 @@ function cleanHeader($text) {
     $text = preg_replace('/[^a-z0-9\s]/', '', $text);
     $text = preg_replace('/\s+/', ' ', $text);
     return trim($text);
+}
+
+/**
+ * Bir sayfada başlık satırını ve kolon haritasını tespit eder.
+ * Başlık bulunamazsa null döner (VERİ/KOT/Kaşe gibi sayfalar böylece atlanır).
+ */
+function detectSheetMapping(array $rows): ?array {
+    $headerRowIndex = -1;
+    for ($i = 0; $i < min(15, count($rows)); $i++) {
+        $nonEmpty = array_map('cleanHeader', $rows[$i]);
+        if (in_array('irsaliye no', $nonEmpty) || in_array('irsaliye tarihi', $nonEmpty)
+            || (in_array('tarih', $nonEmpty) && in_array('miktar', $nonEmpty))) {
+            $headerRowIndex = $i;
+            break;
+        }
+    }
+    if ($headerRowIndex < 0) return null; // veri sayfası değil
+
+    $colMapping = [];
+    foreach ($rows[$headerRowIndex] as $colIdx => $hText) {
+        $hText = cleanHeader($hText);
+        if ($hText === '') continue;
+        if (in_array($hText, ['sira', 'sira no', 'no']))                                   $colMapping['sira_no'] = $colIdx;
+        elseif (in_array($hText, ['fatura no', 'fatura']))                                 $colMapping['fatura_no'] = $colIdx;
+        elseif (in_array($hText, ['arac plaka no', 'plaka', 'arac plaka']))                $colMapping['arac_plaka'] = $colIdx;
+        elseif (in_array($hText, ['kivam sinifi', 'kivam']))                               $colMapping['kivam_sinifi'] = $colIdx;
+        elseif (in_array($hText, ['irsaliye no', 'irsaliye no.']))                         $colMapping['irsaliye_no'] = $colIdx;
+        elseif (in_array($hText, ['tedarikci']))                                           $colMapping['tedarikci'] = $colIdx;
+        elseif (in_array($hText, ['irsaliye tarihi', 'tarih']))                            $colMapping['tarih'] = $colIdx;
+        elseif (in_array($hText, ['mikser cikis saati', 'mikser cikis']))                  $colMapping['mikser_cikis'] = $colIdx;
+        elseif (in_array($hText, ['yildizlar kantar giris saati', 'kantar giris saati', 'kantar giris'])) $colMapping['kantar_giris'] = $colIdx;
+        elseif (in_array($hText, ['yildizlar kantar cikis saati', 'kantar cikis saati', 'kantar cikis'])) $colMapping['kantar_cikis'] = $colIdx;
+        elseif (in_array($hText, ['yildizlar kantar net', 'yildizlar net']))               $colMapping['kantar_net_yildiz'] = $colIdx;
+        elseif (in_array($hText, ['tedarikci kantar net', 'tedarikci net']))               $colMapping['kantar_net_tedarikci'] = $colIdx;
+        elseif (in_array($hText, ['kantar farki', 'fark']))                                $colMapping['kantar_farki'] = $colIdx;
+        elseif (in_array($hText, ['beton sinifi', 'beton']))                               $colMapping['beton_sinifi'] = $colIdx;
+        elseif (in_array($hText, ['miktar', 'm', 'm3', 'metre kup', 'metrekup']))          $colMapping['miktar'] = $colIdx;
+        elseif (in_array($hText, ['birim']))                                               $colMapping['birim'] = $colIdx;
+        elseif (in_array($hText, ['pompa durumu', 'pompa']))                               $colMapping['pompa'] = $colIdx;
+        elseif (in_array($hText, ['katki 1', 'katki1']))                                   $colMapping['katki1'] = $colIdx;
+        elseif (in_array($hText, ['katki 2', 'katki2']))                                   $colMapping['katki2'] = $colIdx;
+        elseif (in_array($hText, ['firma']))                                               $colMapping['firma'] = $colIdx;
+        elseif (in_array($hText, ['imalat ana grup', 'imalat grup', 'grup']))              $colMapping['imalat_grup'] = $colIdx;
+        elseif (in_array($hText, ['ana is kalemi', 'is kalemi']))                          $colMapping['ana_is_kalemi'] = $colIdx;
+        elseif (in_array($hText, ['parsel']))                                              $colMapping['parsel'] = $colIdx;
+        elseif (in_array($hText, ['blok']))                                                $colMapping['blok'] = $colIdx;
+        elseif (in_array($hText, ['kot', 'seviye']))                                       $colMapping['kot'] = $colIdx;
+        elseif (in_array($hText, ['irsaliye aciklama', 'aciklama', 'not', 'notlar']))      $colMapping['aciklama'] = $colIdx;
+    }
+    // Şablon bilinen düzende: eksik eşleşmede varsayılan indekslere dön
+    if (!isset($colMapping['irsaliye_no']) || !isset($colMapping['tarih'])) {
+        $colMapping = [
+            'sira_no' => 1, 'fatura_no' => 2, 'arac_plaka' => 3, 'kivam_sinifi' => 4,
+            'irsaliye_no' => 5, 'tedarikci' => 6, 'tarih' => 8, 'mikser_cikis' => 9,
+            'kantar_giris' => 10, 'kantar_cikis' => 11, 'kantar_net_yildiz' => 12,
+            'kantar_net_tedarikci' => 13, 'kantar_farki' => 14, 'beton_sinifi' => 15,
+            'miktar' => 16, 'birim' => 17, 'pompa' => 18, 'katki1' => 19, 'katki2' => 20,
+            'firma' => 21, 'imalat_grup' => 22, 'ana_is_kalemi' => 23, 'parsel' => 24,
+            'blok' => 25, 'kot' => 26, 'aciklama' => 27
+        ];
+    }
+    return ['header_row' => $headerRowIndex, 'mapping' => $colMapping];
 }
 
 // CSRF doğrulama (tüm POST'lar için)
@@ -183,99 +245,31 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_fil
             $tempPath = __DIR__ . '/uploads/tmp_import_' . current_user()['id'] . '.xlsx';
             if (move_uploaded_file($file['tmp_name'], $tempPath)) {
                 $_SESSION['import_file'] = $tempPath;
-                $_SESSION['import_sheet_idx'] = isset($_POST['sheet_idx']) ? (int)$_POST['sheet_idx'] : 0;
-                
-                // Başlık Haritalamasını Tespit Et
+
+                // TÜM SAYFALARI otomatik tara: başlığı algılanan her sayfa veri sayfasıdır.
+                // Sayfa adında İADE geçiyorsa kayıtlar 'iade' tipiyle aktarılır.
                 if ($xlsx = SimpleXLSX::parse($tempPath)) {
-                    $rows = $xlsx->rows($_SESSION['import_sheet_idx']);
-                    
-                    // Başlık Satırını Bul (ilk 15 satırı tara, irsaliye no veya tarih içeren satırı seç)
-                    $headerRowIndex = 3; // Varsayılan: satır index 3 (4. satır)
-                    for ($i = 0; $i < min(15, count($rows)); $i++) {
-                        $nonEmpty = array_map('cleanHeader', $rows[$i]);
-                        if (in_array('irsaliye no', $nonEmpty) || in_array('irsaliye tarihi', $nonEmpty) || in_array('tarih', $nonEmpty)) {
-                            $headerRowIndex = $i;
-                            break;
-                        }
-                    }
-                    
-                    // Kolon Haritası Oluştur
-                    $colMapping = [];
-                    $headers = $rows[$headerRowIndex];
-                    foreach ($headers as $colIdx => $hText) {
-                        $hText = cleanHeader($hText);
-                        if ($hText === '') continue;
-                        
-                        if (in_array($hText, ['sira', 'sira no', 'no'])) {
-                            $colMapping['sira_no'] = $colIdx;
-                        } elseif (in_array($hText, ['fatura no', 'fatura'])) {
-                            $colMapping['fatura_no'] = $colIdx;
-                        } elseif (in_array($hText, ['arac plaka no', 'plaka', 'arac plaka'])) {
-                            $colMapping['arac_plaka'] = $colIdx;
-                        } elseif (in_array($hText, ['kivam sinifi', 'kivam'])) {
-                            $colMapping['kivam_sinifi'] = $colIdx;
-                        } elseif (in_array($hText, ['irsaliye no', 'irsaliye no.'])) {
-                            $colMapping['irsaliye_no'] = $colIdx;
-                        } elseif (in_array($hText, ['tedarikci'])) {
-                            $colMapping['tedarikci'] = $colIdx;
-                        } elseif (in_array($hText, ['irsaliye tarihi', 'tarih'])) {
-                            $colMapping['tarih'] = $colIdx;
-                        } elseif (in_array($hText, ['mikser cikis saati', 'mikser cikis'])) {
-                            $colMapping['mikser_cikis'] = $colIdx;
-                        } elseif (in_array($hText, ['yildizlar kantar giris saati', 'kantar giris saati', 'kantar giris'])) {
-                            $colMapping['kantar_giris'] = $colIdx;
-                        } elseif (in_array($hText, ['yildizlar kantar cikis saati', 'kantar cikis saati', 'kantar cikis'])) {
-                            $colMapping['kantar_cikis'] = $colIdx;
-                        } elseif (in_array($hText, ['yildizlar kantar net', 'yildizlar net'])) {
-                            $colMapping['kantar_net_yildiz'] = $colIdx;
-                        } elseif (in_array($hText, ['tedarikci kantar net', 'tedarikci net'])) {
-                            $colMapping['kantar_net_tedarikci'] = $colIdx;
-                        } elseif (in_array($hText, ['kantar farki', 'fark'])) {
-                            $colMapping['kantar_farki'] = $colIdx;
-                        } elseif (in_array($hText, ['beton sinifi', 'beton'])) {
-                            $colMapping['beton_sinifi'] = $colIdx;
-                        } elseif (in_array($hText, ['miktar', 'm', 'm3', 'metre kup', 'metrekup'])) {
-                            $colMapping['miktar'] = $colIdx;
-                        } elseif (in_array($hText, ['birim'])) {
-                            $colMapping['birim'] = $colIdx;
-                        } elseif (in_array($hText, ['pompa durumu', 'pompa'])) {
-                            $colMapping['pompa'] = $colIdx;
-                        } elseif (in_array($hText, ['katki 1', 'katki1'])) {
-                            $colMapping['katki1'] = $colIdx;
-                        } elseif (in_array($hText, ['katki 2', 'katki2'])) {
-                            $colMapping['katki2'] = $colIdx;
-                        } elseif (in_array($hText, ['firma'])) {
-                            $colMapping['firma'] = $colIdx;
-                        } elseif (in_array($hText, ['imalat ana grup', 'imalat grup', 'grup'])) {
-                            $colMapping['imalat_grup'] = $colIdx;
-                        } elseif (in_array($hText, ['ana is kalemi', 'is kalemi'])) {
-                            $colMapping['ana_is_kalemi'] = $colIdx;
-                        } elseif (in_array($hText, ['parsel'])) {
-                            $colMapping['parsel'] = $colIdx;
-                        } elseif (in_array($hText, ['blok'])) {
-                            $colMapping['blok'] = $colIdx;
-                        } elseif (in_array($hText, ['kot', 'seviye'])) {
-                            $colMapping['kot'] = $colIdx;
-                        } elseif (in_array($hText, ['irsaliye aciklama', 'aciklama', 'not', 'notlar'])) {
-                            $colMapping['aciklama'] = $colIdx;
-                        }
-                    }
-                    
-                    // Gerekli sütunlar eksikse varsayılan indekslere dön
-                    if (!isset($colMapping['irsaliye_no']) || !isset($colMapping['tarih'])) {
-                        $colMapping = [
-                            'sira_no' => 1, 'fatura_no' => 2, 'arac_plaka' => 3, 'kivam_sinifi' => 4,
-                            'irsaliye_no' => 5, 'tedarikci' => 6, 'tarih' => 8, 'mikser_cikis' => 9,
-                            'kantar_giris' => 10, 'kantar_cikis' => 11, 'kantar_net_yildiz' => 12,
-                            'kantar_net_tedarikci' => 13, 'kantar_farki' => 14, 'beton_sinifi' => 15,
-                            'miktar' => 16, 'birim' => 17, 'pompa' => 18, 'katki1' => 19, 'katki2' => 20,
-                            'firma' => 21, 'imalat_grup' => 22, 'ana_is_kalemi' => 23, 'parsel' => 24,
-                            'blok' => 25, 'kot' => 26, 'aciklama' => 27
+                    $sheets = [];
+                    foreach ($xlsx->sheetNames() as $si => $sName) {
+                        $rows = $xlsx->rows($si);
+                        if (!$rows) continue;
+                        $det = detectSheetMapping($rows);
+                        if ($det === null) continue; // VERİ / KOT / Kaşe gibi sayfalar atlanır
+                        $adNorm = cleanHeader($sName);
+                        $sheets[$si] = [
+                            'name'       => $sName,
+                            'tip'        => (strpos($adNorm, 'iade') !== false) ? 'iade' : 'alis',
+                            'header_row' => $det['header_row'],
+                            'mapping'    => $det['mapping'],
                         ];
                     }
-                    
-                    $_SESSION['import_col_mapping'] = $colMapping;
-                    $_SESSION['import_header_row_idx'] = $headerRowIndex;
+                    if (!$sheets) {
+                        $error = "Bu dosyada irsaliye veri sayfası bulunamadı (başlık satırı algılanamadı).";
+                        @unlink($tempPath);
+                        unset($_SESSION['import_file']);
+                    } else {
+                        $_SESSION['import_sheets'] = $sheets;
+                    }
                 } else {
                     $error = "Excel dosyası okunamadı: " . SimpleXLSX::parseError();
                     @unlink($tempPath);
@@ -298,17 +292,28 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
             $error = "Aktarmak için en az bir satır seçmelisiniz.";
         } else {
             $tempPath = $_SESSION['import_file'];
-            $colMapping = $_SESSION['import_col_mapping'];
-            $sheetIdx = $_SESSION['import_sheet_idx'];
-            
-            if ($xlsx = SimpleXLSX::parse($tempPath)) {
-                $rows = $xlsx->rows($sheetIdx);
+            $sheets = $_SESSION['import_sheets'] ?? [];
+            if (!$sheets) { $error = "Sayfa bilgisi bulunamadı — dosyayı yeniden yükleyin."; }
+
+            if (!$error && ($xlsx = SimpleXLSX::parse($tempPath))) {
+                // Seçimleri sayfa bazında grupla ("si:rowIdx" formatı)
+                $secimler = [];
+                foreach ($selectedIndices as $sel) {
+                    if (!preg_match('/^(\d+):(\d+)$/', (string)$sel, $m)) continue;
+                    $secimler[(int)$m[1]][] = (int)$m[2];
+                }
+                $rowsCache = [];
                 $added = 0; $skipped = 0; $errors = [];
-                
+
                 $pdo->beginTransaction();
                 try {
-                    foreach ($selectedIndices as $idx) {
-                        $idx = (int)$idx;
+                    foreach ($secimler as $sheetIdx => $idxler) {
+                    if (!isset($sheets[$sheetIdx])) continue;
+                    $colMapping = $sheets[$sheetIdx]['mapping'];
+                    $rowTip     = $sheets[$sheetIdx]['tip'];
+                    if (!isset($rowsCache[$sheetIdx])) $rowsCache[$sheetIdx] = $xlsx->rows($sheetIdx);
+                    $rows = $rowsCache[$sheetIdx];
+                    foreach ($idxler as $idx) {
                         if (!isset($rows[$idx])) continue;
                         $r = $rows[$idx];
                         
@@ -379,9 +384,10 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                              katki1_id, katki2_id, firma_id,
                              imalat_grup_id, ana_is_kalemi_id,
                              parsel_id, blok_id, kot_id, aciklama, created_by)
-                            VALUES ('alis',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
-                            
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+
                         $stmt->execute([
+                            $rowTip,
                             $val('sira_no'), $val('fatura_no'), $val('arac_plaka'),
                             $kivamId, $irsaliyeNo,
                             $tedarikciId, $tarih,
@@ -396,21 +402,23 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                         ]);
                         $added++;
                     }
-                    
+                    } // sayfa döngüsü sonu
+
                     $pdo->commit();
                     $success = "Aktarım işlemi tamamlandı! $added kayıt eklendi, $skipped mükerrer veya geçersiz kayıt atlandı.";
-                    
+
                     // Oturum dosyalarını temizle
                     @unlink($tempPath);
                     unset($_SESSION['import_file']);
                     unset($_SESSION['import_col_mapping']);
                     unset($_SESSION['import_sheet_idx']);
-                    
+                    unset($_SESSION['import_sheets']);
+
                 } catch (PDOException $e) {
                     $pdo->rollBack();
                     $error = "Aktarım durduruldu. Veritabanı hatası: " . $e->getMessage();
                 }
-            } else {
+            } elseif (!$error) {
                 $error = "Excel dosyası okunamadı: " . SimpleXLSX::parseError();
             }
         }
@@ -453,20 +461,11 @@ require_once __DIR__ . '/includes/header.php';
             <form method="post" enctype="multipart/form-data">
                 <input type="hidden" name="csrf" value="<?= h($csrfImport) ?>">
                 <div class="row g-3 align-items-end">
-                    <div class="col-md-6">
+                    <div class="col-md-9">
                         <label class="form-label fw-medium">Excel Dosyası (.xlsx)</label>
                         <input type="file" name="excel_file" class="form-control" accept=".xlsx" required>
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-medium">Okunacak Sayfa Index</label>
-                        <select name="sheet_idx" class="form-select">
-                            <option value="0">Sayfa 1 (ALIŞLAR veya İlk Sayfa)</option>
-                            <option value="1">Sayfa 2 (İADE vb.)</option>
-                            <option value="2">Sayfa 3</option>
-                            <option value="3">Sayfa 4</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2">
+                    <div class="col-md-3">
                         <button type="submit" class="btn btn-primary w-100">
                             <i class="bi bi-eye me-1"></i> Yükle &amp; İncele
                         </button>
@@ -475,34 +474,33 @@ require_once __DIR__ . '/includes/header.php';
             </form>
             <div class="mt-4">
                 <div class="alert alert-info border-0 bg-light-primary text-primary-emphasis mb-0 p-3 rounded-3">
-                    <h6 class="fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i> İpuçları &amp; Uyumlu Şablon</h6>
+                    <h6 class="fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i> Nasıl Çalışır?</h6>
                     <ul class="mb-0 small ps-3">
-                        <li>Dosya boyutu sunucu yükleme sınırları dahilinde olmalıdır. Sadece <strong>.xlsx</strong> formatındaki modern Excel dosyaları kabul edilir.</li>
-                        <li>Sistem, başlık satırını otomatik tespit etmek için ilk 15 satırda <em>"irsaliye no"</em>, <em>"irsaliye tarihi"</em>, <em>"miktar"</em> veya <em>"tarih"</em> kelimelerini arar.</li>
-                        <li>Sütun isimleri otomatik haritalanır. Eşleşmeyen sütunlar için varsayılan şablon (Sıra, İrsaliye No, Tedarikçi, Tarih, Miktar vb.) indeksleri kullanılır.</li>
+                        <li><strong>Tüm sayfalar otomatik taranır</strong> — sayfa seçmenize gerek yok. Başlık satırı algılanan her sayfa (ALIŞLAR, Sayfa1, İADE...) veri sayfası olarak okunur; VERİ/KOT/Kaşe gibi tanım sayfaları atlanır.</li>
+                        <li>Adında <strong>İADE</strong> geçen sayfadaki kayıtlar otomatik <strong>iade</strong> tipiyle aktarılır, diğerleri <strong>alış</strong>.</li>
+                        <li>Sütun isimleri otomatik haritalanır; bilinen şablonda eşleşmeyen kolonlar için varsayılan indeksler kullanılır.</li>
+                        <li>Mükerrer irsaliye no'lar (büyük/küçük harf ve boşluk farkı gözetmeksizin) atlanır — aynı dosyayı tekrar yüklemek güvenlidir.</li>
                     </ul>
                 </div>
             </div>
         </div>
     </div>
-<?php else: 
-    // ADIM 1: Yüklenen Dosyayı Okuma ve Seçim Tablosu Oluşturma
+<?php else:
+    // ADIM 1: Yüklenen dosyanın TÜM veri sayfalarını önizle
     $xlsx = SimpleXLSX::parse($_SESSION['import_file']);
-    if ($xlsx):
-        $rows = $xlsx->rows($_SESSION['import_sheet_idx']);
-        $headerRowIdx = $_SESSION['import_header_row_idx'];
-        $colMapping = $_SESSION['import_col_mapping'];
-        $dataStartIdx = $headerRowIdx + 1;
-        $totalRows = count($rows);
-        $totalDataRows = $totalRows - $dataStartIdx;
+    $sheets = $_SESSION['import_sheets'] ?? [];
+    if ($xlsx && $sheets):
+        $dupQ = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler WHERE UPPER(TRIM(irsaliye_no)) = UPPER(TRIM(?))");
+        $sayfaOzet = [];
+        foreach ($sheets as $si => $S) { $sayfaOzet[] = h($S['name']) . ($S['tip']==='iade' ? ' (iade)' : ''); }
     ?>
     <div class="card shadow-sm border-0 mb-4">
         <div class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
             <div>
                 <h5 class="card-title mb-0 fw-semibold text-muted">
-                    <i class="bi bi-eye text-success me-1"></i> Yüklenen Excel Dosya Önizlemesi
+                    <i class="bi bi-eye text-success me-1"></i> Excel Önizlemesi — Tüm Sayfalar
                 </h5>
-                <small class="text-muted">Toplam <strong><?= $totalDataRows ?></strong> veri satırı bulundu. Başlık Satırı Index: <?= $headerRowIdx ?></small>
+                <small class="text-muted">Algılanan veri sayfaları: <strong><?= implode(' · ', $sayfaOzet) ?></strong></small>
             </div>
             <div>
                 <a href="import.php?reset=1" class="btn btn-outline-danger btn-sm">
@@ -510,7 +508,7 @@ require_once __DIR__ . '/includes/header.php';
                 </a>
             </div>
         </div>
-        
+
         <form method="post">
             <input type="hidden" name="csrf" value="<?= h($csrfImport) ?>">
             <div class="card-body p-0">
@@ -522,6 +520,7 @@ require_once __DIR__ . '/includes/header.php';
                                     <input type="checkbox" class="form-check-input" id="selectAll" checked>
                                 </th>
                                 <th width="60">Satır</th>
+                                <th>Tip</th>
                                 <th>İrsaliye No</th>
                                 <th>Tedarikçi</th>
                                 <th>Tarih</th>
@@ -534,22 +533,29 @@ require_once __DIR__ . '/includes/header.php';
                             </tr>
                         </thead>
                         <tbody>
-                            <?php 
+                            <?php
                             $hasValidRows = false;
-                            for ($i = $dataStartIdx; $i < $totalRows; $i++):
+                            foreach ($sheets as $si => $S):
+                                $rows = $xlsx->rows($si);
+                                $colMapping = $S['mapping'];
+                                $dataStartIdx = $S['header_row'] + 1;
+                                $totalRows = count($rows);
+                            ?>
+                            <tr class="table-secondary">
+                                <td colspan="12" class="fw-semibold py-2">
+                                    <i class="bi bi-file-earmark-spreadsheet me-1"></i><?= h($S['name']) ?>
+                                    <?php if ($S['tip']==='iade'): ?><span class="badge bg-danger ms-1">İADE olarak aktarılır</span>
+                                    <?php else: ?><span class="badge bg-success ms-1">ALIŞ</span><?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php for ($i = $dataStartIdx; $i < $totalRows; $i++):
                                 $r = $rows[$i];
-                                
-                                // Boş satırları atla
                                 if (count(array_filter($r)) === 0) continue;
-                                
                                 $hasValidRows = true;
-                                
-                                // Değer çekme yardımcısı
+
                                 $getVal = function($key) use ($r, $colMapping) {
                                     return isset($colMapping[$key]) && isset($r[$colMapping[$key]]) ? trim($r[$colMapping[$key]]) : '';
                                 };
-                                
-                                $siraNo = $getVal('sira_no');
                                 $irsaliyeNo = $getVal('irsaliye_no');
                                 $tedarikci = $getVal('tedarikci');
                                 $tarihRaw = $getVal('tarih');
@@ -561,34 +567,24 @@ require_once __DIR__ . '/includes/header.php';
                                 $blok = $getVal('blok');
                                 $kot = $getVal('kot');
                                 $aciklama = $getVal('aciklama');
-                                
-                                $dupColor = '';
-                                $dupText = 'Hazır';
-                                $canImport = true;
-                                
-                                // Mükerrer kontrolü
+
+                                $dupColor = ''; $dupText = 'Hazır'; $canImport = true;
                                 if ($irsaliyeNo) {
-                                    $dupQ = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler WHERE UPPER(TRIM(irsaliye_no)) = UPPER(TRIM(?))");
                                     $dupQ->execute([$irsaliyeNo]);
                                     if ($dupQ->fetchColumn() > 0) {
-                                        $dupColor = 'table-success';
-                                        $dupText = 'Zaten Kayıtlı';
-                                        $canImport = false;
+                                        $dupColor = 'table-success'; $dupText = 'Zaten Kayıtlı'; $canImport = false;
                                     }
                                 }
-                                
-                                // Tarih veya tedarikçi yoksa hata
                                 if (!$tarih || !$tedarikci) {
-                                    $dupColor = 'table-danger';
-                                    $dupText = 'Hatalı (Tarih/Tedarikçi Yok)';
-                                    $canImport = false;
+                                    $dupColor = 'table-danger'; $dupText = 'Hatalı (Tarih/Tedarikçi Yok)'; $canImport = false;
                                 }
                             ?>
                             <tr class="<?= $dupColor ?>">
                                 <td class="text-center">
-                                    <input type="checkbox" name="rows[]" value="<?= $i ?>" class="form-check-input row-select" <?= $canImport ? 'checked' : '' ?> <?= $canImport ? '' : 'disabled' ?>>
+                                    <input type="checkbox" name="rows[]" value="<?= $si ?>:<?= $i ?>" class="form-check-input row-select" <?= $canImport ? 'checked' : '' ?> <?= $canImport ? '' : 'disabled' ?>>
                                 </td>
                                 <td class="text-muted"><?= $i + 1 ?></td>
+                                <td><?= $S['tip']==='iade' ? '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">İade</span>' : '<span class="badge bg-success-subtle text-success border border-success-subtle">Alış</span>' ?></td>
                                 <td class="font-monospace fw-semibold"><?= h($irsaliyeNo ?: '-') ?></td>
                                 <td><?= h($tedarikci ?: '-') ?></td>
                                 <td class="text-nowrap"><?= h($tarihRaw ?: '-') ?><?= $tarih ? '' : ' <i class="bi bi-x-circle text-danger" title="Geçersiz tarih formatı"></i>' ?></td>
@@ -612,10 +608,11 @@ require_once __DIR__ . '/includes/header.php';
                                 </td>
                             </tr>
                             <?php endfor; ?>
-                            
+                            <?php endforeach; ?>
+
                             <?php if (!$hasValidRows): ?>
                                 <tr>
-                                    <td colspan="11" class="text-center py-4 text-muted">
+                                    <td colspan="12" class="text-center py-4 text-muted">
                                         <i class="bi bi-inbox fs-3 d-block mb-2"></i>
                                         Yorumlanabilir veri satırı bulunamadı. Lütfen Excel yapısını kontrol edin.
                                     </td>
@@ -625,7 +622,7 @@ require_once __DIR__ . '/includes/header.php';
                     </table>
                 </div>
             </div>
-            
+
             <div class="card-footer bg-white border-0 py-3 px-4 d-flex justify-content-between align-items-center">
                 <span id="selectedCount" class="text-muted fw-medium">0 / 0 satır aktarılacak</span>
                 <button type="submit" name="execute_import" class="btn btn-success" id="importBtn" <?= $hasValidRows ? '' : 'disabled' ?>>
