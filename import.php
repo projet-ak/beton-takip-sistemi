@@ -77,6 +77,24 @@ function getOrCreateKot(PDO $pdo, ?int $blokId, ?string $ad): ?int {
     return (int)$pdo->lastInsertId();
 }
 
+function getOrCreateProje(PDO $pdo, ?string $kod): ?int {
+    $kod = trim((string)$kod);
+    if ($kod === '') return null;
+    $s = $pdo->prepare("SELECT id FROM projeler WHERE UPPER(kod) = UPPER(?)");
+    $s->execute([$kod]);
+    if ($id = $s->fetchColumn()) return (int)$id;
+    $pdo->prepare("INSERT INTO projeler (kod, aciklama) VALUES (?, ?)")->execute([$kod, $kod]);
+    return (int)$pdo->lastInsertId();
+}
+
+/** Türkçe sayı: "1.234,56" → 1234.56, "8,5" → 8.5, "8.5" → 8.5 */
+function parseMiktar($v): float {
+    $v = trim((string)$v);
+    if ($v === '') return 0.0;
+    if (strpos($v, ',') !== false) $v = str_replace(['.', ','], ['', '.'], $v); // binlik nokta + ondalık virgül
+    return is_numeric($v) ? (float)$v : 0.0;
+}
+
 function parseTarih(?string $tarih): ?string {
     if ($tarih === null || trim($tarih) === '') return null;
     $tarih = trim($tarih);
@@ -183,6 +201,7 @@ function detectSheetMapping(array $rows): ?array {
         $hText = cleanHeader($hText);
         if ($hText === '') continue;
         if (in_array($hText, ['sira', 'sira no', 'no']))                                   $colMapping['sira_no'] = $colIdx;
+        elseif (in_array($hText, ['proje kodu', 'proje no', 'proje']))                     $colMapping['proje_kodu'] = $colIdx;
         elseif (in_array($hText, ['fatura no', 'fatura']))                                 $colMapping['fatura_no'] = $colIdx;
         elseif (in_array($hText, ['arac plaka no', 'plaka', 'arac plaka']))                $colMapping['arac_plaka'] = $colIdx;
         elseif (in_array($hText, ['kivam sinifi', 'kivam']))                               $colMapping['kivam_sinifi'] = $colIdx;
@@ -304,6 +323,7 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                 }
                 $rowsCache = [];
                 $added = 0; $skipped = 0; $errors = []; $silinenTum = 0;
+                $atlananlar = []; // atlanan satırların nedenleriyle raporu
                 $resetAll = isset($_POST['reset_all']) && is_admin();
 
                 $pdo->beginTransaction();
@@ -335,15 +355,17 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                         
                         $tarihRaw = $val('tarih');
                         $tarih = parseTarih($tarihRaw ?? '');
-                        if (!$tarih) { 
-                            $skipped++; 
-                            continue; 
+                        if (!$tarih) {
+                            $skipped++;
+                            $atlananlar[] = "Satır ".($idx+1)." (".h($val('irsaliye_no','no?')).", ".h($val('miktar','0'))." m³): geçersiz/boş tarih \"".h((string)$tarihRaw)."\"";
+                            continue;
                         }
-                        
+
                         $tedarikciAd = $val('tedarikci');
-                        if (!$tedarikciAd) { 
-                            $skipped++; 
-                            continue; 
+                        if (!$tedarikciAd) {
+                            $skipped++;
+                            $atlananlar[] = "Satır ".($idx+1)." (".h($val('irsaliye_no','no?')).", ".h($val('miktar','0'))." m³): tedarikçi boş";
+                            continue;
                         }
                         $tedarikciId = getOrCreate($pdo, 'tedarikciler', 'ad', $tedarikciAd);
                         
@@ -361,16 +383,19 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                         $kotId         = $blokId   ? getOrCreateKot($pdo, $blokId, $val('kot'))   : null;
                         
                         $irsaliyeNo = $val('irsaliye_no');
-                        
+
                         // İrsaliye no ile mükerrer kontrolü
                         if ($irsaliyeNo) {
                             $dup = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler WHERE UPPER(TRIM(irsaliye_no)) = UPPER(TRIM(?))");
                             $dup->execute([$irsaliyeNo]);
-                            if ($dup->fetchColumn() > 0) { 
-                                $skipped++; 
-                                continue; 
+                            if ($dup->fetchColumn() > 0) {
+                                $skipped++;
+                                $atlananlar[] = "Satır ".($idx+1)." (".h($irsaliyeNo).", ".h($val('miktar','0'))." m³): mükerrer — bu irsaliye no zaten kayıtlı";
+                                continue;
                             }
                         }
+
+                        $projeId = getOrCreateProje($pdo, $val('proje_kodu'));
                         
                         $mikserCikis = $val('mikser_cikis');
                         $kantarGiris = $val('kantar_giris');
@@ -380,10 +405,11 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                         $kantarGiris = ($kantarGiris && $kantarGiris !== '00:00:00') ? $kantarGiris : null;
                         $kantarCikis = ($kantarCikis && $kantarCikis !== '00:00:00') ? $kantarCikis : null;
                         
-                        $miktarVal = (float)str_replace(',', '.', $val('miktar', 0));
-                        
+                        $miktarVal = parseMiktar($val('miktar', 0));
+
                         $stmt = $pdo->prepare("INSERT INTO irsaliyeler
                             (tip, sira_no, fatura_no, arac_plaka, kivam_sinifi_id, irsaliye_no,
+                             proje_no, proje_id,
                              tedarikci_id, tarih,
                              mikser_cikis_saati, kantar_giris_saati, kantar_cikis_saati,
                              kantar_net_yildizlar, kantar_net_tedarikci, kantar_farki,
@@ -391,17 +417,18 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                              katki1_id, katki2_id, firma_id,
                              imalat_grup_id, ana_is_kalemi_id,
                              parsel_id, blok_id, kot_id, aciklama, created_by)
-                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
 
                         $stmt->execute([
                             $rowTip,
                             $val('sira_no'), $val('fatura_no'), $val('arac_plaka'),
                             $kivamId, $irsaliyeNo,
+                            $val('proje_kodu'), $projeId,
                             $tedarikciId, $tarih,
                             $mikserCikis, $kantarGiris, $kantarCikis,
-                            (float)str_replace(',', '.', $val('kantar_net_yildiz', 0)),
-                            (float)str_replace(',', '.', $val('kantar_net_tedarikci', 0)),
-                            (float)str_replace(',', '.', $val('kantar_farki', 0)),
+                            parseMiktar($val('kantar_net_yildiz', 0)),
+                            parseMiktar($val('kantar_net_tedarikci', 0)),
+                            parseMiktar($val('kantar_farki', 0)),
                             $betonId, $miktarVal, $val('birim', 'M3'), $pompaId,
                             $katki1Id, $katki2Id, $firmaId,
                             $imalatGrupId, $anaKalemId,
@@ -455,6 +482,16 @@ require_once __DIR__ . '/includes/header.php';
         <div><?= h($success) ?></div>
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
+    <?php if (!empty($atlananlar)): ?>
+    <div class="alert alert-warning" role="alert">
+        <h6 class="fw-semibold mb-2"><i class="bi bi-exclamation-triangle me-1"></i>Atlanan Satırlar (<?= count($atlananlar) ?>) — Excel toplamı ile fark bunlardan kaynaklanır:</h6>
+        <ul class="mb-0 small">
+            <?php foreach (array_slice($atlananlar, 0, 60) as $a): ?><li><?= $a ?></li><?php endforeach; ?>
+            <?php if (count($atlananlar) > 60): ?><li>… ve <?= count($atlananlar)-60 ?> satır daha</li><?php endif; ?>
+        </ul>
+        <hr class="my-2"><div class="small">Tam mutabakat için: <a href="veri_kontrol.php" class="alert-link">Veri Kontrol → Excel Mutabakatı</a></div>
+    </div>
+    <?php endif; ?>
 <?php endif; ?>
 
 <?php if (!isset($_SESSION['import_file'])): ?>
@@ -530,6 +567,7 @@ require_once __DIR__ . '/includes/header.php';
                                 <th width="60">Satır</th>
                                 <th>Tip</th>
                                 <th>İrsaliye No</th>
+                                <th>Proje</th>
                                 <th>Tedarikçi</th>
                                 <th>Tarih</th>
                                 <th>Beton Sınıfı</th>
@@ -550,7 +588,7 @@ require_once __DIR__ . '/includes/header.php';
                                 $totalRows = count($rows);
                             ?>
                             <tr class="table-secondary">
-                                <td colspan="12" class="fw-semibold py-2">
+                                <td colspan="13" class="fw-semibold py-2">
                                     <i class="bi bi-file-earmark-spreadsheet me-1"></i><?= h($S['name']) ?>
                                     <?php if ($S['tip']==='iade'): ?><span class="badge bg-danger ms-1">İADE olarak aktarılır</span>
                                     <?php else: ?><span class="badge bg-success ms-1">ALIŞ</span><?php endif; ?>
@@ -565,6 +603,7 @@ require_once __DIR__ . '/includes/header.php';
                                     return isset($colMapping[$key]) && isset($r[$colMapping[$key]]) ? trim($r[$colMapping[$key]]) : '';
                                 };
                                 $irsaliyeNo = $getVal('irsaliye_no');
+                                $projeKodu = $getVal('proje_kodu');
                                 $tedarikci = $getVal('tedarikci');
                                 $tarihRaw = $getVal('tarih');
                                 $tarih = parseTarih($tarihRaw ?? '');
@@ -596,10 +635,11 @@ require_once __DIR__ . '/includes/header.php';
                                 <td class="text-muted"><?= $i + 1 ?></td>
                                 <td><?= $S['tip']==='iade' ? '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">İade</span>' : '<span class="badge bg-success-subtle text-success border border-success-subtle">Alış</span>' ?></td>
                                 <td class="font-monospace fw-semibold"><?= h($irsaliyeNo ?: '-') ?></td>
+                                <td><?= $projeKodu ? '<span class="badge bg-dark">'.h($projeKodu).'</span>' : '<span class="text-muted">-</span>' ?></td>
                                 <td><?= h($tedarikci ?: '-') ?></td>
                                 <td class="text-nowrap"><?= h($tarihRaw ?: '-') ?><?= $tarih ? '' : ' <i class="bi bi-x-circle text-danger" title="Geçersiz tarih formatı"></i>' ?></td>
                                 <td><span class="badge bg-secondary"><?= h($betonSinifi ?: '-') ?></span></td>
-                                <td class="text-end fw-bold"><?= number_format((float)str_replace(',', '.', $miktar), 1) ?></td>
+                                <td class="text-end fw-bold"><?= number_format(parseMiktar($miktar), 1, ',', '.') ?></td>
                                 <td><?= h($pompa ?: '-') ?></td>
                                 <td>
                                     <span class="text-muted small">
@@ -622,7 +662,7 @@ require_once __DIR__ . '/includes/header.php';
 
                             <?php if (!$hasValidRows): ?>
                                 <tr>
-                                    <td colspan="12" class="text-center py-4 text-muted">
+                                    <td colspan="13" class="text-center py-4 text-muted">
                                         <i class="bi bi-inbox fs-3 d-block mb-2"></i>
                                         Yorumlanabilir veri satırı bulunamadı. Lütfen Excel yapısını kontrol edin.
                                     </td>
