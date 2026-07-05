@@ -134,9 +134,17 @@ for ($i = 0; $i < $zip->numFiles; $i++) {
 $zip->close();
 @unlink($zipFile);
 
+// OPcache'i sıfırla — yoksa güncellenen dosyalar eski derlenmiş haliyle sunulmaya devam eder
+$opcache = 'yok';
+if (function_exists('opcache_reset')) {
+    $opcache = @opcache_reset() ? 'sıfırlandı' : 'sıfırlanamadı';
+}
+clearstatcache(true);
+
 echo json_encode([
     'ok'      => true,
     'msg'     => "$count dosya güncellendi",
     'branch'  => $branch,
+    'opcache' => $opcache,
     'skipped' => $skipped,
 ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
