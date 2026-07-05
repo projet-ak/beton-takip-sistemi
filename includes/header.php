@@ -199,6 +199,11 @@ if ($__user) {
         </a>
       </li>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('sozlesmeler.php') ?>" href="<?= $__rootPath ?>demir/sozlesmeler.php" data-label="Sözleşmeler">
+          <i class="bi bi-journal-bookmark"></i><span>Sözleşmeler</span>
+        </a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('icmal.php') ?>" href="<?= $__rootPath ?>demir/icmal.php" data-label="İcmal">
           <i class="bi bi-clipboard-data"></i><span>İcmal</span>
         </a>

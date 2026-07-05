@@ -8,6 +8,7 @@ require_once __DIR__ . '/../includes/auth.php';
 if (!file_exists(__DIR__ . '/../config.php')) { redirect('../install.php'); }
 require_auth();
 require_once __DIR__ . '/../includes/db_demir.php';
+require_once __DIR__ . '/_firma_teslim.php';
 
 $pageTitle = 'Demir Raporları — Demir Takip';
 
@@ -74,6 +75,18 @@ $totTon  = array_sum(array_column($capRows,'irs'));
 $totKnt  = array_sum(array_column($capRows,'knt'));
 $totFark = $totKnt - $totTon;
 $totSevk = count($detayRows);
+
+// ── Firma bazlı teslim matrisi (tüm dönem; tutanak verisi) ────────────────────
+$ftm = firma_teslim_matrisi($pdoDemir);
+$firmaFlat = []; // Excel/PDF için düz liste
+foreach ($ftm['matris'] as $f=>$prjler) {
+    foreach ($prjler as $prj=>$caps) {
+        foreach (ftm_cap_sirala(array_keys($caps)) as $c) {
+            if (abs($caps[$c]) < 0.0005) continue;
+            $firmaFlat[] = ['firma'=>$f, 'proje'=>$prj, 'cap'=>$c, 'ton'=>round($caps[$c],3)];
+        }
+    }
+}
 
 $projeler = $pdoDemir->query("SELECT id,kod FROM demir_projeler WHERE aktif=1 ORDER BY kod")->fetchAll();
 $ayAdlari = [1=>'Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
@@ -147,6 +160,24 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
     </div></div></div></div>
 </div>
 
+<!-- Firma bazlı teslim (Proje × Çap) -->
+<?php if (!empty($ftm['matris'])): ?>
+<div class="card mt-3">
+    <div class="card-header bg-white fw-semibold"><i class="bi bi-people text-primary me-1"></i> Firma Bazlı Teslim Edilen Demir <span class="text-muted small fw-normal">(Proje × Çap — net, tüm dönem)</span></div>
+    <div class="card-body">
+        <?php foreach ($ftm['matris'] as $f=>$prjler): ?>
+        <div class="mb-4">
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <span class="badge bg-dark fs-6"><?= h($f) ?></span>
+                <span class="text-muted small">Toplam: <strong><?= $fmt($ftm['firmaToplam'][$f] ?? 0) ?> t</strong></span>
+            </div>
+            <?= ftm_tablo_html($f, $prjler, $fmt) ?>
+        </div>
+        <?php endforeach; ?>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- ExcelJS: formatlı xlsx (beton raporlarındaki gibi) -->
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script>
@@ -157,7 +188,8 @@ const R = {
     cap: <?= json_encode(array_map(fn($r)=>['ad'=>$r['ad'],'tip'=>$r['tip'],'irs'=>(float)$r['irs'],'knt'=>(float)$r['knt']], $capRows), JSON_UNESCAPED_UNICODE) ?>,
     ted: <?= json_encode(array_map(fn($r)=>['firma'=>$r['firma'],'adet'=>(int)$r['adet'],'irs'=>(float)$r['irs'],'knt'=>(float)$r['knt']], $tedRows), JSON_UNESCAPED_UNICODE) ?>,
     proje: <?= json_encode(array_map(fn($r)=>['kod'=>$r['kod'],'adet'=>(int)$r['adet'],'ton'=>(float)$r['ton']], $prjRows), JSON_UNESCAPED_UNICODE) ?>,
-    detay: <?= json_encode(array_map(fn($r)=>['tarih'=>$r['irsaliye_tarih'],'irsaliye'=>$r['irsaliye_no'],'tedarikci'=>$r['tedarikci'],'proje'=>$r['proje'],'taseron'=>$r['taseron'],'plaka'=>$r['arac_plaka'],'kantar_fis'=>$r['kantar_fis_no'],'irs'=>(float)$r['irs'],'knt'=>(float)$r['knt']], $detayRows), JSON_UNESCAPED_UNICODE) ?>
+    detay: <?= json_encode(array_map(fn($r)=>['tarih'=>$r['irsaliye_tarih'],'irsaliye'=>$r['irsaliye_no'],'tedarikci'=>$r['tedarikci'],'proje'=>$r['proje'],'taseron'=>$r['taseron'],'plaka'=>$r['arac_plaka'],'kantar_fis'=>$r['kantar_fis_no'],'irs'=>(float)$r['irs'],'knt'=>(float)$r['knt']], $detayRows), JSON_UNESCAPED_UNICODE) ?>,
+    firmaTeslim: <?= json_encode($firmaFlat, JSON_UNESCAPED_UNICODE) ?>
 };
 
 // ── Grafikler ─────────────────────────────────────────────────────────────────
@@ -200,6 +232,14 @@ async function exportExcel(){
         h=ws.addRow(['Tedarikçi','Sevkiyat','İrsaliye (t)','Kantar (t)','Fark (t)']); styleHdr(h);
         R.ted.forEach(t=>ws.addRow([t.firma,t.adet,t.irs,t.knt,t.knt-t.irs])); ws.columns.forEach(c=>c.width=18); ws.getColumn(1).width=24;
 
+        // Firma bazlı teslim
+        if (R.firmaTeslim.length) {
+            ws=wb.addWorksheet('Firma Bazlı'); title(ws,'FİRMA BAZLI TESLİM (Proje × Çap — net, tüm dönem)');
+            h=ws.addRow(['Firma','Proje','Çap','Ton']); styleHdr(h);
+            R.firmaTeslim.forEach(x=>ws.addRow([x.firma,x.proje,x.cap,x.ton]));
+            ws.columns.forEach(c=>c.width=18); ws.getColumn(1).width=24;
+        }
+
         // Detay
         ws=wb.addWorksheet('Detay'); title(ws,'SEVKİYAT DETAYI');
         h=ws.addRow(['Tarih','İrsaliye No','Tedarikçi','Proje','Taşeron','Araç Plaka','Kantar Fiş','İrsaliye (t)','Kantar (t)']); styleHdr(h);
@@ -221,6 +261,7 @@ function exportPDF(){
     html+='<h2>Çap Bazında</h2>'+tbl(['Çap','İrsaliye','Kantar','Fark'], R.cap.map(c=>[c.ad,f(c.irs),f(c.knt),(c.knt-c.irs>0?'+':'')+f(c.knt-c.irs)]));
     html+='<h2>Tedarikçi Özeti</h2>'+tbl(['Tedarikçi','Sevkiyat','İrsaliye','Fark'], R.ted.map(t=>[t.firma,t.adet,f(t.irs),(t.knt-t.irs>0?'+':'')+f(t.knt-t.irs)]));
     html+='<h2>Proje Özeti</h2>'+tbl(['Proje','Sevkiyat','Gelen'], R.proje.map(p=>[p.kod,p.adet,f(p.ton)]));
+    if(R.firmaTeslim.length) html+='<h2>Firma Bazlı Teslim (Proje × Çap — net)</h2>'+tbl(['Firma','Proje','Çap','Ton'], R.firmaTeslim.map(x=>[x.firma,x.proje,x.cap,f(x.ton)]));
     const w=window.open('','_blank');
     w.document.write('<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8"><title>Demir Raporu</title><style>'
         +'body{font-family:Segoe UI,Arial,sans-serif;color:#111;padding:24px;} h1{color:#00584E;font-size:20px;margin:0;} h2{color:#00584E;font-size:14px;border-bottom:1px solid #ddd;padding-bottom:4px;margin:20px 0 6px;} .meta{color:#666;font-size:12px;margin-bottom:14px;}'

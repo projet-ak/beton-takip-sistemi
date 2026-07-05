@@ -89,11 +89,13 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 ## 5. Demir Modülü (`demir/`)
 
 Sidebar: Dashboard · Sevkiyatlar · Siparişler · Tutanaklar · **Tutanak Takip** · **İade Tutanakları** ·
-**Taşeron Bakiye** · İcmal · Raporlar · Proje Dışı İşler · Tanımlar(Projeler/Çaplar/Tedarikçiler/Taşeronlar).
+**Taşeron Bakiye** · **Sözleşmeler** · İcmal · Raporlar · Proje Dışı İşler · Tanımlar(Projeler/Çaplar/Tedarikçiler/Taşeronlar).
 
 | Dosya | Amaç |
 |---|---|
-| `index.php` | **Genel Bakış dashboard**: KPI kartları (gelen/kantar farkı/sevkiyat/kalan sipariş/tutanak/iade/taşeron net) + çap(bar)/proje(doughnut)/aylık(line) grafikleri + son sevkiyatlar. Opsiyonel tablolar try/catch. |
+| `index.php` | **Genel Bakış dashboard**: KPI kartları (gelen/kantar farkı/sevkiyat/kalan sipariş/tutanak/iade/taşeron net) + çap(bar)/proje(doughnut)/aylık(line) grafikleri + son sevkiyatlar + **firma bazlı teslim matrisi** (firma seçici, Proje × Çap, `_firma_teslim.php`). Opsiyonel tablolar try/catch. |
+| `_firma_teslim.php` | Ortak: `firma_teslim_matrisi()` — uygulama tutanakları + Tutanak Takip defteri birleşik (tutanak_no dedup, iade netten düşer) → firma→proje→çap matrisi; `ftm_tablo_html()` render. |
+| `sozlesmeler.php` | **Sözleşme No paneli**: taşeron sözleşmeleri CRUD (no+taşeron+proje+konu, mükerrer engel) + sözleşme bazında teslim toplamı ve çap kırılımı (bağlı tutanaklardan). `demir_tutanaklar.sozlesme_id` bağı; `tutanak_form.php`'de Sözleşme No seçilir. |
 | `sevkiyatlar.php` | Sevkiyat listesi; çap toplamı + **kantar farkı** (renkli); filtre; Excel dışa/içe aktar. |
 | `sevkiyat_form.php` | Çap bazında İrsaliye+Kantar (canlı fark). **Karekod+AI paneli** (QR→başlık, AI→çap/miktar). |
 | `siparisler.php` | Sipariş + **bakiye** (sipariş/gelen/kalan + % ilerleme). |
@@ -143,6 +145,7 @@ tip/durum ENUM, kantar_net_*/kantar_farki, tüm tanım FK'leri, onay alanları, 
 - `demir_tutanaklar` (tutanak_no, evrak_url) + `demir_tutanak_kalemleri` (irsaliye_no, cap_id, miktar_ton, bag_adeti)
 - `demir_iade_tutanaklar` (iade_no, **iade_eden_id**, **teslim_alan_id** [NULL=depoya iade], proje_id, evrak_url) + `demir_iade_kalemleri` (cap_id, miktar_ton, bag_adeti). Runtime `iade_semasi_kur()` ile de oluşur (kurulum'a da eklendi).
 - `demir_hurda` (taseron_id FK, tarih, **miktar_ton çaptan bağımsız**, aciklama): iş sonu hurda satışı; taşeron bakiyesinden düşülür. Runtime (`taseron_bakiye.php`) + kurulum.
+- `demir_sozlesmeler` (sozlesme_no, taseron_id FK, proje_id, tarih, konu, aktif) + `demir_tutanaklar.sozlesme_id` bağı. Runtime (`sozlesmeler.php`) + kurulum.
 - `demir_tutanak_takip` (runtime, `tutanak_takip.php` içinde CREATE IF NOT EXISTS): firma, sira, proje, tip (teslim/iade), tarih, irsaliye_no, tutanak_no, cap_label, miktar_ton (iade negatif), bag. Excel "TUTANAK TAKİP" sayfasından tam yenileme.
 - `demir_proje_disi` (runtime, `proje_disi.php` içinde CREATE IF NOT EXISTS): tip A.2/A.3/A.4, proje/hedef_proje, firma/hedef_firma, cap_mm, adet, boy, metraj_ton, kantar_farki
 

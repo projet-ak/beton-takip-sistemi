@@ -8,6 +8,7 @@ require_once __DIR__ . '/../includes/auth.php';
 if (!file_exists(__DIR__ . '/../config.php')) { redirect('../install.php'); }
 require_auth();
 require_once __DIR__ . '/../includes/db_demir.php';
+require_once __DIR__ . '/_firma_teslim.php';
 
 $pageTitle = 'Demir Takip — Genel Bakış';
 
@@ -73,6 +74,9 @@ try {
         LEFT JOIN demir_tedarikciler t ON t.id = s.tedarikci_id
         LEFT JOIN demir_projeler p ON p.id = s.proje_id
         GROUP BY s.id ORDER BY s.irsaliye_tarih DESC, s.id DESC LIMIT 8")->fetchAll();
+
+    // Firma bazlı teslim matrisi (proje × çap)
+    $ftm = firma_teslim_matrisi($pdoDemir);
 } catch (PDOException $e) {
     $kurulu = false;
 }
@@ -183,6 +187,35 @@ $farkRenk = abs($fark)<0.0005 ? '#6c757d' : ($fark<0 ? '#dc3545' : '#198754');
         </div>
     </div>
 </div>
+
+<!-- Firma bazlı teslim matrisi (Proje × Çap) -->
+<?php if (!empty($ftm['matris'])): $fmtT = fn($n)=>number_format((float)$n,3,',','.'); ?>
+<div class="card border-0 shadow-sm mt-3">
+    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span><i class="bi bi-people text-primary me-1"></i> Firma Bazlı Teslim Edilen Demir <span class="text-muted small fw-normal">(Proje × Çap — net)</span></span>
+        <select id="fbFirma" class="form-select form-select-sm" style="max-width:280px">
+            <?php $ilk = true; foreach ($ftm['firmaToplam'] as $f=>$t): ?>
+            <option value="fb-<?= md5($f) ?>"><?= h($f) ?> — <?= $fmtT($t) ?> t</option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+    <div class="card-body p-0">
+        <?php $ilk = true; foreach ($ftm['matris'] as $f=>$prjler): ?>
+        <div class="fb-panel <?= $ilk?'':'d-none' ?>" id="fb-<?= md5($f) ?>"><?= ftm_tablo_html($f, $prjler, $fmtT) ?></div>
+        <?php $ilk = false; endforeach; ?>
+    </div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+    var sel = document.getElementById('fbFirma');
+    if (!sel) return;
+    sel.addEventListener('change', function(){
+        document.querySelectorAll('.fb-panel').forEach(function(p){ p.classList.add('d-none'); });
+        var t = document.getElementById(this.value); if (t) t.classList.remove('d-none');
+    });
+});
+</script>
+<?php endif; ?>
 
 <?php if ($veriVar || $projeDagilim || count($aylik)>0): ?>
 <script>

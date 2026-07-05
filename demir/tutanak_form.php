@@ -37,11 +37,24 @@ $caplar     = $pdoDemir->query("SELECT id,ad FROM demir_caplar WHERE aktif=1 ORD
 $taseronlar = $pdoDemir->query("SELECT id,ad,kod FROM demir_taseronlar WHERE aktif=1 ORDER BY ad")->fetchAll();
 $projeler   = $pdoDemir->query("SELECT id,kod,aciklama FROM demir_projeler WHERE aktif=1 ORDER BY kod")->fetchAll();
 
+// Sözleşmeler (opsiyonel bağ — sozlesmeler.php paneli için)
+$sozlesmeler = [];
+try {
+    if (!$pdoDemir->query("SHOW COLUMNS FROM demir_tutanaklar LIKE 'sozlesme_id'")->fetchColumn()) {
+        $pdoDemir->exec("ALTER TABLE demir_tutanaklar ADD COLUMN sozlesme_id INT NULL AFTER proje_id");
+    }
+    $sozlesmeler = $pdoDemir->query("
+        SELECT sz.id, sz.sozlesme_no, sz.taseron_id, t.ad AS taseron_adi
+        FROM demir_sozlesmeler sz LEFT JOIN demir_taseronlar t ON t.id = sz.taseron_id
+        WHERE sz.aktif=1 ORDER BY sz.sozlesme_no")->fetchAll();
+} catch (Throwable $e) { /* sözleşme tablosu henüz yoksa geç */ }
+
 $formError = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $d = [
         'taseron_id'       => ctype_digit($_POST['taseron_id'] ?? '') ? (int)$_POST['taseron_id'] : null,
         'proje_id'         => ctype_digit($_POST['proje_id'] ?? '') ? (int)$_POST['proje_id'] : null,
+        'sozlesme_id'      => ctype_digit($_POST['sozlesme_id'] ?? '') ? (int)$_POST['sozlesme_id'] : null,
         'tutanak_tarih'    => $_POST['tutanak_tarih'] ?? '',
         'arac_plaka'       => strtoupper(trim($_POST['arac_plaka'] ?? '')),
         'dorse_plaka'      => strtoupper(trim($_POST['dorse_plaka'] ?? '')),
@@ -74,18 +87,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $tk = ''; foreach ($taseronlar as $t) if ($t['id']==$d['taseron_id']) $tk=$t['kod'];
             $tutNo = tutanak_no_uret($pdoDemir, $pk, $tk);
         }
-        $params = [$tutNo, $d['tutanak_tarih']?:null, $d['taseron_id'], $d['proje_id'],
+        $params = [$tutNo, $d['tutanak_tarih']?:null, $d['taseron_id'], $d['proje_id'], $d['sozlesme_id'],
                    $d['arac_plaka']?:null, $d['dorse_plaka']?:null, $d['sozlesme_kapsami']?:null, $d['aciklama']?:null];
         if ($editId) {
             $params[] = $editId;
-            $pdoDemir->prepare("UPDATE demir_tutanaklar SET tutanak_no=?, tutanak_tarih=?, taseron_id=?, proje_id=?,
+            $pdoDemir->prepare("UPDATE demir_tutanaklar SET tutanak_no=?, tutanak_tarih=?, taseron_id=?, proje_id=?, sozlesme_id=?,
                 arac_plaka=?, dorse_plaka=?, sozlesme_kapsami=?, aciklama=? WHERE id=?")->execute($params);
             $pdoDemir->prepare("DELETE FROM demir_tutanak_kalemleri WHERE tutanak_id=?")->execute([$editId]);
             $tid = $editId;
         } else {
             $params[] = current_user_id();
-            $pdoDemir->prepare("INSERT INTO demir_tutanaklar (tutanak_no, tutanak_tarih, taseron_id, proje_id,
-                arac_plaka, dorse_plaka, sozlesme_kapsami, aciklama, created_by) VALUES (?,?,?,?,?,?,?,?,?)")->execute($params);
+            $pdoDemir->prepare("INSERT INTO demir_tutanaklar (tutanak_no, tutanak_tarih, taseron_id, proje_id, sozlesme_id,
+                arac_plaka, dorse_plaka, sozlesme_kapsami, aciklama, created_by) VALUES (?,?,?,?,?,?,?,?,?,?)")->execute($params);
             $tid = (int)$pdoDemir->lastInsertId();
         }
         $ins = $pdoDemir->prepare("INSERT INTO demir_tutanak_kalemleri (tutanak_id, cap_id, irsaliye_no, miktar_ton, bag_adeti) VALUES (?,?,?,?,?)");
@@ -126,6 +139,14 @@ if (!$lines) $lines = [['cap_id'=>'','irsaliye_no'=>'','miktar_ton'=>'','bag_ade
             <div class="col-md-2"><label class="form-label">Tutanak Tarihi <span class="text-danger">*</span></label><input type="date" name="tutanak_tarih" class="form-control" required value="<?= $v('tutanak_tarih') ?>"></div>
             <div class="col-md-2"><label class="form-label">Araç Plaka</label><input name="arac_plaka" class="form-control text-uppercase" value="<?= $v('arac_plaka') ?>"></div>
             <div class="col-md-2"><label class="form-label">Dorse Plaka</label><input name="dorse_plaka" class="form-control text-uppercase" value="<?= $v('dorse_plaka') ?>"></div>
+            <?php if ($sozlesmeler): ?>
+            <div class="col-md-4"><label class="form-label">Sözleşme No</label>
+                <select name="sozlesme_id" class="form-select"><option value="">— (bağlama)</option>
+                <?php foreach($sozlesmeler as $sz): ?><option value="<?= $sz['id'] ?>" <?= ($row['sozlesme_id']??'')==$sz['id']?'selected':'' ?>><?= h($sz['sozlesme_no']) ?><?= $sz['taseron_adi']?' — '.h($sz['taseron_adi']):'' ?></option><?php endforeach; ?>
+                </select>
+                <div class="form-text">Seçilirse tonaj <a href="sozlesmeler.php" target="_blank">Sözleşmeler panelinde</a> bu no altında toplanır.</div>
+            </div>
+            <?php endif; ?>
             <div class="col-12"><label class="form-label">Sözleşme Kapsamı / Açıklama</label><textarea name="sozlesme_kapsami" class="form-control" rows="2"><?= $v('sozlesme_kapsami') ?></textarea></div>
         </div>
     </div>
