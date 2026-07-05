@@ -95,7 +95,7 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · Tutanaklar · **Tutanak Taki
 |---|---|
 | `index.php` | **Genel Bakış dashboard**: KPI kartları (gelen/kantar farkı/sevkiyat/kalan sipariş/tutanak/iade/taşeron net) + çap(bar)/proje(doughnut)/aylık(line) grafikleri + son sevkiyatlar + **firma bazlı teslim matrisi** (firma seçici, Proje × Çap, `_firma_teslim.php`). Opsiyonel tablolar try/catch. |
 | `_firma_teslim.php` | Ortak: `firma_teslim_matrisi()` — uygulama tutanakları + Tutanak Takip defteri birleşik (tutanak_no dedup, iade netten düşer) → firma→proje→çap matrisi; `ftm_tablo_html()` render. |
-| `sozlesmeler.php` | **Sözleşme No paneli**: taşeron sözleşmeleri CRUD (no+taşeron+proje+konu, mükerrer engel) + sözleşme bazında teslim toplamı, **bağlı tutanak listesi (imzalı evrak linkleriyle)** ve çap kırılımı. `demir_tutanaklar.sozlesme_id` bağı; `tutanak_form.php`'de Sözleşme No **zorunlu**; tutanak listesi/detay/PDF'te gösterilir. |
+| `sozlesmeler.php` | **Sözleşme No paneli**: taşeron sözleşmeleri CRUD (no+taşeron+proje+konu, mükerrer engel) + **ıslak imzalı sözleşme dosyası** (PDF/DOCX/DOC/görsel, sürükle-bırak, tıkla-aç; dosya `uploads/demir_sozlesme/{id}/`, DB'de yalnız URL) + sözleşme bazında teslim toplamı, **bağlı tutanak listesi (imzalı evrak linkleriyle)** ve çap kırılımı. `demir_tutanaklar.sozlesme_id` bağı; `tutanak_form.php`'de Sözleşme No **zorunlu**; tutanak listesi/detay/PDF'te gösterilir. |
 | `sevkiyatlar.php` | Sevkiyat listesi; çap toplamı + **kantar farkı** (renkli); filtre; Excel dışa/içe aktar. |
 | `sevkiyat_form.php` | Çap bazında İrsaliye+Kantar (canlı fark). **Karekod+AI paneli** (QR→başlık, AI→çap/miktar). |
 | `siparisler.php` | Sipariş + **bakiye** (sipariş/gelen/kalan + % ilerleme). |
@@ -196,7 +196,7 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 
 ### uploads klasör yapısı
 - Beton: `uploads/images/` (scan), `uploads/pdf/`, `uploads/irsaliye_fotolar/`, `uploads/irsaliye_{id}/`.
-- **Demir (ayrı)**: `uploads/demir/gorseller/`, `uploads/demir/belgeler/`, `uploads/demir_tutanak/{id}/`, `uploads/demir_iade/{id}/`, `uploads/demir_tutanak_takip/{tutanak_no}/`, `uploads/demir_hurda/{id}/`.
+- **Demir (ayrı)**: `uploads/demir/gorseller/`, `uploads/demir/belgeler/`, `uploads/demir_tutanak/{id}/`, `uploads/demir_iade/{id}/`, `uploads/demir_tutanak_takip/{tutanak_no}/`, `uploads/demir_hurda/{id}/`, `uploads/demir_sozlesme/{id}/`.
 - Görseller **dosya olarak** tutulur; DB'ye yalnızca göreli URL yazılır (DB boyutu şişmez).
 - `uploads/.htaccess` PHP çalıştırmayı engeller (alt klasörlere de uygulanır).
 

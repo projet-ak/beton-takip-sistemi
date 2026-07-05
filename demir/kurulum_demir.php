@@ -187,6 +187,7 @@ try {
             proje_id INT NULL,
             tarih DATE NULL,
             konu VARCHAR(300) NULL,
+            evrak_url VARCHAR(500) NULL COMMENT 'ıslak imzalı sözleşme dosyası (yalnız URL; dosya diskte)',
             aktif TINYINT(1) NOT NULL DEFAULT 1,
             created_by INT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
