@@ -77,6 +77,34 @@ try {
 
     // Firma bazlı teslim matrisi (proje × çap)
     $ftm = firma_teslim_matrisi($pdoDemir);
+
+    // Sözleşme bazlı çap dağılımı (sipariş + teslim; sozlesme_id bağı üzerinden)
+    $szData = []; // no => ['taseron'=>, 'caps'=>[capAd=>['s'=>sipariş,'t'=>teslim]]]
+    try {
+        foreach ($pdoDemir->query("
+            SELECT sz.sozlesme_no, ta.ad taseron, COALESCE(c.ad,'(çap belirsiz)') cap, SUM(tk.miktar_ton) ton
+            FROM demir_tutanak_kalemleri tk
+            JOIN demir_tutanaklar tu ON tu.id = tk.tutanak_id
+            JOIN demir_sozlesmeler sz ON sz.id = tu.sozlesme_id
+            LEFT JOIN demir_taseronlar ta ON ta.id = sz.taseron_id
+            LEFT JOIN demir_caplar c ON c.id = tk.cap_id
+            GROUP BY sz.id, tk.cap_id") as $r) {
+            $szData[$r['sozlesme_no']]['taseron'] = $r['taseron'];
+            $szData[$r['sozlesme_no']]['caps'][$r['cap']]['t'] = ($szData[$r['sozlesme_no']]['caps'][$r['cap']]['t'] ?? 0) + (float)$r['ton'];
+        }
+        foreach ($pdoDemir->query("
+            SELECT sz.sozlesme_no, ta.ad taseron, COALESCE(c.ad,'(çap belirsiz)') cap, SUM(sk.miktar_ton) ton
+            FROM demir_siparis_kalemleri sk
+            JOIN demir_siparisler sp ON sp.id = sk.siparis_id
+            JOIN demir_sozlesmeler sz ON sz.id = sp.sozlesme_id
+            LEFT JOIN demir_taseronlar ta ON ta.id = sz.taseron_id
+            LEFT JOIN demir_caplar c ON c.id = sk.cap_id
+            GROUP BY sz.id, sk.cap_id") as $r) {
+            $szData[$r['sozlesme_no']]['taseron'] = $szData[$r['sozlesme_no']]['taseron'] ?? $r['taseron'];
+            $szData[$r['sozlesme_no']]['caps'][$r['cap']]['s'] = ($szData[$r['sozlesme_no']]['caps'][$r['cap']]['s'] ?? 0) + (float)$r['ton'];
+        }
+        ksort($szData);
+    } catch (Throwable $e) { $szData = []; } // sozlesme_id/tablolar henüz yoksa gizle
 } catch (PDOException $e) {
     $kurulu = false;
 }
@@ -211,6 +239,63 @@ document.addEventListener('DOMContentLoaded', function(){
     if (!sel) return;
     sel.addEventListener('change', function(){
         document.querySelectorAll('.fb-panel').forEach(function(p){ p.classList.add('d-none'); });
+        var t = document.getElementById(this.value); if (t) t.classList.remove('d-none');
+    });
+});
+</script>
+<?php endif; ?>
+
+<!-- Sözleşme bazlı çap dağılımı (sipariş / teslim) -->
+<?php if (!empty($szData)): $fmtS = $fmtT ?? fn($n)=>number_format((float)$n,3,',','.'); ?>
+<div class="card border-0 shadow-sm mt-3">
+    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span><i class="bi bi-journal-bookmark text-primary me-1"></i> Sözleşme Bazlı Demir <span class="text-muted small fw-normal">(Çap — Sipariş / Teslim)</span></span>
+        <select id="szSel" class="form-select form-select-sm" style="max-width:320px">
+            <?php foreach ($szData as $no=>$d):
+                $topT = 0; foreach ($d['caps'] as $v) $topT += (float)($v['t'] ?? 0); ?>
+            <option value="sz-<?= md5($no) ?>"><?= h($no) ?><?= $d['taseron']?' — '.h($d['taseron']):'' ?> — <?= $fmtS($topT) ?> t</option>
+            <?php endforeach; ?>
+        </select>
+    </div>
+    <div class="card-body p-0">
+        <?php $ilkSz = true; foreach ($szData as $no=>$d):
+            $caps = ftm_cap_sirala(array_keys($d['caps']));
+            $topS = 0; $topT = 0;
+            foreach ($d['caps'] as $v){ $topS += (float)($v['s'] ?? 0); $topT += (float)($v['t'] ?? 0); }
+        ?>
+        <div class="sz-panel <?= $ilkSz?'':'d-none' ?>" id="sz-<?= md5($no) ?>">
+            <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead class="table-light"><tr><th>Çap</th><th class="text-end">Sipariş (t)</th><th class="text-end">Teslim (t)</th><th class="text-end">Kalan (t)</th></tr></thead>
+                <tbody>
+                <?php foreach ($caps as $c): $s = (float)($d['caps'][$c]['s'] ?? 0); $t = (float)($d['caps'][$c]['t'] ?? 0); $k = $s - $t; ?>
+                    <tr>
+                        <td class="fw-semibold"><?= h($c) ?></td>
+                        <td class="text-end"><?= $s!=0.0 ? $fmtS($s) : '<span class="text-muted">—</span>' ?></td>
+                        <td class="text-end"><?= $t!=0.0 ? $fmtS($t) : '<span class="text-muted">—</span>' ?></td>
+                        <td class="text-end <?= $s>0 ? ($k<=0.0005?'text-success fw-semibold':'text-danger fw-semibold') : 'text-muted' ?>"><?= $s>0 ? ($k<=0.0005?'✓':$fmtS($k)) : '—' ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+                <tfoot class="table-light fw-bold"><tr>
+                    <td>TOPLAM</td>
+                    <td class="text-end"><?= $fmtS($topS) ?></td>
+                    <td class="text-end"><?= $fmtS($topT) ?></td>
+                    <td class="text-end"><?= $topS>0 ? $fmtS(max(0,$topS-$topT)) : '—' ?></td>
+                </tr></tfoot>
+            </table>
+            </div>
+        </div>
+        <?php $ilkSz = false; endforeach; ?>
+    </div>
+    <div class="card-footer bg-white text-muted small"><i class="bi bi-info-circle me-1"></i>Sözleşmeye bağlı sipariş ve teslim tutanaklarından hesaplanır. <a href="sozlesmeler.php" class="text-decoration-none">Sözleşmeler paneli →</a></div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+    var sel = document.getElementById('szSel');
+    if (!sel) return;
+    sel.addEventListener('change', function(){
+        document.querySelectorAll('.sz-panel').forEach(function(p){ p.classList.add('d-none'); });
         var t = document.getElementById(this.value); if (t) t.classList.remove('d-none');
     });
 });
