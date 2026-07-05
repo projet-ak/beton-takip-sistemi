@@ -94,11 +94,11 @@ function trendBadge(?array $t): string {
 }
 
 // ── İstatistikler ─────────────────────────────────────────────────────────────
-$st = $pdo->prepare("SELECT COALESCE(SUM(miktar),0) FROM irsaliyeler i WHERE i.tip='alis' AND i.durum<>'reddedildi'$projeFilter");
+$st = $pdo->prepare("SELECT COALESCE(SUM(miktar),0) FROM irsaliyeler i WHERE i.tip='alis'$projeFilter");
 $st->execute($projeParams);
 $toplamM3 = $st->fetchColumn();
 
-$st = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler i WHERE i.tip='alis' AND i.durum<>'reddedildi'$projeFilter");
+$st = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler i WHERE i.tip='alis'$projeFilter");
 $st->execute($projeParams);
 $irsaliyeSay = $st->fetchColumn();
 
@@ -111,7 +111,7 @@ $tedarikciSay = $pdo->query("SELECT COUNT(*) FROM tedarikciler WHERE aktif=1")->
 // Bu ay
 $st = $pdo->prepare(
     "SELECT COALESCE(SUM(miktar),0) FROM irsaliyeler i
-     WHERE i.tip='alis' AND i.durum<>'reddedildi' AND DATE_FORMAT(i.tarih,'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m')$projeFilter"
+     WHERE i.tip='alis' AND DATE_FORMAT(i.tarih,'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m')$projeFilter"
 );
 $st->execute($projeParams);
 $buAyM3 = $st->fetchColumn();
@@ -119,14 +119,14 @@ $buAyM3 = $st->fetchColumn();
 // Geçen ay (trend için)
 $st = $pdo->prepare(
     "SELECT COALESCE(SUM(miktar),0) FROM irsaliyeler i
-     WHERE i.tip='alis' AND i.durum<>'reddedildi' AND DATE_FORMAT(i.tarih,'%Y-%m')=DATE_FORMAT(DATE_SUB(NOW(),INTERVAL 1 MONTH),'%Y-%m')$projeFilter"
+     WHERE i.tip='alis' AND DATE_FORMAT(i.tarih,'%Y-%m')=DATE_FORMAT(DATE_SUB(NOW(),INTERVAL 1 MONTH),'%Y-%m')$projeFilter"
 );
 $st->execute($projeParams);
 $gecenAyM3 = $st->fetchColumn();
 
 $st = $pdo->prepare(
     "SELECT COUNT(*) FROM irsaliyeler i
-     WHERE i.tip='alis' AND i.durum<>'reddedildi' AND DATE_FORMAT(i.tarih,'%Y-%m')=DATE_FORMAT(DATE_SUB(NOW(),INTERVAL 1 MONTH),'%Y-%m')$projeFilter"
+     WHERE i.tip='alis' AND DATE_FORMAT(i.tarih,'%Y-%m')=DATE_FORMAT(DATE_SUB(NOW(),INTERVAL 1 MONTH),'%Y-%m')$projeFilter"
 );
 $st->execute($projeParams);
 $gecenAyIrsaliye = $st->fetchColumn();
@@ -134,14 +134,14 @@ $gecenAyIrsaliye = $st->fetchColumn();
 // Bu hafta / geçen hafta
 $st = $pdo->prepare(
     "SELECT COALESCE(SUM(miktar),0) FROM irsaliyeler i
-     WHERE i.tip='alis' AND i.durum<>'reddedildi' AND YEARWEEK(i.tarih,1)=YEARWEEK(CURDATE(),1)$projeFilter"
+     WHERE i.tip='alis' AND YEARWEEK(i.tarih,1)=YEARWEEK(CURDATE(),1)$projeFilter"
 );
 $st->execute($projeParams);
 $buHaftaM3 = $st->fetchColumn();
 
 $st = $pdo->prepare(
     "SELECT COALESCE(SUM(miktar),0) FROM irsaliyeler i
-     WHERE i.tip='alis' AND i.durum<>'reddedildi' AND YEARWEEK(i.tarih,1)=YEARWEEK(DATE_SUB(CURDATE(),INTERVAL 7 DAY),1)$projeFilter"
+     WHERE i.tip='alis' AND YEARWEEK(i.tarih,1)=YEARWEEK(DATE_SUB(CURDATE(),INTERVAL 7 DAY),1)$projeFilter"
 );
 $st->execute($projeParams);
 $gecenHaftaM3 = $st->fetchColumn();
@@ -150,7 +150,7 @@ $gecenHaftaM3 = $st->fetchColumn();
 $st = $pdo->prepare(
     "SELECT i.tarih, i.miktar, i.irsaliye_no, t.ad AS tedarikci
      FROM irsaliyeler i LEFT JOIN tedarikciler t ON t.id=i.tedarikci_id
-     WHERE i.tip='alis' AND i.durum<>'reddedildi'$projeFilter
+     WHERE i.tip='alis'$projeFilter
      ORDER BY i.tarih DESC, i.id DESC LIMIT 1"
 );
 $st->execute($projeParams);
@@ -163,7 +163,7 @@ $gunlukOrt   = $bugunGunNo > 0 ? round((float)$buAyM3 / $bugunGunNo, 1) : 0;
 // Son 7 gün günlük dağılım (sparkline)
 $st = $pdo->prepare(
     "SELECT DATE(tarih) AS gun, COALESCE(SUM(miktar),0) AS toplam
-     FROM irsaliyeler i WHERE i.tip='alis' AND i.durum<>'reddedildi'
+     FROM irsaliyeler i WHERE i.tip='alis'
      AND i.tarih >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)$projeFilter
      GROUP BY DATE(tarih) ORDER BY gun"
 );
@@ -184,7 +184,7 @@ try {
     $st = $pdo->prepare(
         "SELECT p.kod, p.aciklama, COALESCE(SUM(i.miktar),0) AS toplam, COUNT(*) AS adet
          FROM projeler p
-         LEFT JOIN irsaliyeler i ON i.proje_id=p.id AND i.tip='alis' AND i.durum<>'reddedildi'
+         LEFT JOIN irsaliyeler i ON i.proje_id=p.id AND i.tip='alis'
          WHERE p.aktif=1
          GROUP BY p.id, p.kod, p.aciklama
          ORDER BY toplam DESC LIMIT 5"
@@ -208,7 +208,7 @@ try {
                 COUNT(CASE WHEN kantar_farki < 0 THEN 1 END) AS eksik_say,
                 COUNT(CASE WHEN kantar_farki > 0 THEN 1 END) AS fazla_say
          FROM irsaliyeler i
-         WHERE i.tip='alis' AND i.durum<>'reddedildi' AND kantar_farki IS NOT NULL
+         WHERE i.tip='alis' AND kantar_farki IS NOT NULL
          AND DATE_FORMAT(i.tarih,'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m')$projeFilter"
     );
     $st->execute($projeParams);
@@ -245,7 +245,7 @@ $sonIrsaliyeler = $st->fetchAll();
 $st = $pdo->prepare("
     SELECT DATE_FORMAT(tarih,'%Y-%m') AS ay, SUM(miktar) AS toplam
     FROM irsaliyeler i
-    WHERE i.tip='alis' AND i.durum<>'reddedildi' AND i.tarih >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) $projeFilter
+    WHERE i.tip='alis' AND i.tarih >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) $projeFilter
     GROUP BY ay
     ORDER BY ay
 ");
@@ -259,7 +259,7 @@ $chartValues = json_encode(array_map('floatval', array_column($aylikData, 'topla
 $st = $pdo->prepare("
     SELECT t.ad, COALESCE(SUM(i.miktar),0) AS toplam
     FROM tedarikciler t
-    LEFT JOIN irsaliyeler i ON i.tedarikci_id = t.id AND i.tip='alis' AND i.durum<>'reddedildi'" . ($projeId > 0 ? " AND i.proje_id = ?" : "") . "
+    LEFT JOIN irsaliyeler i ON i.tedarikci_id = t.id AND i.tip='alis'" . ($projeId > 0 ? " AND i.proje_id = ?" : "") . "
     WHERE t.aktif = 1
     GROUP BY t.id, t.ad
     ORDER BY toplam DESC
@@ -274,7 +274,7 @@ $pieValues = json_encode(array_map('floatval', array_column($dagılım, 'toplam'
 $st = $pdo->prepare("
     SELECT bs.ad, COALESCE(SUM(i.miktar),0) AS toplam
     FROM beton_siniflari bs
-    LEFT JOIN irsaliyeler i ON i.beton_sinifi_id = bs.id AND i.tip='alis' AND i.durum<>'reddedildi'" . ($projeId > 0 ? " AND i.proje_id = ?" : "") . "
+    LEFT JOIN irsaliyeler i ON i.beton_sinifi_id = bs.id AND i.tip='alis'" . ($projeId > 0 ? " AND i.proje_id = ?" : "") . "
     GROUP BY bs.id, bs.ad
     HAVING toplam > 0
     ORDER BY toplam DESC
