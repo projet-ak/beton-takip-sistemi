@@ -150,7 +150,7 @@ if ($__user) {
       <?php endif; ?>
 
       <?php if(is_admin()): ?>
-      <?php $__araA = in_array($__page,['yedek.php','import.php','ai_ayarlar.php'],true); ?>
+      <?php $__araA = in_array($__page,['yedek.php','import.php','ai_ayarlar.php','veri_kontrol.php'],true); ?>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= $__araA?'active':'' ?>" href="#subAra" data-bs-toggle="collapse" role="button" aria-expanded="<?= $__araA?'true':'false' ?>">
           <i class="bi bi-tools"></i><span>Araçlar</span><i class="bi bi-chevron-right chev"></i>
@@ -159,6 +159,7 @@ if ($__user) {
           <ul class="list-unstyled sidebar-sub">
             <li><a class="sidebar-sub-link <?= __isActive('yedek.php') ?>"      href="<?= $__rootPath ?>yedek.php">Yedekleme</a></li>
             <li><a class="sidebar-sub-link <?= __isActive('import.php') ?>"     href="<?= $__rootPath ?>import.php">Excel Aktarımı</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('veri_kontrol.php') ?>" href="<?= $__rootPath ?>veri_kontrol.php"><i class="bi bi-shield-check me-1"></i>Veri Kontrol</a></li>
             <li><a class="sidebar-sub-link <?= __isActive('ai_ayarlar.php') ?>" href="<?= $__rootPath ?>ai_ayarlar.php"><i class="bi bi-stars me-1"></i>AI Ayarları</a></li>
           </ul>
         </div>

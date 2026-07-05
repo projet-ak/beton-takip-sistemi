@@ -352,7 +352,7 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                         
                         // İrsaliye no ile mükerrer kontrolü
                         if ($irsaliyeNo) {
-                            $dup = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler WHERE irsaliye_no = ?");
+                            $dup = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler WHERE UPPER(TRIM(irsaliye_no)) = UPPER(TRIM(?))");
                             $dup->execute([$irsaliyeNo]);
                             if ($dup->fetchColumn() > 0) { 
                                 $skipped++; 
@@ -568,7 +568,7 @@ require_once __DIR__ . '/includes/header.php';
                                 
                                 // Mükerrer kontrolü
                                 if ($irsaliyeNo) {
-                                    $dupQ = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler WHERE irsaliye_no = ?");
+                                    $dupQ = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler WHERE UPPER(TRIM(irsaliye_no)) = UPPER(TRIM(?))");
                                     $dupQ->execute([$irsaliyeNo]);
                                     if ($dupQ->fetchColumn() > 0) {
                                         $dupColor = 'table-success';
