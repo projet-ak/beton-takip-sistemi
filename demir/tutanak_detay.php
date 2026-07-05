@@ -13,8 +13,19 @@ $id = isset($_GET['id']) && ctype_digit($_GET['id']) ? (int)$_GET['id'] : 0;
 if (!$id) { redirect('tutanaklar.php'); }
 
 // Tutanak
+try {
+    if (!$pdoDemir->query("SHOW COLUMNS FROM demir_tutanaklar LIKE 'sozlesme_id'")->fetchColumn()) {
+        $pdoDemir->exec("ALTER TABLE demir_tutanaklar ADD COLUMN sozlesme_id INT NULL AFTER proje_id");
+    }
+    $pdoDemir->exec("CREATE TABLE IF NOT EXISTS demir_sozlesmeler (
+        id INT AUTO_INCREMENT PRIMARY KEY, sozlesme_no VARCHAR(60) NOT NULL, taseron_id INT NOT NULL,
+        proje_id INT NULL, tarih DATE NULL, konu VARCHAR(300) NULL, aktif TINYINT(1) NOT NULL DEFAULT 1,
+        created_by INT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, KEY (taseron_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (Throwable $e) {}
 $s = $pdoDemir->prepare("
-    SELECT tu.*, ta.ad AS taseron_adi, ta.kod AS taseron_kod, p.kod AS proje_kod, p.aciklama AS proje_ad
+    SELECT tu.*, ta.ad AS taseron_adi, ta.kod AS taseron_kod, p.kod AS proje_kod, p.aciklama AS proje_ad,
+           (SELECT sz.sozlesme_no FROM demir_sozlesmeler sz WHERE sz.id = tu.sozlesme_id) AS sozlesme_no
     FROM demir_tutanaklar tu
     LEFT JOIN demir_taseronlar ta ON ta.id = tu.taseron_id
     LEFT JOIN demir_projeler p ON p.id = tu.proje_id
@@ -91,6 +102,7 @@ $imgExt = $tu['evrak_url'] ? !str_ends_with(strtolower($tu['evrak_url']), '.pdf'
                     <?php
                     $bilgi = [
                         'Tutanak No' => $tu['tutanak_no'],
+                        'Sözleşme No' => $tu['sozlesme_no'] ?: '—',
                         'Tarih' => format_date($tu['tutanak_tarih']),
                         'Zimmet Yapılan Taşeron' => $tu['taseron_adi'] ?: '—',
                         'Proje' => ($tu['proje_kod'] ?? '—').($tu['proje_ad']?' — '.$tu['proje_ad']:''),

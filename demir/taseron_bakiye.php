@@ -166,15 +166,28 @@ try {
         foreach ($capDb2 as $c){ preg_match('/(\d+)/',$c['ad'],$cm); if ((isset($cm[1])?(int)$cm[1]:0)===$num) return (int)$c['id']; }
         return 0;
     };
-    foreach ($pdoDemir->query("SELECT firma, tip, tutanak_no, cap_label, miktar_ton FROM demir_tutanak_takip") as $r) {
+    foreach ($pdoDemir->query("SELECT firma, tip, tutanak_no, irsaliye_no, cap_label, miktar_ton FROM demir_tutanak_takip") as $r) {
         $tid = $tasByAd[$norm($r['firma'])] ?? null;
         if (!$tid) continue;
         $tn = trim((string)$r['tutanak_no']);
         if ($tn !== '' && isset($mevcutTutNo[$norm($tn)])) continue; // uygulama tutanağı var → çift sayma
         $cid = $capBul($r['cap_label'] ?? '');
         $mik = (float)$r['miktar_ton'];
-        if ($r['tip'] === 'teslim') $ekle($tid, $cid === 0 ? -1 : $cid, 'teslim', $mik);
-        else                        $ekle($tid, $cid === 0 ? -1 : $cid, 'iade', abs($mik)); // defterde iade negatif tutulur
+        if ($r['tip'] === 'teslim') {
+            // Kaynağı başka bir firma olan teslimler (irsaliye alanı "DENER U030", "PRP U031" gibi) = taşerondan DEVİR
+            // (ör. ana firma YILDIZLAR'ın taşeronlardan iade olarak teslim aldığı demir).
+            $alan = 'teslim';
+            $irsN = $norm($r['irsaliye_no'] ?? '');
+            $tok  = strtok($irsN, ' ');
+            if ($tok !== false && mb_strlen($tok) >= 3) {
+                foreach ($tasByAd as $adN => $idX) {
+                    if ($idX !== $tid && $adN !== '' && (strpos($irsN, $adN) === 0 || strpos($adN, $tok) === 0)) { $alan = 'devir'; break; }
+                }
+            }
+            $ekle($tid, $cid === 0 ? -1 : $cid, $alan, $mik);
+        } else {
+            $ekle($tid, $cid === 0 ? -1 : $cid, 'iade', abs($mik)); // defterde iade negatif tutulur
+        }
     }
 } catch (Throwable $e) { /* demir_tutanak_takip yoksa sessiz geç */ }
 // Hurda satışları (çaptan bağımsız — taşeron bazında toplam)

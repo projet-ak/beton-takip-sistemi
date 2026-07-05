@@ -12,6 +12,11 @@ require_once __DIR__ . '/../includes/db_demir.php';
 $id = isset($_GET['id']) && ctype_digit($_GET['id']) ? (int)$_GET['id'] : 0;
 if (!$id) { redirect('tutanaklar.php'); }
 
+$sozlesmeNo = null;
+try {
+    $q = $pdoDemir->prepare("SELECT sz.sozlesme_no FROM demir_tutanaklar tu JOIN demir_sozlesmeler sz ON sz.id = tu.sozlesme_id WHERE tu.id=?");
+    $q->execute([$id]); $sozlesmeNo = $q->fetchColumn() ?: null;
+} catch (Throwable $e) {}
 $s = $pdoDemir->prepare("
     SELECT tu.*, ta.ad AS taseron_adi, ta.vkn AS taseron_vkn, p.kod AS proje_kod, p.aciklama AS proje_ad
     FROM demir_tutanaklar tu
@@ -88,6 +93,9 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
         <td class="k">VKN</td><td><?= h($tu['taseron_vkn'] ?: '—') ?></td></tr>
     <tr><td class="k">Proje</td><td><?= h(($tu['proje_kod']??'—').($tu['proje_ad']?' — '.$tu['proje_ad']:'')) ?></td>
         <td class="k">Tutanak Tarihi</td><td><?= format_date($tu['tutanak_tarih']) ?></td></tr>
+    <?php if ($sozlesmeNo): ?>
+    <tr><td class="k">Sözleşme No</td><td colspan="3"><?= h($sozlesmeNo) ?></td></tr>
+    <?php endif; ?>
     <tr><td class="k">Araç Plaka</td><td><?= h($tu['arac_plaka'] ?: '—') ?></td>
         <td class="k">Dorse Plaka</td><td><?= h($tu['dorse_plaka'] ?: '—') ?></td></tr>
   </table>

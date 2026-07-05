@@ -74,9 +74,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $kalemler[] = ['cap_id'=>(int)$cid, 'irs'=>$irs?:null, 'm'=>$m ?? 0, 'b'=>$b];
     }
 
-    if (!$d['taseron_id'])       $formError = 'Taşeron zorunludur.';
+    if (!$d['taseron_id'])        $formError = 'Taşeron zorunludur.';
+    elseif (!$d['sozlesme_id'])   $formError = 'Sözleşme No zorunludur. Tanımlı sözleşme yoksa önce Sözleşmeler panelinden ekleyin.';
     elseif (!$d['tutanak_tarih']) $formError = 'Tutanak tarihi zorunludur.';
-    elseif (!$kalemler)          $formError = 'En az bir teslim kalemi girin.';
+    elseif (!$kalemler)           $formError = 'En az bir teslim kalemi girin.';
 
     if (!$formError) {
         // Tutanak no (yeni ise üret)
@@ -139,14 +140,16 @@ if (!$lines) $lines = [['cap_id'=>'','irsaliye_no'=>'','miktar_ton'=>'','bag_ade
             <div class="col-md-2"><label class="form-label">Tutanak Tarihi <span class="text-danger">*</span></label><input type="date" name="tutanak_tarih" class="form-control" required value="<?= $v('tutanak_tarih') ?>"></div>
             <div class="col-md-2"><label class="form-label">Araç Plaka</label><input name="arac_plaka" class="form-control text-uppercase" value="<?= $v('arac_plaka') ?>"></div>
             <div class="col-md-2"><label class="form-label">Dorse Plaka</label><input name="dorse_plaka" class="form-control text-uppercase" value="<?= $v('dorse_plaka') ?>"></div>
-            <?php if ($sozlesmeler): ?>
-            <div class="col-md-4"><label class="form-label">Sözleşme No</label>
-                <select name="sozlesme_id" class="form-select"><option value="">— (bağlama)</option>
+            <div class="col-md-4"><label class="form-label">Sözleşme No <span class="text-danger">*</span></label>
+                <?php if ($sozlesmeler): ?>
+                <select name="sozlesme_id" class="form-select" required><option value="">— Seçin —</option>
                 <?php foreach($sozlesmeler as $sz): ?><option value="<?= $sz['id'] ?>" <?= ($row['sozlesme_id']??'')==$sz['id']?'selected':'' ?>><?= h($sz['sozlesme_no']) ?><?= $sz['taseron_adi']?' — '.h($sz['taseron_adi']):'' ?></option><?php endforeach; ?>
                 </select>
-                <div class="form-text">Seçilirse tonaj <a href="sozlesmeler.php" target="_blank">Sözleşmeler panelinde</a> bu no altında toplanır.</div>
+                <div class="form-text">Tonaj <a href="sozlesmeler.php" target="_blank">Sözleşmeler panelinde</a> bu no altında toplanır.</div>
+                <?php else: ?>
+                <div class="alert alert-warning py-2 px-3 small mb-0"><i class="bi bi-exclamation-triangle me-1"></i>Tanımlı sözleşme yok — önce <a href="sozlesmeler.php" class="alert-link">Sözleşmeler panelinden</a> ekleyin.</div>
+                <?php endif; ?>
             </div>
-            <?php endif; ?>
             <div class="col-12"><label class="form-label">Sözleşme Kapsamı / Açıklama</label><textarea name="sozlesme_kapsami" class="form-control" rows="2"><?= $v('sozlesme_kapsami') ?></textarea></div>
         </div>
     </div>

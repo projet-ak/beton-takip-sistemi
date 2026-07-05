@@ -53,6 +53,24 @@ function firma_teslim_matrisi(PDO $pdo): array {
         }
     } catch (Throwable $e) { /* tablo yoksa geç */ }
 
+    // 3) Uygulama iade tutanakları: iade eden firmadan düş, teslim alan firmaya ekle
+    try {
+        foreach ($pdo->query("
+            SELECT ie.ad eden, ta.ad alan, pr.kod proje, c.ad cap, ik.miktar_ton ton
+            FROM demir_iade_kalemleri ik
+            JOIN demir_iade_tutanaklar iu ON iu.id = ik.iade_id
+            LEFT JOIN demir_taseronlar ie ON ie.id = iu.iade_eden_id
+            LEFT JOIN demir_taseronlar ta ON ta.id = iu.teslim_alan_id
+            LEFT JOIN demir_projeler pr ON pr.id = iu.proje_id
+            LEFT JOIN demir_caplar c ON c.id = ik.cap_id") as $r) {
+            if ($r['eden']) $ekle($r['eden'], $r['proje'], $r['cap'], -(float)$r['ton']);
+            if ($r['alan']) $ekle($r['alan'], $r['proje'], $r['cap'],  (float)$r['ton']);
+        }
+    } catch (Throwable $e) { /* tablolar yoksa geç */ }
+
+    // Not: A.3 transferlerinin alıcı tarafı Tutanak Takip defterinde zaten "TESLİM ALINAN"
+    // satırı olarak kayıtlıdır (ör. YILDIZLAR/ZEKERİYAKÖY ← "DENER U030") — ayrıca eklenmez (çift sayım olur).
+
     $firmaToplam = []; $projeSet = [];
     foreach ($matris as $f => $prjler) {
         $t = 0;

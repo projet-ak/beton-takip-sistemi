@@ -102,6 +102,17 @@ foreach ($pdoDemir->query("
     GROUP BY tu.sozlesme_id, tk.cap_id") as $r) {
     $capKirilim[(int)$r['sid']][] = $r;
 }
+// Sözleşme → bağlı tutanaklar (imzalı evrak dahil)
+$tutBySz = [];
+foreach ($pdoDemir->query("
+    SELECT tu.sozlesme_id sid, tu.id, tu.tutanak_no, tu.tutanak_tarih, tu.evrak_url,
+           COALESCE(SUM(tk.miktar_ton),0) ton
+    FROM demir_tutanaklar tu
+    LEFT JOIN demir_tutanak_kalemleri tk ON tk.tutanak_id = tu.id
+    WHERE tu.sozlesme_id IS NOT NULL
+    GROUP BY tu.id ORDER BY tu.tutanak_tarih DESC, tu.id DESC") as $r) {
+    $tutBySz[(int)$r['sid']][] = $r;
+}
 $topTon = array_sum(array_column($liste,'ton'));
 
 require_once __DIR__ . '/../includes/header.php';
@@ -132,9 +143,9 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
             <th class="text-center">Tutanak</th><th class="text-end">Teslim (t)</th><?php if($canEdit): ?><th class="text-end">İşlem</th><?php endif; ?>
         </tr></thead>
         <tbody>
-        <?php foreach ($liste as $idx=>$r): $caps = $capKirilim[(int)$r['id']] ?? []; ?>
+        <?php foreach ($liste as $idx=>$r): $caps = $capKirilim[(int)$r['id']] ?? []; $tuts = $tutBySz[(int)$r['id']] ?? []; ?>
             <tr>
-                <td><?php if($caps): ?><button class="btn btn-xs btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#sz<?= $idx ?>" title="Çap kırılımı"><i class="bi bi-chevron-down"></i></button><?php endif; ?></td>
+                <td><?php if($caps || $tuts): ?><button class="btn btn-xs btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#sz<?= $idx ?>" title="Detay: tutanaklar + çap kırılımı"><i class="bi bi-chevron-down"></i></button><?php endif; ?></td>
                 <td class="fw-semibold font-monospace"><?= h($r['sozlesme_no']) ?></td>
                 <td><?= h($r['taseron_adi'] ?: '—') ?><?= $r['taseron_kod']?' <span class="text-muted small">('.h($r['taseron_kod']).')</span>':'' ?></td>
                 <td><?= $r['proje_kod'] ? '<span class="badge bg-secondary">'.h($r['proje_kod']).'</span>' : '—' ?></td>
@@ -152,18 +163,45 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
                 </td>
                 <?php endif; ?>
             </tr>
-            <?php if ($caps): ?>
+            <?php if ($caps || $tuts): ?>
             <tr class="collapse" id="sz<?= $idx ?>">
                 <td></td>
-                <td colspan="<?= $canEdit?8:7 ?>" class="p-0">
-                    <table class="table table-sm mb-0 bg-light">
-                        <thead><tr class="small text-muted"><th>Çap</th><th class="text-end">Teslim (t)</th></tr></thead>
-                        <tbody>
-                        <?php foreach ($caps as $ck): ?>
-                            <tr><td><?= h($ck['cap'] ?: '(çap belirsiz)') ?></td><td class="text-end fw-semibold"><?= $fmt($ck['ton']) ?></td></tr>
-                        <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                <td colspan="<?= $canEdit?8:7 ?>" class="p-2 bg-light">
+                    <div class="row g-3">
+                        <div class="col-lg-7">
+                            <div class="small fw-semibold text-muted mb-1"><i class="bi bi-file-earmark-check me-1"></i>Bağlı Tutanaklar (<?= count($tuts) ?>)</div>
+                            <table class="table table-sm mb-0 bg-white border">
+                                <thead><tr class="small text-muted"><th>Tutanak No</th><th>Tarih</th><th class="text-end">Tonaj (t)</th><th class="text-center">İmzalı Evrak</th><th></th></tr></thead>
+                                <tbody>
+                                <?php foreach ($tuts as $tt): ?>
+                                    <tr>
+                                        <td class="font-monospace small fw-semibold"><?= h($tt['tutanak_no']) ?></td>
+                                        <td class="text-nowrap small"><?= format_date($tt['tutanak_tarih']) ?></td>
+                                        <td class="text-end fw-semibold"><?= $fmt($tt['ton']) ?></td>
+                                        <td class="text-center">
+                                            <?php if ($tt['evrak_url']): ?><a href="<?= h($rootPath.$tt['evrak_url']) ?>" target="_blank" class="badge bg-success text-decoration-none"><i class="bi bi-paperclip"></i> Aç</a>
+                                            <?php else: ?><span class="badge bg-light text-muted border">Yok</span><?php endif; ?>
+                                        </td>
+                                        <td class="text-end"><a href="tutanak_detay.php?id=<?= (int)$tt['id'] ?>" class="btn btn-xs btn-outline-secondary" title="Tutanak detayı"><i class="bi bi-box-arrow-up-right"></i></a></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                <?php if (!$tuts): ?><tr><td colspan="5" class="text-center text-muted small py-2">Bağlı tutanak yok.</td></tr><?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="col-lg-5">
+                            <div class="small fw-semibold text-muted mb-1"><i class="bi bi-rulers me-1"></i>Çap Kırılımı</div>
+                            <table class="table table-sm mb-0 bg-white border">
+                                <thead><tr class="small text-muted"><th>Çap</th><th class="text-end">Teslim (t)</th></tr></thead>
+                                <tbody>
+                                <?php foreach ($caps as $ck): ?>
+                                    <tr><td><?= h($ck['cap'] ?: '(çap belirsiz)') ?></td><td class="text-end fw-semibold"><?= $fmt($ck['ton']) ?></td></tr>
+                                <?php endforeach; ?>
+                                <?php if (!$caps): ?><tr><td colspan="2" class="text-center text-muted small py-2">Kalem yok.</td></tr><?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </td>
             </tr>
             <?php endif; ?>
