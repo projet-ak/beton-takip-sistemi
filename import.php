@@ -303,10 +303,17 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                     $secimler[(int)$m[1]][] = (int)$m[2];
                 }
                 $rowsCache = [];
-                $added = 0; $skipped = 0; $errors = [];
+                $added = 0; $skipped = 0; $errors = []; $silinenTum = 0;
+                $resetAll = isset($_POST['reset_all']) && is_admin();
 
                 $pdo->beginTransaction();
                 try {
+                    if ($resetAll) {
+                        // TAM YENİLEME: tüm mevcut irsaliyeler silinir (fotoğraf kayıtları CASCADE ile)
+                        $silinenTum = (int)$pdo->query("SELECT COUNT(*) FROM irsaliyeler")->fetchColumn();
+                        $pdo->exec("DELETE FROM irsaliyeler");
+                        audit_log($pdo, 'irsaliyeler', 0, 'DELETE', null, ['tam_yenileme'=>true, 'silinen'=>$silinenTum]);
+                    }
                     foreach ($secimler as $sheetIdx => $idxler) {
                     if (!isset($sheets[$sheetIdx])) continue;
                     $colMapping = $sheets[$sheetIdx]['mapping'];
@@ -405,7 +412,8 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                     } // sayfa döngüsü sonu
 
                     $pdo->commit();
-                    $success = "Aktarım işlemi tamamlandı! $added kayıt eklendi, $skipped mükerrer veya geçersiz kayıt atlandı.";
+                    $success = ($resetAll ? "TAM YENİLEME: önce {$silinenTum} mevcut kayıt silindi. " : '')
+                             . "Aktarım işlemi tamamlandı! $added kayıt eklendi, $skipped mükerrer veya geçersiz kayıt atlandı.";
 
                     // Oturum dosyalarını temizle
                     @unlink($tempPath);
@@ -581,7 +589,9 @@ require_once __DIR__ . '/includes/header.php';
                             ?>
                             <tr class="<?= $dupColor ?>">
                                 <td class="text-center">
-                                    <input type="checkbox" name="rows[]" value="<?= $si ?>:<?= $i ?>" class="form-check-input row-select" <?= $canImport ? 'checked' : '' ?> <?= $canImport ? '' : 'disabled' ?>>
+                                    <input type="checkbox" name="rows[]" value="<?= $si ?>:<?= $i ?>" class="form-check-input row-select"
+                                           data-reason="<?= $canImport ? 'ok' : ($dupText === 'Zaten Kayıtlı' ? 'dup' : 'err') ?>"
+                                           <?= $canImport ? 'checked' : '' ?> <?= $canImport ? '' : 'disabled' ?>>
                                 </td>
                                 <td class="text-muted"><?= $i + 1 ?></td>
                                 <td><?= $S['tip']==='iade' ? '<span class="badge bg-danger-subtle text-danger border border-danger-subtle">İade</span>' : '<span class="badge bg-success-subtle text-success border border-success-subtle">Alış</span>' ?></td>
@@ -623,11 +633,21 @@ require_once __DIR__ . '/includes/header.php';
                 </div>
             </div>
 
-            <div class="card-footer bg-white border-0 py-3 px-4 d-flex justify-content-between align-items-center">
+            <div class="card-footer bg-white border-0 py-3 px-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <span id="selectedCount" class="text-muted fw-medium">0 / 0 satır aktarılacak</span>
-                <button type="submit" name="execute_import" class="btn btn-success" id="importBtn" <?= $hasValidRows ? '' : 'disabled' ?>>
-                    <i class="bi bi-cloud-download me-1"></i> Seçilen Verileri Aktar
-                </button>
+                <div class="d-flex align-items-center gap-3 flex-wrap">
+                    <?php if (is_admin()): ?>
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" name="reset_all" value="1" id="resetAllChk">
+                        <label class="form-check-label text-danger fw-semibold" for="resetAllChk">
+                            Önce TÜM mevcut irsaliyeleri sil (tam yenileme — Excel ile birebir eşitler)
+                        </label>
+                    </div>
+                    <?php endif; ?>
+                    <button type="submit" name="execute_import" class="btn btn-success" id="importBtn" <?= $hasValidRows ? '' : 'disabled' ?>>
+                        <i class="bi bi-cloud-download me-1"></i> Seçilen Verileri Aktar
+                    </button>
+                </div>
             </div>
         </form>
     </div>
@@ -635,30 +655,51 @@ require_once __DIR__ . '/includes/header.php';
     <script>
     document.addEventListener('DOMContentLoaded', function () {
         const selectAll = document.getElementById('selectAll');
-        const checkboxes = document.querySelectorAll('.row-select:not(:disabled)');
+        const allBoxes = Array.from(document.querySelectorAll('.row-select'));
         const selectedCount = document.getElementById('selectedCount');
         const importBtn = document.getElementById('importBtn');
-        
+        const resetChk = document.getElementById('resetAllChk');
+        const form = importBtn ? importBtn.closest('form') : null;
+
+        function aktifler() { return allBoxes.filter(c => !c.disabled); }
         function updateCounter() {
-            const checkedCount = Array.from(checkboxes).filter(c => c.checked).length;
-            selectedCount.textContent = `${checkedCount} / ${checkboxes.length} satır aktarılacak`;
+            const act = aktifler();
+            const checkedCount = act.filter(c => c.checked).length;
+            selectedCount.textContent = checkedCount + ' / ' + act.length + ' satır aktarılacak';
             importBtn.disabled = checkedCount === 0;
         }
-        
+
         if (selectAll) {
             selectAll.addEventListener('change', function () {
-                checkboxes.forEach(c => c.checked = selectAll.checked);
+                aktifler().forEach(c => c.checked = selectAll.checked);
                 updateCounter();
             });
         }
-        
-        checkboxes.forEach(c => {
+        allBoxes.forEach(c => {
             c.addEventListener('change', function () {
                 updateCounter();
                 if (!this.checked) selectAll.checked = false;
             });
         });
-        
+
+        // Tam yenileme: "Zaten Kayıtlı" satırlar da aktarılabilir hale gelir (silme sonrası gerekli)
+        if (resetChk) {
+            resetChk.addEventListener('change', function () {
+                allBoxes.forEach(c => {
+                    if (c.dataset.reason === 'dup') {
+                        c.disabled = !resetChk.checked;
+                        c.checked = resetChk.checked;
+                    }
+                });
+                updateCounter();
+            });
+            if (form) form.addEventListener('submit', function (e) {
+                if (resetChk.checked && !confirm('DİKKAT — TAM YENİLEME:\nVeritabanındaki TÜM irsaliyeler (elle girilenler ve taramalar dahil) silinecek, ardından seçilen Excel satırları aktarılacak.\nBu işlem geri alınamaz. Önce yedek almanız önerilir.\n\nDevam edilsin mi?')) {
+                    e.preventDefault();
+                }
+            });
+        }
+
         updateCounter();
     });
     </script>
