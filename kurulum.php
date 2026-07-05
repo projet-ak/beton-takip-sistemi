@@ -95,6 +95,7 @@ try {
             id INT AUTO_INCREMENT PRIMARY KEY,
             blok_id INT NOT NULL,
             kot_degeri VARCHAR(20) NOT NULL,
+            aciklama VARCHAR(200) NULL,
             sira INT NOT NULL DEFAULT 0,
             aktif TINYINT(1) NOT NULL DEFAULT 1,
             FOREIGN KEY (blok_id) REFERENCES bloklar(id) ON DELETE CASCADE
