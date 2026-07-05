@@ -99,7 +99,7 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · Tutanaklar · **Tutanak Taki
 | `sevkiyatlar.php` | Sevkiyat listesi; çap toplamı + **kantar farkı** (renkli); filtre; Excel dışa/içe aktar. |
 | `sevkiyat_form.php` | Çap bazında İrsaliye+Kantar (canlı fark). **Karekod+AI paneli** (QR→başlık, AI→çap/miktar). |
 | `siparisler.php` | Sipariş + **bakiye** (sipariş/gelen/kalan + % ilerleme). |
-| `siparis_form.php` | IFS Sipariş No **zorunlu** (eşleşme buna dayanır) + çap bazında sipariş miktarı. |
+| `siparis_form.php` | IFS Sipariş No **zorunlu** (eşleşme buna dayanır) + **Sözleşme No zorunlu** (`demir_siparisler.sozlesme_id`) + çap bazında sipariş miktarı. Sözleşme no liste+detayda gösterilir. |
 | `siparis_detay.php` | Çap bazında bakiye + eşleşen sevkiyatlar. |
 | `tutanaklar.php` | Teslim tutanağı listesi (tonaj/bağ/evrak durumu). |
 | `tutanak_form.php` | **Otomatik no** `{PROJE}-{TASKOD}-NNN` + dinamik kalem satırları. |
@@ -139,7 +139,7 @@ tip/durum ENUM, kantar_net_*/kantar_farki, tüm tanım FK'leri, onay alanları, 
 ### Demir (`demir/kurulum_demir.php`) — `demir_` önekli, ayrı DB
 - `demir_caplar` (ad, tip ENUM duz/kangal/hasir/spiral, **birim_agirlik kg/m**, **bag_kg**, sira)
 - `demir_tedarikciler`, `demir_taseronlar` (**kod** = tutanak öneki), `demir_projeler` (kod UNIQUE)
-- `demir_siparisler` (**ifs_siparis_no**, taseron_id, proje_id, durum) + `demir_siparis_kalemleri` (cap_id, miktar_ton)
+- `demir_siparisler` (**ifs_siparis_no**, taseron_id, proje_id, **sozlesme_id**, durum) + `demir_siparis_kalemleri` (cap_id, miktar_ton)
 - `demir_sevkiyatlar` (**ifs_siparis_no** [eşleşme anahtarı], scan_image_url, proje/taseron/tedarikci FK)
   + `demir_sevkiyat_kalemleri` (cap_id, **irsaliye_miktar**, **kantar_miktar**)
 - `demir_tutanaklar` (tutanak_no, evrak_url) + `demir_tutanak_kalemleri` (irsaliye_no, cap_id, miktar_ton, bag_adeti)

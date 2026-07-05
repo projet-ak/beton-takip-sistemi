@@ -12,6 +12,11 @@ require_once __DIR__ . '/../includes/db_demir.php';
 $id = isset($_GET['id']) && ctype_digit($_GET['id']) ? (int)$_GET['id'] : 0;
 if (!$id) { redirect('siparisler.php'); }
 
+$sozlesmeNo = null;
+try {
+    $q = $pdoDemir->prepare("SELECT sz.sozlesme_no FROM demir_siparisler sp JOIN demir_sozlesmeler sz ON sz.id = sp.sozlesme_id WHERE sp.id=?");
+    $q->execute([$id]); $sozlesmeNo = $q->fetchColumn() ?: null;
+} catch (Throwable $e) {}
 $s = $pdoDemir->prepare("
     SELECT sp.*, ta.ad AS taseron_adi, p.kod AS proje_kod, p.aciklama AS proje_ad
     FROM demir_siparisler sp
@@ -91,6 +96,7 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
                 <?php
                 $bilgi = [
                     'IFS Talep No' => $sip['ifs_talep_no'] ?: '—',
+                    'Sözleşme No' => $sozlesmeNo ?: '—',
                     'Proje' => ($sip['proje_kod'] ?? '—') . ($sip['proje_ad'] ? ' — '.$sip['proje_ad'] : ''),
                     'Taşeron' => $sip['taseron_adi'] ?: '—',
                     'İmalat' => $sip['imalat'] ?: '—',

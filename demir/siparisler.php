@@ -12,6 +12,18 @@ require_once __DIR__ . '/../includes/db_demir.php';
 
 $pageTitle = 'Demir Siparişleri — Demir Takip';
 
+// sozlesme_id kolonu garanti (siparis_form açılmadan da liste çalışsın)
+try {
+    if (!$pdoDemir->query("SHOW COLUMNS FROM demir_siparisler LIKE 'sozlesme_id'")->fetchColumn()) {
+        $pdoDemir->exec("ALTER TABLE demir_siparisler ADD COLUMN sozlesme_id INT NULL AFTER proje_id");
+    }
+    $pdoDemir->exec("CREATE TABLE IF NOT EXISTS demir_sozlesmeler (
+        id INT AUTO_INCREMENT PRIMARY KEY, sozlesme_no VARCHAR(60) NOT NULL, taseron_id INT NOT NULL,
+        proje_id INT NULL, tarih DATE NULL, konu VARCHAR(300) NULL, aktif TINYINT(1) NOT NULL DEFAULT 1,
+        created_by INT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, KEY (taseron_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+} catch (Throwable $e) {}
+
 if (has_role('admin','teknik_ofis_admin') && isset($_GET['sil']) && ctype_digit($_GET['sil'])) {
     $pdoDemir->prepare("DELETE FROM demir_siparisler WHERE id=?")->execute([(int)$_GET['sil']]);
     flash('success', 'Sipariş silindi.');
@@ -19,12 +31,13 @@ if (has_role('admin','teknik_ofis_admin') && isset($_GET['sil']) && ctype_digit(
 }
 
 $liste = $pdoDemir->query("
-    SELECT sp.*, ta.ad AS taseron_adi, p.kod AS proje_kod,
+    SELECT sp.*, ta.ad AS taseron_adi, p.kod AS proje_kod, sz.sozlesme_no,
            COALESCE(o.top_sip,0) AS top_sip,
            COALESCE(g.top_gel,0) AS top_gel
     FROM demir_siparisler sp
     LEFT JOIN demir_taseronlar ta ON ta.id = sp.taseron_id
     LEFT JOIN demir_projeler p    ON p.id = sp.proje_id
+    LEFT JOIN demir_sozlesmeler sz ON sz.id = sp.sozlesme_id
     LEFT JOIN (SELECT siparis_id, SUM(miktar_ton) AS top_sip FROM demir_siparis_kalemleri GROUP BY siparis_id) o
            ON o.siparis_id = sp.id
     LEFT JOIN (
@@ -61,7 +74,7 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th>IFS Sipariş</th><th>Tarih</th><th>Proje</th><th>Taşeron</th><th>İmalat</th>
+                        <th>IFS Sipariş</th><th>Sözleşme No</th><th>Tarih</th><th>Proje</th><th>Taşeron</th><th>İmalat</th>
                         <th class="text-end">Sipariş (t)</th><th class="text-end">Gelen (t)</th><th class="text-end">Kalan (t)</th>
                         <th class="text-center">Durum</th><th class="text-end">İşlem</th>
                     </tr>
@@ -73,6 +86,7 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
                     ?>
                     <tr>
                         <td class="fw-semibold font-monospace"><a href="siparis_detay.php?id=<?= $r['id'] ?>" class="text-decoration-none"><?= h($r['ifs_siparis_no']) ?></a></td>
+                        <td class="font-monospace small"><?= $r['sozlesme_no'] ? '<a href="sozlesmeler.php" class="text-decoration-none">'.h($r['sozlesme_no']).'</a>' : '<span class="text-muted">—</span>' ?></td>
                         <td><?= format_date($r['tarih']) ?></td>
                         <td><?= $r['proje_kod'] ? '<span class="badge bg-secondary">'.h($r['proje_kod']).'</span>' : '—' ?></td>
                         <td><?= h($r['taseron_adi'] ?: '—') ?></td>
@@ -96,7 +110,7 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
                     </tr>
                     <?php endforeach; ?>
                     <?php if (!$liste): ?>
-                    <tr><td colspan="10" class="text-center text-muted py-5">
+                    <tr><td colspan="11" class="text-center text-muted py-5">
                         <i class="bi bi-cart-x fs-1 d-block mb-2 opacity-50"></i>
                         Henüz sipariş yok. <a href="siparis_form.php">İlk siparişi ekleyin</a>.
                     </td></tr>

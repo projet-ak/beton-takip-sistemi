@@ -32,6 +32,23 @@ $taseronlar = $pdoDemir->query("SELECT id,ad FROM demir_taseronlar WHERE aktif=1
 $projeler   = $pdoDemir->query("SELECT id,kod,aciklama FROM demir_projeler WHERE aktif=1 ORDER BY kod")->fetchAll();
 $durumlar   = ['acik'=>'Açık','kismi'=>'Kısmi','tamam'=>'Tamamlandı','iptal'=>'İptal'];
 
+// Sözleşmeler (talep/sipariş açarken zorunlu bağ)
+$sozlesmeler = [];
+try {
+    $pdoDemir->exec("CREATE TABLE IF NOT EXISTS demir_sozlesmeler (
+        id INT AUTO_INCREMENT PRIMARY KEY, sozlesme_no VARCHAR(60) NOT NULL, taseron_id INT NOT NULL,
+        proje_id INT NULL, tarih DATE NULL, konu VARCHAR(300) NULL, aktif TINYINT(1) NOT NULL DEFAULT 1,
+        created_by INT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, KEY (taseron_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    if (!$pdoDemir->query("SHOW COLUMNS FROM demir_siparisler LIKE 'sozlesme_id'")->fetchColumn()) {
+        $pdoDemir->exec("ALTER TABLE demir_siparisler ADD COLUMN sozlesme_id INT NULL AFTER proje_id");
+    }
+    $sozlesmeler = $pdoDemir->query("
+        SELECT sz.id, sz.sozlesme_no, t.ad AS taseron_adi
+        FROM demir_sozlesmeler sz LEFT JOIN demir_taseronlar t ON t.id = sz.taseron_id
+        WHERE sz.aktif=1 ORDER BY sz.sozlesme_no")->fetchAll();
+} catch (Throwable $e) {}
+
 $formError = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $d = [
@@ -42,6 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'imalat'             => trim($_POST['imalat'] ?? ''),
         'taseron_id'         => ctype_digit($_POST['taseron_id'] ?? '') ? (int)$_POST['taseron_id'] : null,
         'proje_id'           => ctype_digit($_POST['proje_id'] ?? '') ? (int)$_POST['proje_id'] : null,
+        'sozlesme_id'        => ctype_digit($_POST['sozlesme_id'] ?? '') ? (int)$_POST['sozlesme_id'] : null,
         'tarih'              => $_POST['tarih'] ?? '',
         'durum'              => array_key_exists($_POST['durum'] ?? '', $durumlar) ? $_POST['durum'] : 'acik',
         'aciklama'           => trim($_POST['aciklama'] ?? ''),
@@ -52,24 +70,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($m !== null && $m != 0) { $kalemler[] = ['cap_id'=>$c['id'], 'm'=>$m]; }
     }
 
-    if ($d['ifs_siparis_no'] === '') $formError = 'IFS Sipariş No zorunludur (sevkiyatlarla eşleşme bunun üzerinden yapılır).';
-    elseif (!$kalemler)              $formError = 'En az bir çap için sipariş miktarı girin.';
+    if ($d['ifs_siparis_no'] === '')  $formError = 'IFS Sipariş No zorunludur (sevkiyatlarla eşleşme bunun üzerinden yapılır).';
+    elseif (!$d['sozlesme_id'])       $formError = 'Sözleşme No zorunludur. Tanımlı sözleşme yoksa önce Sözleşmeler panelinden ekleyin.';
+    elseif (!$kalemler)               $formError = 'En az bir çap için sipariş miktarı girin.';
 
     if (!$formError) {
         $params = [$d['ifs_talep_no']?:null, $d['ifs_siparis_no'], $d['gonderen_firma']?:null,
-                   $d['siparisi_olusturan']?:null, $d['imalat']?:null, $d['taseron_id'], $d['proje_id'],
+                   $d['siparisi_olusturan']?:null, $d['imalat']?:null, $d['taseron_id'], $d['proje_id'], $d['sozlesme_id'],
                    $d['tarih']?:null, $d['durum'], $d['aciklama']?:null];
         if ($editId) {
             $params[] = $editId;
             $pdoDemir->prepare("UPDATE demir_siparisler SET ifs_talep_no=?, ifs_siparis_no=?, gonderen_firma=?,
-                siparisi_olusturan=?, imalat=?, taseron_id=?, proje_id=?, tarih=?, durum=?, aciklama=? WHERE id=?")->execute($params);
+                siparisi_olusturan=?, imalat=?, taseron_id=?, proje_id=?, sozlesme_id=?, tarih=?, durum=?, aciklama=? WHERE id=?")->execute($params);
             $pdoDemir->prepare("DELETE FROM demir_siparis_kalemleri WHERE siparis_id=?")->execute([$editId]);
             $sipId = $editId;
         } else {
             $params[] = current_user_id();
             $pdoDemir->prepare("INSERT INTO demir_siparisler (ifs_talep_no, ifs_siparis_no, gonderen_firma,
-                siparisi_olusturan, imalat, taseron_id, proje_id, tarih, durum, aciklama, created_by)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?)")->execute($params);
+                siparisi_olusturan, imalat, taseron_id, proje_id, sozlesme_id, tarih, durum, aciklama, created_by)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")->execute($params);
             $sipId = (int)$pdoDemir->lastInsertId();
         }
         $ins = $pdoDemir->prepare("INSERT INTO demir_siparis_kalemleri (siparis_id, cap_id, miktar_ton) VALUES (?,?,?)");
@@ -104,6 +123,16 @@ $v = fn($k) => h($row[$k] ?? '');
                     <div class="col-md-6"><label class="form-label">IFS Talep No</label><input name="ifs_talep_no" class="form-control" value="<?= $v('ifs_talep_no') ?>"></div>
                     <div class="col-md-6"><label class="form-label">Proje</label><select name="proje_id" class="form-select"><option value="">—</option><?php foreach($projeler as $p): ?><option value="<?= $p['id'] ?>" <?= ($row['proje_id']??'')==$p['id']?'selected':'' ?>><?= h($p['kod']) ?></option><?php endforeach; ?></select></div>
                     <div class="col-md-6"><label class="form-label">Taşeron</label><select name="taseron_id" class="form-select"><option value="">—</option><?php foreach($taseronlar as $t): ?><option value="<?= $t['id'] ?>" <?= ($row['taseron_id']??'')==$t['id']?'selected':'' ?>><?= h($t['ad']) ?></option><?php endforeach; ?></select></div>
+                    <div class="col-12"><label class="form-label">Sözleşme No <span class="text-danger">*</span></label>
+                        <?php if ($sozlesmeler): ?>
+                        <select name="sozlesme_id" class="form-select" required><option value="">— Seçin —</option>
+                        <?php foreach($sozlesmeler as $sz): ?><option value="<?= $sz['id'] ?>" <?= ($row['sozlesme_id']??'')==$sz['id']?'selected':'' ?>><?= h($sz['sozlesme_no']) ?><?= $sz['taseron_adi']?' — '.h($sz['taseron_adi']):'' ?></option><?php endforeach; ?>
+                        </select>
+                        <div class="form-text">Sipariş <a href="sozlesmeler.php" target="_blank">Sözleşmeler panelinde</a> bu no altında izlenir.</div>
+                        <?php else: ?>
+                        <div class="alert alert-warning py-2 px-3 small mb-0"><i class="bi bi-exclamation-triangle me-1"></i>Tanımlı sözleşme yok — önce <a href="sozlesmeler.php" class="alert-link">Sözleşmeler panelinden</a> ekleyin.</div>
+                        <?php endif; ?>
+                    </div>
                     <div class="col-12"><label class="form-label">İmalat</label><input name="imalat" class="form-control" value="<?= $v('imalat') ?>" placeholder="ör. İSTİNAT PERDELERİ"></div>
                     <div class="col-md-6"><label class="form-label">Gönderen Firma</label><input name="gonderen_firma" class="form-control" value="<?= $v('gonderen_firma') ?>"></div>
                     <div class="col-md-6"><label class="form-label">Siparişi Oluşturan</label><input name="siparisi_olusturan" class="form-control" value="<?= $v('siparisi_olusturan') ?>"></div>

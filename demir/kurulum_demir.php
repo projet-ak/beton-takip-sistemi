@@ -61,6 +61,7 @@ try {
             imalat VARCHAR(200) NULL,
             taseron_id INT NULL,
             proje_id INT NULL,
+            sozlesme_id INT NULL,
             tarih DATE NULL,
             durum ENUM('acik','kismi','tamam','iptal') NOT NULL DEFAULT 'acik',
             aciklama TEXT NULL,
@@ -210,6 +211,16 @@ try {
     foreach ($tablolar as $ad => $sql) {
         $pdoDemir->exec($sql);
         $log[] = ['ok', "$ad tablosu oluşturuldu / mevcuttu"];
+    }
+    // Mevcut kurulumlara sonradan eklenen kolonlar
+    foreach ([['demir_siparisler','sozlesme_id','INT NULL AFTER proje_id'],
+              ['demir_tutanaklar','sozlesme_id','INT NULL AFTER proje_id']] as $col) {
+        try {
+            if (!$pdoDemir->query("SHOW COLUMNS FROM {$col[0]} LIKE '{$col[1]}'")->fetchColumn()) {
+                $pdoDemir->exec("ALTER TABLE {$col[0]} ADD COLUMN {$col[1]} {$col[2]}");
+                $log[] = ['ok', "{$col[0]}.{$col[1]} kolonu eklendi"];
+            }
+        } catch (Throwable $e) {}
     }
     $pdoDemir->exec("SET FOREIGN_KEY_CHECKS=1");
 
