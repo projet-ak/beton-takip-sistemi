@@ -107,7 +107,7 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · Tutanaklar · **Tutanak Taki
 | `iade_tutanaklar.php` | **İade tutanağı** listesi (iade eden/teslim alan, tonaj, evrak). |
 | `iade_form.php` | İade eden **zorunlu**, teslim alan **opsiyonel** (boş=depoya iade). Otomatik no `{PROJE}-{IADEEDEN_KOD}-IADE-NNN`. |
 | `iade_detay.php` / `iade_pdf.php` | Görüntüleme + imzalı evrak (`uploads/demir_iade/{id}/`) / A4 PDF. |
-| `taseron_bakiye.php` | **Net Elinde = Teslim Alınan + Devraldığı − İade Ettiği** (çap bazında açılır). |
+| `taseron_bakiye.php` | **Net Elinde = Teslim Alınan + Devraldığı − İade Ettiği − Hurda Satışı** (çap bazında açılır; hurda **çaptan bağımsız** düşülür). Hurda CRUD (modal) + kayıt listesi. Tablo `demir_hurda` (runtime + kurulum). |
 | `_iade_ortak.php` | İade ortak: şema garantisi (`iade_semasi_kur`) + `iade_num` + `iade_no_uret`. |
 | `icmal.php` / `icmal_pdf.php` | Gelen demir mutabakatı (çap+tedarikçi) + Excel/PDF. **Çap değerine tıklayınca popup** (AJAX `?cap_detay=`): o çaptaki sevkiyatlar→irsaliyeye (`sevkiyat_form.php?id=`), siparişler→(`siparis_detay.php?id=`) **o çap için gelen/kalan bakiye ile**, teslim tutanakları→(`tutanak_detay.php?id=`). |
 | `raporlar.php` | Chart.js + **ExcelJS** (Özet/Aylık/Tedarikçi/Detay) + PDF (yazdırma penceresi). |
@@ -142,6 +142,7 @@ tip/durum ENUM, kantar_net_*/kantar_farki, tüm tanım FK'leri, onay alanları, 
   + `demir_sevkiyat_kalemleri` (cap_id, **irsaliye_miktar**, **kantar_miktar**)
 - `demir_tutanaklar` (tutanak_no, evrak_url) + `demir_tutanak_kalemleri` (irsaliye_no, cap_id, miktar_ton, bag_adeti)
 - `demir_iade_tutanaklar` (iade_no, **iade_eden_id**, **teslim_alan_id** [NULL=depoya iade], proje_id, evrak_url) + `demir_iade_kalemleri` (cap_id, miktar_ton, bag_adeti). Runtime `iade_semasi_kur()` ile de oluşur (kurulum'a da eklendi).
+- `demir_hurda` (taseron_id FK, tarih, **miktar_ton çaptan bağımsız**, aciklama): iş sonu hurda satışı; taşeron bakiyesinden düşülür. Runtime (`taseron_bakiye.php`) + kurulum.
 - `demir_tutanak_takip` (runtime, `tutanak_takip.php` içinde CREATE IF NOT EXISTS): firma, sira, proje, tip (teslim/iade), tarih, irsaliye_no, tutanak_no, cap_label, miktar_ton (iade negatif), bag. Excel "TUTANAK TAKİP" sayfasından tam yenileme.
 - `demir_proje_disi` (runtime, `proje_disi.php` içinde CREATE IF NOT EXISTS): tip A.2/A.3/A.4, proje/hedef_proje, firma/hedef_firma, cap_mm, adet, boy, metraj_ton, kantar_farki
 
@@ -183,10 +184,12 @@ kalan = sipariş − gelen. `import_siparis.php` teslimat satırlarındaki irsal
 `{PROJE_KOD}-{TASERON_KOD}-{NNN}` (ör. U030-DNR-005). Önekteki max sıra +1, 3 hane. Düzenlemede sabit.
 İade tutanağı: `{PROJE_KOD}-{IADEEDEN_KOD}-IADE-{NNN}` (ör. U030-OSM-IADE-001).
 
-### İade tutanağı & taşeron bakiye
+### İade tutanağı & taşeron bakiye & hurda
 Bir taşeronun iş sonunda elinde kalan demiri iade etmesi (ör. Osman Camcı 5 t iade → Dener'e). **İade eden**
-zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). `taseron_bakiye.php` bunu bakiyeye yansıtır:
-**Net Elinde = Σ teslim tutanağı (taseron_id) + Σ devraldığı (teslim_alan_id) − Σ iade ettiği (iade_eden_id)**, çap bazında.
+zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim edilen demirin bir kısmı iş sonunda
+**hurda olarak satılabilir** (`demir_hurda`): tonaj bazında, **çaptan bağımsız** düşüm. `taseron_bakiye.php`:
+**Net Elinde = Σ teslim tutanağı (taseron_id) + Σ devraldığı (teslim_alan_id) − Σ iade ettiği (iade_eden_id) − Σ hurda**.
+Çap kırılımı teslim/devir/iade için verilir; hurda çap detayında ayrı satır olarak (sarı) gösterilir.
 
 ### uploads klasör yapısı
 - Beton: `uploads/images/` (scan), `uploads/pdf/`, `uploads/irsaliye_fotolar/`, `uploads/irsaliye_{id}/`.

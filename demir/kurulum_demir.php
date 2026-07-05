@@ -177,6 +177,17 @@ try {
             FOREIGN KEY (iade_id) REFERENCES demir_iade_tutanaklar(id) ON DELETE CASCADE,
             FOREIGN KEY (cap_id)  REFERENCES demir_caplar(id)          ON DELETE RESTRICT
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        'demir_hurda' => "CREATE TABLE IF NOT EXISTS demir_hurda (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            taseron_id INT NOT NULL,
+            tarih DATE NULL,
+            miktar_ton DECIMAL(12,3) NOT NULL DEFAULT 0 COMMENT 'çaptan bağımsız hurda satışı',
+            aciklama VARCHAR(300) NULL,
+            created_by INT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (taseron_id) REFERENCES demir_taseronlar(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
     ];
 
     foreach ($tablolar as $ad => $sql) {

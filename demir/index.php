@@ -40,7 +40,8 @@ try {
     $teslimTon = (float)$tryScalar("SELECT COALESCE(SUM(miktar_ton),0) FROM demir_tutanak_kalemleri");
     $iadeSayi  = (int)$tryScalar("SELECT COUNT(*) FROM demir_iade_tutanaklar");
     $iadeTon   = (float)$tryScalar("SELECT COALESCE(SUM(miktar_ton),0) FROM demir_iade_kalemleri");
-    $taseronNet = $teslimTon - $iadeTon;
+    $hurdaTon  = (float)$tryScalar("SELECT COALESCE(SUM(miktar_ton),0) FROM demir_hurda");
+    $taseronNet = $teslimTon - $iadeTon - $hurdaTon;
 
     // Çap bazında gelen
     $capDagilim = $q("
@@ -121,7 +122,7 @@ $farkRenk = abs($fark)<0.0005 ? '#6c757d' : ($fark<0 ? '#dc3545' : '#198754');
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3"><?= $kart('bi-file-earmark-check','#6610f2', $tutSayi, 'Teslim Tutanağı', 'tutanaklar.php', 'Teslim: <strong>'.$fmt($teslimTon).' t</strong>') ?></div>
     <div class="col-6 col-lg-3"><?= $kart('bi-arrow-return-left','#d63384', $fmt($iadeTon).' t', 'İade Edilen', 'iade_tutanaklar.php', $iadeSayi.' iade tutanağı') ?></div>
-    <div class="col-6 col-lg-3"><?= $kart('bi-wallet2','#0dcaf0', $fmt($taseronNet).' t', 'Taşeronda Net', 'taseron_bakiye.php', 'Teslim − İade') ?></div>
+    <div class="col-6 col-lg-3"><?= $kart('bi-wallet2','#0dcaf0', $fmt($taseronNet).' t', 'Taşeronda Net', 'taseron_bakiye.php', 'Teslim − İade − Hurda'.($hurdaTon>0?' ('.$fmt($hurdaTon).' t)':'')) ?></div>
     <div class="col-6 col-lg-3"><?= $kart('bi-rulers','#20c997', $capSayi, 'Çap Tanımı', 'caplar.php', 'Taşeron: <strong>'.$tasSayi.'</strong>') ?></div>
 </div>
 

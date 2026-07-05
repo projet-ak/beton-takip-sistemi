@@ -1,8 +1,10 @@
 <?php
 /**
  * demir/taseron_bakiye.php — Taşeron demir bakiyesi
- * Net Elinde = Teslim Alınan (tutanak) + Devraldı (başka taşeronun iadesi) − İade Etti
- * İade tutanakları bakiyeye bu sayfada yansır.
+ * Net Elinde = Teslim Alınan (tutanak) + Devraldı (başka taşeronun iadesi)
+ *              − İade Etti − Hurda Satışı (çaptan bağımsız)
+ * Hurda: iş sonunda firmaya teslim edilen demirin hurda olarak satılan kısmı;
+ * tonaj bazında, çaptan bağımsız düşülür (tablo: demir_hurda).
  */
 $rootPath = '../';
 require_once __DIR__ . '/../includes/functions.php';
@@ -14,6 +16,47 @@ require_once __DIR__ . '/_iade_ortak.php';
 iade_semasi_kur($pdoDemir);
 
 $pageTitle = 'Taşeron Bakiye — Demir Takip';
+$canEdit = has_role('admin','teknik_ofis_admin','teknik_ofis','saha_sefi');
+
+// Hurda tablosu (çaptan bağımsız tonaj düşümü)
+$pdoDemir->exec("CREATE TABLE IF NOT EXISTS demir_hurda (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    taseron_id INT NOT NULL,
+    tarih DATE NULL,
+    miktar_ton DECIMAL(12,3) NOT NULL DEFAULT 0,
+    aciklama VARCHAR(300) NULL,
+    created_by INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    KEY (taseron_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// ── Hurda kaydet (ekle/düzenle) ───────────────────────────────────────────────
+if ($canEdit && ($_POST['action'] ?? '') === 'hurda_kaydet') {
+    $hid = ctype_digit($_POST['id'] ?? '') ? (int)$_POST['id'] : 0;
+    $tas = ctype_digit($_POST['taseron_id'] ?? '') ? (int)$_POST['taseron_id'] : 0;
+    $mik = iade_num($_POST['miktar'] ?? '');
+    if (!$tas || $mik === null || $mik <= 0) {
+        flash('error', 'Taşeron ve pozitif miktar zorunludur.');
+    } else {
+        $d = [$tas, ($_POST['tarih'] ?? '') ?: null, $mik, trim($_POST['aciklama'] ?? '') ?: null];
+        if ($hid) {
+            $d[] = $hid;
+            $pdoDemir->prepare("UPDATE demir_hurda SET taseron_id=?, tarih=?, miktar_ton=?, aciklama=? WHERE id=?")->execute($d);
+            flash('success', 'Hurda kaydı güncellendi.');
+        } else {
+            $d[] = current_user_id();
+            $pdoDemir->prepare("INSERT INTO demir_hurda (taseron_id, tarih, miktar_ton, aciklama, created_by) VALUES (?,?,?,?,?)")->execute($d);
+            flash('success', 'Hurda satışı kaydedildi (bakiyeden düşüldü).');
+        }
+    }
+    redirect('taseron_bakiye.php');
+}
+// ── Hurda sil ─────────────────────────────────────────────────────────────────
+if (has_role('admin','teknik_ofis_admin') && isset($_GET['hurda_sil']) && ctype_digit($_GET['hurda_sil'])) {
+    $pdoDemir->prepare("DELETE FROM demir_hurda WHERE id=?")->execute([(int)$_GET['hurda_sil']]);
+    flash('success', 'Hurda kaydı silindi.');
+    redirect('taseron_bakiye.php');
+}
 
 $taseronlar = $pdoDemir->query("SELECT id, ad, kod FROM demir_taseronlar ORDER BY ad")->fetchAll();
 $caplar     = $pdoDemir->query("SELECT id, ad FROM demir_caplar ORDER BY sira, ad")->fetchAll();
@@ -48,19 +91,32 @@ foreach ($pdoDemir->query("
     WHERE iu.teslim_alan_id IS NOT NULL GROUP BY iu.teslim_alan_id, ik.cap_id") as $r) {
     $ekle($r['tid'], $r['cid'], 'devir', $r['ton']);
 }
+// Hurda satışları (çaptan bağımsız — taşeron bazında toplam)
+$hurdaByTas = [];
+foreach ($pdoDemir->query("SELECT taseron_id, SUM(miktar_ton) ton FROM demir_hurda GROUP BY taseron_id") as $r) {
+    $hurdaByTas[(int)$r['taseron_id']] = (float)$r['ton'];
+}
+// Hurda kayıt listesi
+$hurdaListe = $pdoDemir->query("
+    SELECT hd.*, t.ad AS taseron_adi FROM demir_hurda hd
+    LEFT JOIN demir_taseronlar t ON t.id = hd.taseron_id
+    ORDER BY hd.tarih DESC, hd.id DESC")->fetchAll();
 
 // Taşeron başına toplamlar
 $satirlar = [];
 foreach ($taseronlar as $t) {
-    $caps = $bak[$t['id']] ?? [];
-    if (!$caps) continue;
+    $caps  = $bak[$t['id']] ?? [];
+    $hurda = $hurdaByTas[$t['id']] ?? 0.0;
+    if (!$caps && $hurda == 0.0) continue;
     $tT=0;$tI=0;$tD=0;
     foreach ($caps as $v){ $tT+=$v['teslim']; $tI+=$v['iade']; $tD+=$v['devir']; }
-    $satirlar[] = ['t'=>$t, 'teslim'=>$tT, 'iade'=>$tI, 'devir'=>$tD, 'net'=>$tT+$tD-$tI, 'caps'=>$caps];
+    $satirlar[] = ['t'=>$t, 'teslim'=>$tT, 'iade'=>$tI, 'devir'=>$tD, 'hurda'=>$hurda,
+                   'net'=>$tT+$tD-$tI-$hurda, 'caps'=>$caps];
 }
 $gT=array_sum(array_column($satirlar,'teslim'));
 $gI=array_sum(array_column($satirlar,'iade'));
 $gD=array_sum(array_column($satirlar,'devir'));
+$gH=array_sum(array_column($satirlar,'hurda'));
 $gN=array_sum(array_column($satirlar,'net'));
 
 require_once __DIR__ . '/../includes/header.php';
@@ -69,24 +125,32 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
     <div>
         <h4 class="mb-0"><i class="bi bi-wallet2 text-dark me-2"></i>Taşeron Bakiye</h4>
-        <small class="text-muted">Net Elinde = Teslim Alınan + Devraldığı − İade Ettiği</small>
+        <small class="text-muted">Net Elinde = Teslim Alınan + Devraldığı − İade Ettiği − Hurda Satışı</small>
     </div>
-    <a href="iade_tutanaklar.php" class="btn btn-outline-dark"><i class="bi bi-arrow-return-left me-1"></i> İade Tutanakları</a>
+    <div class="d-flex gap-2">
+        <?php if ($canEdit): ?><button class="btn btn-dark" id="btnHurda"><i class="bi bi-recycle me-1"></i> Hurda Satışı Ekle</button><?php endif; ?>
+        <a href="iade_tutanaklar.php" class="btn btn-outline-dark"><i class="bi bi-arrow-return-left me-1"></i> İade Tutanakları</a>
+    </div>
 </div>
+
+<?php foreach(['success','error','warning','info'] as $t): $m=get_flash($t); if($m): ?>
+<div class="alert alert-<?= $t==='error'?'danger':$t ?>"><?= h($m) ?></div>
+<?php endif; endforeach; ?>
 
 <div class="row g-3 mb-4">
-    <div class="col-md-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Toplam Teslim Alınan</div><div class="fs-4 fw-bold"><?= $fmt($gT) ?> <span class="fs-6 text-muted">t</span></div></div></div></div>
-    <div class="col-md-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Taşeronlar Arası Devir</div><div class="fs-4 fw-bold"><?= $fmt($gD) ?> <span class="fs-6 text-muted">t</span></div></div></div></div>
-    <div class="col-md-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Toplam İade</div><div class="fs-4 fw-bold text-danger"><?= $fmt($gI) ?> <span class="fs-6 text-muted">t</span></div></div></div></div>
-    <div class="col-md-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Net Taşeronlarda</div><div class="fs-4 fw-bold text-success"><?= $fmt($gN) ?> <span class="fs-6 text-muted">t</span></div></div></div></div>
+    <div class="col-6 col-md"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="text-muted small">Toplam Teslim Alınan</div><div class="fs-4 fw-bold"><?= $fmt($gT) ?> <span class="fs-6 text-muted">t</span></div></div></div></div>
+    <div class="col-6 col-md"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="text-muted small">Taşeronlar Arası Devir</div><div class="fs-4 fw-bold"><?= $fmt($gD) ?> <span class="fs-6 text-muted">t</span></div></div></div></div>
+    <div class="col-6 col-md"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="text-muted small">Toplam İade</div><div class="fs-4 fw-bold text-danger"><?= $fmt($gI) ?> <span class="fs-6 text-muted">t</span></div></div></div></div>
+    <div class="col-6 col-md"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="text-muted small">Hurda Satışı</div><div class="fs-4 fw-bold text-warning"><?= $fmt($gH) ?> <span class="fs-6 text-muted">t</span></div></div></div></div>
+    <div class="col-6 col-md"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="text-muted small">Net Taşeronlarda</div><div class="fs-4 fw-bold text-success"><?= $fmt($gN) ?> <span class="fs-6 text-muted">t</span></div></div></div></div>
 </div>
 
-<div class="card"><div class="card-body p-0"><div class="table-responsive">
+<div class="card mb-3"><div class="card-body p-0"><div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
         <thead class="table-light"><tr>
             <th style="width:40px"></th><th>Taşeron</th>
             <th class="text-end">Teslim Alınan (t)</th><th class="text-end">Devraldığı (t)</th>
-            <th class="text-end">İade Ettiği (t)</th><th class="text-end">Net Elinde (t)</th>
+            <th class="text-end">İade Ettiği (t)</th><th class="text-end">Hurda (t)</th><th class="text-end">Net Elinde (t)</th>
         </tr></thead>
         <tbody>
             <?php foreach ($satirlar as $idx=>$s): ?>
@@ -96,13 +160,14 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
                 <td class="text-end"><?= $fmt($s['teslim']) ?></td>
                 <td class="text-end"><?= $s['devir']>0?'<span class="text-success">+'.$fmt($s['devir']).'</span>':'—' ?></td>
                 <td class="text-end"><?= $s['iade']>0?'<span class="text-danger">−'.$fmt($s['iade']).'</span>':'—' ?></td>
+                <td class="text-end"><?= $s['hurda']>0?'<span class="text-warning">−'.$fmt($s['hurda']).'</span>':'—' ?></td>
                 <td class="text-end fw-bold"><?= $fmt($s['net']) ?></td>
             </tr>
             <tr class="collapse" id="d<?= $idx ?>">
                 <td></td>
-                <td colspan="5" class="p-0">
+                <td colspan="6" class="p-0">
                     <table class="table table-sm mb-0 bg-light">
-                        <thead><tr class="small text-muted"><th>Çap</th><th class="text-end">Teslim</th><th class="text-end">Devir</th><th class="text-end">İade</th><th class="text-end">Net</th></tr></thead>
+                        <thead><tr class="small text-muted"><th>Çap</th><th class="text-end">Teslim</th><th class="text-end">Devir</th><th class="text-end">İade</th><th class="text-end">Net (çap)</th></tr></thead>
                         <tbody>
                         <?php foreach ($s['caps'] as $cid=>$v): $net=$v['teslim']+$v['devir']-$v['iade']; ?>
                             <tr>
@@ -113,15 +178,18 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
                                 <td class="text-end fw-semibold"><?= $fmt($net) ?></td>
                             </tr>
                         <?php endforeach; ?>
+                        <?php if ($s['hurda']>0): ?>
+                            <tr class="table-warning"><td colspan="4" class="text-end small">Hurda satışı (çaptan bağımsız düşüm)</td><td class="text-end fw-semibold">−<?= $fmt($s['hurda']) ?></td></tr>
+                        <?php endif; ?>
                         </tbody>
                     </table>
                 </td>
             </tr>
             <?php endforeach; ?>
             <?php if (!$satirlar): ?>
-            <tr><td colspan="6" class="text-center text-muted py-5">
+            <tr><td colspan="7" class="text-center text-muted py-5">
                 <i class="bi bi-wallet2 fs-1 d-block mb-2 opacity-50"></i>
-                Henüz taşerona teslim tutanağı veya iade kaydı yok.
+                Henüz taşerona teslim tutanağı, iade veya hurda kaydı yok.
             </td></tr>
             <?php endif; ?>
         </tbody>
@@ -129,16 +197,95 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
         <tfoot class="table-light fw-bold"><tr>
             <td></td><td class="text-end">TOPLAM</td>
             <td class="text-end"><?= $fmt($gT) ?></td><td class="text-end"><?= $fmt($gD) ?></td>
-            <td class="text-end text-danger"><?= $fmt($gI) ?></td><td class="text-end"><?= $fmt($gN) ?></td>
+            <td class="text-end text-danger"><?= $fmt($gI) ?></td><td class="text-end text-warning"><?= $fmt($gH) ?></td><td class="text-end"><?= $fmt($gN) ?></td>
         </tr></tfoot>
         <?php endif; ?>
     </table>
 </div></div></div>
 
+<!-- Hurda satış kayıtları -->
+<div class="card">
+    <div class="card-header bg-white fw-semibold"><i class="bi bi-recycle text-warning me-1"></i> Hurda Satış Kayıtları (<?= count($hurdaListe) ?>)</div>
+    <div class="card-body p-0"><div class="table-responsive" style="max-height:360px">
+        <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light"><tr><th>#</th><th>Taşeron</th><th>Tarih</th><th class="text-end">Miktar (t)</th><th>Açıklama</th><?php if($canEdit): ?><th class="text-end">İşlem</th><?php endif; ?></tr></thead>
+            <tbody>
+            <?php foreach ($hurdaListe as $i=>$hd): ?>
+                <tr>
+                    <td class="text-muted"><?= $i+1 ?></td>
+                    <td class="fw-semibold"><?= h($hd['taseron_adi'] ?: '—') ?></td>
+                    <td class="text-nowrap"><?= format_date($hd['tarih']) ?></td>
+                    <td class="text-end fw-semibold text-warning">−<?= $fmt($hd['miktar_ton']) ?></td>
+                    <td class="small"><?= h($hd['aciklama'] ?: '—') ?></td>
+                    <?php if ($canEdit): ?>
+                    <td class="text-end text-nowrap">
+                        <button class="btn btn-xs btn-outline-primary btn-hurda-duzenle" data-json='<?= h(json_encode($hd, JSON_UNESCAPED_UNICODE)) ?>' title="Düzenle"><i class="bi bi-pencil"></i></button>
+                        <?php if (has_role('admin','teknik_ofis_admin')): ?>
+                        <a href="taseron_bakiye.php?hurda_sil=<?= $hd['id'] ?>" class="btn btn-xs btn-outline-danger" onclick="return confirm('Bu hurda kaydı silinsin mi? (Bakiye geri yükselir)')"><i class="bi bi-trash"></i></a>
+                        <?php endif; ?>
+                    </td>
+                    <?php endif; ?>
+                </tr>
+            <?php endforeach; ?>
+            <?php if (!$hurdaListe): ?><tr><td colspan="<?= $canEdit?6:5 ?>" class="text-center text-muted py-4">Henüz hurda satışı kaydı yok.<?= $canEdit?' "Hurda Satışı Ekle" ile kaydedin.':'' ?></td></tr><?php endif; ?>
+            </tbody>
+        </table>
+    </div></div>
+</div>
+
 <p class="text-muted small mt-3">
     <i class="bi bi-info-circle me-1"></i>
-    <strong>Teslim Alınan</strong>: taşerona kesilen teslim tutanakları. <strong>Devraldığı</strong>: başka bir taşeronun
-    iade edip bu taşerona aktardığı demir. <strong>İade Ettiği</strong>: bu taşeronun depoya/başka taşerona iade ettiği demir.
+    <strong>Teslim Alınan</strong>: taşerona kesilen teslim tutanakları. <strong>Devraldığı</strong>: başka taşeronun
+    iade edip bu taşerona aktardığı demir. <strong>İade Ettiği</strong>: depoya/başka taşerona iade.
+    <strong>Hurda</strong>: iş sonunda hurda olarak satılan demir — tonaj bazında, <strong>çaptan bağımsız</strong> düşülür.
 </p>
+
+<?php if ($canEdit): ?>
+<!-- Hurda ekle/düzenle modal -->
+<div class="modal fade" id="hurdaModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog"><div class="modal-content">
+    <form method="post">
+      <input type="hidden" name="action" value="hurda_kaydet">
+      <input type="hidden" name="id" id="h_id">
+      <div class="modal-header"><h5 class="modal-title" id="h_baslik"><i class="bi bi-recycle me-1"></i>Hurda Satışı</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="row g-2">
+          <div class="col-md-7"><label class="form-label small">Taşeron (firma) <span class="text-danger">*</span></label>
+            <select name="taseron_id" id="h_tas" class="form-select form-select-sm" required><option value="">—</option>
+            <?php foreach($taseronlar as $t): ?><option value="<?= $t['id'] ?>"><?= h($t['ad']) ?><?= $t['kod']?' ('.h($t['kod']).')':'' ?></option><?php endforeach; ?>
+            </select></div>
+          <div class="col-md-5"><label class="form-label small">Tarih</label><input name="tarih" id="h_tarih" type="date" class="form-control form-control-sm"></div>
+          <div class="col-md-5"><label class="form-label small">Miktar (t) <span class="text-danger">*</span></label><input name="miktar" id="h_mik" type="text" inputmode="decimal" class="form-control form-control-sm" required placeholder="ör. 5 veya 2,350"></div>
+          <div class="col-md-7"><label class="form-label small">Açıklama</label><input name="aciklama" id="h_acik" class="form-control form-control-sm" placeholder="ör. iş sonu hurda satışı — kantar fişi no"></div>
+        </div>
+        <div class="alert alert-warning small py-2 px-3 mt-3 mb-0"><i class="bi bi-info-circle me-1"></i>Bu miktar, seçilen firmanın <strong>Net Elinde</strong> bakiyesinden <strong>çaptan bağımsız</strong> olarak düşülür.</div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">İptal</button><button class="btn btn-success"><i class="bi bi-save me-1"></i>Kaydet</button></div>
+    </form>
+  </div></div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+    if (typeof bootstrap === 'undefined') return;
+    var modal = new bootstrap.Modal(document.getElementById('hurdaModal'));
+    function set(id,v){ document.getElementById(id).value = (v===null||v===undefined)?'':v; }
+    var btn = document.getElementById('btnHurda');
+    if (btn) btn.addEventListener('click', function(){
+        document.getElementById('h_baslik').innerHTML = '<i class="bi bi-recycle me-1"></i>Hurda Satışı Ekle';
+        set('h_id',''); set('h_tas',''); set('h_tarih',''); set('h_mik',''); set('h_acik','');
+        modal.show();
+    });
+    document.querySelectorAll('.btn-hurda-duzenle').forEach(function(b){
+        b.addEventListener('click', function(){
+            var r = JSON.parse(this.getAttribute('data-json'));
+            document.getElementById('h_baslik').innerHTML = '<i class="bi bi-recycle me-1"></i>Hurda Kaydı Düzenle';
+            set('h_id',r.id); set('h_tas',r.taseron_id); set('h_tarih',r.tarih); set('h_mik',r.miktar_ton); set('h_acik',r.aciklama);
+            modal.show();
+        });
+    });
+});
+</script>
+<?php endif; ?>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
