@@ -55,6 +55,25 @@ if ($isAdmin && isset($_GET['grup_temizle']) && $_GET['grup_temizle'] !== '') {
     redirect('veri_kontrol.php');
 }
 
+// ── İade kaydını alışa çevirme (tek tıkla — yanlış tiple aktarılan satır için) ─
+if ($isAdmin && isset($_GET['alisa_cevir']) && ctype_digit($_GET['alisa_cevir'])) {
+    $id = (int)$_GET['alisa_cevir'];
+    $sel = $pdo->prepare("SELECT id, irsaliye_no, tip, miktar FROM irsaliyeler WHERE id = ?");
+    $sel->execute([$id]);
+    if ($eski = $sel->fetch()) {
+        if ($eski['tip'] === 'alis') {
+            flash('info', 'Kayıt zaten alış tipinde.');
+        } else {
+            $pdo->prepare("UPDATE irsaliyeler SET tip='alis' WHERE id = ?")->execute([$id]);
+            audit_log($pdo, 'irsaliyeler', $id, 'UPDATE', ['tip'=>$eski['tip']], ['tip'=>'alis', 'kaynak'=>'veri_kontrol tip düzeltme']);
+            flash('success', "İrsaliye \"{$eski['irsaliye_no']}\" ({$eski['miktar']} m³) alış tipine çevrildi — dashboard toplamına artık dahil.");
+        }
+    } else {
+        flash('error', 'Kayıt bulunamadı.');
+    }
+    redirect('veri_kontrol.php');
+}
+
 // ── DB özet ───────────────────────────────────────────────────────────────────
 $oz = $pdo->query("
     SELECT COUNT(*) kayit,
@@ -68,6 +87,12 @@ $oz = $pdo->query("
 $kirilim = $pdo->query("
     SELECT tip, durum, COUNT(*) adet, COALESCE(SUM(miktar),0) m3
     FROM irsaliyeler GROUP BY tip, durum ORDER BY tip, durum")->fetchAll();
+
+// Alış dışı kayıtlar (iade / boş tip) — dashboard alış toplamına girmeyen satırlar tek tek
+$alisDisi = $pdo->query("
+    SELECT id, irsaliye_no, tip, durum, tarih, miktar, arac_plaka
+    FROM irsaliyeler WHERE tip IS NULL OR tip <> 'alis'
+    ORDER BY tarih DESC, id DESC LIMIT 50")->fetchAll();
 
 // ── Mükerrer irsaliye_no grupları ─────────────────────────────────────────────
 $mukerrer = $pdo->query("
@@ -194,6 +219,40 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
             </tbody>
         </table>
         </div>
+
+        <?php if ($alisDisi): ?>
+        <div class="alert alert-warning mt-3 mb-2 py-2 small">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            <strong><?= count($alisDisi) ?> kayıt</strong> alış tipinde değil — dashboard "Toplam m³ / Alış İrsaliyesi" bu kayıtları <strong>saymaz</strong>.
+            Liste ile dashboard arasındaki fark büyük olasılıkla bu satırlardan geliyor. Excel'de alış olan bir satır yanlışlıkla
+            iade olarak aktarıldıysa "Alışa Çevir" ile düzeltin.
+        </div>
+        <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0" style="max-width:840px">
+            <thead class="table-light"><tr><th>İrsaliye No</th><th>Tip</th><th>Durum</th><th>Tarih</th><th class="text-end">m³</th><th>Plaka</th><th class="text-end">İşlem</th></tr></thead>
+            <tbody>
+            <?php foreach ($alisDisi as $r): ?>
+                <tr>
+                    <td class="font-monospace small fw-semibold"><a href="irsaliye_detay.php?id=<?= (int)$r['id'] ?>"><?= h($r['irsaliye_no'] ?: '(no yok)') ?></a></td>
+                    <td><span class="badge bg-danger"><?= h($r['tip'] ?: 'boş') ?></span></td>
+                    <td><?= h($r['durum']) ?></td>
+                    <td><?= format_date($r['tarih']) ?></td>
+                    <td class="text-end fw-semibold"><?= $fmt($r['miktar']) ?></td>
+                    <td class="small"><?= h($r['arac_plaka']) ?></td>
+                    <td class="text-end">
+                        <a href="irsaliye_form.php?id=<?= (int)$r['id'] ?>" class="btn btn-outline-secondary btn-sm py-0"><i class="bi bi-pencil"></i> Düzenle</a>
+                        <?php if ($isAdmin): ?>
+                        <a href="veri_kontrol.php?alisa_cevir=<?= (int)$r['id'] ?>" class="btn btn-success btn-sm py-0"
+                           onclick="return confirm('\'<?= h($r['irsaliye_no']) ?>\' (<?= $fmt($r['miktar']) ?> m³) alış tipine çevrilecek. Excel\'de bu satır alış mı? Emin misiniz?')">
+                            <i class="bi bi-arrow-repeat"></i> Alışa Çevir</a>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+        <?php endif; ?>
     </div>
 </div>
 
