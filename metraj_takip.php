@@ -31,9 +31,6 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS metraj_sayfa (
 
 $isAdmin = is_admin();
 
-// Bu sayfalar RAW veri olduğundan (zaten sistemde) içe aktarmadan hariç tutulur
-$haric = ['SAYFA1', 'VERİ', 'VERI'];
-
 // ── Sil ───────────────────────────────────────────────────────────────────────
 if ($isAdmin && isset($_GET['sil']) && ctype_digit($_GET['sil'])) {
     $pdo->prepare("DELETE FROM metraj_sayfa WHERE id = ?")->execute([(int)$_GET['sil']]);
@@ -41,52 +38,14 @@ if ($isAdmin && isset($_GET['sil']) && ctype_digit($_GET['sil'])) {
     redirect('metraj_takip.php');
 }
 
-// ── İçe aktar (tüm imalat sayfaları) ──────────────────────────────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'yukle' && !empty($_FILES['dosya']['tmp_name'])) {
-    require_once __DIR__ . '/vendor/autoload.php';
-    if (!($x = \Shuchkin\SimpleXLSX::parse($_FILES['dosya']['tmp_name']))) {
-        flash('error', 'Excel okunamadı: ' . \Shuchkin\SimpleXLSX::parseError());
-        redirect('metraj_takip.php');
-    }
-    $ins = $pdo->prepare("INSERT INTO metraj_sayfa (ad, sira, satir_sayisi, kolon_sayisi, veri)
-                          VALUES (?,?,?,?,?)
-                          ON DUPLICATE KEY UPDATE sira=VALUES(sira), satir_sayisi=VALUES(satir_sayisi),
-                          kolon_sayisi=VALUES(kolon_sayisi), veri=VALUES(veri)");
-    $aktarilan = 0; $atlanan = [];
-    foreach ($x->sheetNames() as $i => $ad) {
-        $adT = trim($ad);
-        $adU = mb_strtoupper($adT, 'UTF-8');
-        if (in_array($adU, $haric, true)) { $atlanan[] = $adT; continue; }
-        $rows = $x->rows($i, 2000);
-        // Sondaki tamamen boş satır/sütunları kırp
-        // önce max dolu kolon
-        $maxCol = 0; $lastRow = -1;
-        foreach ($rows as $ri => $r) {
-            $dolu = false;
-            foreach ($r as $ci => $c) {
-                if (trim((string)$c) !== '') { $dolu = true; if ($ci + 1 > $maxCol) $maxCol = $ci + 1; }
-            }
-            if ($dolu) $lastRow = $ri;
-        }
-        if ($lastRow < 0) { $atlanan[] = $adT.' (boş)'; continue; }
-        $grid = [];
-        for ($ri = 0; $ri <= $lastRow; $ri++) {
-            $satir = [];
-            for ($ci = 0; $ci < $maxCol; $ci++) {
-                $satir[] = isset($rows[$ri][$ci]) ? trim((string)$rows[$ri][$ci]) : '';
-            }
-            $grid[] = $satir;
-        }
-        $json = json_encode($grid, JSON_UNESCAPED_UNICODE);
-        $ins->execute([$adT, $i, $lastRow + 1, $maxCol, $json]);
-        $aktarilan++;
-    }
-    flash('success', "{$aktarilan} sayfa içe aktarıldı".($atlanan ? " (atlanan: ".implode(', ', $atlanan).")" : "")."." );
-    redirect('metraj_takip.php');
-}
-
-// ── Kayıtlı sayfalar ──────────────────────────────────────────────────────────
-$sayfalar = $pdo->query("SELECT id, ad, sira, satir_sayisi, kolon_sayisi, guncelleme FROM metraj_sayfa ORDER BY sira, ad")->fetchAll();
+// İçe aktarma artık Araçlar → Dinamik Excel Aktarımı (import.php) üzerinden yapılır.
+// Bu sayfa yalnızca görüntüler. İcmal ve KOT ayrı ekranlarda olduğundan gizlenir.
+$gizli = ['İCMAL', 'ICMAL', 'KOT'];
+$ph = implode(',', array_fill(0, count($gizli), '?'));
+$stSayfa = $pdo->prepare("SELECT id, ad, sira, satir_sayisi, kolon_sayisi, guncelleme
+    FROM metraj_sayfa WHERE UPPER(ad) NOT IN ($ph) ORDER BY sira, ad");
+$stSayfa->execute($gizli);
+$sayfalar = $stSayfa->fetchAll();
 
 /** Bir hücreyi görüntüle: sayıysa Türkçe formatla, #N/A soluk, metin aynen */
 function huc(string $v): string {
@@ -110,30 +69,25 @@ require_once __DIR__ . '/includes/header.php';
         <h4 class="mb-0"><i class="bi bi-grid-3x3-gap text-primary me-2"></i>İmalat / Metraj Sayfaları</h4>
         <small class="text-muted">Excel'deki imalat & zayiat sayfaları (PRP Bina Üstyapı, İksa Kazık, Temel Altı Kazık, İstinat, Metraj …) — sekmeden görüntüleyin</small>
     </div>
-    <?php if ($isAdmin): ?>
-    <button class="btn btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#yukleBox">
-        <i class="bi bi-cloud-arrow-up me-1"></i> Excel'den Sayfaları Aktar
-    </button>
-    <?php endif; ?>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="prp_ustyapi.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-building-gear me-1"></i> PRP Bina Üstyapı</a>
+        <a href="icmal_beton.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-clipboard-data me-1"></i> İcmal</a>
+        <?php if ($isAdmin): ?>
+        <a href="import.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-cloud-arrow-up me-1"></i> Dinamik Excel Aktarımı</a>
+        <?php endif; ?>
+    </div>
 </div>
 
 <?php foreach(['success','error','warning','info'] as $t): $m=get_flash($t); if($m): ?>
 <div class="alert alert-<?= $t==='error'?'danger':$t ?>"><?= h($m) ?></div>
 <?php endif; endforeach; ?>
 
-<?php if ($isAdmin): ?>
-<div class="collapse mb-3" id="yukleBox"><div class="card card-body">
-    <form method="post" enctype="multipart/form-data" class="row g-2 align-items-end">
-        <input type="hidden" name="action" value="yukle">
-        <div class="col-md-9">
-            <label class="form-label small">Beton Takip Excel (.xlsx) — tüm imalat/metraj/zayiat sayfaları içe aktarılır (Sayfa1 ve VERİ hariç)</label>
-            <input type="file" name="dosya" class="form-control form-control-sm" accept=".xlsx" required>
-        </div>
-        <div class="col-md-3"><button class="btn btn-primary btn-sm w-100"><i class="bi bi-arrow-repeat me-1"></i> Sayfaları Aktar / Eşitle</button></div>
-    </form>
-    <div class="form-text mt-1">Her sayfa olduğu gibi (grid) saklanır ve aşağıda sekme olarak gösterilir. Tekrar aktarınca güncellenir (üzerine yazar).</div>
-</div></div>
-<?php endif; ?>
+<div class="alert alert-light border small">
+    <i class="bi bi-info-circle me-1"></i>
+    İmalat/metraj/zayiat sayfaları artık <strong>Araçlar → <a href="import.php" class="alert-link">Dinamik Excel Aktarımı</a></strong>'ndan
+    Excel yüklediğinizde <strong>otomatik</strong> güncellenir (ayrıca yükleme yapmanıza gerek yok). Bu ekran yalnızca görüntülemedir.
+    <strong>KOT</strong> ve <strong>İcmal</strong> ayrı ekranlarda olduğundan burada gösterilmez.
+</div>
 
 <?php if (!$sayfalar): ?>
 <div class="card"><div class="card-body text-center text-muted py-5">

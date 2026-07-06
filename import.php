@@ -87,6 +87,50 @@ function getOrCreateProje(PDO $pdo, ?string $kod): ?int {
     return (int)$pdo->lastInsertId();
 }
 
+/**
+ * İmalat/metraj/zayiat sayfalarını (PRP Bina Üstyapı, İksa Kazık, İCMAL, Metraj …)
+ * metraj_sayfa tablosuna grid (JSON) olarak kaydeder — İmalat Sayfaları / PRP / İcmal
+ * ekranları buradan okur. Sayfa1, VERİ ve KOT hariç (KOT Kotlar sayfasında yönetilir).
+ */
+function storeImalatSheets(PDO $pdo, $xlsx): int {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS metraj_sayfa (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ad VARCHAR(150) NOT NULL,
+        sira INT NOT NULL DEFAULT 0,
+        satir_sayisi INT NOT NULL DEFAULT 0,
+        kolon_sayisi INT NOT NULL DEFAULT 0,
+        veri LONGTEXT NOT NULL,
+        guncelleme TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_ad (ad)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $haric = ['SAYFA1', 'VERİ', 'VERI', 'KOT'];
+    $ins = $pdo->prepare("INSERT INTO metraj_sayfa (ad, sira, satir_sayisi, kolon_sayisi, veri)
+        VALUES (?,?,?,?,?)
+        ON DUPLICATE KEY UPDATE sira=VALUES(sira), satir_sayisi=VALUES(satir_sayisi),
+        kolon_sayisi=VALUES(kolon_sayisi), veri=VALUES(veri)");
+    $n = 0;
+    foreach ($xlsx->sheetNames() as $i => $ad) {
+        if (in_array(mb_strtoupper(trim($ad), 'UTF-8'), $haric, true)) continue;
+        $rows = $xlsx->rows($i, 2000);
+        $maxCol = 0; $lastRow = -1;
+        foreach ($rows as $ri => $r) {
+            $dolu = false;
+            foreach ($r as $ci => $c) { if (trim((string)$c) !== '') { $dolu = true; if ($ci + 1 > $maxCol) $maxCol = $ci + 1; } }
+            if ($dolu) $lastRow = $ri;
+        }
+        if ($lastRow < 0) continue;
+        $grid = [];
+        for ($ri = 0; $ri <= $lastRow; $ri++) {
+            $s = [];
+            for ($ci = 0; $ci < $maxCol; $ci++) $s[] = isset($rows[$ri][$ci]) ? trim((string)$rows[$ri][$ci]) : '';
+            $grid[] = $s;
+        }
+        $ins->execute([trim($ad), $i, $lastRow + 1, $maxCol, json_encode($grid, JSON_UNESCAPED_UNICODE)]);
+        $n++;
+    }
+    return $n;
+}
+
 /** Türkçe sayı: "1.234,56" → 1234.56, "8,5" → 8.5, "8.5" → 8.5 */
 function parseMiktar($v): float {
     $v = trim((string)$v);
@@ -268,6 +312,9 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_fil
                 // TÜM SAYFALARI otomatik tara: başlığı algılanan her sayfa veri sayfasıdır.
                 // Sayfa adında İADE geçiyorsa kayıtlar 'iade' tipiyle aktarılır.
                 if ($xlsx = SimpleXLSX::parse($tempPath)) {
+                    // İmalat/metraj/zayiat sayfalarını (PRP Bina Üstyapı, İcmal, Metraj …)
+                    // aynı yüklemede metraj_sayfa'ya kaydet — ayrı ekranlardan görüntülenir.
+                    try { $_SESSION['import_imalat_sayi'] = storeImalatSheets($pdo, $xlsx); } catch (Throwable $e) { $_SESSION['import_imalat_sayi'] = 0; }
                     $sheets = [];
                     foreach ($xlsx->sheetNames() as $si => $sName) {
                         $rows = $xlsx->rows($si);
@@ -546,6 +593,9 @@ require_once __DIR__ . '/includes/header.php';
                     <i class="bi bi-eye text-success me-1"></i> Excel Önizlemesi — Tüm Sayfalar
                 </h5>
                 <small class="text-muted">Algılanan veri sayfaları: <strong><?= implode(' · ', $sayfaOzet) ?></strong></small>
+                <?php if (!empty($_SESSION['import_imalat_sayi'])): ?>
+                <div class="small text-success mt-1"><i class="bi bi-check-circle me-1"></i><strong><?= (int)$_SESSION['import_imalat_sayi'] ?></strong> imalat/metraj sayfası (PRP Bina Üstyapı, İcmal, Metraj …) sisteme kaydedildi — <a href="metraj_takip.php">İmalat Sayfaları</a> / <a href="prp_ustyapi.php">PRP Bina Üstyapı</a> / <a href="icmal_beton.php">İcmal</a> ekranlarından görüntüleyin.</div>
+                <?php endif; ?>
             </div>
             <div>
                 <a href="import.php?reset=1" class="btn btn-outline-danger btn-sm">

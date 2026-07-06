@@ -108,6 +108,11 @@ if ($__user) {
         </a>
       </li>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('icmal_beton.php') ?>" href="<?= $__rootPath ?>icmal_beton.php" data-label="Beton İcmali">
+          <i class="bi bi-clipboard-data"></i><span>Beton İcmali</span>
+        </a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('metraj_takip.php') ?>" href="<?= $__rootPath ?>metraj_takip.php" data-label="İmalat / Metraj Sayfaları">
           <i class="bi bi-grid-3x3-gap"></i><span>İmalat Sayfaları</span>
         </a>
