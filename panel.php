@@ -343,7 +343,7 @@ html[data-dark="1"] .trend-down { background:rgba(224,84,84,.14); color:#ff8080;
             <i class="bi bi-clock me-1"></i>Son teslimat:
             <strong><?= format_date($sonTeslimat['tarih']) ?></strong>
             <?php if ($sonTeslimat['tedarikci']): ?> — <span class="text-primary"><?= h($sonTeslimat['tedarikci']) ?></span><?php endif; ?>
-            <span class="badge bg-light text-muted border ms-2" title="Dashboard kod sürümü — bu rozet görünmüyorsa canlıda eski kod çalışıyor demektir">kod: B0705</span>
+            <span class="badge bg-success ms-2" title="panel.php CANLI — sunucu saati ve o an hesaplanan toplam. Bu rozet görünüyorsa yeni taze dashboard çalışıyor demektir">CANLI panel · <?= date('H:i:s') ?> · <?= number_format((float)$toplamM3,1,',','.') ?> m³</span>
         </div>
         <?php endif; ?>
     </div>
