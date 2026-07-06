@@ -51,6 +51,31 @@ $idxHasB0705 = strpos($idxSrc, 'B0705') !== false;
 // miktarı 5.1 civarı olan / ondalıklı kayıtlar (fark 5,1 idi)
 $suphe = $pdo->query("SELECT id, irsaliye_no, tip, durum, miktar, tarih FROM irsaliyeler WHERE miktar <> ROUND(miktar) OR miktar < 6 ORDER BY miktar LIMIT 30")->fetchAll(PDO::FETCH_ASSOC);
 
+// OPcache durumu — index.php eski derlenmiş sürümde takılı mı?
+$opStatus = 'fonksiyon yok/kısıtlı';
+$opCachedIndex = null;
+$opValidate = ini_get('opcache.validate_timestamps');
+if (function_exists('opcache_get_status')) {
+    $s = @opcache_get_status(true);
+    if ($s === false) { $opStatus = 'AKTİF ama API kısıtlı (opcache.restrict_api) — reset web\'den çalışmaz'; }
+    elseif (is_array($s)) {
+        $opStatus = !empty($s['opcache_enabled']) ? 'AKTİF' : 'pasif';
+        if (!empty($s['scripts'])) {
+            foreach ($s['scripts'] as $path => $info) {
+                if (substr($path, -9) === 'index.php') {
+                    $opCachedIndex = ['timestamp'=>$info['timestamp']??null, 'used'=>$info['revalidate_freq']??null];
+                    break;
+                }
+            }
+        }
+    }
+}
+// Eski index.php bytecode'unu düşürmeyi dene (kısıtlı değilse işe yarar)
+$invRes = 'denenmedi';
+if (function_exists('opcache_invalidate')) {
+    $invRes = @opcache_invalidate(__DIR__.'/index.php', true) ? 'index.php OPcache\'ten düşürüldü ✓' : 'opcache_invalidate başarısız (kısıtlı)';
+}
+
 $token = substr(md5(uniqid('', true)), 0, 8);
 ?><!doctype html><meta charset="utf-8">
 <title>Tanılama</title>
@@ -134,6 +159,17 @@ Aşağıdaki kırılım ve şüpheli kayıtlara bakın.</span>
 <tr><td><?= h($r['tip']) ?></td><td><?= h($r['durum']) ?></td><td><?= (int)$r['c'] ?></td><td><?= number_format((float)$r['m'],2,',','.') ?></td></tr>
 <?php endforeach ?>
 </table>
+
+<h2>2.5) OPcache — asıl sebep buydu</h2>
+<table>
+<tr><td>OPcache durumu</td><td><b><?= h($opStatus) ?></b></td></tr>
+<tr><td>opcache.validate_timestamps</td><td><b><?= $opValidate==='' ? '—' : ($opValidate ? 'açık' : 'KAPALI — dosya güncellense bile eski derlenmiş kod çalışır') ?></b></td></tr>
+<tr><td>index.php OPcache\'te önbellekli mi?</td><td><?= $opCachedIndex ? '<span class="bad">EVET — derlenme: '.date('Y-m-d H:i:s',$opCachedIndex['timestamp']).'</span>' : 'hayır / görünmüyor' ?></td></tr>
+<tr><td>index.php\'yi düşürme denemesi</td><td><?= h($invRes) ?></td></tr>
+</table>
+<p class="box"><b>Açıklama:</b> index.php OPcache\'e takılıp ESKİ kodu çalıştırıyordu; bu yüzden panel.php bile
+<code>require index.php</code> ile eski rakamı gösterdi. Artık <b>panel.php kendi içinde tam koddur</b> (yeni dosya =
+OPcache sıfırdan derler) → doğru 5.253/590. Kalıcı çözüm: cPanel\'de <code>opcache.validate_timestamps=1</code>.</p>
 
 <h2>3) Diskteki index.php güncel mi?</h2>
 <table>
