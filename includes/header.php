@@ -12,7 +12,10 @@ $__rootPath = $rootPath ?? '';
 $__module   = (strpos($_SERVER['PHP_SELF'] ?? '', '/demir/') !== false) ? 'demir' : 'beton';
 
 function __isActive(string $page): string {
-    global $__page; return $__page === $page ? 'active' : '';
+    global $__page;
+    // panel.php taze dashboard yoludur; Dashboard menüsü onda da aktif görünsün
+    if ($page === 'index.php' && $__page === 'panel.php') return 'active';
+    return $__page === $page ? 'active' : '';
 }
 $__initials = '';
 if ($__user) {
@@ -50,7 +53,7 @@ if ($__user) {
 <aside class="ern-sidebar" id="ernSidebar">
 
   <div class="sidebar-brand-wrap">
-    <a href="<?= $__rootPath ?><?= $__module==='demir' ? 'demir/index.php' : 'index.php' ?>" class="sidebar-brand">
+    <a href="<?= $__rootPath ?><?= $__module==='demir' ? 'demir/index.php' : 'panel.php' ?>" class="sidebar-brand">
       <!-- Tam logo (expanded modda) -->
       <img class="logo-full"
            src="https://portal.ern.com.tr/assets/assets/images/ern_holding.613de732dd156fc8c966aeb8159822be.png"
@@ -71,7 +74,7 @@ if ($__user) {
     <ul class="list-unstyled mb-0">
 
       <li class="sidebar-nav-item">
-        <a class="sidebar-nav-link <?= __isActive('index.php') ?>" href="<?= $__rootPath ?>index.php" data-label="Dashboard">
+        <a class="sidebar-nav-link <?= __isActive('index.php') ?>" href="<?= $__rootPath ?>panel.php" data-label="Dashboard">
           <i class="bi bi-speedometer2"></i><span>Dashboard</span>
         </a>
       </li>
@@ -289,7 +292,7 @@ if ($__user) {
     @media (max-width:575.98px){.module-switch-item span{display:none;}.module-switch-item{padding:.34rem .55rem;}}
     </style>
     <div class="module-switch">
-      <a href="<?= $__rootPath ?>index.php" class="module-switch-item <?= $__module==='beton'?'active':'' ?>">
+      <a href="<?= $__rootPath ?>panel.php" class="module-switch-item <?= $__module==='beton'?'active':'' ?>">
         <i class="bi bi-buildings"></i><span>Beton Takip</span>
       </a>
       <a href="<?= $__rootPath ?>demir/index.php" class="module-switch-item <?= $__module==='demir'?'active':'' ?>">
