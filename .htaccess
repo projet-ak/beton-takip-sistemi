@@ -1,6 +1,15 @@
 Options -Indexes
 DirectoryIndex index.php
 
+# ── LiteSpeed/proxy sayfa önbelleğini kapat ──────────────────────────────────
+# Uygulama canlı DB verisi gösterir; sunucu tam-sayfa önbelleği dashboard gibi
+# sayfaları veri güncellendikten sonra bile eski HTML'le sunar. Kapatıyoruz.
+<IfModule LiteSpeed>
+    CacheDisable public /
+    RewriteEngine On
+    RewriteRule .* - [E=Cache-Control:no-cache]
+</IfModule>
+
 # config.php ve .env dosyalarına doğrudan erişimi engelle (Apache 2.4+)
 <FilesMatch "^(config\.php|\.env)$">
     <IfModule mod_authz_core.c>

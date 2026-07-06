@@ -40,6 +40,18 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+// ── Sayfa önbelleğini engelle (LiteSpeed/proxy/tarayıcı) ─────────────────────
+// Kimlik doğrulamalı sayfalar canlı DB verisi gösterir; asla önbelleğe alınmamalı.
+// Aksi halde dashboard gibi sık ziyaret edilen sayfalar, veri güncellendikten
+// sonra bile önbellekteki ESKİ HTML kopyasıyla sunulur (ör. dashboard 5.247,9
+// gösterirken DB 5.253,00 olması). LiteSpeed için özel başlık da gönderilir.
+if (!headers_sent()) {
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+    header('X-LiteSpeed-Cache-Control: no-cache'); // LiteSpeed sunucu önbelleği
+}
+
 // ── Boşta kalma zaman aşımı kontrolü ─────────────────────────────────────────
 if (!empty($_SESSION['user'])) {
     $__now  = time();
