@@ -45,8 +45,19 @@ $__rp   = $rootPath ?? '';
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="<?= $rootPath ?? '' ?>assets/js/app.js?v=<?= time() ?>"></script>
 <script>
+/* PWA service worker'ı KALDIR + önbelleği temizle.
+ * Eski service worker dashboard'un eski HTML kopyasını dondurup gösteriyordu.
+ * Artık kaydetmiyoruz; mevcut olan varsa kaldırıyoruz ve tüm PWA önbelleğini
+ * siliyoruz. Böylece her sayfa daima sunucudan taze gelir, donma yaşanmaz. */
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('<?= $rootPath ?? '' ?>sw.js').catch(function(){});
+    navigator.serviceWorker.getRegistrations().then(function(regs){
+        regs.forEach(function(r){ r.unregister(); });
+    }).catch(function(){});
+}
+if (window.caches && caches.keys) {
+    caches.keys().then(function(keys){
+        keys.forEach(function(k){ caches.delete(k); });
+    }).catch(function(){});
 }
 </script>
 </body>
