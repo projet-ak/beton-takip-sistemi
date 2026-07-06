@@ -15,6 +15,14 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   taşerona teslim (tutanak)→icmal zinciri. **Ayrı veritabanı** kullanır.
 - Geliştirici: **Tayyar Akbulut**. Sürüm: v3.0. Canlı: `https://takbulut.com/beton/`.
 
+> **⭐ TEMEL İLKE — Excel şablonu "kutsal kitap" (tek doğru kaynak).** Sistem, ilgili Excel
+> şablonunu **birebir yansıtır**; veri/toplam çelişkisinde **Excel esastır**, sistem ona göre
+> düzeltilir. **Beton modülü → Beton Takip Excel** şablonu; **Demir modülü → Demir Takip Excel**
+> şablonu. Yeni içe aktarma/rapor/özet eklerken hedef her zaman şablonla eşitlik olmalı
+> (tam yenileme/eşitleme desenleri buradan gelir). Şablon sayfaları: Sayfa1(irsaliyeler), VERİ(tanımlar),
+> KOT(blok→kot), İCMAL, imalat/zayiat sayfaları (PRP Bina Üstyapı, İksa/Temel Altı Kazık, İstinat…),
+> METRAJ, MOBİLİZASYON. İmalat sayfaları `metraj_takip.php` ile sisteme yansıtılır.
+
 ### Teknoloji
 - Backend: PHP (framework yok), PDO/MySQL 8, prepared statements her yerde.
 - Frontend: Bootstrap 5.3.3 + Bootstrap Icons, Chart.js 4.4.4, Google Fonts (Outfit), sunucu-tarafı render + PWA (`manifest.json`, `sw.js`).
