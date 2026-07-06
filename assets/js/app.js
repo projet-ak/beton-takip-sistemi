@@ -174,8 +174,16 @@
         var start = performance.now(), dur = 1100;
         (function step(now) {
             var p = Math.min((now - start) / dur, 1);
-            var ease = 1 - Math.pow(2, -10 * p);
-            var val  = target * ease;
+            // ÖNEMLİ: son karede (p>=1) değeri TAM hedefe eşitle. Aksi halde expo
+            // easing (1 - 2^-10) p=1'de 0,999023 kalır ve sayı hedefe hiç ulaşmaz
+            // (ör. 5253 yerine 5247,9; 590 yerine 589 gösterir).
+            var val;
+            if (p >= 1) {
+                val = target;
+            } else {
+                var ease = 1 - Math.pow(2, -10 * p);
+                val = target * ease;
+            }
             el.textContent = decimals > 0
                 ? val.toLocaleString('tr-TR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
                 : Math.round(val).toLocaleString('tr-TR');

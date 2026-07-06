@@ -21,7 +21,7 @@ $__page = basename($_SERVER['PHP_SELF']);
 $__rp   = $rootPath ?? '';
 ?>
 <nav class="bottom-nav d-lg-none" id="bottomNav">
-  <a href="<?= $__rp ?>panel.php"         class="bottom-nav-item <?= ($__page==='index.php'||$__page==='panel.php')?'active':'' ?>">
+  <a href="<?= $__rp ?>index.php"         class="bottom-nav-item <?= $__page==='index.php'?'active':'' ?>">
     <i class="bi bi-speedometer2"></i><span>Dashboard</span>
   </a>
   <a href="<?= $__rp ?>irsaliyeler.php"   class="bottom-nav-item <?= $__page==='irsaliyeler.php'?'active':'' ?>">

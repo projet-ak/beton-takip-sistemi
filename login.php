@@ -10,15 +10,15 @@ if (!file_exists(__DIR__ . '/config.php')) {
     redirect('install.php');
 }
 
-// Zaten giriş yaptıysa ana sayfaya yönlendir (panel.php = taze dashboard yolu)
+// Zaten giriş yaptıysa ana sayfaya yönlendir
 if (!empty($_SESSION['user'])) {
-    redirect('panel.php');
+    redirect('index.php');
 }
 
 require_once __DIR__ . '/config.php';
 
 $error    = '';
-$redirect = trim($_GET['redirect'] ?? 'panel.php');
+$redirect = trim($_GET['redirect'] ?? 'index.php');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ];
                 // Güvenli yönlendirme: // ve http(s):// yasak, / ile başlayan mutlak yollar geçerli
                 $base = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/';
-                $safeRedirect = $base . 'panel.php';
+                $safeRedirect = $base . 'index.php';
                 if (
                     !empty($redirect)
                     && !str_starts_with($redirect, '//')
