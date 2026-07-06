@@ -105,6 +105,71 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'etike
     redirect('kotlar.php');
 }
 
+// ── Excel KOT sekmesinden blok→kot yapısını içe aktar ─────────────────────────
+// KOT sayfası: her SÜTUN bir blok (başlık satırı), altındaki değerler o bloğun kotları.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'kot_yukle' && !empty($_FILES['dosya']['tmp_name'])) {
+    require_once __DIR__ . '/vendor/autoload.php';
+    // Hedef parsel: mevcut seçilir ya da yeni ad girilir
+    $parselId  = isset($_POST['parsel_id']) && ctype_digit($_POST['parsel_id']) ? (int)$_POST['parsel_id'] : 0;
+    $yeniParsel = trim($_POST['yeni_parsel'] ?? '');
+    if (!($x = \Shuchkin\SimpleXLSX::parse($_FILES['dosya']['tmp_name']))) {
+        flash('error', 'Excel okunamadı: ' . \Shuchkin\SimpleXLSX::parseError());
+        redirect('kotlar.php');
+    }
+    // KOT sekmesini bul
+    $ki = null;
+    foreach ($x->sheetNames() as $i=>$n) { if (mb_strtoupper(trim($n),'UTF-8') === 'KOT') { $ki = $i; break; } }
+    if ($ki === null) { flash('error', '"KOT" sekmesi bulunamadı.'); redirect('kotlar.php'); }
+
+    // Parsel: yeni ad verilmişse oluştur / bul; yoksa seçileni kullan
+    if ($yeniParsel !== '') {
+        $f = $pdo->prepare("SELECT id FROM parseller WHERE UPPER(TRIM(ad))=UPPER(TRIM(?)) LIMIT 1");
+        $f->execute([$yeniParsel]);
+        $parselId = (int)($f->fetchColumn() ?: 0);
+        if (!$parselId) { $pdo->prepare("INSERT INTO parseller (ad, aktif) VALUES (?,1)")->execute([$yeniParsel]); $parselId = (int)$pdo->lastInsertId(); }
+    }
+    if (!$parselId) { flash('error', 'Blokların bağlanacağı bir parsel seçin veya yeni parsel adı girin.'); redirect('kotlar.php'); }
+
+    $rows = $x->rows($ki, 500);
+    if (!$rows) { flash('error', 'KOT sekmesi boş.'); redirect('kotlar.php'); }
+    $baslik = $rows[0]; // sütun başlıkları = blok adları
+
+    // Blok get-or-create (parsel içinde ad UPPER eşleşir)
+    $blokBul = $pdo->prepare("SELECT id FROM bloklar WHERE parsel_id=? AND UPPER(TRIM(ad))=UPPER(TRIM(?)) LIMIT 1");
+    $blokEkle = $pdo->prepare("INSERT INTO bloklar (parsel_id, ad, aktif) VALUES (?,?,1)");
+    // Kot get-or-create (blok içinde kot_degeri UPPER/boşluksuz eşleşir)
+    $kotVar = $pdo->prepare("SELECT id FROM kotlar WHERE blok_id=? AND REPLACE(UPPER(TRIM(kot_degeri)),' ','')=? LIMIT 1");
+    $kotEkle = $pdo->prepare("INSERT INTO kotlar (blok_id, kot_degeri, sira, aktif) VALUES (?,?,?,1)");
+
+    $yeniBlok = 0; $yeniKot = 0; $atlanan = 0;
+    $pdo->beginTransaction();
+    try {
+        foreach ($baslik as $ci => $blokAd) {
+            $blokAd = trim((string)$blokAd);
+            if ($blokAd === '' || $ci === 0) continue; // ilk kolon boş/etiket
+            // blok bul/oluştur
+            $blokBul->execute([$parselId, $blokAd]);
+            $bid = (int)($blokBul->fetchColumn() ?: 0);
+            if (!$bid) { $blokEkle->execute([$parselId, $blokAd]); $bid = (int)$pdo->lastInsertId(); $yeniBlok++; }
+            // bu sütundaki kot değerleri (başlık satırından sonrası)
+            $sira = 0;
+            for ($ri = 1; $ri < count($rows); $ri++) {
+                $val = trim((string)($rows[$ri][$ci] ?? ''));
+                if ($val === '') continue;
+                $sira++;
+                $norm = str_replace(' ', '', mb_strtoupper($val,'UTF-8'));
+                $kotVar->execute([$bid, $norm]);
+                if ($kotVar->fetchColumn()) { $atlanan++; continue; } // zaten var
+                $kotEkle->execute([$bid, $val, $sira]);
+                $yeniKot++;
+            }
+        }
+        $pdo->commit();
+        flash('success', "KOT sekmesi aktarıldı: {$yeniBlok} yeni blok, {$yeniKot} yeni kot eklendi".($atlanan?", {$atlanan} mevcut kot atlandı":"").".");
+    } catch (Throwable $e) { $pdo->rollBack(); flash('error', 'İçe aktarma hatası: '.$e->getMessage()); }
+    redirect('kotlar.php');
+}
+
 // ── Sil ──────────────────────────────────────────────────────────────────────
 if (isset($_GET['sil']) && ctype_digit($_GET['sil'])) {
     $id = (int)$_GET['sil'];
@@ -170,6 +235,9 @@ $bloklar = $pdo->query("
     ORDER BY p.ad, b.ad
 ")->fetchAll();
 
+// ── Parseller (KOT içe aktarma hedefi) ────────────────────────────────────────
+$parseller = $pdo->query("SELECT id, ad FROM parseller ORDER BY ad")->fetchAll();
+
 // ── Döküm özetleri (kot başına: kaç irsaliye, kaç m³, hangi imalatlar) ────────
 $dokum = [];
 foreach ($pdo->query("
@@ -185,12 +253,24 @@ foreach ($pdo->query("
 
 // ── Liste ─────────────────────────────────────────────────────────────────────
 $liste = $pdo->query("
-    SELECT k.*, b.ad AS blok_adi, p.ad AS parsel_adi
+    SELECT k.*, b.ad AS blok_adi, b.id AS b_id, p.ad AS parsel_adi
     FROM kotlar k
     JOIN bloklar b ON b.id = k.blok_id
     JOIN parseller p ON p.id = b.parsel_id
     ORDER BY p.ad, b.ad, k.sira, k.kot_degeri
 ")->fetchAll();
+
+// Blok → kot gruplaması (blok ve katlar hiyerarşisi)
+$grup = [];
+foreach ($liste as $r) {
+    $bid = (int)$r['b_id'];
+    if (!isset($grup[$bid])) {
+        $grup[$bid] = ['blok'=>$r['blok_adi'], 'parsel'=>$r['parsel_adi'], 'kots'=>[], 'toplam_m3'=>0.0, 'irs'=>0];
+    }
+    $d = $dokum[(int)$r['id']] ?? null;
+    $grup[$bid]['kots'][] = $r;
+    if ($d) { $grup[$bid]['toplam_m3'] += (float)$d['m3']; $grup[$bid]['irs'] += (int)$d['adet']; }
+}
 
 require_once __DIR__ . '/includes/header.php';
 $fmt = fn($n) => number_format((float)$n, 2, ',', '.');
@@ -201,7 +281,10 @@ $fmt = fn($n) => number_format((float)$n, 2, ',', '.');
         <h4 class="mb-0"><i class="bi bi-arrow-up-square text-primary me-2"></i>Kotlar</h4>
         <small class="text-muted">Hangi blokta hangi kotta ne yapılmış — döküm rakamına tıklayın</small>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap">
+        <button class="btn btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#kotYukle">
+            <i class="bi bi-diagram-3 me-1"></i> KOT Sekmesinden Blok+Kot Aktar
+        </button>
         <button class="btn btn-outline-success" data-bs-toggle="collapse" data-bs-target="#etiketYukle">
             <i class="bi bi-file-earmark-excel me-1"></i> VERİ'den Kat Etiketleri
         </button>
@@ -214,6 +297,31 @@ $fmt = fn($n) => number_format((float)$n, 2, ',', '.');
 <?php foreach(['success','error','warning','info'] as $t): $m=get_flash($t); if($m): ?>
 <div class="alert alert-<?= $t==='error'?'danger':$t ?>"><?= h($m) ?></div>
 <?php endif; endforeach; ?>
+
+<div class="collapse mb-3" id="kotYukle"><div class="card card-body">
+    <form method="post" enctype="multipart/form-data" class="row g-2 align-items-end">
+        <input type="hidden" name="action" value="kot_yukle">
+        <div class="col-md-4">
+            <label class="form-label small">Beton Takip Excel (.xlsx) — <strong>KOT</strong> sekmesi (her sütun bir blok, altındaki değerler o bloğun kotları)</label>
+            <input type="file" name="dosya" class="form-control form-control-sm" accept=".xlsx" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small">Bloklar hangi parsele bağlansın?</label>
+            <select name="parsel_id" class="form-select form-select-sm">
+                <option value="">— Mevcut parsel seç —</option>
+                <?php foreach ($parseller as $p): ?>
+                    <option value="<?= (int)$p['id'] ?>"><?= h($p['ad']) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small">…veya yeni parsel adı</label>
+            <input name="yeni_parsel" class="form-control form-control-sm" placeholder="ör. KARTAL ESENTEPE">
+        </div>
+        <div class="col-md-2"><button class="btn btn-primary btn-sm w-100"><i class="bi bi-cloud-arrow-up me-1"></i> Aktar</button></div>
+    </form>
+    <div class="form-text mt-1">Her sütun başlığı blok olur; altındaki kot değerleri o bloğa eklenir. Mevcut blok/kotlar tekrar eklenmez (idempotent). Sıralama Excel'deki dizilime göre korunur.</div>
+</div></div>
 
 <div class="collapse mb-3" id="etiketYukle"><div class="card card-body">
     <form method="post" enctype="multipart/form-data" class="row g-2 align-items-end">
@@ -276,57 +384,72 @@ $fmt = fn($n) => number_format((float)$n, 2, ',', '.');
 </div>
 <?php endif; ?>
 
-<div class="card">
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>Parsel</th>
-                        <th>Blok</th>
-                        <th>Kot Değeri</th>
-                        <th>Detay (Kat)</th>
-                        <th class="text-end">Dökülen (m³)</th>
-                        <th class="text-center">İrsaliye</th>
-                        <th>Yapılan İmalatlar</th>
-                        <th class="text-end">İşlem</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($liste as $r): $d = $dokum[(int)$r['id']] ?? null; ?>
-                    <tr>
-                        <td class="small"><?= h($r['parsel_adi']) ?></td>
-                        <td class="fw-semibold"><?= h($r['blok_adi']) ?></td>
-                        <td class="fw-semibold font-monospace"><?= h($r['kot_degeri']) ?></td>
-                        <td><?= $r['aciklama'] ? '<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">'.h($r['aciklama']).'</span>' : '<span class="text-muted">—</span>' ?></td>
-                        <td class="text-end">
-                            <?php if ($d): ?>
-                                <a href="#" class="kot-dokum text-decoration-none fw-bold" data-id="<?= $r['id'] ?>"
-                                   data-etiket="<?= h($r['parsel_adi'].' / '.$r['blok_adi'].' / '.$r['kot_degeri'].($r['aciklama']?' ('.$r['aciklama'].')':'')) ?>"><?= $fmt($d['m3']) ?></a>
-                            <?php else: ?><span class="text-muted">—</span><?php endif; ?>
-                        </td>
-                        <td class="text-center"><?= $d ? '<span class="badge bg-light text-dark border">'.(int)$d['adet'].'</span>' : '<span class="text-muted">—</span>' ?></td>
-                        <td class="small text-muted" style="max-width:280px"><?= $d && $d['kalemler'] ? h($d['kalemler']) : '—' ?></td>
-                        <td class="text-end text-nowrap">
-                            <a href="kotlar.php?duzenle=<?= $r['id'] ?>" class="btn btn-xs btn-outline-primary me-1">
-                                <i class="bi bi-pencil"></i>
-                            </a>
-                            <a href="kotlar.php?sil=<?= $r['id'] ?>"
-                               class="btn btn-xs btn-outline-danger"
-                               onclick="return confirm('Bu kotu silmek istediğinize emin misiniz?')">
-                                <i class="bi bi-trash"></i>
-                            </a>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                    <?php if (!$liste): ?>
-                        <tr><td colspan="8" class="text-center text-muted py-5">Henüz kot yok.</td></tr>
+<?php if (!$grup): ?>
+<div class="card"><div class="card-body text-center text-muted py-5">
+    Henüz kot yok. <strong>KOT sekmesinden</strong> içe aktarabilir veya <a href="kotlar.php?ekle=1">yeni kot</a> ekleyebilirsiniz.
+</div></div>
+<?php else: ?>
+<div class="accordion" id="blokAccordion">
+    <?php $bi = 0; foreach ($grup as $bid => $g): $bi++; $acId = 'blok'.$bid; ?>
+    <div class="accordion-item">
+        <h2 class="accordion-header">
+            <button class="accordion-button <?= $bi>1?'collapsed':'' ?>" type="button" data-bs-toggle="collapse" data-bs-target="#<?= $acId ?>">
+                <div class="d-flex align-items-center gap-2 flex-wrap w-100 pe-3">
+                    <i class="bi bi-building text-primary"></i>
+                    <span class="fw-bold"><?= h($g['blok']) ?></span>
+                    <span class="text-muted small">(<?= h($g['parsel']) ?>)</span>
+                    <span class="badge bg-secondary ms-1"><?= count($g['kots']) ?> kot</span>
+                    <?php if ($g['toplam_m3'] > 0): ?>
+                        <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle ms-auto"><?= $fmt($g['toplam_m3']) ?> m³ dökülmüş · <?= (int)$g['irs'] ?> irsaliye</span>
                     <?php endif; ?>
-                </tbody>
-            </table>
+                </div>
+            </button>
+        </h2>
+        <div id="<?= $acId ?>" class="accordion-collapse collapse <?= $bi===1?'show':'' ?>" data-bs-parent="#blokAccordion">
+            <div class="accordion-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:60px">#</th>
+                                <th>Kot Değeri</th>
+                                <th>Detay (Kat)</th>
+                                <th class="text-end">Dökülen (m³)</th>
+                                <th class="text-center">İrsaliye</th>
+                                <th>Yapılan İmalatlar</th>
+                                <th class="text-end">İşlem</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php $sn=0; foreach ($g['kots'] as $r): $d = $dokum[(int)$r['id']] ?? null; $sn++; ?>
+                            <tr>
+                                <td class="text-muted small"><?= $sn ?></td>
+                                <td class="fw-semibold font-monospace"><?= h($r['kot_degeri']) ?></td>
+                                <td><?= $r['aciklama'] ? '<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">'.h($r['aciklama']).'</span>' : '<span class="text-muted">—</span>' ?></td>
+                                <td class="text-end">
+                                    <?php if ($d): ?>
+                                        <a href="#" class="kot-dokum text-decoration-none fw-bold" data-id="<?= $r['id'] ?>"
+                                           data-etiket="<?= h($g['parsel'].' / '.$g['blok'].' / '.$r['kot_degeri'].($r['aciklama']?' ('.$r['aciklama'].')':'')) ?>"><?= $fmt($d['m3']) ?></a>
+                                    <?php else: ?><span class="text-muted">—</span><?php endif; ?>
+                                </td>
+                                <td class="text-center"><?= $d ? '<span class="badge bg-light text-dark border">'.(int)$d['adet'].'</span>' : '<span class="text-muted">—</span>' ?></td>
+                                <td class="small text-muted" style="max-width:280px"><?= $d && $d['kalemler'] ? h($d['kalemler']) : '—' ?></td>
+                                <td class="text-end text-nowrap">
+                                    <a href="kotlar.php?duzenle=<?= $r['id'] ?>" class="btn btn-xs btn-outline-primary me-1"><i class="bi bi-pencil"></i></a>
+                                    <a href="kotlar.php?sil=<?= $r['id'] ?>" class="btn btn-xs btn-outline-danger"
+                                       onclick="return confirm('Bu kotu silmek istediğinize emin misiniz?')"><i class="bi bi-trash"></i></a>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
+    <?php endforeach; ?>
 </div>
+<?php endif; ?>
 
 <!-- Kot döküm popup -->
 <div class="modal fade" id="dokumModal" tabindex="-1" aria-hidden="true">
