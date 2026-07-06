@@ -109,9 +109,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'etike
 // KOT sayfası: her SÜTUN bir blok (başlık satırı), altındaki değerler o bloğun kotları.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'kot_yukle' && !empty($_FILES['dosya']['tmp_name'])) {
     require_once __DIR__ . '/vendor/autoload.php';
-    // Hedef parsel: mevcut seçilir ya da yeni ad girilir
-    $parselId  = isset($_POST['parsel_id']) && ctype_digit($_POST['parsel_id']) ? (int)$_POST['parsel_id'] : 0;
-    $yeniParsel = trim($_POST['yeni_parsel'] ?? '');
     if (!($x = \Shuchkin\SimpleXLSX::parse($_FILES['dosya']['tmp_name']))) {
         flash('error', 'Excel okunamadı: ' . \Shuchkin\SimpleXLSX::parseError());
         redirect('kotlar.php');
@@ -121,37 +118,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'kot_y
     foreach ($x->sheetNames() as $i=>$n) { if (mb_strtoupper(trim($n),'UTF-8') === 'KOT') { $ki = $i; break; } }
     if ($ki === null) { flash('error', '"KOT" sekmesi bulunamadı.'); redirect('kotlar.php'); }
 
-    // Parsel: yeni ad verilmişse oluştur / bul; yoksa seçileni kullan
-    if ($yeniParsel !== '') {
-        $f = $pdo->prepare("SELECT id FROM parseller WHERE UPPER(TRIM(ad))=UPPER(TRIM(?)) LIMIT 1");
-        $f->execute([$yeniParsel]);
-        $parselId = (int)($f->fetchColumn() ?: 0);
-        if (!$parselId) { $pdo->prepare("INSERT INTO parseller (ad, aktif) VALUES (?,1)")->execute([$yeniParsel]); $parselId = (int)$pdo->lastInsertId(); }
+    // Parsel OTOMATİK: kullanıcıya sormuyoruz. Varsa mevcut ilk parsel; yoksa
+    // Sayfa1'deki proje başlığından (ör. "KARTAL ESENTEPE") ya da "GENEL" ile oluştur.
+    $parselId = (int)($pdo->query("SELECT id FROM parseller ORDER BY id LIMIT 1")->fetchColumn() ?: 0);
+    if (!$parselId) {
+        $parselAd = 'GENEL';
+        // Sayfa1'de proje adını yakalamaya çalış (ilk sekme, ilk birkaç satır, dolu metin hücresi)
+        try {
+            $s1 = $x->rows(0, 6);
+            foreach ($s1 as $r) { foreach ($r as $c) { $c = trim((string)$c);
+                if ($c !== '' && !preg_match('/^[+\-]?[0-9.,]+$/', $c) && mb_strlen($c) >= 5 && strncmp($c,'VERİ',4)!==0) { $parselAd = mb_substr($c,0,100,'UTF-8'); break 2; } } }
+        } catch (Throwable $e) {}
+        $pdo->prepare("INSERT INTO parseller (ad, aktif) VALUES (?,1)")->execute([$parselAd]);
+        $parselId = (int)$pdo->lastInsertId();
     }
-    if (!$parselId) { flash('error', 'Blokların bağlanacağı bir parsel seçin veya yeni parsel adı girin.'); redirect('kotlar.php'); }
 
     $rows = $x->rows($ki, 500);
     if (!$rows) { flash('error', 'KOT sekmesi boş.'); redirect('kotlar.php'); }
     $baslik = $rows[0]; // sütun başlıkları = blok adları
 
-    // Blok get-or-create (parsel içinde ad UPPER eşleşir)
-    $blokBul = $pdo->prepare("SELECT id FROM bloklar WHERE parsel_id=? AND UPPER(TRIM(ad))=UPPER(TRIM(?)) LIMIT 1");
+    // Blok GLOBAL eşleşir (ad UPPER, hangi parselde olursa olsun) — yoksa varsayılan parsele oluştur
+    $blokBulGlobal = $pdo->prepare("SELECT id FROM bloklar WHERE UPPER(TRIM(ad))=UPPER(TRIM(?)) ORDER BY id LIMIT 1");
     $blokEkle = $pdo->prepare("INSERT INTO bloklar (parsel_id, ad, aktif) VALUES (?,?,1)");
-    // Kot get-or-create (blok içinde kot_degeri UPPER/boşluksuz eşleşir)
-    $kotVar = $pdo->prepare("SELECT id FROM kotlar WHERE blok_id=? AND REPLACE(UPPER(TRIM(kot_degeri)),' ','')=? LIMIT 1");
-    $kotEkle = $pdo->prepare("INSERT INTO kotlar (blok_id, kot_degeri, sira, aktif) VALUES (?,?,?,1)");
+    // Kot get-or-create (blok içinde kot_degeri UPPER/boşluksuz eşleşir); mevcutsa sıra güncelle
+    $kotVar   = $pdo->prepare("SELECT id FROM kotlar WHERE blok_id=? AND REPLACE(UPPER(TRIM(kot_degeri)),' ','')=? LIMIT 1");
+    $kotEkle  = $pdo->prepare("INSERT INTO kotlar (blok_id, kot_degeri, sira, aktif) VALUES (?,?,?,1)");
+    $kotSira  = $pdo->prepare("UPDATE kotlar SET sira=? WHERE id=?");
 
-    $yeniBlok = 0; $yeniKot = 0; $atlanan = 0;
+    $yeniBlok = 0; $yeniKot = 0; $guncelKot = 0;
     $pdo->beginTransaction();
     try {
         foreach ($baslik as $ci => $blokAd) {
             $blokAd = trim((string)$blokAd);
             if ($blokAd === '' || $ci === 0) continue; // ilk kolon boş/etiket
-            // blok bul/oluştur
-            $blokBul->execute([$parselId, $blokAd]);
-            $bid = (int)($blokBul->fetchColumn() ?: 0);
+            // blok global bul/oluştur
+            $blokBulGlobal->execute([$blokAd]);
+            $bid = (int)($blokBulGlobal->fetchColumn() ?: 0);
             if (!$bid) { $blokEkle->execute([$parselId, $blokAd]); $bid = (int)$pdo->lastInsertId(); $yeniBlok++; }
-            // bu sütundaki kot değerleri (başlık satırından sonrası)
+            // bu sütundaki kot değerleri (başlık satırından sonrası) — toplu eşitle
             $sira = 0;
             for ($ri = 1; $ri < count($rows); $ri++) {
                 $val = trim((string)($rows[$ri][$ci] ?? ''));
@@ -159,13 +163,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'kot_y
                 $sira++;
                 $norm = str_replace(' ', '', mb_strtoupper($val,'UTF-8'));
                 $kotVar->execute([$bid, $norm]);
-                if ($kotVar->fetchColumn()) { $atlanan++; continue; } // zaten var
-                $kotEkle->execute([$bid, $val, $sira]);
-                $yeniKot++;
+                $kid = (int)($kotVar->fetchColumn() ?: 0);
+                if ($kid) { $kotSira->execute([$sira, $kid]); $guncelKot++; }   // varsa sırasını Excel'e göre güncelle
+                else      { $kotEkle->execute([$bid, $val, $sira]); $yeniKot++; }
             }
         }
         $pdo->commit();
-        flash('success', "KOT sekmesi aktarıldı: {$yeniBlok} yeni blok, {$yeniKot} yeni kot eklendi".($atlanan?", {$atlanan} mevcut kot atlandı":"").".");
+        flash('success', "KOT sekmesi eşitlendi: {$yeniBlok} yeni blok, {$yeniKot} yeni kot eklendi, {$guncelKot} mevcut kot güncellendi (sıra).");
     } catch (Throwable $e) { $pdo->rollBack(); flash('error', 'İçe aktarma hatası: '.$e->getMessage()); }
     redirect('kotlar.php');
 }
@@ -235,9 +239,6 @@ $bloklar = $pdo->query("
     ORDER BY p.ad, b.ad
 ")->fetchAll();
 
-// ── Parseller (KOT içe aktarma hedefi) ────────────────────────────────────────
-$parseller = $pdo->query("SELECT id, ad FROM parseller ORDER BY ad")->fetchAll();
-
 // ── Döküm özetleri (kot başına: kaç irsaliye, kaç m³, hangi imalatlar) ────────
 $dokum = [];
 foreach ($pdo->query("
@@ -301,26 +302,16 @@ $fmt = fn($n) => number_format((float)$n, 2, ',', '.');
 <div class="collapse mb-3" id="kotYukle"><div class="card card-body">
     <form method="post" enctype="multipart/form-data" class="row g-2 align-items-end">
         <input type="hidden" name="action" value="kot_yukle">
-        <div class="col-md-4">
-            <label class="form-label small">Beton Takip Excel (.xlsx) — <strong>KOT</strong> sekmesi (her sütun bir blok, altındaki değerler o bloğun kotları)</label>
+        <div class="col-md-9">
+            <label class="form-label small">Beton Takip Excel (.xlsx) — <strong>KOT</strong> sekmesi tümüyle okunur (her sütun bir blok, altındaki değerler o bloğun kotları)</label>
             <input type="file" name="dosya" class="form-control form-control-sm" accept=".xlsx" required>
         </div>
-        <div class="col-md-3">
-            <label class="form-label small">Bloklar hangi parsele bağlansın?</label>
-            <select name="parsel_id" class="form-select form-select-sm">
-                <option value="">— Mevcut parsel seç —</option>
-                <?php foreach ($parseller as $p): ?>
-                    <option value="<?= (int)$p['id'] ?>"><?= h($p['ad']) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <div class="col-md-3">
-            <label class="form-label small">…veya yeni parsel adı</label>
-            <input name="yeni_parsel" class="form-control form-control-sm" placeholder="ör. KARTAL ESENTEPE">
-        </div>
-        <div class="col-md-2"><button class="btn btn-primary btn-sm w-100"><i class="bi bi-cloud-arrow-up me-1"></i> Aktar</button></div>
+        <div class="col-md-3"><button class="btn btn-primary btn-sm w-100"><i class="bi bi-arrow-repeat me-1"></i> KOT Sekmesini Eşitle</button></div>
     </form>
-    <div class="form-text mt-1">Her sütun başlığı blok olur; altındaki kot değerleri o bloğa eklenir. Mevcut blok/kotlar tekrar eklenmez (idempotent). Sıralama Excel'deki dizilime göre korunur.</div>
+    <div class="form-text mt-1">
+        Tek tıkla <strong>toplu eşitleme</strong>: tüm bloklar ve kotları Excel'e göre işlenir. Parsel <strong>otomatik</strong> atanır (sormaz);
+        bloklar <strong>ad bazında</strong> eşleşir (hangi parselde olursa olsun). Mevcut kotlar çoğaltılmaz, yalnız sıraları Excel'e göre güncellenir.
+    </div>
 </div></div>
 
 <div class="collapse mb-3" id="etiketYukle"><div class="card card-body">
