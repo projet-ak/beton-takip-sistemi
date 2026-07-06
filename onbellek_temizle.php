@@ -14,13 +14,22 @@ $pageTitle = 'Önbellek Temizle — Beton Takip Sistemi';
 
 $sonuc = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // ── LiteSpeed / proxy TAM-SAYFA önbelleğini zorla temizle ────────────────
+    // Asıl sorun bu: sunucu, dashboard gibi sayfaların ESKİ HTML kopyasını
+    // saklıyor. no-cache başlıkları yalnız yeni önbelleklemeyi engeller; zaten
+    // kayıtlı kopyayı bu PURGE başlığı siler. Bu istek POST olduğundan asla
+    // önbellekten sunulmaz — PHP mutlaka çalışır ve LiteSpeed purge'ü uygular.
+    if (!headers_sent()) {
+        header('X-LiteSpeed-Purge: *');            // tüm LiteSpeed önbelleğini boşalt
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    }
     $op = 'OPcache bu sunucuda yok/kapalı';
     if (function_exists('opcache_reset')) {
         $op = @opcache_reset() ? 'OPcache sıfırlandı ✓' : 'OPcache sıfırlanamadı (restrict ayarı olabilir)';
     }
     clearstatcache(true);
     if (function_exists('apcu_clear_cache')) { @apcu_clear_cache(); }
-    $sonuc = $op . ' — dosya durum önbelleği temizlendi.';
+    $sonuc = $op . ' — dosya durum önbelleği + LiteSpeed sayfa önbelleği (purge) temizlendi.';
 }
 
 $opcacheDurum = 'yüklü değil';
@@ -42,9 +51,20 @@ require_once __DIR__ . '/includes/header.php';
 
 <?php if ($sonuc): ?>
 <div class="alert alert-success"><i class="bi bi-check-circle-fill me-1"></i><?= h($sonuc) ?>
-    <div class="small mt-1">Şimdi <a href="index.php" class="alert-link">Dashboard'a dönüp</a> rakamların güncellendiğini kontrol edin.</div>
+    <div class="small mt-1">Şimdi <a href="index.php?_ts=<?= time() ?>" class="alert-link">Dashboard'a dönüp</a> rakamların güncellendiğini kontrol edin (bağlantı önbelleği atlatmak için işaretli).</div>
 </div>
 <?php endif; ?>
+
+<div class="alert alert-info">
+    <div class="fw-semibold mb-1"><i class="bi bi-lightbulb me-1"></i> Dashboard hâlâ eski rakamı (5.247,9 / 589) gösteriyorsa — kesin test</div>
+    <div class="small">
+        Sorun <strong>sunucunun sayfa önbelleği</strong> olabilir: dashboard'un ESKİ HTML kopyası saklanıyor, DB doğru olsa bile o kopya sunuluyor.
+        <b>Ctrl+F5 bunu çözmez</b> (o yalnız tarayıcı önbelleğini temizler). Test edin:
+        <a href="index.php?_ts=<?= time() ?>" class="alert-link" target="_blank">Dashboard'u önbelleksiz aç</a>.
+        Bu bağlantıda <strong>doğru</strong> rakam (5.253,0 / 590) çıkıyorsa sorun %100 sayfa önbelleğidir →
+        aşağıdaki <b>"Önbelleği Şimdi Temizle"</b> butonu LiteSpeed önbelleğini <code>purge</code> eder ve düz <code>index.php</code> de düzelir.
+    </div>
+</div>
 
 <div class="card mb-3">
     <div class="card-body">
