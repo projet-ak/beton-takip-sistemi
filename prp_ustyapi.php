@@ -95,32 +95,52 @@ require_once __DIR__ . '/includes/header.php';
 <?php else: ?>
 
 <!-- Blok seçici -->
-<div class="d-flex gap-2 flex-wrap mb-3">
+<div class="d-flex gap-2 flex-wrap mb-3 blok-secici">
     <?php foreach (array_keys($BLOKLAR) as $b): ?>
     <a href="prp_ustyapi.php?blok=<?= urlencode($b) ?>"
-       class="btn btn-<?= $b===$aktifBlok ? 'primary' : 'outline-primary' ?>">
+       class="btn btn-sm <?= $b===$aktifBlok ? 'btn-primary' : 'btn-outline-primary' ?> px-3">
         <i class="bi bi-building me-1"></i><?= h($b) ?>
     </a>
     <?php endforeach; ?>
 </div>
 
-<div class="card mb-3">
-    <div class="card-header bg-primary text-white fw-bold d-flex justify-content-between flex-wrap gap-2">
-        <span><i class="bi bi-building me-1"></i><?= h($aktifBlok) ?></span>
+<!-- KPI özet -->
+<div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+        <div class="prp-kpi"><div class="prp-kpi-ic" style="background:rgba(0,88,78,.1);color:var(--ern)"><i class="bi bi-building-fill"></i></div>
+            <div><div class="prp-kpi-val"><?= h($aktifBlok) ?></div><div class="prp-kpi-lbl">Seçili Blok</div></div></div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="prp-kpi"><div class="prp-kpi-ic" style="background:rgba(0,201,177,.12);color:var(--ern-teal)"><i class="bi bi-rulers"></i></div>
+            <div><div class="prp-kpi-val"><?= number_format($topMetraj,1,',','.') ?> <small>m³</small></div><div class="prp-kpi-lbl">Toplam Proje Metrajı</div></div></div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="prp-kpi"><div class="prp-kpi-ic" style="background:rgba(201,168,76,.14);color:var(--ern-gold-dark)"><i class="bi bi-layers"></i></div>
+            <div><div class="prp-kpi-val"><?= count($gruplar) ?></div><div class="prp-kpi-lbl">Kot (Kat) Sayısı</div></div></div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="prp-kpi"><div class="prp-kpi-ic" style="background:rgba(0,88,78,.1);color:var(--ern)"><i class="bi bi-percent"></i></div>
+            <div><div class="prp-kpi-val">%5</div><div class="prp-kpi-lbl">Sözleşme Zayiat Limiti</div></div></div>
+    </div>
+</div>
+
+<div class="card mb-3 shadow-sm border-0">
+    <div class="card-header text-white fw-bold d-flex justify-content-between flex-wrap gap-2" style="background:linear-gradient(90deg,var(--ern),var(--ern-light))">
+        <span><i class="bi bi-building me-1"></i><?= h($aktifBlok) ?> — Bina Üstyapı Zayiat Tablosu</span>
         <span class="small fw-normal">Toplam Proje Metrajı: <strong><?= number_format($topMetraj,2,',','.') ?> m³</strong> · <?= count($gruplar) ?> kot</span>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
         <table class="table table-bordered align-middle mb-0 prp-table" style="font-size:.82rem">
             <thead>
-                <tr class="text-center align-middle" style="background:#eef4f3">
+                <tr class="text-center align-middle prp-head">
                     <th style="width:70px">KOT</th>
                     <th style="width:120px">İMALAT YERİ</th>
                     <th style="width:90px">PROJE<br>METRAJI</th>
                     <th style="width:70px">İLERLEME</th>
                     <th style="width:110px">SAHADA DÖKÜLEN<br>BETON MİKTARI</th>
                     <th style="width:120px">PROJEYE GÖRE<br>DÖKÜLMESİ GEREKEN (A)</th>
-                    <th style="width:80px;color:#c00">ZAİYAT<br>ORANI</th>
+                    <th style="width:80px" class="prp-head-uyari">ZAİYAT<br>ORANI</th>
                     <th style="width:90px">SÖZLEŞMEYE<br>GÖRE ZAYİAT (B)</th>
                     <th style="width:100px">SÖZLEŞMEYE GÖRE<br>ZAYİATLI MİKTAR</th>
                     <th style="width:100px">FİİLİ ZAYİAT<br>MİKTARI (KESİLECEK)</th>
@@ -136,9 +156,9 @@ require_once __DIR__ . '/includes/header.php';
             ?>
                 <!-- KOLON-PERDE satırı -->
                 <tr>
-                    <td class="text-center fw-bold" rowspan="<?= $n ?>" style="background:#f7fafa"><?= h($kot) ?></td>
+                    <td class="text-center fw-bold prp-kot" rowspan="<?= $n ?>"><?= h($kot) ?></td>
                     <td class="fw-semibold"><?= h($ilk['imalat']) ?></td>
-                    <td class="text-end font-monospace" style="background:#bfe3f5"><?= sayi($ilk['metraj']) ?></td>
+                    <td class="text-end font-monospace fw-bold prp-metraj-vurgu"><?= sayi($ilk['metraj']) ?></td>
                     <td class="text-center"><?= yuzde($ilk['iler']) ?></td>
                     <td class="text-end"><?= sayi($ilk['sahada']) ?></td>
                     <td class="text-end"><?= sayi($ilk['projeye']) ?></td>
@@ -176,17 +196,27 @@ require_once __DIR__ . '/includes/header.php';
     <?php endif; ?>
 </div>
 
-<div class="alert alert-info small">
-    <i class="bi bi-info-circle me-1"></i>
-    <strong>Mavi</strong> hücre = KOLON-PERDE proje metrajı. DÖŞEME satırındaki metraj, o kotun döşeme+dolgu+merdiven+parapet grubunu kapsar (Excel'deki birleşik hücre).
+<div class="alert small border-0" style="background:var(--bt-tint,#eef6f4)">
+    <i class="bi bi-info-circle me-1 text-success"></i>
+    <span class="prp-metraj-vurgu px-2 rounded">Altın</span> hücre = KOLON-PERDE proje metrajı. DÖŞEME satırındaki metraj, o kotun döşeme+dolgu+merdiven+parapet grubunu kapsar (Excel'deki birleşik hücre).
     <strong>SAHADA DÖKÜLEN</strong> ve <strong>ZAİYAT ORANI</strong> alanları saha verisi girildikçe dolar; <strong>Sözleşmeye göre zayiat</strong> limiti %5.
 </div>
 <?php endif; ?>
 
 <style>
+.blok-secici .btn { font-weight:600; }
+.prp-kpi { display:flex; align-items:center; gap:.6rem; background:#fff; border:1px solid var(--bt-border,#e6e9ee); border-radius:12px; padding:.6rem .8rem; height:100%; }
+.prp-kpi-ic { width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex-shrink:0; }
+.prp-kpi-val { font-weight:700; font-size:1rem; line-height:1.1; color:var(--ern,#00584E); }
+.prp-kpi-val small { font-size:.65rem; font-weight:500; color:var(--bt-text-muted,#7a8690); }
+.prp-kpi-lbl { font-size:.72rem; color:var(--bt-text-muted,#7a8690); }
 .prp-table th { vertical-align:middle; text-align:center; font-size:.72rem; line-height:1.15; }
-.prp-table td { padding:.28rem .5rem; }
-.prp-table tbody tr:hover td { background:#f1f8f6; }
+.prp-table td { padding:.3rem .5rem; }
+.prp-head th { background:var(--ern,#00584E); color:#fff; border-color:var(--ern-dark,#003D35) !important; }
+.prp-head-uyari { background:var(--ern-gold,#C9A84C) !important; color:#3a2e00 !important; }
+.prp-kot { background:#eef6f4; color:var(--ern,#00584E); vertical-align:middle; font-size:.95rem; }
+.prp-metraj-vurgu { background:#f6eccf !important; color:#6b5411 !important; }
+.prp-table tbody tr:hover td:not(.prp-kot):not(.prp-metraj-vurgu) { background:#f1f8f6; }
 </style>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

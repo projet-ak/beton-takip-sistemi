@@ -90,9 +90,10 @@ require_once __DIR__ . '/includes/header.php';
 </div>
 
 <?php if (!$sayfalar): ?>
-<div class="card"><div class="card-body text-center text-muted py-5">
-    Henüz sayfa yok.
-    <?php if ($isAdmin): ?>Yukarıdan <strong>Excel'den Sayfaları Aktar</strong> ile PRP Bina Üstyapı, İksa Kazık, Temel Altı Kazık ve diğer imalat sayfalarını yükleyin.<?php endif; ?>
+<div class="card border-0 shadow-sm"><div class="card-body text-center text-muted py-5">
+    <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>
+    Henüz imalat sayfası yok.
+    <?php if ($isAdmin): ?><br><strong>Araçlar → <a href="import.php">Dinamik Excel Aktarımı</a></strong>'ndan Excel yükleyin; PRP Bina Üstyapı, İksa Kazık, Temel Altı Kazık ve diğer imalat sayfaları otomatik gelir.<?php endif; ?>
 </div></div>
 <?php else: ?>
 
@@ -100,42 +101,58 @@ require_once __DIR__ . '/includes/header.php';
     <?php foreach ($sayfalar as $k => $s): ?>
     <li class="nav-item" role="presentation">
         <button class="nav-link <?= $k===0?'active':'' ?>" data-bs-toggle="tab" data-bs-target="#tab<?= (int)$s['id'] ?>" type="button" role="tab">
-            <?= h($s['ad']) ?> <span class="badge bg-light text-muted border ms-1"><?= (int)$s['satir_sayisi'] ?>×<?= (int)$s['kolon_sayisi'] ?></span>
+            <i class="bi bi-file-earmark-ruled me-1"></i><?= h($s['ad']) ?>
+            <span class="badge rounded-pill ms-1" style="background:var(--bt-tint,#e9f3f0);color:var(--ern,#00584E)"><?= (int)$s['satir_sayisi'] ?>×<?= (int)$s['kolon_sayisi'] ?></span>
         </button>
     </li>
     <?php endforeach; ?>
 </ul>
 
-<div class="tab-content border border-top-0 rounded-bottom bg-white">
+<div class="tab-content">
     <?php foreach ($sayfalar as $k => $s):
         $grid = json_decode($pdo->query("SELECT veri FROM metraj_sayfa WHERE id=".(int)$s['id'])->fetchColumn() ?: '[]', true) ?: [];
+        // Başlık satırlarını tespit et: baştan itibaren, sayı içermeyen (metin) satırlar
+        $baslikSon = -1;
+        foreach ($grid as $ri => $row) {
+            if ($ri > 6) break;
+            $dolu = 0; $sayi = 0;
+            foreach ($row as $c) { if (trim($c)!=='') { $dolu++; if (preg_match('/^[+\-]?\d+([.,]\d+)?$/', trim($c))) $sayi++; } }
+            if ($dolu > 0 && $sayi === 0) $baslikSon = $ri;
+        }
     ?>
     <div class="tab-pane fade <?= $k===0?'show active':'' ?>" id="tab<?= (int)$s['id'] ?>" role="tabpanel">
-        <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom flex-wrap gap-2">
-            <div class="small text-muted"><i class="bi bi-clock-history me-1"></i>Güncelleme: <?= h($s['guncelleme']) ?> · <?= (int)$s['satir_sayisi'] ?> satır × <?= (int)$s['kolon_sayisi'] ?> sütun</div>
-            <?php if ($isAdmin): ?>
-            <a href="metraj_takip.php?sil=<?= (int)$s['id'] ?>" class="btn btn-xs btn-outline-danger" onclick="return confirm('<?= h($s['ad']) ?> sayfası kaldırılsın mı?')"><i class="bi bi-trash me-1"></i>Kaldır</a>
-            <?php endif; ?>
-        </div>
-        <div class="table-responsive" style="max-height:70vh">
-            <table class="table table-sm table-bordered mb-0 metraj-grid" style="width:auto;font-size:.78rem">
-                <tbody>
-                <?php foreach ($grid as $ri => $row):
-                    // Satır tipi: tamamı metin (sayı yok) ve en az 1 dolu → başlık gibi
-                    $doluSay = 0; $sayiSay = 0;
-                    foreach ($row as $c) { if (trim($c)!=='') { $doluSay++; if (preg_match('/^[+\-]?\d+(\.\d+)?$/', trim($c))) $sayiSay++; } }
-                    $baslikGibi = ($doluSay > 0 && $sayiSay === 0 && $ri < 6);
-                ?>
-                    <tr class="<?= $baslikGibi ? 'table-light fw-semibold' : '' ?>">
-                        <?php foreach ($row as $ci => $c):
-                            $isNum = preg_match('/^[+\-]?\d+(\.\d+)?$/', trim($c));
-                        ?>
-                            <td class="<?= $isNum ? 'text-end font-monospace' : '' ?>" style="<?= trim($c)===''?'background:#fafafa':'' ?>"><?= huc($c) ?></td>
-                        <?php endforeach; ?>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
+        <div class="card border-0 shadow-sm rounded-top-0">
+            <div class="card-header text-white d-flex justify-content-between align-items-center flex-wrap gap-2" style="background:linear-gradient(90deg,var(--ern),var(--ern-light))">
+                <span class="fw-bold"><i class="bi bi-grid-3x3-gap me-1"></i><?= h($s['ad']) ?></span>
+                <span class="small d-flex align-items-center gap-3">
+                    <span><i class="bi bi-clock-history me-1"></i><?= h($s['guncelleme']) ?> · <?= (int)$s['satir_sayisi'] ?>×<?= (int)$s['kolon_sayisi'] ?></span>
+                    <?php if ($isAdmin): ?>
+                    <a href="metraj_takip.php?sil=<?= (int)$s['id'] ?>" class="btn btn-xs btn-light" onclick="return confirm('<?= h($s['ad']) ?> sayfası kaldırılsın mı?')"><i class="bi bi-trash me-1"></i>Kaldır</a>
+                    <?php endif; ?>
+                </span>
+            </div>
+            <div class="table-responsive" style="max-height:72vh">
+                <table class="table table-sm table-bordered mb-0 metraj-grid">
+                    <tbody>
+                    <?php foreach ($grid as $ri => $row):
+                        $baslikGibi = ($ri <= $baslikSon);
+                        $zebra = (!$baslikGibi && $ri % 2 === 0);
+                    ?>
+                        <tr class="<?= $baslikGibi ? 'mg-head' : ($zebra ? 'mg-zebra' : '') ?>">
+                            <?php foreach ($row as $ci => $c):
+                                $t = trim($c);
+                                $isNum = preg_match('/^[+\-]?\d+(\.\d+)?$/', $t);
+                                $cls = $baslikGibi ? 'mg-head-c' : ($isNum ? 'text-end font-monospace' : '');
+                                if (!$baslikGibi && $t==='') $cls .= ' mg-bos';
+                                if ($ci === 0 && !$baslikGibi) $cls .= ' mg-ilk';
+                            ?>
+                                <td class="<?= $cls ?>"><?= huc($c) ?></td>
+                            <?php endforeach; ?>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
     <?php endforeach; ?>
@@ -143,9 +160,15 @@ require_once __DIR__ . '/includes/header.php';
 <?php endif; ?>
 
 <style>
-.metraj-grid td { white-space:nowrap; padding:.2rem .45rem; max-width:220px; overflow:hidden; text-overflow:ellipsis; }
-.metraj-grid tr:hover td { background:#f1f8f6 !important; }
-#sayfaTab .nav-link { font-size:.82rem; padding:.4rem .7rem; }
+#sayfaTab .nav-link { font-size:.82rem; padding:.45rem .8rem; }
+.metraj-grid { font-size:.78rem; width:auto; }
+.metraj-grid td { white-space:nowrap; padding:.22rem .55rem; max-width:230px; overflow:hidden; text-overflow:ellipsis; border-color:#eef1f0; }
+.metraj-grid tbody tr.mg-head td { background:var(--ern,#00584E); color:#fff; font-weight:600; text-align:center; border-color:var(--ern-dark,#003D35); position:sticky; top:0; z-index:2; }
+.metraj-grid tbody tr.mg-zebra td { background:#f7faf9; }
+.metraj-grid td.mg-bos { background:#fbfcfc; }
+.metraj-grid td.mg-ilk { position:sticky; left:0; background:#eef6f4; font-weight:600; color:var(--ern,#00584E); z-index:1; }
+.metraj-grid tbody tr:not(.mg-head):hover td { background:#eaf5f2; }
+.metraj-grid tbody tr:not(.mg-head):hover td.mg-ilk { background:#dcefea; }
 </style>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>
