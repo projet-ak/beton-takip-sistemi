@@ -69,6 +69,40 @@ code{background:#f4f4f4;padding:1px 5px;border-radius:4px}
 <p>Bu sayfa <b>her açılışta canlı</b> çalışır (önbelleksiz). Üstteki jeton her yenilemede değişmeli:
 <b>Jeton: <?= $token ?></b> · Sunucu saati: <?= date('Y-m-d H:i:s') ?></p>
 
+<div class="box" style="background:#fff8e1;border-color:#f0c36d">
+    <div class="fw-semibold" style="font-size:1.05rem"><b>⚠️ Dashboard eski rakam gösteriyorsa — buraya basın</b></div>
+    <p style="margin:8px 0">
+        Sebep neredeyse kesin: tarayıcınızdaki <b>PWA Service Worker</b>, dashboard'un eski HTML kopyasını dondurup
+        gösteriyor (Ctrl+F5 bunu atlayamaz). Aşağıdaki buton service worker'ı kaldırır, tüm PWA önbelleğini siler
+        ve sizi taze dashboard'a götürür. <b>Bir kez basmanız yeterli.</b>
+    </p>
+    <button id="swReset" style="font-size:1.05rem;padding:10px 20px;background:#00584e;color:#fff;border:0;border-radius:8px;cursor:pointer">
+        🔄 Service Worker + Önbelleği Sıfırla ve Dashboard'a Git
+    </button>
+    <div id="swMsg" style="margin-top:10px;font-weight:600"></div>
+</div>
+<script>
+document.getElementById('swReset').addEventListener('click', async function(){
+    var msg = document.getElementById('swMsg');
+    msg.textContent = 'Temizleniyor…';
+    try {
+        if ('serviceWorker' in navigator) {
+            var regs = await navigator.serviceWorker.getRegistrations();
+            for (var r of regs) { await r.unregister(); }
+        }
+        if (window.caches) {
+            var keys = await caches.keys();
+            for (var k of keys) { await caches.delete(k); }
+        }
+        msg.textContent = 'Tamam! Service worker kaldırıldı, önbellek silindi. Dashboard açılıyor…';
+        setTimeout(function(){ location.href = 'index.php?_sifir=' + Date.now(); }, 800);
+    } catch (err) {
+        msg.textContent = 'Hata: ' + err + ' — yine de dashboard deneniyor…';
+        setTimeout(function(){ location.href = 'index.php?_sifir=' + Date.now(); }, 1200);
+    }
+});
+</script>
+
 <div class="box">
     <div>Bağlı veritabanı: <b><?= h($dbName) ?></b> @ <b><?= h($dbHost) ?></b></div>
 </div>
