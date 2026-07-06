@@ -86,6 +86,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 - **Tanım sayfaları** (`can_manage_definitions()`): beton_siniflari, katki_listesi, pompa_turleri,
   kivam_siniflari, parseller→bloklar→kotlar, imalat_gruplari→ana_is_kalemleri, firmalar, tedarikciler.
   Desen: CRUD + mükerrer engel (UPPER) + kullanımda ise silme engeli + `tanim_modal.php`.
+- **`metraj_takip.php`** (`can_view_reports()`, "İmalat Sayfaları" menüsü) — **İmalat/Metraj/Zayiat sayfaları görüntüleyici**: Excel'in imalat sayfalarını (PRP Bina Üstyapı, İksa Kazık, Temel Altı Kazık, İstinat Dener/Duvar, PRP Temel, Kazık, Metraj, Mobilizasyon, İcmal, Kot — Sayfa1/VERİ hariç) her sayfayı **JSON grid** olarak saklayıp (tablo `metraj_sayfa`, runtime CREATE, `ad` UNIQUE, tekrar aktarımda üzerine yazar) **sekmeler** halinde gösterir. Sayı hücreleri Türkçe formatlı+sağa dayalı, #N/A soluk, başlık-gibi satırlar vurgulu. Admin: sayfa kaldırma. Sadece hücre değerleri tutulur (DB şişmez).
 - Diğer: `kullanicilar.php` (admin), `ai_ayarlar.php`, `yedek.php`, `import.php`, `kurulum.php` (seed).
 
 ---
