@@ -39,8 +39,10 @@ if ($isAdmin && isset($_GET['sil']) && ctype_digit($_GET['sil'])) {
 }
 
 // İçe aktarma artık Araçlar → Dinamik Excel Aktarımı (import.php) üzerinden yapılır.
-// Bu sayfa yalnızca görüntüler. İcmal, KOT ve Bina Üstyapı ayrı ekranlarda olduğundan gizlenir.
-$gizli = ['İCMAL', 'ICMAL', 'KOT', 'PRP BİNA ÜSTYAPI', 'PRP BINA ÜSTYAPI'];
+// Bu sayfa yalnızca görüntüler. Ayrı ekranı olan sayfalar burada gizlenir:
+// İcmal (Beton İcmali), KOT (Kotlar), Bina Üstyapı, Temel & Kazık (temel_kazik.php).
+$gizli = ['İCMAL', 'ICMAL', 'KOT', 'PRP BİNA ÜSTYAPI', 'PRP BINA ÜSTYAPI',
+          'PRP TEMEL', 'KAZIK', 'İKSA KAZIK', 'IKSA KAZIK', 'TEMEL ALTI KAZIK'];
 $ph = implode(',', array_fill(0, count($gizli), '?'));
 $stSayfa = $pdo->prepare("SELECT id, ad, sira, satir_sayisi, kolon_sayisi, guncelleme
     FROM metraj_sayfa WHERE UPPER(ad) NOT IN ($ph) ORDER BY sira, ad");
