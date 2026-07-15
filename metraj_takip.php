@@ -39,13 +39,29 @@ if ($isAdmin && isset($_GET['sil']) && ctype_digit($_GET['sil'])) {
 }
 
 // İçe aktarma artık Araçlar → Dinamik Excel Aktarımı (import.php) üzerinden yapılır.
-// Bu sayfa yalnızca görüntüler. İcmal ve KOT ayrı ekranlarda olduğundan gizlenir.
-$gizli = ['İCMAL', 'ICMAL', 'KOT'];
+// Bu sayfa yalnızca görüntüler. İcmal, KOT ve Bina Üstyapı ayrı ekranlarda olduğundan gizlenir.
+$gizli = ['İCMAL', 'ICMAL', 'KOT', 'PRP BİNA ÜSTYAPI', 'PRP BINA ÜSTYAPI'];
 $ph = implode(',', array_fill(0, count($gizli), '?'));
 $stSayfa = $pdo->prepare("SELECT id, ad, sira, satir_sayisi, kolon_sayisi, guncelleme
     FROM metraj_sayfa WHERE UPPER(ad) NOT IN ($ph) ORDER BY sira, ad");
 $stSayfa->execute($gizli);
 $sayfalar = $stSayfa->fetchAll();
+
+// Sayfa adlarını anlaşılır firma/imalat etiketine çevir (Excel sekme adı → görünen ad)
+$sayfaEtiket = [
+    'PRP TEMEL'        => 'Temel Beton — PRP İnşaat',
+    'İSTİNAT DENER'    => 'İstinat — Dener İnşaat',
+    'İSTİNAT DUVAR'    => 'İstinat Duvarı',
+    'İKSA KAZIK'       => 'İksa Kazık',
+    'TEMEL ALTI KAZIK' => 'Temel Altı Kazık',
+    'KAZIK'            => 'Kazık',
+    'METRAJ'           => 'Metraj',
+    'MOBİLİZASYON'     => 'Mobilizasyon',
+];
+function sayfaGosterAd(string $ad, array $map): string {
+    $u = mb_strtoupper(trim($ad), 'UTF-8');
+    return $map[$u] ?? trim($ad);
+}
 
 /** Bir hücreyi görüntüle: sayıysa Türkçe formatla, #N/A soluk, metin aynen */
 function huc(string $v): string {
@@ -101,7 +117,7 @@ require_once __DIR__ . '/includes/header.php';
     <?php foreach ($sayfalar as $k => $s): ?>
     <li class="nav-item" role="presentation">
         <button class="nav-link <?= $k===0?'active':'' ?>" data-bs-toggle="tab" data-bs-target="#tab<?= (int)$s['id'] ?>" type="button" role="tab">
-            <i class="bi bi-file-earmark-ruled me-1"></i><?= h($s['ad']) ?>
+            <i class="bi bi-file-earmark-ruled me-1"></i><?= h(sayfaGosterAd($s['ad'], $sayfaEtiket)) ?>
             <span class="badge rounded-pill ms-1" style="background:var(--bt-tint,#e9f3f0);color:var(--ern,#00584E)"><?= (int)$s['satir_sayisi'] ?>×<?= (int)$s['kolon_sayisi'] ?></span>
         </button>
     </li>
@@ -138,7 +154,7 @@ require_once __DIR__ . '/includes/header.php';
     <div class="tab-pane fade <?= $k===0?'show active':'' ?>" id="tab<?= (int)$s['id'] ?>" role="tabpanel">
         <div class="card border-0 shadow-sm rounded-top-0">
             <div class="card-header text-white d-flex justify-content-between align-items-center flex-wrap gap-2" style="background:linear-gradient(90deg,var(--ern),var(--ern-light))">
-                <span class="fw-bold"><i class="bi bi-grid-3x3-gap me-1"></i><?= h($s['ad']) ?></span>
+                <span class="fw-bold"><i class="bi bi-grid-3x3-gap me-1"></i><?= h(sayfaGosterAd($s['ad'], $sayfaEtiket)) ?></span>
                 <span class="small d-flex align-items-center gap-3">
                     <span><i class="bi bi-clock-history me-1"></i><?= h($s['guncelleme']) ?> · <?= (int)$s['satir_sayisi'] ?>×<?= (int)$s['kolon_sayisi'] ?></span>
                     <?php if ($isAdmin): ?>

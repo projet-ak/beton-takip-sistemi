@@ -103,8 +103,8 @@ if ($__user) {
         </a>
       </li>
       <li class="sidebar-nav-item">
-        <a class="sidebar-nav-link <?= __isActive('prp_ustyapi.php') ?>" href="<?= $__rootPath ?>prp_ustyapi.php" data-label="PRP Bina Üstyapı Zayiat">
-          <i class="bi bi-building-gear"></i><span>PRP Bina Üstyapı</span>
+        <a class="sidebar-nav-link <?= __isActive('prp_ustyapi.php') ?>" href="<?= $__rootPath ?>prp_ustyapi.php" data-label="Bina Üstyapı Zayiat (PRP İnşaat)">
+          <i class="bi bi-building-gear"></i><span>Bina Üstyapı</span>
         </a>
       </li>
       <li class="sidebar-nav-item">

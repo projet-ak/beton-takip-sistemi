@@ -14,7 +14,7 @@ if (!file_exists(__DIR__ . '/config.php')) { redirect('install.php'); }
 require_auth(['admin','teknik_ofis_admin','teknik_ofis']);
 require_once __DIR__ . '/includes/db.php';
 
-$pageTitle = 'PRP Bina Üstyapı — Beton Takip Sistemi';
+$pageTitle = 'Bina Üstyapı — Beton Takip Sistemi';
 
 // Blok kolon haritası: [KOT kolonu, İMALAT kolonu, veri başlangıç kolonu]
 // veri: base+0 PROJE METRAJI, +1 İLERLEME, +2 SAHADA DÖKÜLEN, +3 PROJEYE GÖRE,
@@ -81,7 +81,8 @@ require_once __DIR__ . '/includes/header.php';
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
-        <h4 class="mb-0"><i class="bi bi-building-gear text-primary me-2"></i>PRP Bina Üstyapı — Zayiat Takibi</h4>
+        <h4 class="mb-0"><i class="bi bi-building-gear text-primary me-2"></i>Bina Üstyapı — Zayiat Takibi
+            <span class="badge rounded-pill align-middle ms-1" style="background:var(--ern-gold,#C9A84C);color:#3a2e00;font-size:.6em">Taşeron: PRP İnşaat</span></h4>
         <small class="text-muted">Blok seçin; kot (kat) ve imalat bazında proje metrajı / dökülen / zayiat</small>
     </div>
     <a href="metraj_takip.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-grid-3x3-gap me-1"></i> Tüm İmalat Sayfaları</a>
