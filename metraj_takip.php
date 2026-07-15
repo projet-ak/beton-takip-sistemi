@@ -42,7 +42,8 @@ if ($isAdmin && isset($_GET['sil']) && ctype_digit($_GET['sil'])) {
 // Bu sayfa yalnızca görüntüler. Ayrı ekranı olan sayfalar burada gizlenir:
 // İcmal (Beton İcmali), KOT (Kotlar), Bina Üstyapı, Temel & Kazık (temel_kazik.php).
 $gizli = ['İCMAL', 'ICMAL', 'KOT', 'PRP BİNA ÜSTYAPI', 'PRP BINA ÜSTYAPI',
-          'PRP TEMEL', 'KAZIK', 'İKSA KAZIK', 'IKSA KAZIK', 'TEMEL ALTI KAZIK'];
+          'PRP TEMEL', 'KAZIK', 'İKSA KAZIK', 'IKSA KAZIK', 'TEMEL ALTI KAZIK',
+          'İSTİNAT DENER', 'İSTİNAT DUVAR', 'ISTINAT DENER', 'ISTINAT DUVAR'];
 $ph = implode(',', array_fill(0, count($gizli), '?'));
 $stSayfa = $pdo->prepare("SELECT id, ad, sira, satir_sayisi, kolon_sayisi, guncelleme
     FROM metraj_sayfa WHERE UPPER(ad) NOT IN ($ph) ORDER BY sira, ad");
