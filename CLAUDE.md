@@ -252,4 +252,33 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 
 ---
 
+## 10. Yapılacaklar / Backlog (Sonraki Adımlar)
+
+> Önce mevcut **web projesi bitirilecek**; aşağıdakiler sıraya alınmıştır.
+
+### A) Mobil Uygulama — iOS & Android (ERTELENDİ, web bitince)
+- **Yaklaşım:** Mevcut siteyi (takbulut.com/beton/) **Capacitor WebView wrapper** ile native kabuğa sarmak
+  (kod yeniden yazılmaz, içerik sunucudan gelir → her deploy otomatik yansır; yalnız ikon/izin/isim
+  değişince mağaza güncellemesi gerekir). Alternatifler: PWA "ana ekrana ekle" (en ucuz, mağazasız) /
+  React Native-Flutter (en pahalı, API gerektirir — şu an gereksiz).
+- **Kritik özellik:** Hızlı Tarama (QR/DataMatrix/OCR kamera) → iOS WKWebView (iOS 14.3+) ve Android WebView
+  `getUserMedia` destekler; native kamera izinleri ayarlanacak (`NSCameraUsageDescription` vb.).
+- **Kullanıcının cihazları (test/build tam kapalı):** MacBook Air **M2** (Xcode build/imzalama), **iPhone 11**
+  (iOS test), **Realme 11 Pro+ 5G** + **Lenovo Tab 11** (Android telefon/tablet test).
+- **Maliyet:** Google Play tek sefer **$25**, Apple Developer yıllık **$99**. Mağazasız ücretsiz test mümkün
+  (Xcode ile iPhone'a, APK ile Android'e doğrudan kurulum). Öneri: önce ücretsiz test → sonra Play → sonra App Store.
+- **Ek (opsiyonel):** Push bildirim (FCM + APNs) — "onay bekleyen irsaliye" vb.; temel offline önbellek.
+
+### B) Beton — açık işler
+- **PRP Bina Üstyapı canlı zayiat:** `prp_ustyapi.php`'de SAHADA DÖKÜLEN'i gerçek irsaliyelerden (blok/kot/imalat)
+  otomatik çekip ZAİYAT ORANI'nı canlı hesaplamak; %5 (fore kazık %15) limit aşımını kırmızı göstermek.
+- **İcmal düzenlenebilir (opsiyonel):** `icmal_beton.php`'yi elle satır ekle/düzenle yapmak (kullanıcı "kullanıcı tanımlı"
+  ile bunu kastettiyse).
+
+### C) Demir — açık işler
+- **Demir şablonu karşılaştırması:** Demir Takip Excel şablonundaki sekmeleri sistemle karşılaştırıp eksik olanları
+  (varsa) beton'daki `metraj_takip.php`/`storeImalatSheets()` deseniyle eşitlemek.
+
+---
+
 *Bu dosya proje büyüdükçe güncellenmeli. Yeni modül/sayfa eklerken ilgili bölüme işle.*
