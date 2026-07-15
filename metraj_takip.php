@@ -110,7 +110,22 @@ require_once __DIR__ . '/includes/header.php';
 
 <div class="tab-content">
     <?php foreach ($sayfalar as $k => $s):
-        $grid = json_decode($pdo->query("SELECT veri FROM metraj_sayfa WHERE id=".(int)$s['id'])->fetchColumn() ?: '[]', true) ?: [];
+        $ham = json_decode($pdo->query("SELECT veri FROM metraj_sayfa WHERE id=".(int)$s['id'])->fetchColumn() ?: '[]', true) ?: [];
+
+        // ── Sıkıştır: tamamen boş SÜTUN ve SATIRLARI at (Excel ayraç/birleşik boşlukları) ──
+        $maxC = 0; foreach ($ham as $r) { if (count($r) > $maxC) $maxC = count($r); }
+        $colDolu = array_fill(0, $maxC, false);
+        foreach ($ham as $r) foreach ($r as $ci => $c) { if (trim((string)$c) !== '') $colDolu[$ci] = true; }
+        $keepCols = array_keys(array_filter($colDolu));
+        $grid = [];
+        foreach ($ham as $r) {
+            $bosMu = true; foreach ($r as $c) { if (trim((string)$c) !== '') { $bosMu = false; break; } }
+            if ($bosMu) continue;                       // tamamen boş satırı atla
+            $yeni = [];
+            foreach ($keepCols as $ci) $yeni[] = isset($r[$ci]) ? trim((string)$r[$ci]) : '';
+            $grid[] = $yeni;
+        }
+
         // Başlık satırlarını tespit et: baştan itibaren, sayı içermeyen (metin) satırlar
         $baslikSon = -1;
         foreach ($grid as $ri => $row) {
