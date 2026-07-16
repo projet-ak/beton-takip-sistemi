@@ -67,14 +67,96 @@ if ($grid) {
     }
 }
 
+// ── CANLI sahada dökülen: gerçek irsaliyelerden (blok+kot+imalat) ─────────────
+// imalat_gruplari.ad = KOLON-PERDE/DÖŞEME/... (Excel "İmalat Ana Grup"); blok/kot eşleşir.
+function pNormBlok($s){ return preg_replace('/[\s_\-]/u','', mb_strtoupper(trim((string)$s),'UTF-8')); }
+function pNormKot($s){ $s=str_replace(['+',' '],'',trim((string)$s)); $s=str_replace(',','.',$s); return is_numeric($s)?round((float)$s,2):null; }
+$SOZ_LIMIT = 0.05;                                  // Bina üstyapı sözleşme zayiat limiti %5
+$DOSEME_SET = ['DÖŞEME','DOSEME','DOLGU','MERDİVEN','MERDIVEN','PARAPET','KİRİŞ','KIRIS'];
+$dokum = [];
+try {
+    $q = $pdo->query("
+        SELECT b.ad blok, k.kot_degeri kot, ig.ad imalat,
+               SUM(CASE WHEN i.tip='alis' THEN i.miktar ELSE -i.miktar END) m3
+        FROM irsaliyeler i
+        JOIN bloklar b        ON b.id = i.blok_id
+        JOIN kotlar k         ON k.id = i.kot_id
+        JOIN imalat_gruplari ig ON ig.id = i.imalat_grup_id
+        WHERE i.durum <> 'reddedildi'
+        GROUP BY b.ad, k.kot_degeri, ig.ad");
+    foreach ($q as $r) {
+        $nb = pNormBlok($r['blok']); $nk = pNormKot($r['kot']);
+        if ($nk === null) continue;
+        $im = mb_strtoupper(trim($r['imalat']),'UTF-8');
+        $dokum[$nb][(string)$nk][$im] = ($dokum[$nb][(string)$nk][$im] ?? 0) + (float)$r['m3'];
+    }
+} catch (Throwable $e) { $dokum = []; }
+
+/** Bir blok+kot+imalat(set) için canlı sahada dökülen (m³) */
+function dokumBul(array $dokum, string $blok, $kotFloat, $imalatSet): float {
+    $nb = pNormBlok($blok); $nk = (string)$kotFloat;
+    if (!isset($dokum[$nb][$nk])) return 0.0;
+    $t = 0.0;
+    foreach ((array)$imalatSet as $im) { $im = mb_strtoupper($im,'UTF-8'); if (isset($dokum[$nb][$nk][$im])) $t += $dokum[$nb][$nk][$im]; }
+    return $t;
+}
+
 // ── Biçimlendiriciler ─────────────────────────────────────────────────────────
 function na($v) { $v = trim((string)$v); return ($v === '' || strcasecmp($v,'#N/A')===0 || strcasecmp($v,'#YOK')===0); }
 function sayi($v, $dec=2) { if (na($v) || !is_numeric($v)) return ''; return number_format((float)$v, $dec, ',', '.'); }
 function yuzde($v) { if (na($v) || !is_numeric($v)) return ''; return rtrim(rtrim(number_format((float)$v*100, 1, ',', '.'), '0'), ',').'%'; }
 
-// Toplam proje metrajı (blok)
-$topMetraj = 0.0;
-foreach ($gruplar as $g) foreach ($g as $r) if (is_numeric($r['metraj'])) $topMetraj += (float)$r['metraj'];
+/** Canlı zayiat hücreleri: Sahada / Projeye Göre(A) / Zayiat Oranı / Sözl.%5 / Sözl.Miktar / Fiili
+ *  $rs = rowspan. Aşımda oran kırmızı, altında yeşil. */
+function zayiatHucreler(array $s, int $rs, float $limit): string {
+    $rsAttr = $rs > 1 ? ' rowspan="'.$rs.'"' : '';
+    $sahada = $s['canli_sahada'] ?? null;
+    $A      = $s['canli_A'] ?? null;
+    $oran   = $s['canli_oran'] ?? null;
+    $asim   = !empty($s['canli_asim']);
+    $fiili  = $s['canli_fiili'] ?? 0;
+    $sozM   = ($A !== null) ? $A * $limit : null;
+    $oranTd = '';
+    if ($oran === null) $oranTd = '<span class="text-muted">—</span>';
+    else {
+        $cls = $asim ? 'text-danger fw-bold' : (($sahada>0)?'text-success':'text-muted');
+        $oranTd = '<span class="'.$cls.'">'.number_format($oran*100,1,',','.').'%'.($asim?' <i class="bi bi-exclamation-triangle-fill"></i>':'').'</span>';
+    }
+    $out  = '<td class="text-end'.($sahada>0?' fw-semibold':'').'"'.$rsAttr.'>'.($sahada!==null?number_format($sahada,2,',','.'):'').'</td>';
+    $out .= '<td class="text-end"'.$rsAttr.'>'.($A!==null?number_format($A,2,',','.'):'').'</td>';
+    $out .= '<td class="text-center"'.$rsAttr.'>'.$oranTd.'</td>';
+    $out .= '<td class="text-center"'.$rsAttr.'>%'.rtrim(rtrim(number_format($limit*100,1,',','.'),'0'),',').'</td>';
+    $out .= '<td class="text-end"'.$rsAttr.'>'.($sozM!==null?number_format($sozM,2,',','.'):'0,00').'</td>';
+    $out .= '<td class="text-end'.($fiili>0?' text-danger fw-bold':'').'"'.$rsAttr.'>'.number_format($fiili,2,',','.').'</td>';
+    return $out;
+}
+
+// ── Her kot grubunu canlı sahada dökülen + zayiat ile zenginleştir ────────────
+$topMetraj = 0.0; $topSahada = 0.0; $asimSay = 0;
+foreach ($gruplar as $kot => &$satirlar) {
+    $kf = pNormKot($kot);
+    foreach ($satirlar as $idx => &$s) {
+        if (is_numeric($s['metraj'])) $topMetraj += (float)$s['metraj'];
+        $imU = mb_strtoupper($s['imalat'],'UTF-8');
+        // KOLON-PERDE kendi imalatı; DÖŞEME satırı döşeme grubunu (döşeme+dolgu+merdiven+parapet) kapsar
+        if ($kf !== null && ($imU === 'KOLON-PERDE' || $imU === 'DÖŞEME' || $imU === 'DOSEME')) {
+            $set = ($imU === 'KOLON-PERDE') ? ['KOLON-PERDE'] : $GLOBALS['DOSEME_SET'];
+            $sahada = dokumBul($dokum, $aktifBlok, $kf, $set);
+            $metraj = is_numeric($s['metraj']) ? (float)$s['metraj'] : 0;
+            $iler   = is_numeric($s['iler']) ? (float)$s['iler'] : ($metraj>0?1:0);
+            $A      = $metraj * $iler;                       // projeye göre dökülmesi gereken
+            $s['canli_sahada'] = $sahada;
+            $s['canli_A']      = $A;
+            $s['canli_oran']   = ($A > 0) ? ($sahada - $A) / $A : null;
+            $s['canli_asim']   = ($s['canli_oran'] !== null && $s['canli_oran'] > $GLOBALS['SOZ_LIMIT']);
+            $s['canli_fiili']  = $s['canli_asim'] ? max(0, $sahada - $A * (1 + $GLOBALS['SOZ_LIMIT'])) : 0.0;
+            $topSahada += $sahada;
+            if ($s['canli_asim']) $asimSay++;
+        }
+    }
+    unset($s);
+}
+unset($satirlar);
 
 require_once __DIR__ . '/includes/header.php';
 ?>
@@ -116,12 +198,12 @@ require_once __DIR__ . '/includes/header.php';
             <div><div class="prp-kpi-val"><?= number_format($topMetraj,1,',','.') ?> <small>m³</small></div><div class="prp-kpi-lbl">Toplam Proje Metrajı</div></div></div>
     </div>
     <div class="col-6 col-md-3">
-        <div class="prp-kpi"><div class="prp-kpi-ic" style="background:rgba(201,168,76,.14);color:var(--ern-gold-dark)"><i class="bi bi-layers"></i></div>
-            <div><div class="prp-kpi-val"><?= count($gruplar) ?></div><div class="prp-kpi-lbl">Kot (Kat) Sayısı</div></div></div>
+        <div class="prp-kpi"><div class="prp-kpi-ic" style="background:rgba(0,201,177,.12);color:var(--ern-teal)"><i class="bi bi-droplet-half"></i></div>
+            <div><div class="prp-kpi-val"><?= number_format($topSahada,1,',','.') ?> <small>m³</small></div><div class="prp-kpi-lbl">Sahada Dökülen (canlı)</div></div></div>
     </div>
     <div class="col-6 col-md-3">
-        <div class="prp-kpi"><div class="prp-kpi-ic" style="background:rgba(0,88,78,.1);color:var(--ern)"><i class="bi bi-percent"></i></div>
-            <div><div class="prp-kpi-val">%5</div><div class="prp-kpi-lbl">Sözleşme Zayiat Limiti</div></div></div>
+        <div class="prp-kpi"><div class="prp-kpi-ic" style="background:<?= $asimSay?'rgba(224,84,84,.14)':'rgba(0,88,78,.1)' ?>;color:<?= $asimSay?'#c0392b':'var(--ern)' ?>"><i class="bi bi-<?= $asimSay?'exclamation-triangle-fill':'check-circle' ?>"></i></div>
+            <div><div class="prp-kpi-val" style="<?= $asimSay?'color:#c0392b':'' ?>"><?= (int)$asimSay ?></div><div class="prp-kpi-lbl">Limit Aşımı (%5)</div></div></div>
     </div>
 </div>
 
@@ -156,31 +238,21 @@ require_once __DIR__ . '/includes/header.php';
                 $grupN = count($grup);
             ?>
                 <!-- KOLON-PERDE satırı -->
-                <tr>
+                <tr class="<?= !empty($ilk['canli_asim'])?'prp-asim':'' ?>">
                     <td class="text-center fw-bold prp-kot" rowspan="<?= $n ?>"><?= h($kot) ?></td>
                     <td class="fw-semibold"><?= h($ilk['imalat']) ?></td>
                     <td class="text-end font-monospace fw-bold prp-metraj-vurgu"><?= sayi($ilk['metraj']) ?></td>
                     <td class="text-center"><?= yuzde($ilk['iler']) ?></td>
-                    <td class="text-end"><?= sayi($ilk['sahada']) ?></td>
-                    <td class="text-end"><?= sayi($ilk['projeye']) ?></td>
-                    <td class="text-center text-danger"><?= yuzde($ilk['zoran']) ?></td>
-                    <td class="text-center"><?= yuzde($ilk['sozB']) ?></td>
-                    <td class="text-end"><?= na($ilk['sozM']) ? '' : sayi($ilk['sozM']) ?></td>
-                    <td class="text-end"><?= na($ilk['fiili']) ? '0' : sayi($ilk['fiili'],0) ?></td>
+                    <?= zayiatHucreler($ilk, 1, $SOZ_LIMIT) ?>
                 </tr>
                 <!-- DÖŞEME grubu: imalat adları ayrı, veri hücreleri birleşik (rowspan) -->
                 <?php foreach ($grup as $gi => $gr): ?>
-                <tr>
+                <tr class="<?= ($gi===0 && !empty($doseme['canli_asim']))?'prp-asim':'' ?>">
                     <td class="<?= $gr['imalat']==='DÖŞEME'?'fw-semibold':'' ?>"><?= h($gr['imalat']) ?></td>
                     <?php if ($gi === 0): ?>
                         <td class="text-end font-monospace" rowspan="<?= $grupN ?>"><?= sayi($doseme['metraj']) ?></td>
                         <td class="text-center" rowspan="<?= $grupN ?>"><?= yuzde($doseme['iler']) ?></td>
-                        <td class="text-end" rowspan="<?= $grupN ?>"><?= sayi($doseme['sahada']) ?></td>
-                        <td class="text-end" rowspan="<?= $grupN ?>"><?= sayi($doseme['projeye']) ?></td>
-                        <td class="text-center text-danger" rowspan="<?= $grupN ?>"><?= yuzde($doseme['zoran']) ?></td>
-                        <td class="text-center" rowspan="<?= $grupN ?>"><?= yuzde($doseme['sozB']) ?></td>
-                        <td class="text-end" rowspan="<?= $grupN ?>"><?= na($doseme['sozM']) ? '0,00' : sayi($doseme['sozM']) ?></td>
-                        <td class="text-end" rowspan="<?= $grupN ?>"><?= na($doseme['fiili']) ? '0' : sayi($doseme['fiili'],0) ?></td>
+                        <?= zayiatHucreler($doseme, $grupN, $SOZ_LIMIT) ?>
                     <?php endif; ?>
                 </tr>
                 <?php endforeach; ?>
@@ -198,9 +270,10 @@ require_once __DIR__ . '/includes/header.php';
 </div>
 
 <div class="alert small border-0" style="background:var(--bt-tint,#eef6f4)">
-    <i class="bi bi-info-circle me-1 text-success"></i>
-    <span class="prp-metraj-vurgu px-2 rounded">Altın</span> hücre = KOLON-PERDE proje metrajı. DÖŞEME satırındaki metraj, o kotun döşeme+dolgu+merdiven+parapet grubunu kapsar (Excel'deki birleşik hücre).
-    <strong>SAHADA DÖKÜLEN</strong> ve <strong>ZAİYAT ORANI</strong> alanları saha verisi girildikçe dolar; <strong>Sözleşmeye göre zayiat</strong> limiti %5.
+    <i class="bi bi-broadcast me-1 text-success"></i>
+    <strong>CANLI hesap:</strong> <strong>SAHADA DÖKÜLEN</strong> gerçek irsaliyelerden (blok + kot + imalat) otomatik toplanır; <strong>ZAİYAT ORANI</strong> = (Sahada − Projeye Göre) ÷ Projeye Göre olarak anlık hesaplanır.
+    Oran <strong>%5</strong> limitini aşarsa satır <span class="badge" style="background:#f8d7da;color:#842029">kırmızı</span> işaretlenir ve <strong>Fiili Zayiat (kesilecek)</strong> hesaplanır.
+    <span class="prp-metraj-vurgu px-2 rounded">Altın</span> hücre = KOLON-PERDE proje metrajı; DÖŞEME satırı döşeme+dolgu+merdiven+parapet grubunu kapsar.
 </div>
 <?php endif; ?>
 
@@ -218,6 +291,7 @@ require_once __DIR__ . '/includes/header.php';
 .prp-kot { background:#eef6f4; color:var(--ern,#00584E); vertical-align:middle; font-size:.95rem; }
 .prp-metraj-vurgu { background:#f6eccf !important; color:#6b5411 !important; }
 .prp-table tbody tr:hover td:not(.prp-kot):not(.prp-metraj-vurgu) { background:#f1f8f6; }
+.prp-table tbody tr.prp-asim td:not(.prp-kot):not(.prp-metraj-vurgu) { background:#fbe9ea !important; }
 </style>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>
