@@ -252,7 +252,8 @@ body {
 
 /* ── Aktif proje rozeti (Batı Yakası) ─────────────────────── */
 .proje-badge{
-    display:inline-flex; align-items:center; gap:.7rem;
+    display:flex; align-items:center; justify-content:center; gap:.7rem;
+    width:fit-content; max-width:100%;
     background:#fff; border-radius:14px;
     padding:.55rem 1.1rem; margin:0 auto 1.4rem;
     box-shadow:0 8px 24px rgba(0,0,0,.22);
@@ -457,8 +458,9 @@ body {
 
 /* ── İki beyaz logo — koyu yeşil panel üzerinde ─────────────── */
 .logo-lockup{
-    display:inline-flex; align-items:center; gap:1.6rem;
-    background:transparent; padding:0; margin:0 auto 2.2rem;
+    display:flex; align-items:center; justify-content:center; gap:1.6rem;
+    width:fit-content; max-width:100%;
+    background:transparent; padding:0; margin:0 auto 1.6rem;
     animation:slideInLeft .6s ease backwards;
 }
 .logo-lockup img{ height:72px; width:auto; max-width:210px; object-fit:contain; display:block; }
