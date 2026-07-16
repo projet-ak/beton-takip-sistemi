@@ -204,7 +204,7 @@ if ($__user) {
       <?php endif; ?>
 
     </ul>
-    <?php else: /* ── DEMİR MODÜLÜ MENÜSÜ ── */ ?>
+    <?php elseif($__module==='demir'): /* ── DEMİR MODÜLÜ MENÜSÜ ── */ ?>
     <ul class="list-unstyled mb-0">
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('index.php') ?>" href="<?= $__rootPath ?>demir/index.php" data-label="Dashboard">
@@ -425,12 +425,6 @@ if ($__user) {
     </div>
     <?php endif; ?>
 
-    <div class="topbar-title d-none d-lg-block">
-      <?php
-      $__bc=['index.php'=>'Dashboard','irsaliyeler.php'=>'İrsaliyeler','irsaliye_form.php'=>'İrsaliye Formu','irsaliye_detay.php'=>'İrsaliye Detayı','hizli_tarama.php'=>'Hızlı Tarama','raporlar.php'=>'Raporlar','projeler.php'=>'Projeler','kullanicilar.php'=>'Kullanıcılar','tedarikciler.php'=>'Tedarikçiler','beton_siniflari.php'=>'Beton Sınıfları','yedek.php'=>'Yedekleme','import.php'=>'Excel Aktarımı','ai_ayarlar.php'=>'AI Ayarları'];
-      echo '<span style="color:var(--bt-text-soft);font-size:.78rem;">ERN Holding</span><span style="color:var(--bt-border);margin:0 .4rem;">/</span><span style="font-weight:600;font-size:.85rem;">'.h($__bc[$__page]??ucfirst(basename($__page,'.php'))).'</span>';
-      ?>
-    </div>
     <div class="topbar-actions ms-auto">
       <?php if($__user): ?>
       <?php $__sessRemain = max(0, SESSION_LIFETIME - (time() - ($_SESSION['last_activity'] ?? time()))); ?>
