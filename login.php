@@ -174,7 +174,8 @@ body {
     position: relative;
     z-index: 2;
     text-align: center;
-    max-width: 380px;
+    max-width: 540px;
+    width: 100%;
 }
 
 .brand-logo {
@@ -185,13 +186,15 @@ body {
 }
 
 .brand-tagline {
-    font-size: 2rem;
+    font-size: 1.95rem;
     font-weight: 800;
     color: #fff;
-    line-height: 1.2;
+    line-height: 1.15;
     letter-spacing: -.03em;
     margin-bottom: .75rem;
+    white-space: nowrap;
 }
+@media (max-width: 980px){ .brand-tagline{ font-size: 1.7rem; } }
 .brand-tagline span {
     background: linear-gradient(90deg, var(--ern-teal), #a8f0e8);
     -webkit-background-clip: text;
@@ -207,18 +210,35 @@ body {
     line-height: 1.6;
 }
 
-/* Feature pills */
-.feature-pills { display: flex; flex-direction: column; gap: .65rem; text-align: left; }
+/* Feature pills — 2×3 grid */
+.feature-pills { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; text-align: left; }
 .feature-pill {
     display: flex;
     align-items: center;
-    gap: .75rem;
-    padding: .65rem 1rem;
+    gap: .6rem;
+    padding: .6rem .8rem;
     background: rgba(255,255,255,.07);
     border: 1px solid rgba(255,255,255,.1);
     border-radius: 12px;
     backdrop-filter: blur(8px);
     animation: slideInLeft .5s ease backwards;
+    transition: transform .2s cubic-bezier(.4,0,.2,1), background .2s, border-color .2s, box-shadow .2s;
+    cursor: default;
+}
+.feature-pill:hover {
+    transform: translateY(-3px);
+    background: rgba(255,255,255,.12);
+    border-color: rgba(0,201,177,.45);
+    box-shadow: 0 10px 24px rgba(0,0,0,.22);
+}
+.feature-pill:hover .feature-pill-icon { transform: scale(1.1) rotate(-4deg); background: rgba(0,200,180,.28); }
+/* "Pek yakında" kutusu */
+.feature-pill.soon { border-style: dashed; border-color: rgba(255,255,255,.22); background: rgba(255,255,255,.035); }
+.feature-pill.soon .feature-pill-icon { background: rgba(201,168,76,.16); color: var(--ern-gold); }
+.pill-soon-badge {
+    display:inline-block; margin-top:.15rem; font-size:.6rem; font-weight:700; letter-spacing:.08em;
+    text-transform:uppercase; color:#0D2E28; background:var(--ern-gold);
+    padding:.05rem .4rem; border-radius:20px;
 }
 .feature-pill:nth-child(1) { animation-delay: .1s; }
 .feature-pill:nth-child(2) { animation-delay: .18s; }
@@ -244,16 +264,17 @@ body {
 .proje-badge .pb-text small{ display:block; font-size:.6rem; letter-spacing:.14em; font-weight:700; color:var(--ern-light); text-transform:uppercase; }
 .proje-badge .pb-text strong{ display:block; font-size:.86rem; font-weight:700; color:#0D2E28; letter-spacing:-.01em; }
 .feature-pill-icon {
-    width: 34px; height: 34px;
+    width: 32px; height: 32px;
     background: rgba(0,200,180,.15);
     border-radius: 9px;
     display: flex; align-items: center; justify-content: center;
     color: var(--ern-teal);
-    font-size: 1rem;
+    font-size: .95rem;
     flex-shrink: 0;
+    transition: transform .25s cubic-bezier(.34,1.56,.64,1), background .2s;
 }
-.feature-pill-text { font-size: .82rem; color: rgba(255,255,255,.75); font-weight: 500; line-height: 1.3; }
-.feature-pill-text strong { display: block; color: #fff; font-size: .88rem; }
+.feature-pill-text { font-size: .74rem; color: rgba(255,255,255,.7); font-weight: 500; line-height: 1.28; }
+.feature-pill-text strong { display: block; color: #fff; font-size: .82rem; margin-bottom: .05rem; }
 
 /* ── Sağ taraf — form ─── */
 .login-right {
@@ -287,6 +308,30 @@ body {
 
 .login-title { font-size: 1.65rem; font-weight: 800; color: #0D2E28; letter-spacing: -.03em; margin-bottom: .35rem; }
 .login-sub { font-size: .88rem; color: #5C7872; margin-bottom: 2rem; }
+
+/* ── Sağ panel giriş animasyonu + mikro etkileşimler ───────── */
+@keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+.login-right > * { animation: fadeUp .55s cubic-bezier(.4,0,.2,1) backwards; }
+.login-right-logo { animation-delay: .05s; }
+.login-title      { animation-delay: .13s; }
+.login-sub        { animation-delay: .19s; }
+#loginForm        { animation-delay: .25s; }
+.login-footer     { animation-delay: .33s; }
+
+/* Sağ üst logo — hover'da canlan */
+.login-right-logo-icon { transition: transform .3s cubic-bezier(.34,1.56,.64,1), box-shadow .3s; }
+.login-right-logo:hover .login-right-logo-icon { transform: rotate(-6deg) scale(1.08); box-shadow: 0 6px 20px rgba(0,88,78,.45); }
+
+/* Input alanları — hover & focus mikro hareketi */
+.input-wrap { transition: border-color .2s, background .2s, box-shadow .2s, transform .2s; }
+.input-wrap:hover { border-color: #B7D3CE; }
+.input-wrap:focus-within { transform: translateY(-1px); }
+.input-wrap:focus-within .input-wrap-icon { transform: scale(1.12); }
+.input-wrap-icon { transition: color .2s, transform .2s; }
+
+/* Giriş butonu — ikon kayması */
+.btn-login .btn-text i { transition: transform .2s; }
+.btn-login:hover .btn-text i { transform: translateX(4px); }
 
 /* Form elemanları */
 .lbl { font-size: .8rem; font-weight: 700; color: #0D2E28; margin-bottom: .4rem; display: block; }
@@ -465,7 +510,7 @@ body {
         </div>
 
         <div class="brand-tagline">
-            Şantiye İş Takip<br><span>Sistemi</span>
+            Şantiye İş Takip <span>Sistemi</span>
         </div>
         <p class="brand-sub">
             Sahadan ofise <strong style="color:rgba(255,255,255,.8)">tek platform</strong> — beton, demir, seramik, depo ve akaryakıt.<br>
@@ -506,6 +551,14 @@ body {
                 <div class="feature-pill-text">
                     <strong>Akaryakıt Takibi</strong>
                     Mazot stok + araç/makine bazında aylık tüketim
+                </div>
+            </div>
+            <div class="feature-pill soon">
+                <div class="feature-pill-icon"><i class="bi bi-stars"></i></div>
+                <div class="feature-pill-text">
+                    <strong>Yeni Modül</strong>
+                    Mobil uygulama &amp; daha fazlası
+                    <span class="pill-soon-badge">Pek Yakında</span>
                 </div>
             </div>
         </div>
