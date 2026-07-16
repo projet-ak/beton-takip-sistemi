@@ -111,19 +111,22 @@ function yuzde($v) { if (na($v) || !is_numeric($v)) return ''; return rtrim(rtri
 function zayiatHucreler(array $s, int $rs, float $limit): string {
     $rsAttr = $rs > 1 ? ' rowspan="'.$rs.'"' : '';
     $sahada = $s['canli_sahada'] ?? null;
+    $metraj = $s['canli_metraj'] ?? null;
     $A      = $s['canli_A'] ?? null;
     $oran   = $s['canli_oran'] ?? null;
-    $asim   = !empty($s['canli_asim']);
+    $durum  = $s['canli_durum'] ?? 'bos';
     $fiili  = $s['canli_fiili'] ?? 0;
-    $sozM   = ($A !== null) ? $A * $limit : null;
-    $oranTd = '';
-    if ($oran === null) $oranTd = '<span class="text-muted">—</span>';
-    else {
-        $cls = $asim ? 'text-danger fw-bold' : (($sahada>0)?'text-success':'text-muted');
-        $oranTd = '<span class="'.$cls.'">'.number_format($oran*100,1,',','.').'%'.($asim?' <i class="bi bi-exclamation-triangle-fill"></i>':'').'</span>';
+    $sozM   = ($metraj !== null) ? $metraj * $limit : null;   // sözleşmeye göre izin verilen zayiat miktarı
+    // Zayiat oranı / durum hücresi
+    switch ($durum) {
+        case 'devam':     $oranTd = '<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">Devam ediyor</span>'; break;
+        case 'normal':    $oranTd = '<span class="text-success">'.number_format($oran*100,1,',','.').'% <i class="bi bi-check-circle"></i></span>'; break;
+        case 'yaklasiyor':$oranTd = '<span class="text-warning-emphasis fw-semibold">'.number_format($oran*100,1,',','.').'% ⚠</span>'; break;
+        case 'asim':      $oranTd = '<span class="text-danger fw-bold">'.number_format($oran*100,1,',','.').'% <i class="bi bi-exclamation-triangle-fill"></i></span>'; break;
+        default:          $oranTd = '<span class="text-muted">—</span>';
     }
-    $out  = '<td class="text-end'.($sahada>0?' fw-semibold':'').'"'.$rsAttr.'>'.($sahada!==null?number_format($sahada,2,',','.'):'').'</td>';
-    $out .= '<td class="text-end"'.$rsAttr.'>'.($A!==null?number_format($A,2,',','.'):'').'</td>';
+    $out  = '<td class="text-end'.($sahada>0?' fw-semibold':'').'"'.$rsAttr.'>'.($sahada>0?number_format($sahada,2,',','.'):'<span class="text-muted">0</span>').'</td>';
+    $out .= '<td class="text-end"'.$rsAttr.'>'.($A>0?number_format($A,2,',','.'):'').'</td>';
     $out .= '<td class="text-center"'.$rsAttr.'>'.$oranTd.'</td>';
     $out .= '<td class="text-center"'.$rsAttr.'>%'.rtrim(rtrim(number_format($limit*100,1,',','.'),'0'),',').'</td>';
     $out .= '<td class="text-end"'.$rsAttr.'>'.($sozM!==null?number_format($sozM,2,',','.'):'0,00').'</td>';
@@ -143,15 +146,29 @@ foreach ($gruplar as $kot => &$satirlar) {
             $set = ($imU === 'KOLON-PERDE') ? ['KOLON-PERDE'] : $GLOBALS['DOSEME_SET'];
             $sahada = dokumBul($dokum, $aktifBlok, $kf, $set);
             $metraj = is_numeric($s['metraj']) ? (float)$s['metraj'] : 0;
-            $iler   = is_numeric($s['iler']) ? (float)$s['iler'] : ($metraj>0?1:0);
-            $A      = $metraj * $iler;                       // projeye göre dökülmesi gereken
+            $lim    = $GLOBALS['SOZ_LIMIT'];
+            // İLERLEME sahadan canlı: dökülen / teorik metraj (en fazla %100)
+            $iler   = ($metraj > 0) ? min(1, $sahada / $metraj) : 0;
+            // Projeye göre dökülmesi gereken (A) = metraj × ilerleme = min(sahada, metraj)
+            $A      = $metraj * $iler;
+            $oran   = ($A > 0) ? ($sahada - $A) / $A : null;   // teorik altında 0, üstünde fazlalık oranı
+            $asim   = ($metraj > 0 && $sahada > $metraj * (1 + $lim));
+            // Durum: bos / devam (teorik altı) / yaklasiyor (>%80 limit) / normal / asim
+            if ($sahada <= 0)                         $durum = 'bos';
+            elseif ($sahada < $metraj * 0.999)        $durum = 'devam';
+            elseif ($asim)                            $durum = 'asim';
+            elseif ($sahada > $metraj * (1 + 0.8*$lim)) $durum = 'yaklasiyor';
+            else                                      $durum = 'normal';
             $s['canli_sahada'] = $sahada;
+            $s['canli_metraj'] = $metraj;
+            $s['canli_iler']   = $iler;
             $s['canli_A']      = $A;
-            $s['canli_oran']   = ($A > 0) ? ($sahada - $A) / $A : null;
-            $s['canli_asim']   = ($s['canli_oran'] !== null && $s['canli_oran'] > $GLOBALS['SOZ_LIMIT']);
-            $s['canli_fiili']  = $s['canli_asim'] ? max(0, $sahada - $A * (1 + $GLOBALS['SOZ_LIMIT'])) : 0.0;
+            $s['canli_oran']   = $asim ? ($sahada - $metraj) / $metraj : $oran; // aşımda teorik metraja göre fazlalık
+            $s['canli_asim']   = $asim;
+            $s['canli_durum']  = $durum;
+            $s['canli_fiili']  = $asim ? max(0, $sahada - $metraj * (1 + $lim)) : 0.0;
             $topSahada += $sahada;
-            if ($s['canli_asim']) $asimSay++;
+            if ($asim) $asimSay++;
         }
     }
     unset($s);
@@ -242,7 +259,7 @@ require_once __DIR__ . '/includes/header.php';
                     <td class="text-center fw-bold prp-kot" rowspan="<?= $n ?>"><?= h($kot) ?></td>
                     <td class="fw-semibold"><?= h($ilk['imalat']) ?></td>
                     <td class="text-end font-monospace fw-bold prp-metraj-vurgu"><?= sayi($ilk['metraj']) ?></td>
-                    <td class="text-center"><?= yuzde($ilk['iler']) ?></td>
+                    <td class="text-center"><?= isset($ilk['canli_iler']) ? yuzde($ilk['canli_iler']) : yuzde($ilk['iler']) ?></td>
                     <?= zayiatHucreler($ilk, 1, $SOZ_LIMIT) ?>
                 </tr>
                 <!-- DÖŞEME grubu: imalat adları ayrı, veri hücreleri birleşik (rowspan) -->
@@ -251,7 +268,7 @@ require_once __DIR__ . '/includes/header.php';
                     <td class="<?= $gr['imalat']==='DÖŞEME'?'fw-semibold':'' ?>"><?= h($gr['imalat']) ?></td>
                     <?php if ($gi === 0): ?>
                         <td class="text-end font-monospace" rowspan="<?= $grupN ?>"><?= sayi($doseme['metraj']) ?></td>
-                        <td class="text-center" rowspan="<?= $grupN ?>"><?= yuzde($doseme['iler']) ?></td>
+                        <td class="text-center" rowspan="<?= $grupN ?>"><?= isset($doseme['canli_iler']) ? yuzde($doseme['canli_iler']) : yuzde($doseme['iler']) ?></td>
                         <?= zayiatHucreler($doseme, $grupN, $SOZ_LIMIT) ?>
                     <?php endif; ?>
                 </tr>
@@ -271,8 +288,8 @@ require_once __DIR__ . '/includes/header.php';
 
 <div class="alert small border-0" style="background:var(--bt-tint,#eef6f4)">
     <i class="bi bi-broadcast me-1 text-success"></i>
-    <strong>CANLI hesap:</strong> <strong>SAHADA DÖKÜLEN</strong> gerçek irsaliyelerden (blok + kot + imalat) otomatik toplanır; <strong>ZAİYAT ORANI</strong> = (Sahada − Projeye Göre) ÷ Projeye Göre olarak anlık hesaplanır.
-    Oran <strong>%5</strong> limitini aşarsa satır <span class="badge" style="background:#f8d7da;color:#842029">kırmızı</span> işaretlenir ve <strong>Fiili Zayiat (kesilecek)</strong> hesaplanır.
+    <strong>CANLI hesap:</strong> <strong>SAHADA DÖKÜLEN</strong> gerçek irsaliyelerden (blok + kot + imalat) toplanır; <strong>İLERLEME</strong> = sahada ÷ proje metrajı (canlı).
+    Bir kot teorik metrajın altındayken <span class="badge bg-info-subtle text-info-emphasis border">Devam ediyor</span>; teorik metrajı <strong>%5</strong>'ten fazla aşınca satır <span class="badge" style="background:#f8d7da;color:#842029">kırmızı</span> olur ve <strong>Fiili Zayiat (kesilecek)</strong> = Sahada − Metraj×1,05 hesaplanır.
     <span class="prp-metraj-vurgu px-2 rounded">Altın</span> hücre = KOLON-PERDE proje metrajı; DÖŞEME satırı döşeme+dolgu+merdiven+parapet grubunu kapsar.
 </div>
 <?php endif; ?>
