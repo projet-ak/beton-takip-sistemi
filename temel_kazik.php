@@ -100,15 +100,15 @@ require_once __DIR__ . '/includes/header.php';
     ?>
         <div class="row g-3">
         <?php foreach ($bloklar as $blok => $satirlar): if(!$satirlar) continue; ?>
-            <div class="col-md-6 col-xl-4">
-                <div class="card h-100 border-0 shadow-sm">
+            <div class="col-12">
+                <div class="card border-0 shadow-sm">
                     <div class="card-header text-white fw-semibold" style="background:linear-gradient(90deg,var(--ern),var(--ern-light))">
                         <i class="bi bi-building me-1"></i><?= h($blok) ?>
                     </div>
                     <div class="table-responsive">
                         <table class="table table-sm mb-0 align-middle">
                             <thead class="table-light"><tr>
-                                <th>İmalat</th><th class="text-end">Proje Metrajı</th><th class="text-end">İlerleme</th><th class="text-center">Zayiat/Limit</th>
+                                <th style="width:22%">İmalat</th><th class="text-end" style="width:26%">Proje Metrajı</th><th class="text-end" style="width:26%">İlerleme</th><th class="text-center" style="width:26%">Zayiat Limiti</th>
                             </tr></thead>
                             <tbody>
                             <?php foreach ($satirlar as $s): ?>
