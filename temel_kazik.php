@@ -31,8 +31,47 @@ $gTemelAlt= gridGetir($pdo, ['TEMEL ALTI KAZIK']);
 $varMi = ($gTemel || $gKazik || $gIksa || $gTemelAlt);
 
 require_once __DIR__ . '/includes/zayiat_helper.php';
-$dokTB = zy_dokum($pdo, 'blok_imalat');   // Temel Beton: blok + imalat (TEMEL/GROBETON)
+$dokTB = zy_dokum($pdo, 'blok_imalat');    // Temel Beton: blok + imalat (TEMEL/GROBETON)
 $TB_LIMIT = 0.05;                          // Temel beton sözleşme zayiat limiti %5
+$dokForeP = zy_dokum($pdo, 'parsel_imalat'); // İksa Kazık: parsel + FORE KAZIK
+$dokForeB = zy_dokum($pdo, 'blok_imalat');    // Temel Altı Kazık: blok + FORE KAZIK
+$KAZIK_LIMIT = 0.15;                        // Kazık (fore) sözleşme zayiat limiti %15
+
+/** Kazık sayfası parsel/blok özeti: her bölüm için FORE KAZIK canlı toplam + zayiat.
+ *  $metrajCol null ise yalnız canlı sahada gösterilir (zayiat hesaplanmaz). */
+function kazikOzet(array $grid, array $dokFore, string $seviye, ?int $metrajCol, float $limit): string {
+    if (!$grid) return '';
+    // Bölümleri (parsel/blok) ve metraj toplamlarını çıkar
+    $sec = []; $cur = null;
+    foreach ($grid as $row) {
+        $c0 = trim((string)($row[0] ?? ''));
+        $isSec = ($c0!=='' && (mb_stripos($c0,'PARSEL')!==false || mb_stripos($c0,'BLOK')!==false || mb_stripos($c0,'BAHCESI')!==false || mb_stripos($c0,'BAHÇESİ')!==false));
+        if ($isSec) { $cur = $c0; if(!isset($sec[$cur])) $sec[$cur]=0.0; continue; }
+        if ($cur !== null && $metrajCol !== null) {
+            $m = trim((string)($row[$metrajCol] ?? ''));
+            if (is_numeric($m)) $sec[$cur] += (float)$m;
+        }
+    }
+    if (!$sec) return '';
+    ob_start();
+    echo '<div class="row g-2 mb-3">';
+    foreach ($sec as $name => $metrajTop) {
+        $key = ($seviye==='parsel') ? mb_strtoupper(trim($name),'UTF-8') : zy_normBlok($name);
+        $sahada = (float)($dokFore[$key]['FORE KAZIK'] ?? 0);
+        echo '<div class="col-md-6 col-xl-4"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">';
+        echo '<div class="fw-semibold text-truncate"><i class="bi bi-geo-alt-fill text-primary me-1"></i>'.h($name).'</div>';
+        echo '<div class="d-flex justify-content-between small mt-1"><span class="text-muted">Sahada Dökülen (canlı)</span><span class="fw-bold font-monospace">'.number_format($sahada,2,',','.').' m³</span></div>';
+        if ($metrajCol !== null && $metrajTop > 0) {
+            $z = zy_hesap($sahada, $metrajTop, $limit);
+            echo '<div class="d-flex justify-content-between small"><span class="text-muted">Proje Metrajı</span><span class="font-monospace">'.number_format($metrajTop,2,',','.').' m³</span></div>';
+            echo '<div class="d-flex justify-content-between small align-items-center"><span class="text-muted">Zayiat (limit %'.rtrim(rtrim(number_format($limit*100,1,',','.'),'0'),',').')</span>'.zy_durumRozet($z).'</div>';
+            if ($z['fiili']>0) echo '<div class="d-flex justify-content-between small"><span class="text-muted">Fiili Zayiat</span><span class="text-danger fw-bold">'.number_format($z['fiili'],2,',','.').' m³</span></div>';
+        }
+        echo '</div></div></div>';
+    }
+    echo '</div>';
+    return ob_get_clean();
+}
 
 // ── Yardımcılar ───────────────────────────────────────────────────────────────
 function hc($g,$r,$c){ return isset($g[$r][$c]) ? trim((string)$g[$r][$c]) : ''; }
@@ -185,11 +224,22 @@ require_once __DIR__ . '/includes/header.php';
 
     <!-- ===== 3) İKSA KAZIK ===== -->
     <div class="tab-pane fade" id="t-iksa" role="tabpanel">
+        <div class="d-flex gap-2 flex-wrap mb-2 align-items-center">
+            <span class="badge bg-primary"><i class="bi bi-building me-1"></i>Taşeron: Osman Camcı (Fore Kazık)</span>
+            <span class="badge bg-info-subtle text-info-emphasis border"><i class="bi bi-broadcast me-1"></i>Parsel bazlı canlı Fore Kazık dökümü</span>
+        </div>
+        <?php echo kazikOzet($gIksa, $dokForeP, 'parsel', null, $KAZIK_LIMIT); ?>
+        <div class="alert alert-light border small mb-3"><i class="bi bi-info-circle me-1 text-warning"></i>Üstteki kartlar her parsele dökülen <strong>toplam Fore Kazık betonunu canlı</strong> gösterir (irsaliyelerde Ø80/Ø100 ayrımı yok). Sözleşme limiti <strong>%15</strong>. Satır bazında zayiat oranı için aşağıdaki tabloda Excel'in kendi değerleri kullanılır.</div>
         <?php echo renderKazikSheet($gIksa, 'İksa Kazık'); ?>
     </div>
 
     <!-- ===== 4) TEMEL ALTI KAZIK ===== -->
     <div class="tab-pane fade" id="t-taban" role="tabpanel">
+        <div class="d-flex gap-2 flex-wrap mb-2 align-items-center">
+            <span class="badge bg-primary"><i class="bi bi-building me-1"></i>Taşeron: Osman Camcı (Fore Kazık)</span>
+            <span class="badge bg-info-subtle text-info-emphasis border"><i class="bi bi-broadcast me-1"></i>Blok bazlı canlı Fore Kazık toplamı</span>
+        </div>
+        <?php echo kazikOzet($gTemelAlt, $dokForeB, 'blok', null, $KAZIK_LIMIT); ?>
         <?php echo renderKazikSheet($gTemelAlt, 'Temel Altı Kazık'); ?>
     </div>
 
