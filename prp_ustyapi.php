@@ -2,7 +2,7 @@
 /**
  * prp_ustyapi.php — PRP BİNA ÜSTYAPI zayiat tablosu (blok seçmeli, görsel düzen)
  *
- * Excel "PRP BİNA ÜSTYAPI" sayfası, İmalat Sayfaları (metraj_takip.php) ile içe
+ * Excel "PRP BİNA ÜSTYAPI" sayfası, Dinamik Excel Aktarımı (import.php) ile içe
  * aktarılıp `metraj_sayfa` içinde grid (JSON) olarak saklanır. Bu sayfa o grid'i
  * okuyup blok bazında (A_2, B_4, C_1, C_2, D_3, E_BLOK) KOT × İMALAT YERİ tablosu
  * olarak, Excel'deki görünümle (KOT birleşik, KOLON-PERDE ayrı, DÖŞEME grubu
@@ -85,13 +85,13 @@ require_once __DIR__ . '/includes/header.php';
             <span class="badge rounded-pill align-middle ms-1" style="background:var(--ern-gold,#C9A84C);color:#3a2e00;font-size:.6em">Taşeron: PRP İnşaat</span></h4>
         <small class="text-muted">Blok seçin; kot (kat) ve imalat bazında proje metrajı / dökülen / zayiat</small>
     </div>
-    <a href="metraj_takip.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-grid-3x3-gap me-1"></i> Tüm İmalat Sayfaları</a>
+    <a href="temel_kazik.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-cone-striped me-1"></i> Temel & Kazık</a>
 </div>
 
 <?php if (!$grid): ?>
 <div class="alert alert-warning">
     <i class="bi bi-exclamation-triangle me-1"></i> PRP Bina Üstyapı verisi bulunamadı.
-    Önce <a href="metraj_takip.php" class="alert-link">İmalat Sayfaları</a> ekranından Excel'i içe aktarın.
+    Önce <a href="import.php" class="alert-link">Dinamik Excel Aktarımı</a> ile Excel'i yükleyin.
 </div>
 <?php else: ?>
 

@@ -65,7 +65,7 @@ require_once __DIR__ . '/includes/header.php';
         <h4 class="mb-0"><i class="bi bi-clipboard-data text-primary me-2"></i>Beton İcmali</h4>
         <small class="text-muted">Beton icmal özeti ve firma bazlı tamamlanan imalatlar (Excel "İCMAL" sayfası)</small>
     </div>
-    <a href="metraj_takip.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-grid-3x3-gap me-1"></i> İmalat Sayfaları</a>
+    <a href="import.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-cloud-arrow-up me-1"></i> Dinamik Excel Aktarımı</a>
 </div>
 
 <?php if (!$grid): ?>

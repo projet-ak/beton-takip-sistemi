@@ -594,7 +594,7 @@ require_once __DIR__ . '/includes/header.php';
                 </h5>
                 <small class="text-muted">Algılanan veri sayfaları: <strong><?= implode(' · ', $sayfaOzet) ?></strong></small>
                 <?php if (!empty($_SESSION['import_imalat_sayi'])): ?>
-                <div class="small text-success mt-1"><i class="bi bi-check-circle me-1"></i><strong><?= (int)$_SESSION['import_imalat_sayi'] ?></strong> imalat/metraj sayfası (PRP Bina Üstyapı, İcmal, Metraj …) sisteme kaydedildi — <a href="metraj_takip.php">İmalat Sayfaları</a> / <a href="prp_ustyapi.php">PRP Bina Üstyapı</a> / <a href="icmal_beton.php">İcmal</a> ekranlarından görüntüleyin.</div>
+                <div class="small text-success mt-1"><i class="bi bi-check-circle me-1"></i><strong><?= (int)$_SESSION['import_imalat_sayi'] ?></strong> imalat/metraj sayfası sisteme kaydedildi — <a href="prp_ustyapi.php">Bina Üstyapı</a> · <a href="temel_kazik.php">Temel & Kazık</a> · <a href="istinat.php">İstinat</a> · <a href="icmal_beton.php">İcmal</a> · <a href="metraj_sayfasi.php">Metraj</a> · <a href="mobilizasyon.php">Mobilizasyon</a> ekranlarından görüntüleyin.</div>
                 <?php endif; ?>
             </div>
             <div>
