@@ -21,6 +21,11 @@ define('DB_PASS', 'sifre');
 // define('DEPO_DB_USER', '');     // boşsa DB_USER (ör. takbulut_betonapp)
 // define('DEPO_DB_PASS', '');     // boşsa DB_PASS
 
+// ── Akaryakıt modülü (Mazot takip — ayrı DB, opsiyonel) ──────────────────────
+// define('AKARYAKIT_DB_NAME', 'takbulut_akaryakit');
+// define('AKARYAKIT_DB_USER', '');  // boşsa DB_USER (ör. takbulut_betonapp)
+// define('AKARYAKIT_DB_PASS', '');  // boşsa DB_PASS
+
 // ── Oturum / AI (opsiyonel) ──────────────────────────────────────────────────
 // define('SESSION_LIFETIME', 3600);
 // define('AI_PROVIDER', 'claude');

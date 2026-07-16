@@ -12,9 +12,10 @@ $__rootPath = $rootPath ?? '';
 $__self = $_SERVER['PHP_SELF'] ?? '';
 $__module   = (strpos($__self,'/demir/')!==false) ? 'demir'
             : ((strpos($__self,'/seramik/')!==false) ? 'seramik'
-            : ((strpos($__self,'/depo/')!==false) ? 'depo' : 'beton'));
-$__modAd    = ['beton'=>'Beton Takip','demir'=>'Demir Takip','seramik'=>'Seramik Takip','depo'=>'Depo Takip'][$__module] ?? 'Beton Takip';
-$__modHome  = ['beton'=>'index.php','demir'=>'demir/index.php','seramik'=>'seramik/index.php','depo'=>'depo/index.php'][$__module];
+            : ((strpos($__self,'/depo/')!==false) ? 'depo'
+            : ((strpos($__self,'/akaryakit/')!==false) ? 'akaryakit' : 'beton')));
+$__modAd    = ['beton'=>'Beton Takip','demir'=>'Demir Takip','seramik'=>'Seramik Takip','depo'=>'Depo Takip','akaryakit'=>'Akaryakıt Takip'][$__module] ?? 'Beton Takip';
+$__modHome  = ['beton'=>'index.php','demir'=>'demir/index.php','seramik'=>'seramik/index.php','depo'=>'depo/index.php','akaryakit'=>'akaryakit/index.php'][$__module];
 
 function __isActive(string $page): string {
     global $__page; return $__page === $page ? 'active' : '';
@@ -336,6 +337,29 @@ if ($__user) {
       </li>
     </ul>
     <?php endif; ?>
+
+    <?php if($__module==='akaryakit'): ?>
+    <ul class="list-unstyled mb-0">
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('index.php') ?>" href="<?= $__rootPath ?>akaryakit/index.php" data-label="Dashboard"><i class="bi bi-speedometer2"></i><span>Dashboard</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('aylik.php') ?>" href="<?= $__rootPath ?>akaryakit/aylik.php" data-label="Aylık Takip"><i class="bi bi-calendar3"></i><span>Aylık Takip</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('stok.php') ?>" href="<?= $__rootPath ?>akaryakit/stok.php" data-label="Stok Hareketi"><i class="bi bi-fuel-pump"></i><span>Stok Hareketi</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('araclar.php').__isActive('arac_form.php') ?>" href="<?= $__rootPath ?>akaryakit/araclar.php" data-label="Araçlar"><i class="bi bi-truck"></i><span>Araçlar / Makineler</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('tutanaklar.php') ?>" href="<?= $__rootPath ?>akaryakit/tutanaklar.php" data-label="Tutanaklar"><i class="bi bi-file-earmark-text"></i><span>Tutanaklar</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('import.php') ?>" href="<?= $__rootPath ?>akaryakit/import.php" data-label="Excel İçe Aktar"><i class="bi bi-cloud-arrow-up"></i><span>Excel İçe Aktar</span></a>
+      </li>
+    </ul>
+    <?php endif; ?>
   </div>
 
   <?php if($__user): ?>
@@ -394,6 +418,9 @@ if ($__user) {
       </a>
       <a href="<?= $__rootPath ?>depo/index.php" class="module-switch-item <?= $__module==='depo'?'active':'' ?>">
         <i class="bi bi-box-seam"></i><span>Depo Takip</span>
+      </a>
+      <a href="<?= $__rootPath ?>akaryakit/index.php" class="module-switch-item <?= $__module==='akaryakit'?'active':'' ?>">
+        <i class="bi bi-fuel-pump"></i><span>Akaryakıt Takip</span>
       </a>
     </div>
     <?php endif; ?>
