@@ -30,6 +30,10 @@ $gTemelAlt= gridGetir($pdo, ['TEMEL ALTI KAZIK']);
 
 $varMi = ($gTemel || $gKazik || $gIksa || $gTemelAlt);
 
+require_once __DIR__ . '/includes/zayiat_helper.php';
+$dokTB = zy_dokum($pdo, 'blok_imalat');   // Temel Beton: blok + imalat (TEMEL/GROBETON)
+$TB_LIMIT = 0.05;                          // Temel beton sözleşme zayiat limiti %5
+
 // ── Yardımcılar ───────────────────────────────────────────────────────────────
 function hc($g,$r,$c){ return isset($g[$r][$c]) ? trim((string)$g[$r][$c]) : ''; }
 function bosMu($v){ $v=trim((string)$v); return ($v===''||strcasecmp($v,'#N/A')===0||strncmp($v,'#',1)===0); }
@@ -108,15 +112,26 @@ require_once __DIR__ . '/includes/header.php';
                     <div class="table-responsive">
                         <table class="table table-sm mb-0 align-middle">
                             <thead class="table-light"><tr>
-                                <th style="width:22%">İmalat</th><th class="text-end" style="width:26%">Proje Metrajı</th><th class="text-end" style="width:26%">İlerleme</th><th class="text-center" style="width:26%">Zayiat Limiti</th>
+                                <th style="width:16%">İmalat</th>
+                                <th class="text-end" style="width:16%">Proje Metrajı</th>
+                                <th class="text-end" style="width:16%">Sahada Dökülen</th>
+                                <th class="text-end" style="width:14%">İlerleme</th>
+                                <th class="text-center" style="width:20%">Zayiat (limit %5)</th>
+                                <th class="text-end" style="width:18%">Fiili Zayiat</th>
                             </tr></thead>
                             <tbody>
-                            <?php foreach ($satirlar as $s): ?>
-                                <tr>
+                            <?php foreach ($satirlar as $s):
+                                $metraj = is_numeric($s['metraj']) ? (float)$s['metraj'] : 0;
+                                $sahada = $dokTB[zy_normBlok($blok)][mb_strtoupper($s['kalem'],'UTF-8')] ?? 0;
+                                $z = zy_hesap($sahada, $metraj, $TB_LIMIT);
+                            ?>
+                                <tr class="<?= $z['asim']?'table-danger':'' ?>">
                                     <td class="fw-semibold"><?= h($s['kalem']) ?></td>
                                     <td class="text-end font-monospace"><?= num($s['metraj']) ?></td>
-                                    <td class="text-end"><?= pct($s['iler']) ?></td>
-                                    <td class="text-center"><span class="badge bg-success-subtle text-success-emphasis border border-success-subtle"><?= pct($s['sozB']) ?: '%5' ?></span></td>
+                                    <td class="text-end font-monospace <?= $sahada>0?'fw-semibold':'text-muted' ?>"><?= $sahada>0?number_format($sahada,2,',','.'):'0' ?></td>
+                                    <td class="text-end"><?= number_format($z['iler']*100,1,',','.') ?>%</td>
+                                    <td class="text-center"><?= zy_durumRozet($z) ?></td>
+                                    <td class="text-end <?= $z['fiili']>0?'text-danger fw-bold':'' ?>"><?= number_format($z['fiili'],2,',','.') ?></td>
                                 </tr>
                             <?php endforeach; ?>
                             </tbody>
@@ -126,7 +141,7 @@ require_once __DIR__ . '/includes/header.php';
             </div>
         <?php endforeach; ?>
         </div>
-        <div class="alert alert-light border small mt-3 mb-0"><i class="bi bi-info-circle me-1 text-success"></i>Temel Beton = PRP İnşaat taşeronu. Her blok için TEMEL ve GROBETON proje metrajı, ilerleme ve sözleşme zayiat limiti (%5).</div>
+        <div class="alert alert-light border small mt-3 mb-0"><i class="bi bi-broadcast me-1 text-success"></i><strong>CANLI:</strong> Sahada dökülen, gerçek irsaliyelerden (blok + TEMEL/GROBETON imalatı) toplanır; ilerleme = sahada ÷ metraj. Teorik metrajı <strong>%5</strong>'ten fazla aşan blok kırmızı işaretlenir (Fiili Zayiat = kesilecek). Taşeron: <strong>PRP İnşaat</strong>.</div>
     <?php } ?>
     </div>
 
