@@ -92,7 +92,7 @@ $LOGO_HOLDING = 'uploads/' . rawurlencode('ERN Holding_Logo_Beyaz.png');
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Giriş — Beton Takip Sistemi</title>
+<title>Giriş — Şantiye İş Takip Sistemi | Batı Yakası</title>
 <link rel="icon" type="image/png" href="https://ern.com.tr/favicon.png">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -221,12 +221,28 @@ body {
     animation: slideInLeft .5s ease backwards;
 }
 .feature-pill:nth-child(1) { animation-delay: .1s; }
-.feature-pill:nth-child(2) { animation-delay: .2s; }
-.feature-pill:nth-child(3) { animation-delay: .3s; }
+.feature-pill:nth-child(2) { animation-delay: .18s; }
+.feature-pill:nth-child(3) { animation-delay: .26s; }
+.feature-pill:nth-child(4) { animation-delay: .34s; }
+.feature-pill:nth-child(5) { animation-delay: .42s; }
 @keyframes slideInLeft {
     from { opacity: 0; transform: translateX(-20px); }
     to   { opacity: 1; transform: none; }
 }
+
+/* ── Aktif proje rozeti (Batı Yakası) ─────────────────────── */
+.proje-badge{
+    display:inline-flex; align-items:center; gap:.7rem;
+    background:#fff; border-radius:14px;
+    padding:.55rem 1.1rem; margin:0 auto 1.4rem;
+    box-shadow:0 8px 24px rgba(0,0,0,.22);
+    animation:slideInLeft .55s ease backwards; animation-delay:.05s;
+}
+.proje-badge img{ height:30px; width:auto; max-width:150px; object-fit:contain; display:block; }
+.proje-badge .pb-sep{ width:1px; height:26px; background:rgba(0,88,78,.18); }
+.proje-badge .pb-text{ text-align:left; line-height:1.15; }
+.proje-badge .pb-text small{ display:block; font-size:.6rem; letter-spacing:.14em; font-weight:700; color:var(--ern-light); text-transform:uppercase; }
+.proje-badge .pb-text strong{ display:block; font-size:.86rem; font-weight:700; color:#0D2E28; letter-spacing:-.01em; }
 .feature-pill-icon {
     width: 34px; height: 34px;
     background: rgba(0,200,180,.15);
@@ -437,34 +453,59 @@ body {
                  onerror="this.style.display='none'">
         </div>
 
+        <!-- Aktif proje rozeti — Batı Yakası -->
+        <div class="proje-badge">
+            <img src="https://batiyakasi.com/wp-content/uploads/2024/05/logo-orj2.svg" alt="Batı Yakası"
+                 onerror="this.style.display='none';this.nextElementSibling.style.display='none'">
+            <span class="pb-sep"></span>
+            <div class="pb-text">
+                <small>Aktif Proje</small>
+                <strong>Batı Yakası Projesi</strong>
+            </div>
+        </div>
+
         <div class="brand-tagline">
-            Beton Takip<br><span>Sistemi</span>
+            Şantiye İş Takip<br><span>Sistemi</span>
         </div>
         <p class="brand-sub">
-            İrsaliye yönetimini dijitalleştirin.<br>
-            QR okuma, raporlama ve çok kullanıcılı erişim tek platformda.
+            Sahadan ofise <strong style="color:rgba(255,255,255,.8)">tek platform</strong> — beton, demir, seramik, depo ve akaryakıt.<br>
+            QR/AI okuma, canlı stok &amp; zayiat, anlık raporlama ve rol tabanlı erişim.
         </p>
 
         <div class="feature-pills">
             <div class="feature-pill">
-                <div class="feature-pill-icon"><i class="bi bi-qr-code-scan"></i></div>
+                <div class="feature-pill-icon"><i class="bi bi-truck"></i></div>
                 <div class="feature-pill-text">
-                    <strong>QR & Data Matrix Okuma</strong>
-                    E-İrsaliye + KGS/THBB otomatik tanıma
+                    <strong>Beton &amp; İrsaliye</strong>
+                    QR + KGS/THBB DataMatrix okuma, iki aşamalı onay, canlı zayiat
                 </div>
             </div>
             <div class="feature-pill">
-                <div class="feature-pill-icon"><i class="bi bi-bar-chart-line"></i></div>
+                <div class="feature-pill-icon"><i class="bi bi-rulers"></i></div>
                 <div class="feature-pill-text">
-                    <strong>Anlık Raporlama</strong>
-                    Proje, tedarikçi ve beton sınıfı bazında analiz
+                    <strong>İnşaat Demiri</strong>
+                    Sipariş → sevkiyat → kantar → tutanak → taşeron bakiye zinciri
                 </div>
             </div>
             <div class="feature-pill">
-                <div class="feature-pill-icon"><i class="bi bi-shield-check"></i></div>
+                <div class="feature-pill-icon"><i class="bi bi-grid-1x2"></i></div>
                 <div class="feature-pill-text">
-                    <strong>Rol Tabanlı Erişim</strong>
-                    Admin, teknik ofis, saha şefi yetkileri
+                    <strong>Seramik Ambarı</strong>
+                    Giriş / çıkış, canlı stok ve palet takibi
+                </div>
+            </div>
+            <div class="feature-pill">
+                <div class="feature-pill-icon"><i class="bi bi-box-seam"></i></div>
+                <div class="feature-pill-text">
+                    <strong>Depo Yönetimi</strong>
+                    Sarf, demirbaş &amp; el aletleri — zimmet ve mali değer
+                </div>
+            </div>
+            <div class="feature-pill">
+                <div class="feature-pill-icon"><i class="bi bi-fuel-pump"></i></div>
+                <div class="feature-pill-text">
+                    <strong>Akaryakıt Takibi</strong>
+                    Mazot stok + araç/makine bazında aylık tüketim
                 </div>
             </div>
         </div>
@@ -495,7 +536,7 @@ body {
         </div>
         <div class="login-right-logo-text">
             <strong>ERN Holding</strong>
-            <span>Beton Takip Sistemi</span>
+            <span>Şantiye İş Takip Sistemi</span>
         </div>
     </div>
 
@@ -551,7 +592,7 @@ body {
     </form>
 
     <div class="login-footer">
-        ERN Holding &copy; <?= date('Y') ?> &nbsp;&mdash;&nbsp; Beton Takip Sistemi
+        ERN Holding &copy; <?= date('Y') ?> &nbsp;&mdash;&nbsp; Şantiye İş Takip Sistemi
         <br>
         <span style="font-size:.7rem;opacity:.6">Geliştirici: <strong style="color:var(--ern);opacity:1">Tayyar Akbulut</strong></span>
     </div>
