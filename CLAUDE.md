@@ -20,6 +20,14 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   Sayfalar: index(dashboard) · girisler/giris_form · cikislar/cikis_form · stok · paletler ·
   import (Giriş/Çıkış/Mevcut/Palet tam yenileme) · malzemeler/firmalar/taseronlar · kurulum_seramik.
   Malzeme eşleşmesi `sr_norm()` (I/İ katlama, *→X). `seramik/_ortak.php` ortak yardımcılar.
+- **Depo modülü** = `depo/` alt klasörü. Sarf malzeme + demirbaş + el aletleri stok/zimmet takibi.
+  **Ayrı veritabanı** (`takbulut_depo`, `DEPO_DB_NAME`). Tek tablo `depo_kalemler` (kategori ENUM
+  `demirbas`/`sarf`/`el_aleti`). **Stok = SAYIM + GELEN − GİDEN** (kalem defteri modeli; ayrı log yok).
+  `includes/db_depo.php` → `$pdoDepo`. Sayfalar: index(dashboard: kategori kartları + mali değer KPI +
+  tükenen liste) · kalemler(kategori bazlı liste, ?k=demirbas|sarf|el_aleti, arama, stok/tutar) ·
+  kalem_form(ekle/düzenle) · import(DEMİRBAŞLAR/SARF MALZEME/EL ALETLERİ sayfaları, kategori bazlı tam
+  yenileme) · kurulum_depo. El aletleri: fiyat/disiplin yok, **Seri No + Zimmetli Kişi** var. Demirbaş/
+  sarf: birim fiyat → **mali değer** (STOK × B.Fiyat). `depo/_ortak.php` (dp_sayi, DP_KATEGORI, dp_ozet).
 - Geliştirici: **Tayyar Akbulut**. Sürüm: v3.0. Canlı: `https://takbulut.com/beton/`.
 
 > **⭐ TEMEL İLKE — Excel şablonu "kutsal kitap" (tek doğru kaynak).** Sistem, ilgili Excel

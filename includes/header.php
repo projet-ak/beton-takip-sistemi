@@ -8,10 +8,13 @@ if (!function_exists('role_label'))    require_once __DIR__ . '/functions.php';
 $__user     = current_user();
 $__page     = basename($_SERVER['PHP_SELF']);
 $__rootPath = $rootPath ?? '';
-// Aktif modül: demir/ → "demir", seramik/ → "seramik", diğerleri "beton"
-$__module   = (strpos($_SERVER['PHP_SELF'] ?? '', '/demir/') !== false) ? 'demir'
-            : ((strpos($_SERVER['PHP_SELF'] ?? '', '/seramik/') !== false) ? 'seramik' : 'beton');
-$__modAd    = ['beton'=>'Beton Takip','demir'=>'Demir Takip','seramik'=>'Seramik Takip'][$__module] ?? 'Beton Takip';
+// Aktif modül: alt klasöre göre
+$__self = $_SERVER['PHP_SELF'] ?? '';
+$__module   = (strpos($__self,'/demir/')!==false) ? 'demir'
+            : ((strpos($__self,'/seramik/')!==false) ? 'seramik'
+            : ((strpos($__self,'/depo/')!==false) ? 'depo' : 'beton'));
+$__modAd    = ['beton'=>'Beton Takip','demir'=>'Demir Takip','seramik'=>'Seramik Takip','depo'=>'Depo Takip'][$__module] ?? 'Beton Takip';
+$__modHome  = ['beton'=>'index.php','demir'=>'demir/index.php','seramik'=>'seramik/index.php','depo'=>'depo/index.php'][$__module];
 
 function __isActive(string $page): string {
     global $__page; return $__page === $page ? 'active' : '';
@@ -52,7 +55,7 @@ if ($__user) {
 <aside class="ern-sidebar" id="ernSidebar">
 
   <div class="sidebar-brand-wrap">
-    <a href="<?= $__rootPath ?><?= $__module==='demir' ? 'demir/index.php' : ($__module==='seramik' ? 'seramik/index.php' : 'index.php') ?>" class="sidebar-brand">
+    <a href="<?= $__rootPath ?><?= $__modHome ?>" class="sidebar-brand">
       <!-- Tam logo (expanded modda) -->
       <img class="logo-full"
            src="https://portal.ern.com.tr/assets/assets/images/ern_holding.613de732dd156fc8c966aeb8159822be.png"
@@ -313,6 +316,26 @@ if ($__user) {
       </li>
     </ul>
     <?php endif; ?>
+
+    <?php if($__module==='depo'): ?>
+    <ul class="list-unstyled mb-0">
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('index.php') ?>" href="<?= $__rootPath ?>depo/index.php" data-label="Dashboard"><i class="bi bi-speedometer2"></i><span>Dashboard</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('kalemler.php').__isActive('kalem_form.php') ?>" href="<?= $__rootPath ?>depo/kalemler.php?k=demirbas" data-label="Demirbaşlar"><i class="bi bi-hdd-stack"></i><span>Demirbaşlar</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link" href="<?= $__rootPath ?>depo/kalemler.php?k=sarf" data-label="Sarf Malzeme"><i class="bi bi-basket"></i><span>Sarf Malzeme</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link" href="<?= $__rootPath ?>depo/kalemler.php?k=el_aleti" data-label="El Aletleri"><i class="bi bi-tools"></i><span>El Aletleri</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('import.php') ?>" href="<?= $__rootPath ?>depo/import.php" data-label="Excel İçe Aktar"><i class="bi bi-cloud-arrow-up"></i><span>Excel İçe Aktar</span></a>
+      </li>
+    </ul>
+    <?php endif; ?>
   </div>
 
   <?php if($__user): ?>
@@ -368,6 +391,9 @@ if ($__user) {
       </a>
       <a href="<?= $__rootPath ?>seramik/index.php" class="module-switch-item <?= $__module==='seramik'?'active':'' ?>">
         <i class="bi bi-grid-1x2"></i><span>Seramik Takip</span>
+      </a>
+      <a href="<?= $__rootPath ?>depo/index.php" class="module-switch-item <?= $__module==='depo'?'active':'' ?>">
+        <i class="bi bi-box-seam"></i><span>Depo Takip</span>
       </a>
     </div>
     <?php endif; ?>

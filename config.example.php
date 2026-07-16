@@ -16,6 +16,11 @@ define('DB_PASS', 'sifre');
 // define('SERAMIK_DB_USER', '');  // boşsa DB_USER (ör. takbulut_betonapp)
 // define('SERAMIK_DB_PASS', '');  // boşsa DB_PASS
 
+// ── Depo modülü (Sarf/Demirbaş/El Aletleri — ayrı DB, opsiyonel) ──────────────
+// define('DEPO_DB_NAME', 'takbulut_depo');
+// define('DEPO_DB_USER', '');     // boşsa DB_USER (ör. takbulut_betonapp)
+// define('DEPO_DB_PASS', '');     // boşsa DB_PASS
+
 // ── Oturum / AI (opsiyonel) ──────────────────────────────────────────────────
 // define('SESSION_LIFETIME', 3600);
 // define('AI_PROVIDER', 'claude');
