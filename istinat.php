@@ -25,6 +25,58 @@ $gDener = istGrid($pdo, 'İSTİNAT DENER');
 $gDuvar = istGrid($pdo, 'İSTİNAT DUVAR');
 $varMi = ($gDener || $gDuvar);
 
+require_once __DIR__ . '/includes/zayiat_helper.php';
+$IST_LIMIT = 0.04;  // İstinat sözleşme zayiat limiti %4
+// Canlı döküm: parsel + imalat (istinat blok filtresiyle)
+$dokIST = [];
+try {
+    $q = $pdo->query("
+        SELECT p.ad parsel, ig.ad imalat,
+               (CASE WHEN UPPER(b.ad) LIKE '%ISTINAT%' OR UPPER(b.ad) LIKE '%İSTİNAT%' OR UPPER(b.ad) LIKE '%ÇEVRE%' THEN 1 ELSE 0 END) ist,
+               SUM(CASE WHEN i.tip='alis' THEN i.miktar ELSE -i.miktar END) m3
+        FROM irsaliyeler i
+        JOIN parseller p ON p.id=i.parsel_id
+        JOIN imalat_gruplari ig ON ig.id=i.imalat_grup_id
+        LEFT JOIN bloklar b ON b.id=i.blok_id
+        WHERE i.durum<>'reddedildi'
+        GROUP BY p.ad, ig.ad, ist");
+    foreach ($q as $r) {
+        $pk = mb_strtoupper(trim($r['parsel']),'UTF-8');
+        $im = mb_strtoupper(trim($r['imalat']),'UTF-8');
+        $dokIST[$pk][$im] = ($dokIST[$pk][$im] ?? 0) + (float)$r['m3'];
+        if ($r['ist']) $dokIST[$pk]['@IST@'.$im] = ($dokIST[$pk]['@IST@'.$im] ?? 0) + (float)$r['m3'];
+    }
+} catch (Throwable $e) { $dokIST = []; }
+
+/** İstinat satırı (GROBETON / ISTINAT_CEVRE_DUVARI / ÇEVRE DUVARI) için canlı sahada dökülen */
+function istSahada(array $dok, string $parsel, string $kalem): float {
+    $pk = mb_strtoupper(trim($parsel),'UTF-8');
+    if (!isset($dok[$pk])) return 0.0;
+    $d = $dok[$pk]; $ku = mb_strtoupper($kalem,'UTF-8');
+    if (strpos($ku,'GROBETON')!==false)  return (float)($d['@IST@GROBETON'] ?? 0);         // yalnız istinat grobeton
+    if (strpos($ku,'ÇEVRE')!==false)     return (float)($d['ÇEVRE DUVARI'] ?? 0);
+    // ISTINAT_CEVRE_DUVARI → istinat duvarı + çevre duvarı
+    return (float)($d['İSTİNAT DUVARI'] ?? 0) + (float)($d['ÇEVRE DUVARI'] ?? 0);
+}
+
+// İstinat Dener'i parsel/tip bazında yapılandır
+$denerParsel = []; $curP=''; $curTip='';
+if ($gDener) {
+    for ($r=0; $r<count($gDener); $r++) {
+        $c0=ihc($gDener,$r,0); $c1=ihc($gDener,$r,1); $c2=ihc($gDener,$r,2);
+        if (mb_stripos($c0,'PEYZAJ')!==false && $c2!=='') { $curTip=$c2; continue; }
+        if (mb_strtoupper($c0,'UTF-8')==='DENER' && $c1!=='') { $curP=$c1; continue; }
+        if (mb_stripos($c1,'PROJE TOPLAM')!==false) { if($c0!=='')$curP=$c0; continue; }
+        $ku = mb_strtoupper($c0,'UTF-8');
+        if (in_array($ku,['GROBETON','ISTINAT_CEVRE_DUVARI','ÇEVRE DUVARI'],true) && is_numeric($c1)) {
+            $key = $curP.' — '.$curTip;
+            $denerParsel[$key]['parsel'] = $curP;
+            $denerParsel[$key]['tip']    = $curTip;
+            $denerParsel[$key]['satir'][] = ['kalem'=>$c0, 'metraj'=>$c1];
+        }
+    }
+}
+
 function ihc($g,$r,$c){ return isset($g[$r][$c]) ? trim((string)$g[$r][$c]) : ''; }
 function ibos($v){ $v=trim((string)$v); return ($v===''||strcasecmp($v,'#N/A')===0||strncmp($v,'#',1)===0); }
 function iserial($v){
@@ -112,9 +164,56 @@ require_once __DIR__ . '/includes/header.php';
 <div class="tab-content border border-top-0 rounded-bottom bg-white p-3">
     <!-- 1) İstinat Dener -->
     <div class="tab-pane fade show active" id="i-dener" role="tabpanel">
-        <div class="mb-2"><span class="badge bg-primary"><i class="bi bi-building me-1"></i>Taşeron: Dener İnşaat</span></div>
-        <?= renderBolumluSayfa($gDener) ?>
-        <div class="alert alert-light border small mt-2 mb-0"><i class="bi bi-info-circle me-1 text-success"></i>Parsel bazlı bölümler; sözleşme zayiat limiti %4. Bazı hücreler Excel'de tarih formatlı olduğundan sayıya çevrilerek gösterilir.</div>
+        <div class="mb-2 d-flex gap-2 flex-wrap align-items-center">
+            <span class="badge bg-primary"><i class="bi bi-building me-1"></i>Taşeron: Dener İnşaat</span>
+            <span class="badge bg-secondary">Sözleşme zayiat limiti: %4</span>
+            <span class="badge bg-info-subtle text-info-emphasis border"><i class="bi bi-broadcast me-1"></i>Sahada dökülen CANLI (irsaliyelerden)</span>
+        </div>
+        <?php if (!$denerParsel): ?>
+            <?= renderBolumluSayfa($gDener) ?>
+        <?php else: ?>
+        <div class="row g-3">
+        <?php foreach ($denerParsel as $g): if(empty($g['satir'])) continue; ?>
+            <div class="col-12">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header text-white fw-semibold" style="background:linear-gradient(90deg,var(--ern),var(--ern-light))">
+                        <i class="bi bi-geo-alt-fill me-1"></i><?= h($g['parsel']) ?> <span class="fw-normal small opacity-75">— <?= h($g['tip']) ?></span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light"><tr>
+                                <th style="width:22%">İmalat</th>
+                                <th class="text-end" style="width:15%">Proje Metrajı</th>
+                                <th class="text-end" style="width:15%">Sahada Dökülen</th>
+                                <th class="text-end" style="width:13%">İlerleme</th>
+                                <th class="text-center" style="width:18%">Zayiat (limit %4)</th>
+                                <th class="text-end" style="width:17%">Fiili Zayiat</th>
+                            </tr></thead>
+                            <tbody>
+                            <?php foreach ($g['satir'] as $s):
+                                $metraj = is_numeric($s['metraj']) ? (float)$s['metraj'] : 0;
+                                $sahada = istSahada($dokIST, $g['parsel'], $s['kalem']);
+                                $z = zy_hesap($sahada, $metraj, $IST_LIMIT);
+                                $ad = $s['kalem']==='ISTINAT_CEVRE_DUVARI' ? 'İstinat / Çevre Duvarı' : $s['kalem'];
+                            ?>
+                                <tr class="<?= $z['asim']?'table-danger':'' ?>">
+                                    <td class="fw-semibold"><?= h($ad) ?></td>
+                                    <td class="text-end font-monospace"><?= number_format($metraj,2,',','.') ?></td>
+                                    <td class="text-end font-monospace <?= $sahada>0?'fw-semibold':'text-muted' ?>"><?= $sahada>0?number_format($sahada,2,',','.'):'0' ?></td>
+                                    <td class="text-end"><?= number_format($z['iler']*100,1,',','.') ?>%</td>
+                                    <td class="text-center"><?= zy_durumRozet($z) ?></td>
+                                    <td class="text-end <?= $z['fiili']>0?'text-danger fw-bold':'' ?>"><?= number_format($z['fiili'],2,',','.') ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        <?php endforeach; ?>
+        </div>
+        <div class="alert alert-light border small mt-3 mb-0"><i class="bi bi-broadcast me-1 text-success"></i><strong>CANLI:</strong> Sahada dökülen, gerçek irsaliyelerden (parsel + İstinat/Çevre Duvarı & istinat Grobeton) toplanır; ilerleme = sahada ÷ metraj. Teorik metrajı <strong>%4</strong>'ü aşan satır kırmızı olur.</div>
+        <?php endif; ?>
     </div>
 
     <!-- 2) İstinat Duvarı metraj -->
