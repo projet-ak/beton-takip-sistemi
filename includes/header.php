@@ -8,8 +8,10 @@ if (!function_exists('role_label'))    require_once __DIR__ . '/functions.php';
 $__user     = current_user();
 $__page     = basename($_SERVER['PHP_SELF']);
 $__rootPath = $rootPath ?? '';
-// Aktif modül: demir/ altındaki sayfalar "demir", diğerleri "beton"
-$__module   = (strpos($_SERVER['PHP_SELF'] ?? '', '/demir/') !== false) ? 'demir' : 'beton';
+// Aktif modül: demir/ → "demir", seramik/ → "seramik", diğerleri "beton"
+$__module   = (strpos($_SERVER['PHP_SELF'] ?? '', '/demir/') !== false) ? 'demir'
+            : ((strpos($_SERVER['PHP_SELF'] ?? '', '/seramik/') !== false) ? 'seramik' : 'beton');
+$__modAd    = ['beton'=>'Beton Takip','demir'=>'Demir Takip','seramik'=>'Seramik Takip'][$__module] ?? 'Beton Takip';
 
 function __isActive(string $page): string {
     global $__page; return $__page === $page ? 'active' : '';
@@ -50,7 +52,7 @@ if ($__user) {
 <aside class="ern-sidebar" id="ernSidebar">
 
   <div class="sidebar-brand-wrap">
-    <a href="<?= $__rootPath ?><?= $__module==='demir' ? 'demir/index.php' : 'index.php' ?>" class="sidebar-brand">
+    <a href="<?= $__rootPath ?><?= $__module==='demir' ? 'demir/index.php' : ($__module==='seramik' ? 'seramik/index.php' : 'index.php') ?>" class="sidebar-brand">
       <!-- Tam logo (expanded modda) -->
       <img class="logo-full"
            src="https://portal.ern.com.tr/assets/assets/images/ern_holding.613de732dd156fc8c966aeb8159822be.png"
@@ -59,7 +61,7 @@ if ($__user) {
       <img class="logo-icon"
            src="https://ern.com.tr/favicon.png"
            alt="ERN" style="display:none;width:32px;height:32px;object-fit:contain;filter:brightness(0) invert(1);">
-      <div class="sidebar-brand-label"><strong><?= $__module==='demir' ? 'Demir Takip' : 'Beton Takip' ?></strong>Sistemi</div>
+      <div class="sidebar-brand-label"><strong><?= h($__modAd) ?></strong>Sistemi</div>
     </a>
     <button class="sidebar-collapse-btn d-none d-lg-flex" id="sidebarCollapseBtn" title="Menüyü daralt">
       <i class="bi bi-layout-sidebar-reverse" id="sidebarCollapseIcon"></i>
@@ -272,6 +274,45 @@ if ($__user) {
       <?php endif; ?>
     </ul>
     <?php endif; ?>
+
+    <?php if($__module==='seramik'): ?>
+    <ul class="list-unstyled mb-0">
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('index.php') ?>" href="<?= $__rootPath ?>seramik/index.php" data-label="Dashboard">
+          <i class="bi bi-speedometer2"></i><span>Dashboard</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('girisler.php').__isActive('giris_form.php') ?>" href="<?= $__rootPath ?>seramik/girisler.php" data-label="Ambar Giriş">
+          <i class="bi bi-box-arrow-in-down"></i><span>Ambar Giriş</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('cikislar.php').__isActive('cikis_form.php') ?>" href="<?= $__rootPath ?>seramik/cikislar.php" data-label="Ambar Çıkış">
+          <i class="bi bi-box-arrow-up"></i><span>Ambar Çıkış</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('stok.php') ?>" href="<?= $__rootPath ?>seramik/stok.php" data-label="Stok / Ambar Mevcut">
+          <i class="bi bi-boxes"></i><span>Stok (Mevcut)</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('paletler.php') ?>" href="<?= $__rootPath ?>seramik/paletler.php" data-label="Palet Durumu">
+          <i class="bi bi-pallet"></i><span>Palet Durumu</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('import.php') ?>" href="<?= $__rootPath ?>seramik/import.php" data-label="Excel İçe Aktar">
+          <i class="bi bi-cloud-arrow-up"></i><span>Excel İçe Aktar</span></a>
+      </li>
+      <li class="sidebar-heading">Tanımlar</li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('malzemeler.php') ?>" href="<?= $__rootPath ?>seramik/malzemeler.php"><i class="bi bi-grid-3x3"></i><span>Malzemeler</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('firmalar.php') ?>" href="<?= $__rootPath ?>seramik/firmalar.php"><i class="bi bi-shop"></i><span>Firmalar</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('taseronlar.php') ?>" href="<?= $__rootPath ?>seramik/taseronlar.php"><i class="bi bi-people"></i><span>Taşeronlar</span></a>
+      </li>
+    </ul>
+    <?php endif; ?>
   </div>
 
   <?php if($__user): ?>
@@ -324,6 +365,9 @@ if ($__user) {
       </a>
       <a href="<?= $__rootPath ?>demir/index.php" class="module-switch-item <?= $__module==='demir'?'active':'' ?>">
         <i class="bi bi-rulers"></i><span>Demir Takip</span>
+      </a>
+      <a href="<?= $__rootPath ?>seramik/index.php" class="module-switch-item <?= $__module==='seramik'?'active':'' ?>">
+        <i class="bi bi-grid-1x2"></i><span>Seramik Takip</span>
       </a>
     </div>
     <?php endif; ?>

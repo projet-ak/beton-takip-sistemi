@@ -13,6 +13,13 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 - **Beton modülü** = kök dizin (`/`). Hazır beton irsaliyeleri, iki aşamalı onay, raporlar.
 - **Demir modülü** = `demir/` alt klasörü. İnşaat demiri (rebar) sipariş→sevkiyat→kantar→
   taşerona teslim (tutanak)→icmal zinciri. **Ayrı veritabanı** kullanır.
+- **Seramik modülü** = `seramik/` alt klasörü. Seramik ambar giriş/çıkış + canlı stok.
+  **Ayrı veritabanı** (`takbulut_seramik`, `SERAMIK_DB_NAME`). Tablolar `seramik_` önekli.
+  Stok = **AMBAR MEVCUT'a sabit** (SAYIM−GİDEN) + elle giriş − elle çıkış (Excel log'ları
+  SAYIM/GİDEN'de zaten sayılı olduğundan stoka eklenmez). `includes/db_seramik.php` → `$pdoSeramik`.
+  Sayfalar: index(dashboard) · girisler/giris_form · cikislar/cikis_form · stok · paletler ·
+  import (Giriş/Çıkış/Mevcut/Palet tam yenileme) · malzemeler/firmalar/taseronlar · kurulum_seramik.
+  Malzeme eşleşmesi `sr_norm()` (I/İ katlama, *→X). `seramik/_ortak.php` ortak yardımcılar.
 - Geliştirici: **Tayyar Akbulut**. Sürüm: v3.0. Canlı: `https://takbulut.com/beton/`.
 
 > **⭐ TEMEL İLKE — Excel şablonu "kutsal kitap" (tek doğru kaynak).** Sistem, ilgili Excel
