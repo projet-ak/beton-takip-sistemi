@@ -89,10 +89,62 @@ if ($sekme==='detay') {
     }
 }
 
+// ── Excel dışa aktarma (aktif sekme + filtrelere göre) ──
+if (($_GET['disaaktar'] ?? '') === 'xlsx') {
+    require_once __DIR__ . '/includes/XlsxWriter.php';
+    $uAd = [];
+    foreach ($kullanicilar as $u) $uAd[$u['id']] = $u['full_name'] ?: $u['username'];
+    if ($sekme === 'detay') {
+        $xl = new XlsxWriter('Aktivite Detay');
+        $xl->header(['Zaman','Kullanıcı','Tür','Ayrıntı','Modül','IP']);
+        foreach ($detay as $d) {
+            $tur = $d['tur']==='goruntuleme' ? 'Görüntüleme' : ('Kayıt '.str_replace('kayit_','',$d['tur']));
+            $xl->row([
+                ['v'=>date('d.m.Y H:i', strtotime($d['zaman'])),'t'=>'text'],
+                ['v'=>$uAd[$d['kullanici_id']] ?? ('#'.$d['kullanici_id']),'t'=>'text'],
+                ['v'=>$tur,'t'=>'text'],
+                ['v'=>(string)($d['ayrinti'] ?? ''),'t'=>'text'],
+                ['v'=>$MODUL_AD[$d['modul']] ?? (string)($d['modul'] ?? ''),'t'=>'text'],
+                ['v'=>(string)($d['ip'] ?? ''),'t'=>'text'],
+            ]);
+        }
+        $xl->download('aktivite_detay_'.date('Ymd_Hi').'.xlsx');
+    } else {
+        $xl = new XlsxWriter('Aktivite Özet');
+        $xl->header(['Kullanıcı','Kullanıcı Adı','Rol','Oturum','Toplam Süre (dk)','Ort. Oturum (dk)','Sayfa','En Çok Modül','Son Görülme']);
+        foreach ($ozet as $o) {
+            $ort = $o['oturum']>0 ? (int)$o['sure']/(int)$o['oturum'] : 0;
+            $em = $enModul[$o['kullanici_id']] ?? null;
+            $xl->row([
+                ['v'=>$o['full_name'] ?: ($o['username'] ?: ('#'.$o['kullanici_id'])),'t'=>'text'],
+                ['v'=>(string)($o['username'] ?? ''),'t'=>'text'],
+                ['v'=>$o['role']?role_label($o['role']):'','t'=>'text'],
+                ['v'=>(int)$o['oturum'],'t'=>'number'],
+                ['v'=>round((int)$o['sure']/60,1),'t'=>'number'],
+                ['v'=>round($ort/60,1),'t'=>'number'],
+                ['v'=>(int)$o['sayfa'],'t'=>'number'],
+                ['v'=>$em?($MODUL_AD[$em['modul']]??$em['modul']):'','t'=>'text'],
+                ['v'=>$o['son']?date('d.m.Y H:i',strtotime($o['son'])):'','t'=>'text'],
+            ]);
+        }
+        $xl->total([
+            ['v'=>'TOPLAM','t'=>'text'],['v'=>'','t'=>'text'],['v'=>'','t'=>'text'],
+            ['v'=>(int)$kpi['oturum'],'t'=>'number'],['v'=>round((int)$kpi['sure']/60,1),'t'=>'number'],
+            ['v'=>'','t'=>'text'],['v'=>(int)$kpi['sayfa'],'t'=>'number'],['v'=>'','t'=>'text'],['v'=>'','t'=>'text'],
+        ]);
+        $xl->download('aktivite_ozet_'.date('Ymd_Hi').'.xlsx');
+    }
+}
+
+// Excel export link'i (aktif sekme + detay filtreleri)
+$exportUrl = 'aktivite.php?disaaktar=xlsx&sekme='.$sekme;
+if ($sekme==='detay') $exportUrl .= '&k='.$fKul.'&bas='.urlencode($fBas).'&bit='.urlencode($fBit).'&tur='.urlencode($fTur);
+
 require_once __DIR__ . '/includes/header.php';
 ?>
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h4 class="mb-0"><i class="bi bi-activity text-primary me-2"></i>Kullanıcı Aktivite Raporu</h4>
+    <a href="<?= h($exportUrl) ?>" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Excel'e Aktar (<?= $sekme==='detay'?'Detay':'Özet' ?>)</a>
 </div>
 <?php foreach(['success','error','warning'] as $t): if($m=get_flash($t)): ?><div class="alert alert-<?= $t==='error'?'danger':$t ?>"><?= h($m) ?></div><?php endif; endforeach; ?>
 
