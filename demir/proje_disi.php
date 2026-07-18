@@ -28,6 +28,15 @@ $pdoDemir->exec("CREATE TABLE IF NOT EXISTS demir_proje_disi (
 
 $rapor = null; $hata = '';
 
+// Boş/şablon satırlarını temizle (re-import gerekmeden): metraj+çap+adet hepsi 0/boş
+// olan A.3-A.4 kayıtları = Excel şablonunun boş numaralı satırları. A.2'ye dokunmaz.
+if ($canImport && $_SERVER['REQUEST_METHOD']==='POST' && ($_POST['islem'] ?? '')==='temizle_bos') {
+    $silinen = $pdoDemir->exec("DELETE FROM demir_proje_disi
+        WHERE tip IN ('A.3','A.4')
+          AND COALESCE(metraj_ton,0)=0 AND COALESCE(cap_mm,0)=0 AND COALESCE(adet,0)=0");
+    $rapor = ['temizlik' => (int)$silinen];
+}
+
 function pd_c($r,$i){
     if(!is_array($r)||$i>=count($r)||$r[$i]===null) return '';
     // Excel şablonlarının boş hücreleri sık sık kırılmaz boşluk (NBSP) / zero-width
@@ -115,7 +124,8 @@ $fmt = fn($n,$d=3) => number_format((float)$n, $d, ',', '.');
 </div>
 
 <?php if ($hata): ?><div class="alert alert-danger"><?= h($hata) ?></div><?php endif; ?>
-<?php if ($rapor): ?><div class="alert alert-success"><i class="bi bi-check-circle-fill me-1"></i><strong><?= $rapor['eklenen'] ?></strong> proje dışı iş kaydı içe aktarıldı (tam yenileme).</div><?php endif; ?>
+<?php if ($rapor && isset($rapor['eklenen'])): ?><div class="alert alert-success"><i class="bi bi-check-circle-fill me-1"></i><strong><?= $rapor['eklenen'] ?></strong> proje dışı iş kaydı içe aktarıldı (tam yenileme).</div><?php endif; ?>
+<?php if ($rapor && isset($rapor['temizlik'])): ?><div class="alert alert-success"><i class="bi bi-eraser me-1"></i><strong><?= $rapor['temizlik'] ?></strong> boş şablon satırı temizlendi (metraj/çap/adet değeri olmayan A.3-A.4 kayıtları).</div><?php endif; ?>
 
 <?php if ($canImport): ?>
 <div class="collapse mb-3" id="pdImport"><div class="card card-body">
@@ -151,7 +161,15 @@ $fmt = fn($n,$d=3) => number_format((float)$n, $d, ',', '.');
 
 <!-- A.3 -->
 <div class="card mb-3">
-    <div class="card-header bg-white fw-semibold"><span class="badge bg-secondary me-1">A.3</span> Firmalar/Bölgeler Arası Transfer</div>
+    <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+        <span><span class="badge bg-secondary me-1">A.3</span> Firmalar/Bölgeler Arası Transfer</span>
+        <?php if ($canImport): ?>
+        <form method="post" class="d-inline" onsubmit="return confirm('Metraj/çap/adet değeri olmayan boş A.3-A.4 şablon satırları silinsin mi? Gerçek kayıtlar korunur.')">
+            <input type="hidden" name="islem" value="temizle_bos">
+            <button class="btn btn-outline-danger btn-sm py-0"><i class="bi bi-eraser me-1"></i>Boş satırları temizle</button>
+        </form>
+        <?php endif; ?>
+    </div>
     <div class="card-body p-0"><div class="table-responsive" style="max-height:400px">
         <table class="table table-sm table-hover align-middle mb-0">
             <thead class="table-light"><tr><th>#</th><th>Açıklama</th><th>Eski Firma/Bölge</th><th>Yeni Firma/Bölge</th><th>Tarih</th><th class="text-end">Çap</th><th class="text-end">Adet</th><th class="text-end">Boy (m)</th><th class="text-end">Metraj (t)</th></tr></thead>
