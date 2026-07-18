@@ -28,7 +28,13 @@ $pdoDemir->exec("CREATE TABLE IF NOT EXISTS demir_proje_disi (
 
 $rapor = null; $hata = '';
 
-function pd_c($r,$i){ return (!is_array($r)||$i>=count($r)||$r[$i]===null)?'':trim((string)$r[$i]); }
+function pd_c($r,$i){
+    if(!is_array($r)||$i>=count($r)||$r[$i]===null) return '';
+    // Excel şablonlarının boş hücreleri sık sık kırılmaz boşluk (NBSP) / zero-width
+    // karakter içerir; trim() bunları kaldırmaz → normal boşluğa çevirip trim et.
+    $s = str_replace(["\xC2\xA0","\xE2\x80\x8B","\xEF\xBB\xBF"], ' ', (string)$r[$i]);
+    return trim($s);
+}
 function pd_num($v){ $v=str_replace(',','.',trim((string)$v)); return $v!=='' && is_numeric($v)?(float)$v:null; }
 function pd_int($v){ $v=trim((string)$v); return ctype_digit($v)?(int)$v:(is_numeric($v)?(int)round((float)$v):null); }
 function pd_tarih($v){ $v=trim((string)$v); if($v==='')return null; $ts=strtotime($v); return $ts?date('Y-m-d',$ts):null; }
@@ -65,9 +71,19 @@ if ($canImport && $_SERVER['REQUEST_METHOD']==='POST' && !empty($_FILES['dosya']
                 $rows = $xlsx->rows($a34i, 4000);
                 $hr = pd_hdr($rows, 'ESKİ FİRMA'); if ($hr<0) $hr = pd_hdr($rows, 'AÇIKLAMA');
                 for ($ri=$hr+1; $ri<count($rows); $ri++) {
-                    $r=$rows[$ri]; if (pd_c($r,0)==='' || pd_c($r,2)==='') continue; // boş şablon satırlarını atla (S.NO dolu ama içerik boş)
-                    $poz = pd_c($r,1) ?: 'A.3';
-                    $ins->execute([$poz, pd_c($r,2)?:null, pd_c($r,3)?:null, pd_c($r,5)?:null, pd_c($r,7)?:null, pd_c($r,4)?:null, pd_c($r,6)?:null, null, pd_tarih(pd_c($r,8)), pd_int(pd_c($r,11)), pd_int(pd_c($r,12)), pd_num(pd_c($r,13)), pd_num(pd_c($r,14)), null]);
+                    $r=$rows[$ri];
+                    $poz    = pd_c($r,1) ?: 'A.3';
+                    $isin   = pd_c($r,2); $acik  = pd_c($r,3);
+                    $firma  = pd_c($r,4); $proje = pd_c($r,5);
+                    $hfirma = pd_c($r,6); $hproje= pd_c($r,7);
+                    $tarih  = pd_tarih(pd_c($r,8));
+                    $cap    = pd_int(pd_c($r,11)); $adet = pd_int(pd_c($r,12));
+                    $boy    = pd_num(pd_c($r,13)); $metraj = pd_num(pd_c($r,14));
+                    // Anlamlı içerik yoksa atla (şablonun S.NO dolu ama boş numaralı satırları)
+                    $hasText = ($isin!=='' || $acik!=='' || $firma!=='' || $hfirma!=='' || $proje!=='' || $hproje!=='');
+                    $hasNum  = (($metraj!==null && $metraj!=0.0) || $cap!==null || ($adet!==null && $adet!=0) || ($boy!==null && $boy!=0.0));
+                    if (!$hasText && !$hasNum && $tarih===null) continue;
+                    $ins->execute([$poz, $isin?:null, $acik?:null, $proje?:null, $hproje?:null, $firma?:null, $hfirma?:null, null, $tarih, $cap, $adet, $boy, $metraj, null]);
                     $eklenen++;
                 }
             }
