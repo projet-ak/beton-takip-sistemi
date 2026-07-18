@@ -152,6 +152,39 @@ $stm = $pdo->prepare("
 $stm->execute($params);
 $parselBazli = $stm->fetchAll();
 
+// ── Proje bazlı özet ──────────────────────────────────────────────────────────
+// Etkin proje = irsaliyenin proje_id'si; yoksa parselin proje_id'si (parsel→proje bağı).
+try {
+    $stm = $pdo->prepare("
+        SELECT COALESCE(pr.kod, '—') AS proje_kod,
+               COALESCE(pr.aciklama, 'Proje atanmamış') AS proje_ad,
+               COUNT(*) AS adet,
+               COALESCE(SUM(eff.miktar),0) AS toplam_m3,
+               COUNT(DISTINCT eff.parsel_id) AS parsel_sayisi
+        FROM (
+            SELECT i.miktar, i.parsel_id, COALESCE(i.proje_id, par.proje_id) AS eff_proje_id
+            FROM irsaliyeler i
+            LEFT JOIN parseller par ON par.id = i.parsel_id
+            WHERE {$whereSQL}
+        ) eff
+        LEFT JOIN projeler pr ON pr.id = eff.eff_proje_id
+        GROUP BY eff.eff_proje_id, pr.kod, pr.aciklama
+        ORDER BY toplam_m3 DESC
+    ");
+    $stm->execute($params);
+    $projeBazli = $stm->fetchAll();
+} catch (Throwable $e) {
+    // parseller.proje_id yoksa yalnız i.proje_id ile grupla
+    $stm = $pdo->prepare("
+        SELECT COALESCE(pr.kod,'—') AS proje_kod, COALESCE(pr.aciklama,'Proje atanmamış') AS proje_ad,
+               COUNT(*) AS adet, COALESCE(SUM(i.miktar),0) AS toplam_m3, COUNT(DISTINCT i.parsel_id) AS parsel_sayisi
+        FROM irsaliyeler i LEFT JOIN projeler pr ON pr.id = i.proje_id
+        WHERE {$whereSQL} GROUP BY i.proje_id, pr.kod, pr.aciklama ORDER BY toplam_m3 DESC
+    ");
+    $stm->execute($params);
+    $projeBazli = $stm->fetchAll();
+}
+
 // ── Blok bazlı özet (sadece blok) ─────────────────────────────────────────────
 $stm = $pdo->prepare("
     SELECT blk.ad AS blok, par.ad AS parsel, COUNT(*) AS adet, COALESCE(SUM(i.miktar),0) AS toplam_m3
@@ -240,6 +273,8 @@ $betonLabels = json_encode(array_column($betonOzet, 'sinif'));
 $betonValues = json_encode(array_map(fn($r) => (float)$r['toplam_m3'], $betonOzet));
 $tedLabels   = json_encode(array_column($tedarikciOzet, 'ad'));
 $tedValues   = json_encode(array_map(fn($r) => (float)$r['toplam_m3'], $tedarikciOzet));
+$projeLabels = json_encode(array_column($projeBazli, 'proje_kod'));
+$projeValues = json_encode(array_map(fn($r) => (float)$r['toplam_m3'], $projeBazli));
 
 // JS'e aktarılacak özet değerleri
 $jsToplamM3   = (float)$genelToplam['toplam_m3'];
@@ -458,6 +493,41 @@ require_once __DIR__ . '/includes/header.php';
             <div class="card-body d-flex align-items-center justify-content-center">
                 <canvas id="chartTed" style="max-height:220px"></canvas>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Proje Bazlı Özet -->
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header bg-white fw-semibold"><i class="bi bi-diagram-3 text-primary me-1"></i>Proje Bazlı m³</div>
+            <div class="card-body d-flex align-items-center justify-content-center">
+                <canvas id="chartProje" style="max-height:230px"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card h-100">
+            <div class="card-header bg-white fw-semibold"><i class="bi bi-diagram-3 text-primary me-1"></i>Proje Bazlı Özet</div>
+            <div class="card-body p-0"><div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light"><tr><th>Proje</th><th>Açıklama</th><th class="text-end">Parsel</th><th class="text-end">İrsaliye</th><th class="text-end">Toplam m³</th></tr></thead>
+                    <tbody>
+                    <?php $pToplamM3=0; $pToplamAdet=0; foreach ($projeBazli as $pr): $pToplamM3+=(float)$pr['toplam_m3']; $pToplamAdet+=(int)$pr['adet']; ?>
+                        <tr>
+                            <td><span class="badge bg-dark"><?= h($pr['proje_kod']) ?></span></td>
+                            <td class="small text-muted"><?= h($pr['proje_ad']) ?></td>
+                            <td class="text-end"><?= (int)$pr['parsel_sayisi'] ?></td>
+                            <td class="text-end"><?= (int)$pr['adet'] ?></td>
+                            <td class="text-end fw-semibold"><?= format_number($pr['toplam_m3'], 2) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    <?php if (!$projeBazli): ?><tr><td colspan="5" class="text-center text-muted py-4">Kayıt yok.</td></tr><?php endif; ?>
+                    </tbody>
+                    <?php if ($projeBazli): ?><tfoot class="table-light fw-bold"><tr><td colspan="2" class="text-end">TOPLAM</td><td class="text-end"><?= array_sum(array_map(fn($r)=>(int)$r['parsel_sayisi'],$projeBazli)) ?></td><td class="text-end"><?= $pToplamAdet ?></td><td class="text-end"><?= format_number($pToplamM3,2) ?></td></tr></tfoot><?php endif; ?>
+                </table>
+            </div></div>
         </div>
     </div>
 </div>
@@ -801,6 +871,7 @@ const RAPOR_DETAY = <?= json_encode(array_map(function($d) {
 const RAPOR_AYLIK   = <?= json_encode($aylikOzet ?? array_map(fn($i,$v)=>['ay'=>$ayAdlari[$i+1],'toplam_m3'=>$v,'adet'=>0], array_keys($chartM3), $chartM3), JSON_UNESCAPED_UNICODE) ?>;
 const RAPOR_TED     = <?= json_encode($tedarikciOzet, JSON_UNESCAPED_UNICODE) ?>;
 const RAPOR_BETON   = <?= json_encode($betonOzet, JSON_UNESCAPED_UNICODE) ?>;
+const RAPOR_PROJE   = <?= json_encode($projeBazli, JSON_UNESCAPED_UNICODE) ?>;
 const DONEM_ETIKETI = <?= json_encode($donemEtiketi) ?>;
 </script>
 <script>
@@ -846,6 +917,22 @@ const DONEM_ETIKETI = <?= json_encode($donemEtiketi) ?>;
             cutout: '62%'
         }
     });
+
+    // Proje bazlı doughnut grafik
+    const cvProje = document.getElementById('chartProje');
+    if (cvProje) {
+        new Chart(cvProje, {
+            type: 'doughnut',
+            data: {
+                labels: <?= $projeLabels ?>,
+                datasets: [{ data: <?= $projeValues ?>, backgroundColor: COLORS, borderWidth: 0 }]
+            },
+            options: {
+                plugins: { legend: { position: 'bottom', labels: { color: labelColor(), padding: 14, font: { size: 12 } } } },
+                cutout: '62%'
+            }
+        });
+    }
 
     // Yıl seçilince tarih aralığı alanlarını gizle/göster
     const selYil     = document.getElementById('selYil');
@@ -1442,6 +1529,24 @@ async function buildOzetSheet(wb) {
             c.font   = xlFont({ size: 10 });
             c.border = xlBorder('hair', XL.midGray);
             if (ci === 1) { c.numFmt = '#,##0.00'; c.alignment = xlAlign('right'); c.font = xlFont({ bold: true, size: 10, color: { argb: XL.ernGreen } }); }
+        });
+    });
+
+    // Proje bazlı özet (altta, tam genişlik)
+    const pBas = Math.max(RAPOR_TED.length, RAPOR_BETON.length) + 4;
+    sectionHeader(pBas, 1, 'PROJE BAZLI OZET', 5, XL.ernTeal);
+    colHeaders(pBas + 1, 1, ['Proje', 'Aciklama', 'Parsel', 'Irsaliye', 'Toplam m3'], XL.ernLight);
+    RAPOR_PROJE.forEach((p, i) => {
+        const r = ws.getRow(pBas + 2 + i);
+        r.height = 18;
+        [p.proje_kod || '—', p.proje_ad || '', parseInt(p.parsel_sayisi||0), parseInt(p.adet||0), parseFloat(p.toplam_m3||0)].forEach((v, ci) => {
+            const c = r.getCell(1 + ci);
+            c.value  = v;
+            c.fill   = xlFill(i % 2 === 0 ? XL.rowEven : XL.rowOdd);
+            c.font   = xlFont({ size: 10 });
+            c.border = xlBorder('hair', XL.midGray);
+            if (ci >= 2) c.alignment = xlAlign('right');
+            if (ci === 4) { c.numFmt = '#,##0.00'; c.font = xlFont({ bold: true, size: 10, color: { argb: XL.ernGreen } }); }
         });
     });
 }
