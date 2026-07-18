@@ -80,6 +80,7 @@ try {
         'parseller' => "CREATE TABLE IF NOT EXISTS parseller (
             id INT AUTO_INCREMENT PRIMARY KEY,
             ad VARCHAR(100) NOT NULL,
+            proje_id INT NULL,
             aktif TINYINT(1) NOT NULL DEFAULT 1
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 

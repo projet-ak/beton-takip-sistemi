@@ -47,7 +47,8 @@ $pompaTurleri   = $pdo->query("SELECT id,ad FROM pompa_turleri ORDER BY ad")->fe
 $firmalar       = $pdo->query("SELECT id,ad FROM firmalar ORDER BY ad")->fetchAll();
 $kivamSiniflari = $pdo->query("SELECT id,ad FROM kivam_siniflari ORDER BY ad")->fetchAll();
 $imalatGruplari = $pdo->query("SELECT id,ad FROM imalat_gruplari ORDER BY sira,ad")->fetchAll();
-$parseller      = $pdo->query("SELECT id,ad FROM parseller ORDER BY ad")->fetchAll();
+try { $parseller = $pdo->query("SELECT id,ad,proje_id FROM parseller ORDER BY ad")->fetchAll(); }
+catch (Throwable $e) { $parseller = $pdo->query("SELECT id,ad,NULL AS proje_id FROM parseller ORDER BY ad")->fetchAll(); }
 $projeler       = $pdo->query("SELECT id,kod,aciklama FROM projeler WHERE aktif=1 ORDER BY kod")->fetchAll();
 
 // ── Kaydet ───────────────────────────────────────────────────────────────────
@@ -544,7 +545,7 @@ if ($editId && isset($row['durum'])):
                     <select name="parsel_id" id="selParsel" class="form-select">
                         <option value="">—</option>
                         <?php foreach ($parseller as $p): ?>
-                            <option value="<?= $p['id'] ?>" <?= sel($row['parsel_id'] ?? '', $p['id']) ?>><?= h($p['ad']) ?></option>
+                            <option value="<?= $p['id'] ?>" data-proje="<?= (int)($p['proje_id'] ?? 0) ?>" <?= sel($row['parsel_id'] ?? '', $p['id']) ?>><?= h($p['ad']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -648,6 +649,10 @@ document.getElementById('selParsel').addEventListener('change', function () {
     const kotSel   = document.getElementById('selKot');
     blokSel.innerHTML = '<option value="">—</option>';
     kotSel.innerHTML  = '<option value="">—</option>';
+    // Parsele bağlı proje varsa Proje alanını otomatik seç
+    const projeId = this.options[this.selectedIndex]?.dataset.proje || '0';
+    const projeSel = document.querySelector('select[name="proje_id"]');
+    if (projeSel && projeId !== '0') projeSel.value = projeId;
     if (!parselId) return;
     fetch(BASE_URL + '?ajax=bloklar&parsel_id=' + parselId)
         .then(r => r.json())

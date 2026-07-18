@@ -7,6 +7,13 @@ require_once __DIR__ . '/includes/db.php';
 
 $pageTitle = 'Parseller — Beton Takip Sistemi';
 
+// ── proje_id kolonu garanti (parsel → proje bağı) ────────────────────────────
+$hasProje = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.columns
+    WHERE table_schema=DATABASE() AND table_name='parseller' AND column_name='proje_id'")->fetchColumn();
+if (!$hasProje) { try { $pdo->exec("ALTER TABLE parseller ADD COLUMN proje_id INT NULL"); } catch (Throwable $e) {} }
+
+$projeler = $pdo->query("SELECT id,kod,aciklama FROM projeler WHERE aktif=1 ORDER BY kod")->fetchAll();
+
 // ── Sil ──────────────────────────────────────────────────────────────────────
 if (isset($_GET['sil']) && ctype_digit($_GET['sil'])) {
     $id = (int)$_GET['sil'];
@@ -37,15 +44,16 @@ if (isset($_GET['duzenle']) && ctype_digit($_GET['duzenle'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $id = isset($_POST['id']) && ctype_digit($_POST['id']) ? (int)$_POST['id'] : null;
     $ad = trim($_POST['ad'] ?? '');
+    $projeId = ($_POST['proje_id'] ?? '') !== '' && ctype_digit((string)$_POST['proje_id']) ? (int)$_POST['proje_id'] : null;
     if (!$ad) {
         $formError = 'Ad alanı zorunludur.';
     } else {
         try {
             if ($id) {
-                $pdo->prepare("UPDATE parseller SET ad = ? WHERE id = ?")->execute([$ad, $id]);
+                $pdo->prepare("UPDATE parseller SET ad = ?, proje_id = ? WHERE id = ?")->execute([$ad, $projeId, $id]);
                 flash('success', 'Parsel güncellendi.');
             } else {
-                $pdo->prepare("INSERT INTO parseller (ad) VALUES (?)")->execute([$ad]);
+                $pdo->prepare("INSERT INTO parseller (ad, proje_id) VALUES (?, ?)")->execute([$ad, $projeId]);
                 flash('success', 'Parsel eklendi.');
             }
             redirect('parseller.php');
@@ -63,11 +71,12 @@ $formAcik = isset($_GET['ekle']) || $duzenle;
 
 // ── Liste (blok sayısı dahil) ─────────────────────────────────────────────────
 $liste = $pdo->query("
-    SELECT p.*, COUNT(b.id) AS blok_sayisi
+    SELECT p.*, COUNT(b.id) AS blok_sayisi, pr.kod AS proje_kod, pr.aciklama AS proje_ad
     FROM parseller p
     LEFT JOIN bloklar b ON b.parsel_id = p.id
+    LEFT JOIN projeler pr ON pr.id = p.proje_id
     GROUP BY p.id
-    ORDER BY p.ad
+    ORDER BY pr.kod, p.ad
 ")->fetchAll();
 
 require_once __DIR__ . '/includes/header.php';
@@ -99,11 +108,20 @@ require_once __DIR__ . '/includes/header.php';
                 <input type="hidden" name="id" value="<?= (int)$duzenle['id'] ?>">
             <?php endif; ?>
             <div class="row g-3 align-items-end">
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <label class="form-label">Ad <span class="text-danger">*</span></label>
                     <input name="ad" class="form-control" required value="<?= h($duzenle['ad'] ?? '') ?>">
                 </div>
-                <div class="col-md-6 d-flex gap-2">
+                <div class="col-md-4">
+                    <label class="form-label">Proje</label>
+                    <select name="proje_id" class="form-select">
+                        <option value="">— Proje seçin —</option>
+                        <?php foreach ($projeler as $p): ?>
+                            <option value="<?= $p['id'] ?>" <?= (($duzenle['proje_id'] ?? '') == $p['id']) ? 'selected' : '' ?>><?= h($p['kod'].' — '.$p['aciklama']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-4 d-flex gap-2 align-items-end">
                     <button class="btn btn-success"><i class="bi bi-save me-1"></i><?= $duzenle ? 'Güncelle' : 'Kaydet' ?></button>
                     <a href="parseller.php" class="btn btn-secondary"><i class="bi bi-x-circle me-1"></i>İptal</a>
                 </div>
@@ -121,6 +139,7 @@ require_once __DIR__ . '/includes/header.php';
                     <tr>
                         <th>#</th>
                         <th>Ad</th>
+                        <th>Proje</th>
                         <th class="text-center">Blok Sayısı</th>
                         <th class="text-end">İşlem</th>
                     </tr>
@@ -130,6 +149,7 @@ require_once __DIR__ . '/includes/header.php';
                     <tr>
                         <td class="text-muted small"><?= (int)$r['id'] ?></td>
                         <td class="fw-semibold"><?= h($r['ad']) ?></td>
+                        <td><?php if ($r['proje_kod']): ?><span class="badge bg-dark" title="<?= h($r['proje_ad']) ?>"><?= h($r['proje_kod']) ?></span><?php else: ?><span class="text-muted small">— atanmadı —</span><?php endif; ?></td>
                         <td class="text-center">
                             <?php if ($r['blok_sayisi'] > 0): ?>
                                 <a href="bloklar.php?parsel_id=<?= $r['id'] ?>" class="badge bg-primary text-decoration-none">
@@ -152,7 +172,7 @@ require_once __DIR__ . '/includes/header.php';
                     </tr>
                     <?php endforeach; ?>
                     <?php if (!$liste): ?>
-                        <tr><td colspan="4" class="text-center text-muted py-5">Henüz parsel yok.</td></tr>
+                        <tr><td colspan="5" class="text-center text-muted py-5">Henüz parsel yok.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>
