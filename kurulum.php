@@ -201,6 +201,31 @@ try {
             FOREIGN KEY (kullanici_id) REFERENCES users(id) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
+        'kullanici_oturum' => "CREATE TABLE IF NOT EXISTS kullanici_oturum (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            kullanici_id INT NOT NULL,
+            oturum_key VARCHAR(128) NOT NULL,
+            giris DATETIME NOT NULL,
+            son_aktivite DATETIME NOT NULL,
+            sayfa_sayisi INT NOT NULL DEFAULT 0,
+            ip VARCHAR(45) NULL,
+            tarayici VARCHAR(255) NULL,
+            UNIQUE KEY uq_oturum (oturum_key),
+            INDEX (kullanici_id), INDEX (giris)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        'kullanici_aktivite' => "CREATE TABLE IF NOT EXISTS kullanici_aktivite (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            kullanici_id INT NOT NULL,
+            oturum_key VARCHAR(128) NULL,
+            sayfa VARCHAR(120) NULL,
+            modul VARCHAR(20) NULL,
+            yontem VARCHAR(8) NULL,
+            ip VARCHAR(45) NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX (kullanici_id), INDEX (created_at), INDEX (oturum_key)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
         'beton_metraj' => "CREATE TABLE IF NOT EXISTS beton_metraj (
             id INT AUTO_INCREMENT PRIMARY KEY,
             seviye ENUM('kot','blok','kalem') NOT NULL,
