@@ -193,6 +193,37 @@ try {
     $projeOzet = $st->fetchAll();
 } catch (Exception $e) { $projeOzet = []; }
 
+// ── Proje → Parsel → Blok → Kot hiyerarşisi (dökülen m³) ─────────────────────
+// Etkin proje = i.proje_id; yoksa parselin proje_id'si (parsel→proje bağı).
+$hiyerarsi = [];
+try {
+    $hq = "SELECT COALESCE(pr.kod,'—') AS proje, COALESCE(pr.aciklama,'') AS proje_ad,
+                  COALESCE(par.ad,'— parselsiz —') AS parsel,
+                  COALESCE(blk.ad,'— bloksuz —') AS blok,
+                  COALESCE(kot.kot_degeri,'— kotsuz —') AS kot, COALESCE(kot.aciklama,'') AS kot_acik,
+                  COUNT(*) AS adet, COALESCE(SUM(i.miktar),0) AS m3
+           FROM irsaliyeler i
+           LEFT JOIN parseller par ON par.id = i.parsel_id
+           LEFT JOIN bloklar   blk ON blk.id = i.blok_id
+           LEFT JOIN kotlar    kot ON kot.id = i.kot_id
+           LEFT JOIN projeler  pr  ON pr.id  = COALESCE(i.proje_id, par.proje_id)
+           WHERE i.tip='alis' AND i.durum<>'reddedildi'$projeFilter
+           GROUP BY COALESCE(i.proje_id, par.proje_id), pr.kod, pr.aciklama, i.parsel_id, par.ad, i.blok_id, blk.ad, i.kot_id, kot.kot_degeri, kot.aciklama
+           ORDER BY pr.kod, par.ad, blk.ad, kot.kot_degeri";
+    $st = $pdo->prepare($hq);
+    $st->execute($projeParams);
+    foreach ($st->fetchAll() as $r) {
+        $pk = $r['proje']; $pa = $r['parsel']; $bl = $r['blok'];
+        if (!isset($hiyerarsi[$pk])) $hiyerarsi[$pk] = ['ad'=>$r['proje_ad'],'m3'=>0,'adet'=>0,'parseller'=>[]];
+        $hiyerarsi[$pk]['m3'] += (float)$r['m3']; $hiyerarsi[$pk]['adet'] += (int)$r['adet'];
+        if (!isset($hiyerarsi[$pk]['parseller'][$pa])) $hiyerarsi[$pk]['parseller'][$pa] = ['m3'=>0,'adet'=>0,'bloklar'=>[]];
+        $hiyerarsi[$pk]['parseller'][$pa]['m3'] += (float)$r['m3']; $hiyerarsi[$pk]['parseller'][$pa]['adet'] += (int)$r['adet'];
+        if (!isset($hiyerarsi[$pk]['parseller'][$pa]['bloklar'][$bl])) $hiyerarsi[$pk]['parseller'][$pa]['bloklar'][$bl] = ['m3'=>0,'adet'=>0,'kotlar'=>[]];
+        $hiyerarsi[$pk]['parseller'][$pa]['bloklar'][$bl]['m3'] += (float)$r['m3']; $hiyerarsi[$pk]['parseller'][$pa]['bloklar'][$bl]['adet'] += (int)$r['adet'];
+        $hiyerarsi[$pk]['parseller'][$pa]['bloklar'][$bl]['kotlar'][] = ['kot'=>$r['kot'],'acik'=>$r['kot_acik'],'m3'=>(float)$r['m3'],'adet'=>(int)$r['adet']];
+    }
+} catch (Throwable $e) { $hiyerarsi = []; }
+
 // Bekleyen onaylar
 $bekleyenSaha = 0;
 $bekleyenTeknik = 0;
@@ -669,6 +700,61 @@ html[data-dark="1"] .trend-down { background:rgba(224,84,84,.14); color:#ff8080;
     </div>
 </div>
 <?php endif; ?>
+
+<!-- Proje → Parsel → Blok → Kot hiyerarşisi -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-transparent border-0 fw-bold pt-4 px-4 pb-2 text-dark fs-6">
+        <i class="bi bi-diagram-3 text-primary me-2"></i>Proje → Parsel → Blok → Kot <span class="text-muted fw-normal small">(dökülen m³)</span>
+    </div>
+    <div class="card-body px-4 pb-4 pt-2">
+        <?php if (!$hiyerarsi): ?>
+            <div class="text-muted small py-3 text-center">Kayıt yok.</div>
+        <?php else: $__fmt=fn($n)=>number_format((float)$n,2,',','.'); $pi=0; ?>
+        <div class="accordion accordion-flush" id="hiyAcc">
+        <?php foreach ($hiyerarsi as $proje=>$pv): $pi++; $pid="hp{$pi}"; ?>
+            <div class="accordion-item border rounded mb-2">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed py-2" type="button" data-bs-toggle="collapse" data-bs-target="#<?= $pid ?>">
+                        <span class="badge bg-dark me-2"><?= h($proje) ?></span>
+                        <span class="small text-muted me-2"><?= h($pv['ad']) ?></span>
+                        <span class="ms-auto me-3 fw-bold text-primary"><?= $__fmt($pv['m3']) ?> m³</span>
+                        <span class="small text-muted"><?= (int)$pv['adet'] ?> irs.</span>
+                    </button>
+                </h2>
+                <div id="<?= $pid ?>" class="accordion-collapse collapse" data-bs-parent="#hiyAcc"><div class="accordion-body py-2">
+                    <?php foreach ($pv['parseller'] as $parsel=>$pav): ?>
+                        <div class="mb-2 ps-2 border-start border-2">
+                            <div class="d-flex align-items-center py-1">
+                                <i class="bi bi-map text-success me-2"></i><span class="fw-semibold"><?= h($parsel) ?></span>
+                                <span class="ms-auto me-3 fw-semibold"><?= $__fmt($pav['m3']) ?> m³</span>
+                                <span class="small text-muted"><?= (int)$pav['adet'] ?> irs.</span>
+                            </div>
+                            <?php foreach ($pav['bloklar'] as $blok=>$bv): ?>
+                                <div class="ms-4 mb-1">
+                                    <div class="d-flex align-items-center small py-1">
+                                        <i class="bi bi-building text-secondary me-2"></i><span class="fw-semibold"><?= h($blok) ?></span>
+                                        <span class="ms-auto me-3"><?= $__fmt($bv['m3']) ?> m³</span>
+                                        <span class="text-muted"><?= (int)$bv['adet'] ?> irs.</span>
+                                    </div>
+                                    <div class="ms-4 d-flex flex-wrap gap-1 pb-1">
+                                        <?php foreach ($bv['kotlar'] as $k): ?>
+                                            <span class="badge bg-light text-dark border" title="<?= h($k['acik']) ?>">
+                                                <i class="bi bi-layers me-1 text-muted"></i><?= h($k['kot']) ?><?= $k['acik']?' · '.h($k['acik']):'' ?>
+                                                <span class="text-primary ms-1"><?= $__fmt($k['m3']) ?></span>
+                                            </span>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div></div>
+            </div>
+        <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
 
 <!-- Son irsaliyeler -->
 <div class="card border-0 shadow-sm">

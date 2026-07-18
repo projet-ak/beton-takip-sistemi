@@ -108,8 +108,8 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 
 ## 4. Beton Modülü (kök dizin)
 
-- **`index.php`** — Dashboard; admin girişinde günlük otomatik yedek (`backups/`, gzip, 30 gün).
-- **`irsaliyeler.php`** — Alış/İade/Tüm liste. Filtreler, toplu saha/teknik onay, **whitelist sıralama**
+- **`index.php`** — Dashboard; admin girişinde günlük otomatik yedek (`backups/`, gzip, 30 gün). **Proje → Parsel → Blok → Kot hiyerarşi akordeonu** (dökülen m³, etkin proje `COALESCE(i.proje_id, par.proje_id)`; proje filtresine saygılı).
+- **`irsaliyeler.php`** — Alış/İade/Tüm liste. Filtreler, toplu saha/teknik onay, **toplu güncelleme** (`toplu_islem=guncelle`: Proje→Parsel→Blok→Kot kademeli modal + Açıklama; yalnız doldurulan alanlar değişir, `can_edit()`), **whitelist sıralama**
   (sütun başlığına tıkla), CSV/XLSX export.
 - **`irsaliye_form.php` / `irsaliye_detay.php`** — ekle/düzenle (durum bazlı yetki) / detay + foto yükleme.
 - **`hizli_tarama.php`** (~2900 satır) — **QR+DataMatrix+OCR+AI tarama motoru** (§7). Toplu irsaliye tarama.

@@ -70,6 +70,28 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['toplu_islem']
         if ($projeSiz) $msg .= " {$projeSiz} irsaliye atlandı (proje seçilmemiş).";
         flash($onaylandi ? 'success' : 'warning', $msg);
 
+    } elseif ($topluIslem === 'guncelle' && can_edit()) {
+        // Toplu güncelleme — yalnız doldurulan (seçilen) alanlar değişir.
+        // Proje/Parsel/Blok/Kot: değer varsa set; '' ise dokunma.
+        // Açıklama: yalnız "aciklama_guncelle" işaretliyse set (boşa da çekilebilir).
+        $sets = []; $vals = [];
+        $bpr = ($_POST['bulk_proje_id']  ?? '') !== '' && ctype_digit((string)$_POST['bulk_proje_id'])  ? (int)$_POST['bulk_proje_id']  : null;
+        $bpa = ($_POST['bulk_parsel_id'] ?? '') !== '' && ctype_digit((string)$_POST['bulk_parsel_id']) ? (int)$_POST['bulk_parsel_id'] : null;
+        $bbl = ($_POST['bulk_blok_id']   ?? '') !== '' && ctype_digit((string)$_POST['bulk_blok_id'])   ? (int)$_POST['bulk_blok_id']   : null;
+        $bko = ($_POST['bulk_kot_id']    ?? '') !== '' && ctype_digit((string)$_POST['bulk_kot_id'])    ? (int)$_POST['bulk_kot_id']    : null;
+        if ($bpr !== null) { $sets[]='proje_id=?';  $vals[]=$bpr; }
+        if ($bpa !== null) { $sets[]='parsel_id=?'; $vals[]=$bpa; }
+        if ($bbl !== null) { $sets[]='blok_id=?';   $vals[]=$bbl; }
+        if ($bko !== null) { $sets[]='kot_id=?';    $vals[]=$bko; }
+        if (isset($_POST['aciklama_guncelle'])) { $sets[]='aciklama=?'; $vals[]=trim((string)($_POST['bulk_aciklama'] ?? '')) ?: null; }
+        if (!$sets) {
+            flash('warning', 'Güncellenecek alan seçmediniz.');
+        } else {
+            $sql = "UPDATE irsaliyeler SET ".implode(', ', $sets)." WHERE id IN ($ph)";
+            $pdo->prepare($sql)->execute(array_merge($vals, $ids));
+            flash('success', count($ids).' irsaliye güncellendi ('.count($sets).' alan).');
+        }
+
     } else {
         flash('warning', 'Yetkisiz işlem.');
     }
@@ -300,6 +322,12 @@ if ($filtreParsel) {
 } else {
     $bloklar = [];
 }
+
+// ── Toplu güncelleme modalı için tüm konum zinciri (istemci tarafı kademeli seçim) ──
+try { $tgParseller = $pdo->query("SELECT id,ad,proje_id FROM parseller ORDER BY ad")->fetchAll(); }
+catch (Throwable $e) { $tgParseller = $pdo->query("SELECT id,ad,NULL AS proje_id FROM parseller ORDER BY ad")->fetchAll(); }
+$tgBloklar = $pdo->query("SELECT id,ad,parsel_id FROM bloklar ORDER BY ad")->fetchAll();
+$tgKotlar  = $pdo->query("SELECT id,kot_degeri,blok_id FROM kotlar ORDER BY sira, kot_degeri")->fetchAll();
 $yillar = $pdo->query("SELECT DISTINCT YEAR(tarih) AS y FROM irsaliyeler ORDER BY y DESC")->fetchAll(PDO::FETCH_COLUMN);
 
 // Mevcut GET parametrelerini koru
@@ -463,11 +491,23 @@ require_once __DIR__ . '/includes/header.php';
         </button>
         <?php endif; ?>
 
+        <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#topluGuncelleModal">
+            <i class="bi bi-pencil-square me-1"></i>Toplu Güncelle
+        </button>
+
         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="secimTemizle()">
             <i class="bi bi-x-lg me-1"></i>Seçimi Temizle
         </button>
     </div>
     <?php endif; ?>
+
+    <!-- Toplu güncelleme için gizli alanlar (topluForm ile gönderilir) -->
+    <input type="hidden" name="bulk_proje_id"  id="bulkProjeId">
+    <input type="hidden" name="bulk_parsel_id" id="bulkParselId">
+    <input type="hidden" name="bulk_blok_id"   id="bulkBlokId">
+    <input type="hidden" name="bulk_kot_id"    id="bulkKotId">
+    <input type="hidden" name="bulk_aciklama"  id="bulkAciklama">
+    <input type="hidden" name="aciklama_guncelle" id="bulkAciklamaFlag" disabled>
 
     <div class="card">
         <div class="card-body p-0">
@@ -643,5 +683,100 @@ require_once __DIR__ . '/includes/header.php';
     };
 })();
 </script>
+
+<?php if (can_edit()): ?>
+<!-- Toplu Güncelleme Modalı -->
+<div class="modal fade" id="topluGuncelleModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal-header">
+        <h6 class="modal-title"><i class="bi bi-pencil-square text-warning me-2"></i>Toplu Güncelle — <span id="tgSecimSay">0</span> kayıt</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    </div>
+    <div class="modal-body">
+        <div class="alert alert-light border small mb-3"><i class="bi bi-info-circle text-primary me-1"></i>Konum zinciri: <strong>Proje → Parsel → Blok → Kot</strong>. <u>Boş bırakılan alanlar değiştirilmez.</u> Parsel seçilince proje otomatik gelir.</div>
+        <div class="mb-2">
+            <label class="form-label small fw-semibold">Proje</label>
+            <select id="bulkProjeSel" class="form-select form-select-sm">
+                <option value="">— değiştirme —</option>
+                <?php foreach ($projelerList as $pr): ?><option value="<?= $pr['id'] ?>"><?= h($pr['kod'].($pr['aciklama']?' — '.$pr['aciklama']:'')) ?></option><?php endforeach; ?>
+            </select>
+        </div>
+        <div class="mb-2">
+            <label class="form-label small fw-semibold">Parsel</label>
+            <select id="bulkParselSel" class="form-select form-select-sm">
+                <option value="">— değiştirme —</option>
+                <?php foreach ($tgParseller as $p): ?><option value="<?= $p['id'] ?>" data-proje="<?= (int)($p['proje_id'] ?? 0) ?>"><?= h($p['ad']) ?></option><?php endforeach; ?>
+            </select>
+        </div>
+        <div class="row g-2 mb-2">
+            <div class="col-6">
+                <label class="form-label small fw-semibold">Blok</label>
+                <select id="bulkBlokSel" class="form-select form-select-sm"><option value="">— değiştirme —</option></select>
+            </div>
+            <div class="col-6">
+                <label class="form-label small fw-semibold">Kot</label>
+                <select id="bulkKotSel" class="form-select form-select-sm"><option value="">— değiştirme —</option></select>
+            </div>
+        </div>
+        <div class="form-check mt-3">
+            <input class="form-check-input" type="checkbox" id="bulkAcikChk">
+            <label class="form-check-label small fw-semibold" for="bulkAcikChk">Açıklamayı da güncelle</label>
+        </div>
+        <textarea id="bulkAcikText" class="form-control form-control-sm mt-1" rows="2" placeholder="Açıklama metni (boş bırakılırsa açıklama temizlenir)" disabled></textarea>
+    </div>
+    <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Vazgeç</button>
+        <button type="button" class="btn btn-warning btn-sm" onclick="topluGuncelleUygula()"><i class="bi bi-check-lg me-1"></i>Seçili İrsaliyeleri Güncelle</button>
+    </div>
+</div></div></div>
+
+<script>
+(function(){
+    const TG_BLOK = <?= json_encode(array_map(fn($b)=>['id'=>(int)$b['id'],'ad'=>$b['ad'],'p'=>(int)$b['parsel_id']], $tgBloklar), JSON_UNESCAPED_UNICODE) ?>;
+    const TG_KOT  = <?= json_encode(array_map(fn($k)=>['id'=>(int)$k['id'],'ad'=>$k['kot_degeri'],'b'=>(int)$k['blok_id']], $tgKotlar), JSON_UNESCAPED_UNICODE) ?>;
+    const projeSel=document.getElementById('bulkProjeSel'), parselSel=document.getElementById('bulkParselSel'),
+          blokSel=document.getElementById('bulkBlokSel'), kotSel=document.getElementById('bulkKotSel'),
+          acikChk=document.getElementById('bulkAcikChk'), acikText=document.getElementById('bulkAcikText');
+
+    function opt(v,t){ const o=document.createElement('option'); o.value=v; o.textContent=t; return o; }
+    function fillBlok(pid){
+        blokSel.innerHTML=''; blokSel.appendChild(opt('','— değiştirme —'));
+        TG_BLOK.filter(b=>b.p==pid).forEach(b=>blokSel.appendChild(opt(b.id,b.ad)));
+        fillKot('');
+    }
+    function fillKot(bid){
+        kotSel.innerHTML=''; kotSel.appendChild(opt('','— değiştirme —'));
+        if(bid) TG_KOT.filter(k=>k.b==bid).forEach(k=>kotSel.appendChild(opt(k.id,k.ad)));
+    }
+    parselSel.addEventListener('change', function(){
+        const pr=this.options[this.selectedIndex]?.dataset.proje||'0';
+        if(pr!=='0') projeSel.value=pr;
+        fillBlok(this.value);
+    });
+    blokSel.addEventListener('change', function(){ fillKot(this.value); });
+    acikChk.addEventListener('change', function(){ acikText.disabled=!this.checked; });
+
+    // Modal açılınca seçim sayısını yaz
+    document.getElementById('topluGuncelleModal').addEventListener('show.bs.modal', function(){
+        document.getElementById('tgSecimSay').textContent = document.querySelectorAll('.secSatir:checked').length;
+    });
+
+    window.topluGuncelleUygula = function(){
+        const sec=document.querySelectorAll('.secSatir:checked');
+        if(sec.length===0){ alert('Lütfen en az bir kayıt seçin.'); return; }
+        const proje=projeSel.value, parsel=parselSel.value, blok=blokSel.value, kot=kotSel.value, ac=acikChk.checked;
+        if(!proje && !parsel && !blok && !kot && !ac){ alert('En az bir alan seçin veya açıklamayı işaretleyin.'); return; }
+        if(!confirm(sec.length+' irsaliye güncellenecek. Onaylıyor musunuz?')) return;
+        document.getElementById('bulkProjeId').value=proje;
+        document.getElementById('bulkParselId').value=parsel;
+        document.getElementById('bulkBlokId').value=blok;
+        document.getElementById('bulkKotId').value=kot;
+        document.getElementById('bulkAciklama').value=acikText.value;
+        document.getElementById('bulkAciklamaFlag').disabled=!ac; // yalnız işaretliyse gönderilir
+        document.getElementById('topluIslemField').value='guncelle';
+        document.getElementById('topluForm').submit();
+    };
+})();
+</script>
+<?php endif; ?>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>
