@@ -50,6 +50,9 @@ $yilDefault = ($yil === 0 && $tarihBas === '') ? (int)date('Y') : $yil;
 $where  = [];
 $params = [];
 
+// Reddedilen irsaliyeler hiçbir toplama dahil edilmez (dashboard/zayıat ile tutarlı)
+$where[] = "i.durum <> 'reddedildi'";
+
 // Tip filtresi
 if ($tip === 'alis') {
     $where[] = "i.tip = 'alis'";

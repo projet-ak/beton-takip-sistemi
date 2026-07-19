@@ -15,6 +15,14 @@ $k    = $body['alanlar']      ?? [];
 
 if (!$id || !$k) { echo json_encode(['ok'=>false,'msg'=>'Geçersiz veri']); exit; }
 
+// Yetki: düzenleme rolü + durum bazlı kontrol (onaylanmış irsaliye ezilemesin)
+if (!can_edit()) { http_response_code(403); echo json_encode(['ok'=>false,'msg'=>'Bu işlem için yetkiniz yok.']); exit; }
+$__mevcut = $pdo->prepare("SELECT durum FROM irsaliyeler WHERE id=?");
+$__mevcut->execute([$id]);
+$__row = $__mevcut->fetch();
+if (!$__row) { echo json_encode(['ok'=>false,'msg'=>'Kayıt bulunamadı.']); exit; }
+if (!can_edit_irsaliye($__row)) { http_response_code(403); echo json_encode(['ok'=>false,'msg'=>'Bu irsaliye mevcut durumunda ('.h($__row['durum']).') düzenlenemez.']); exit; }
+
 try {
     $tarih       = trim($k['tarih']               ?? '');
     $aracPlaka   = strtoupper(trim($k['arac_plaka'] ?? '')) ?: null;

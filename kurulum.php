@@ -18,6 +18,15 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
+    // Güvenlik: ilk kurulumdan sonra (users tablosu doluysa) yalnız admin çalıştırabilir.
+    $__kuruldu = false;
+    try { $__kuruldu = (int)$pdo->query("SELECT COUNT(*) FROM users")->fetchColumn() > 0; } catch (Throwable $e) { $__kuruldu = false; }
+    if ($__kuruldu) {
+        require_once __DIR__ . '/includes/functions.php';
+        require_once __DIR__ . '/includes/auth.php';
+        require_auth(['admin']);
+    }
+
     $pdo->exec("SET FOREIGN_KEY_CHECKS=0");
 
     $tablolar = [
@@ -162,6 +171,7 @@ try {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             INDEX idx_durum (durum),
+            INDEX idx_tip_tarih (tip, tarih),
             FOREIGN KEY (kivam_sinifi_id)    REFERENCES kivam_siniflari(id)  ON DELETE SET NULL,
             FOREIGN KEY (proje_id)           REFERENCES projeler(id)         ON DELETE SET NULL,
             FOREIGN KEY (tedarikci_id)       REFERENCES tedarikciler(id)     ON DELETE RESTRICT,
@@ -199,6 +209,8 @@ try {
             yeni_deger JSON NULL,
             kullanici_id INT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_created (created_at),
+            INDEX idx_tablo_kayit (tablo, kayit_id),
             FOREIGN KEY (kullanici_id) REFERENCES users(id) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
@@ -251,6 +263,20 @@ try {
     }
 
     $pdo->exec("SET FOREIGN_KEY_CHECKS=1");
+
+    // ── İndeksleri garanti et (mevcut DB'lerde CREATE TABLE indeks eklemez) ────
+    $idxEnsure = [
+        ['irsaliyeler', 'idx_tip_tarih', '(tip, tarih)'],
+        ['audit_log',   'idx_created',      '(created_at)'],
+        ['audit_log',   'idx_tablo_kayit',  '(tablo, kayit_id)'],
+    ];
+    foreach ($idxEnsure as [$tbl, $idx, $cols]) {
+        try {
+            $var = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.statistics
+                WHERE table_schema=DATABASE() AND table_name='{$tbl}' AND index_name='{$idx}'")->fetchColumn();
+            if ($var === 0) { $pdo->exec("ALTER TABLE {$tbl} ADD INDEX {$idx} {$cols}"); $log[] = ['ok', "{$tbl}.{$idx} indeksi eklendi"]; }
+        } catch (Throwable $e) { /* tablo yoksa geç */ }
+    }
 
     // ── Referans verileri ─────────────────────────────────────────────────────
 

@@ -3,10 +3,12 @@
  * migrate.php — Veritabanı güncelleme (yeni kurulum değil, güncelleme için)
  * Kullanım: Tarayıcıdan bir kez çalıştırın, sonra silin.
  */
-session_start();
+require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/auth.php';
 if (!file_exists(__DIR__ . '/config.php')) {
     die('config.php bulunamadı. Önce install.php çalıştırın.');
 }
+require_auth(['admin']); // yalnız admin migrasyon çalıştırabilir
 require_once __DIR__ . '/config.php';
 
 try {

@@ -317,7 +317,7 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_fil
                     try { $_SESSION['import_imalat_sayi'] = storeImalatSheets($pdo, $xlsx); } catch (Throwable $e) { $_SESSION['import_imalat_sayi'] = 0; }
                     $sheets = [];
                     foreach ($xlsx->sheetNames() as $si => $sName) {
-                        $rows = $xlsx->rows($si);
+                        $rows = $xlsx->rows($si, 20000);
                         if (!$rows) continue;
                         $det = detectSheetMapping($rows);
                         if ($det === null) continue; // VERİ / KOT / Kaşe gibi sayfalar atlanır
@@ -385,7 +385,7 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                     if (!isset($sheets[$sheetIdx])) continue;
                     $colMapping = $sheets[$sheetIdx]['mapping'];
                     $rowTip     = $sheets[$sheetIdx]['tip'];
-                    if (!isset($rowsCache[$sheetIdx])) $rowsCache[$sheetIdx] = $xlsx->rows($sheetIdx);
+                    if (!isset($rowsCache[$sheetIdx])) $rowsCache[$sheetIdx] = $xlsx->rows($sheetIdx, 20000);
                     $rows = $rowsCache[$sheetIdx];
                     foreach ($idxler as $idx) {
                         if (!isset($rows[$idx])) continue;
@@ -632,7 +632,7 @@ require_once __DIR__ . '/includes/header.php';
                             <?php
                             $hasValidRows = false;
                             foreach ($sheets as $si => $S):
-                                $rows = $xlsx->rows($si);
+                                $rows = $xlsx->rows($si, 20000);
                                 $colMapping = $S['mapping'];
                                 $dataStartIdx = $S['header_row'] + 1;
                                 $totalRows = count($rows);
