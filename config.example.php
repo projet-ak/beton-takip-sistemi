@@ -35,5 +35,6 @@ define('DB_PASS', 'sifre');
 
 // ── Oturum / AI (opsiyonel) ──────────────────────────────────────────────────
 // define('SESSION_LIFETIME', 3600);
+// define('AKTIVITE_SAKLAMA_GUN', 90);   // aktivite kayıtları kaç gün saklansın (otomatik temizlik)
 // define('AI_PROVIDER', 'claude');
 // define('CLAUDE_API_KEY', '');

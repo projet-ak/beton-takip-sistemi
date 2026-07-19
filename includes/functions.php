@@ -161,6 +161,22 @@ function aktivite_semasi_kur(PDO $pdo): void
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
+/** Aktivite yazımı için ana (beton) DB bağlantısı — istek başına bir kez açılır/önbelleklenir.
+ *  Beton sayfalarında hazır $pdo geçilir; alt modül sayfalarında (demir/seramik…) ise
+ *  ana DB'ye tek bir bağlantı açılıp static önbellekte tutulur. */
+function aktivite_pdo(?PDO $pdo): ?PDO
+{
+    static $conn = null;
+    if ($pdo instanceof PDO) return $pdo;
+    if ($conn instanceof PDO) return $conn;
+    if (!defined('DB_HOST')) return null;
+    try {
+        $conn = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',
+            DB_USER, DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        return $conn;
+    } catch (Throwable $e) { return null; }
+}
+
 /** Oturum + sayfa aktivitesini yazar (aktivite_izle içinden çağrılır) */
 function aktivite_yaz(PDO $pdo, string $modul): void
 {
@@ -171,33 +187,51 @@ function aktivite_yaz(PDO $pdo, string $modul): void
     $yontem = $_SERVER['REQUEST_METHOD'] ?? 'GET';
     $ip     = substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
     $ua     = substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255);
+    // Oturum upsert — her render (süre + toplam sayfa sayısı için)
     $pdo->prepare("INSERT INTO kullanici_oturum (kullanici_id, oturum_key, giris, son_aktivite, sayfa_sayisi, ip, tarayici)
         VALUES (?, ?, NOW(), NOW(), 1, ?, ?)
         ON DUPLICATE KEY UPDATE son_aktivite = NOW(), sayfa_sayisi = sayfa_sayisi + 1")
         ->execute([$uid, $sid, $ip, $ua]);
-    $pdo->prepare("INSERT INTO kullanici_aktivite (kullanici_id, oturum_key, sayfa, modul, yontem, ip)
-        VALUES (?, ?, ?, ?, ?, ?)")
-        ->execute([$uid, $sid, $sayfa, $modul, $yontem, $ip]);
+    // Detay timeline — yalnız sayfa/modül değiştiğinde yaz (aynı sayfanın peş peşe
+    // yenilenmesi tabloyu şişirmesin; gezinme geçişleri korunur).
+    $anahtar = $modul . '|' . $sayfa;
+    if (($_SESSION['__akt_sonSayfa'] ?? null) !== $anahtar) {
+        $pdo->prepare("INSERT INTO kullanici_aktivite (kullanici_id, oturum_key, sayfa, modul, yontem, ip)
+            VALUES (?, ?, ?, ?, ?, ?)")
+            ->execute([$uid, $sid, $sayfa, $modul, $yontem, $ip]);
+        $_SESSION['__akt_sonSayfa'] = $anahtar;
+    }
+}
+
+/** Olasılıksal otomatik temizlik (cron gerektirmeden): eski aktivite/oturum kayıtları.
+ *  Saklama süresi config'de AKTIVITE_SAKLAMA_GUN ile override edilebilir (varsayılan 90 gün). */
+function aktivite_temizle(PDO $pdo): void
+{
+    if (mt_rand(1, 400) !== 1) return; // ~%0.25 istek bakım yapar
+    $gun = defined('AKTIVITE_SAKLAMA_GUN') ? max(7, (int)AKTIVITE_SAKLAMA_GUN) : 90;
+    try {
+        $pdo->prepare("DELETE FROM kullanici_aktivite WHERE created_at < (NOW() - INTERVAL ? DAY)")->execute([$gun]);
+        $pdo->prepare("DELETE FROM kullanici_oturum   WHERE son_aktivite < (NOW() - INTERVAL ? DAY)")->execute([$gun]);
+    } catch (Throwable $e) { /* sessiz */ }
 }
 
 /**
  * Her sayfa render'ında çağrılır (header.php). Giriş yapan kullanıcının oturum
  * süresini ve sayfa gezinmesini kaydeder. Tablo yoksa oluşturup bir kez daha dener.
- * $pdo verilmezse ana (beton) DB'ye kendi bağlantısını açar (alt modül sayfaları için).
+ * $pdo verilmezse ana (beton) DB'ye kendi (önbellekli) bağlantısını açar.
  */
 function aktivite_izle(?PDO $pdo, string $modul = ''): void
 {
     if (empty($_SESSION['user']) || !defined('DB_HOST')) return;
     static $done = false; if ($done) return; $done = true;
     try {
-        if (!$pdo instanceof PDO) {
-            $pdo = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',
-                DB_USER, DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-        }
+        $pdo = aktivite_pdo($pdo);
+        if (!$pdo) return;
         aktivite_yaz($pdo, $modul);
+        aktivite_temizle($pdo);
     } catch (Throwable $e) {
         // Tablo yoksa oluştur ve bir kez daha dene
-        try { if ($pdo instanceof PDO) { aktivite_semasi_kur($pdo); aktivite_yaz($pdo, $modul); } }
+        try { $pdo = aktivite_pdo($pdo); if ($pdo) { aktivite_semasi_kur($pdo); aktivite_yaz($pdo, $modul); } }
         catch (Throwable $e2) { error_log('aktivite_izle: ' . $e2->getMessage()); }
     }
 }
