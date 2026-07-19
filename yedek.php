@@ -61,15 +61,11 @@ function runAutoBackupIfNeeded(PDO $pdo, string $dir): void {
 
 runAutoBackupIfNeeded($pdo, $backupDir);
 
-// CSRF token üret/doğrula
-if (session_status() === PHP_SESSION_NONE) session_start();
-if (empty($_SESSION['csrf_backup'])) {
-    $_SESSION['csrf_backup'] = bin2hex(random_bytes(16));
-}
-$csrfToken = $_SESSION['csrf_backup'];
+// CSRF token (küresel — merkezi doğrulama auth.php'de)
+$csrfToken = csrf_token();
 
 function verifyCsrf(): void {
-    if (!hash_equals($_SESSION['csrf_backup'] ?? '', $_POST['csrf'] ?? '')) {
+    if (!csrf_ok()) {
         http_response_code(403);
         die('Güvenlik hatası. Sayfayı yenileyip tekrar deneyin.');
     }

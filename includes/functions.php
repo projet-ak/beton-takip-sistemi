@@ -236,6 +236,46 @@ function aktivite_izle(?PDO $pdo, string $modul = ''): void
     }
 }
 
+/* ── CSRF koruması (tüm POST formları için tek ortak token) ─────────────────── */
+
+/** Oturuma bağlı CSRF token'ı döner (yoksa üretir) */
+function csrf_token(): string
+{
+    if (session_status() !== PHP_SESSION_ACTIVE) return '';
+    if (empty($_SESSION['csrf'])) { $_SESSION['csrf'] = bin2hex(random_bytes(32)); }
+    return $_SESSION['csrf'];
+}
+
+/** Gizli CSRF input alanı (elle eklemek isterseniz) */
+function csrf_field(): string
+{
+    return '<input type="hidden" name="csrf" value="' . htmlspecialchars(csrf_token(), ENT_QUOTES) . '">';
+}
+
+/** Gönderilen token doğru mu? */
+function csrf_ok(): bool
+{
+    return !empty($_SESSION['csrf']) && hash_equals($_SESSION['csrf'], (string)($_POST['csrf'] ?? ''));
+}
+
+/** Çıktı tamponu callback'i: her <form ...method=post...> etiketinden hemen sonra
+ *  gizli csrf alanını otomatik enjekte eder — formları tek tek düzenlemeye gerek yok. */
+function csrf_ob_inject(string $html): string
+{
+    if (stripos($html, '<form') === false) return $html;
+    $field = csrf_field();
+    return preg_replace_callback('/<form\b[^>]*>/i', function ($m) use ($field) {
+        return preg_match('/\bmethod\s*=\s*["\']?\s*post/i', $m[0]) ? $m[0] . $field : $m[0];
+    }, $html);
+}
+
+/** CSRF kontrolünden muaf yollar: AJAX/JSON API (SameSite=Lax + require_auth korur). */
+function csrf_muaf(): bool
+{
+    $self = (string)($_SERVER['SCRIPT_NAME'] ?? ($_SERVER['PHP_SELF'] ?? ''));
+    return strpos($self, '/api/') !== false;
+}
+
 /**
  * Aktif kullanıcı ID'sini döner (oturumdan)
  */

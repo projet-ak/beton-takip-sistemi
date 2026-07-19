@@ -190,12 +190,8 @@ function parseTarih(?string $tarih): ?string {
 $error = null;
 $success = null;
 
-// CSRF token
-if (session_status() === PHP_SESSION_NONE) session_start();
-if (empty($_SESSION['csrf_import'])) {
-    $_SESSION['csrf_import'] = bin2hex(random_bytes(16));
-}
-$csrfImport = $_SESSION['csrf_import'];
+// CSRF token (küresel — merkezi doğrulama auth.php'de)
+$csrfImport = csrf_token();
 
 // Oturum temizliği / sıfırlama
 if (isset($_GET['reset'])) {
@@ -289,7 +285,7 @@ function detectSheetMapping(array $rows): ?array {
 
 // CSRF doğrulama (tüm POST'lar için)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!hash_equals($_SESSION['csrf_import'] ?? '', $_POST['csrf'] ?? '')) {
+    if (!csrf_ok()) {
         $error = 'Güvenlik hatası. Sayfayı yenileyip tekrar deneyin.';
     }
 }

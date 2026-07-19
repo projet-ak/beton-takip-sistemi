@@ -261,6 +261,9 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 
 - **Güvenlik**: her sorgu prepared statement; her çıktı `h()`; ORDER BY için **whitelist** (asla ham input).
   Rol kontrolü `require_auth([...])` + `can_*()`. AI SQL (`ai_asistan.php`) yalnız SELECT + kelime filtresi.
+  **CSRF**: tek küresel token (`csrf_token()`/`csrf_ok()` functions.php); `header.php` çıktı tamponu
+  (`csrf_ob_inject`) tüm `<form method=post>`'a otomatik `<input name=csrf>` ekler; `auth.php` giriş yapmış
+  kullanıcının POST'unu merkezi doğrular (419). `/api/` yolları muaf (SameSite=Lax + require_auth). login.php muaf.
 - **Mükerrer önleme**: tanımlarda UPPER karşılaştırma; kullanımda ise silme engeli. Projeler: kod VEYA ad.
 - **Demir sayfası şablonu**: başta `$rootPath='../'` + `require ../includes/...` + `require_auth(...)` +
   `require ../includes/db_demir.php`; sonunda `require ../includes/footer.php`.

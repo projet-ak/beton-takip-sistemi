@@ -23,6 +23,9 @@ if ($__user && function_exists('aktivite_izle')) {
     aktivite_izle($GLOBALS['pdo'] ?? null, $__module);
 }
 
+// CSRF: tüm POST formlarına gizli token'ı otomatik ekle (çıktı tamponu callback'i)
+if ($__user && function_exists('csrf_ob_inject')) { ob_start('csrf_ob_inject'); }
+
 function __isActive(string $page): string {
     global $__page; return $__page === $page ? 'active' : '';
 }

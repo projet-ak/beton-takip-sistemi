@@ -78,6 +78,27 @@ if (!empty($_SESSION['user'])) {
     }
 }
 
+// ── CSRF doğrulama: giriş yapmış kullanıcının POST istekleri ──────────────────
+// Token, header.php'de çıktı tamponu ile tüm POST formlarına otomatik eklenir.
+// AJAX/JSON API yolları muaftır (SameSite=Lax + require_auth korur). Giriş
+// (login.php) henüz oturum olmadığından bu kontrole takılmaz.
+if (!function_exists('csrf_ok')) { @require_once __DIR__ . '/functions.php'; }
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST'
+    && !empty($_SESSION['user'])
+    && function_exists('csrf_ok') && function_exists('csrf_muaf')
+    && !csrf_muaf() && !csrf_ok()) {
+    http_response_code(419);
+    if (!headers_sent()) header('Content-Type: text/html; charset=utf-8');
+    echo '<!doctype html><meta charset="utf-8"><title>Güvenlik</title>'
+       . '<div style="font-family:system-ui,sans-serif;max-width:520px;margin:60px auto;padding:24px;'
+       . 'border:1px solid #f5c2c7;background:#f8d7da;color:#842029;border-radius:10px">'
+       . '<h3 style="margin:0 0 8px">Oturum güvenlik doğrulaması başarısız</h3>'
+       . '<p>Güvenlik anahtarı (CSRF) eşleşmedi. Sayfa uzun süre açık kaldıysa oturumunuz '
+       . 'yenilenmiş olabilir. Lütfen geri dönüp sayfayı yenileyin ve işlemi tekrar deneyin.</p>'
+       . '<p><a href="javascript:history.back()">← Geri dön</a></p></div>';
+    exit;
+}
+
 /**
  * Oturum yoksa login.php'ye, rol uyumsuzsa 403'e yönlendir.
  *
