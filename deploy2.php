@@ -7,11 +7,24 @@
  *   ?token=TOKEN&ghpat=github_pat_xxxx
  */
 
-define('DEPLOY_TOKEN', 'd4b55f9613fad96acaf7cd2b950bf00b7a483da3c38c8d1d');
+// DEPLOY_TOKEN artık config.php'den okunur (git-ignored) — koda sır gömülmez.
 define('REPO',   'projet-ak/beton-takip-sistemi');
 define('BRANCH', 'claude/organize-control-panel-hUe4z');
 
 header('Content-Type: application/json; charset=utf-8');
+
+if (!file_exists(__DIR__ . '/config.php')) {
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'msg' => 'config.php bulunamadı.']);
+    exit;
+}
+require_once __DIR__ . '/config.php';
+
+if (!defined('DEPLOY_TOKEN') || DEPLOY_TOKEN === '') {
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'msg' => 'config.php içinde DEPLOY_TOKEN tanımlı değil.']);
+    exit;
+}
 
 if (!hash_equals(DEPLOY_TOKEN, (string)($_GET['token'] ?? ''))) {
     http_response_code(403);
@@ -29,7 +42,8 @@ if (!class_exists('ZipArchive')) {
 $branch    = BRANCH;
 $encodedBr = str_replace('/', '%2F', $branch);   // forward slash encode
 $zipUrl    = 'https://github.com/' . REPO . '/archive/refs/heads/' . rawurlencode($branch) . '.zip';
-$ghpat     = trim($_GET['ghpat'] ?? '');          // isteğe bağlı GitHub PAT
+// GitHub PAT: önce URL parametresi, yoksa config.php'deki GITHUB_PAT (URL'de sır taşımamak için)
+$ghpat     = trim($_GET['ghpat'] ?? '') ?: (defined('GITHUB_PAT') ? GITHUB_PAT : '');
 
 // ── cURL ile indir ────────────────────────────────────────────────────────
 $zipFile = sys_get_temp_dir() . '/beton_deploy_' . time() . '.zip';
@@ -98,12 +112,10 @@ $destDir = __DIR__;
 $count   = 0;
 $skipped = [];
 
-// Asla üzerine yazılmayacak dosyalar
+// Asla üzerine yazılmayacak dosyalar (config.php sırları taşır; token artık
+// koda gömülü olmadığından deploy dosyaları normal güncellenebilir)
 $protected = [
     'config.php',
-    'deploy.php',
-    'deploy2.php',
-    'setup.php',
 ];
 
 for ($i = 0; $i < $zip->numFiles; $i++) {

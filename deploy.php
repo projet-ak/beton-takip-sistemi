@@ -3,7 +3,7 @@
 // Kullanım: https://takbulut.com/deploy.php?token=TOKEN
 // ─────────────────────────────────────────────────────────────────────────────
 
-define('DEPLOY_TOKEN',  '9fe41d55f7324123586fd5a2be2fee6b3f5355ff4993fa1f');
+// DEPLOY_TOKEN artık config.php'den okunur (git-ignored) — koda sır gömülmez.
 define('REPO_URL',      'https://github.com/projet-ak/beton-takip-sistemi.git');
 define('BRANCH',        'claude/organize-control-panel-hUe4z');
 define('DEPLOY_DIR',    __DIR__);
@@ -11,8 +11,21 @@ define('LOG_FILE',      __DIR__ . '/deploy.log');
 
 header('Content-Type: application/json; charset=utf-8');
 
-// Token kontrolü
-if (($_GET['token'] ?? '') !== DEPLOY_TOKEN) {
+if (!file_exists(__DIR__ . '/config.php')) {
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'msg' => 'config.php bulunamadı.']);
+    exit;
+}
+require_once __DIR__ . '/config.php';
+
+if (!defined('DEPLOY_TOKEN') || DEPLOY_TOKEN === '') {
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'msg' => 'config.php içinde DEPLOY_TOKEN tanımlı değil.']);
+    exit;
+}
+
+// Token kontrolü (zamanlama-güvenli)
+if (!hash_equals(DEPLOY_TOKEN, (string)($_GET['token'] ?? ''))) {
     http_response_code(403);
     echo json_encode(['ok' => false, 'msg' => 'Unauthorized']);
     exit;

@@ -26,6 +26,13 @@ define('DB_PASS', 'sifre');
 // define('AKARYAKIT_DB_USER', '');  // boşsa DB_USER (ör. takbulut_betonapp)
 // define('AKARYAKIT_DB_PASS', '');  // boşsa DB_PASS
 
+// ── Deploy (deploy.php / deploy2.php) ────────────────────────────────────────
+// GÜÇLÜ, rastgele bir token üretin (ör. PHP: bin2hex(random_bytes(24))) ve buraya yazın.
+// Bu dosya (config.php) git-ignored olduğundan token koda/sürüm kontrolüne girmez.
+// define('DEPLOY_TOKEN', 'BURAYA_UZUN_RASTGELE_TOKEN');
+// Private repo için GitHub PAT'i (repo yetkili) — URL'de taşımamak için:
+// define('GITHUB_PAT', 'github_pat_xxx');
+
 // ── Oturum / AI (opsiyonel) ──────────────────────────────────────────────────
 // define('SESSION_LIFETIME', 3600);
 // define('AI_PROVIDER', 'claude');

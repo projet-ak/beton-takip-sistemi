@@ -69,10 +69,11 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   push reddedilirse `git fetch` + merge/senkronla).
 
 ### Deploy yöntemi
-- **`deploy2.php`** (tercih edilen): tarayıcıdan `deploy2.php?token=...&ghpat=...` açılır;
-  GitHub'dan deploy branch zip'ini çekip `__DIR__`'e açar. `config.php`, `deploy*.php`,
-  `setup.php`, `backups/` **korumalıdır** (üzerine yazılmaz). Token dosya içinde (`DEPLOY_TOKEN`).
-  ⚠️ Token/PAT'ı **buraya (CLAUDE.md) yazma** — güvenlik.
+- **`deploy2.php`** (tercih edilen): tarayıcıdan `deploy2.php?token=...` açılır;
+  GitHub'dan deploy branch zip'ini çekip `__DIR__`'e açar. Yalnız **`config.php` + `backups/`**
+  korumalıdır (deploy dosyaları artık sır içermediğinden normal güncellenir). **`DEPLOY_TOKEN`
+  ve `GITHUB_PAT` `config.php`'de** (git-ignored) tanımlanır — koda/git'e sır girmez. `setup.php`
+  kaldırıldı. ⚠️ Token/PAT'ı **buraya (CLAUDE.md) yazma** — güvenlik.
 - **GitHub Actions** (`.github/workflows/deploy.yml`): deploy branch push'unda FTP ile cPanel'e.
   `secrets.FTP_PASSWORD` gerekli (yoksa başarısız). `.htaccess`/`config.php`/`backups/` hariç.
 - **Not**: her kod düzenlemesinde `php -l` ile lint et; gömülü JS'i `node --check` ile doğrula.
