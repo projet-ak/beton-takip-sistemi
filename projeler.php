@@ -12,8 +12,13 @@ if (isset($_GET['sil']) && ctype_digit($_GET['sil'])) {
     $id = (int)$_GET['sil'];
     $ki = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler WHERE proje_id = ?");
     $ki->execute([$id]);
+    // parseller.proje_id bağını da kontrol et (yetim proje id oluşmasın)
+    $kp = 0;
+    try { $s = $pdo->prepare("SELECT COUNT(*) FROM parseller WHERE proje_id = ?"); $s->execute([$id]); $kp = (int)$s->fetchColumn(); } catch (Throwable $e) {}
     if ($ki->fetchColumn() > 0) {
         flash('warning', 'Bu proje irsaliyelerde kullanılıyor, silinemez.');
+    } elseif ($kp > 0) {
+        flash('warning', "Bu proje {$kp} parsele atanmış, silinemez. Önce Parseller sayfasından proje atamalarını kaldırın.");
     } else {
         $pdo->prepare("DELETE FROM projeler WHERE id = ?")->execute([$id]);
         flash('success', 'Proje silindi.');

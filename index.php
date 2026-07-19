@@ -76,7 +76,8 @@ try {
 $projeFilter = '';
 $projeParams = [];
 if ($projeId > 0) {
-    $projeFilter = ' AND i.proje_id = ?';
+    // Etkin proje = i.proje_id; yoksa parselin proje_id'si (özetlerle tutarlı — parsel→proje bağı).
+    $projeFilter = ' AND COALESCE(i.proje_id, (SELECT p2.proje_id FROM parseller p2 WHERE p2.id = i.parsel_id)) = ?';
     $projeParams = [$projeId];
 }
 
@@ -182,9 +183,11 @@ for ($d = 6; $d >= 0; $d--) {
 // Proje bazlı m³ özeti (top 5)
 try {
     $st = $pdo->prepare(
-        "SELECT p.kod, p.aciklama, COALESCE(SUM(i.miktar),0) AS toplam, COUNT(*) AS adet
+        "SELECT p.kod, p.aciklama, COALESCE(SUM(i.miktar),0) AS toplam, COUNT(i.id) AS adet
          FROM projeler p
-         LEFT JOIN irsaliyeler i ON i.proje_id=p.id AND i.tip='alis' AND i.durum<>'reddedildi'
+         LEFT JOIN irsaliyeler i
+              ON COALESCE(i.proje_id, (SELECT p2.proje_id FROM parseller p2 WHERE p2.id = i.parsel_id)) = p.id
+             AND i.tip='alis' AND i.durum<>'reddedildi'
          WHERE p.aktif=1
          GROUP BY p.id, p.kod, p.aciklama
          ORDER BY toplam DESC LIMIT 5"

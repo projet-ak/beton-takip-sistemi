@@ -84,7 +84,7 @@ if ($yilDefault > 0) {
 // İlave filtreler
 if ($parselId)      { $where[] = 'i.parsel_id = ?';       $params[] = $parselId; }
 if ($tedarikciId)   { $where[] = 'i.tedarikci_id = ?';    $params[] = $tedarikciId; }
-if ($projeId)       { $where[] = 'i.proje_id = ?';        $params[] = $projeId; }
+if ($projeId)       { $where[] = 'COALESCE(i.proje_id, (SELECT p2.proje_id FROM parseller p2 WHERE p2.id = i.parsel_id)) = ?'; $params[] = $projeId; }
 if ($betonSinifiId) { $where[] = 'i.beton_sinifi_id = ?'; $params[] = $betonSinifiId; }
 if ($imalatGrupId)  { $where[] = 'i.imalat_grup_id = ?';  $params[] = $imalatGrupId; }
 
