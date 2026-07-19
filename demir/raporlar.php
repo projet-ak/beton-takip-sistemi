@@ -59,6 +59,25 @@ $prjOzet = $pdoDemir->prepare("
 $prjOzet->execute($p);
 $prjRows = $prjOzet->fetchAll();
 
+// ── Proje × Çap kırılımı (matris) ─────────────────────────────────────────────
+$prjCap = $pdoDemir->prepare("
+    SELECT COALESCE(pr.kod,'(proje yok)') proje, c.ad cap, c.sira sira,
+           COALESCE(SUM(sk.irsaliye_miktar),0) ton
+    FROM demir_sevkiyatlar s JOIN demir_sevkiyat_kalemleri sk ON sk.sevkiyat_id=s.id
+    JOIN demir_caplar c ON c.id=sk.cap_id
+    LEFT JOIN demir_projeler pr ON pr.id=s.proje_id
+    $wSQL GROUP BY s.proje_id, c.id HAVING ton>0 ORDER BY pr.kod, c.sira, c.ad");
+$prjCap->execute($p);
+$prjCapMatris = []; $prjCapCaps = []; $prjCapTop = [];
+foreach ($prjCap->fetchAll() as $r) {
+    $pk = $r['proje']; $cp = $r['cap']; $tn = (float)$r['ton'];
+    $prjCapMatris[$pk][$cp] = ($prjCapMatris[$pk][$cp] ?? 0) + $tn;
+    $prjCapTop[$pk] = ($prjCapTop[$pk] ?? 0) + $tn;
+    if (!isset($prjCapCaps[$cp])) $prjCapCaps[$cp] = (int)$r['sira'];
+}
+asort($prjCapCaps); // çap kolonlarını sıra no'ya göre sırala
+$prjCapCaps = array_keys($prjCapCaps);
+
 // ── Detay ─────────────────────────────────────────────────────────────────────
 $detay = $pdoDemir->prepare("
     SELECT s.irsaliye_no, s.irsaliye_tarih, t.ad tedarikci, pr.kod proje, ta.ad taseron, s.arac_plaka, s.kantar_fis_no,
@@ -160,6 +179,39 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
     </div></div></div></div>
 </div>
 
+<!-- Proje kırılımı: doughnut + Proje × Çap matris -->
+<div class="row g-3 mt-1">
+    <div class="col-lg-4"><div class="card h-100">
+        <div class="card-header bg-white fw-semibold"><i class="bi bi-diagram-3 text-primary me-1"></i>Proje Bazlı Gelen (ton)</div>
+        <div class="card-body d-flex align-items-center justify-content-center"><canvas id="chProje" style="max-height:240px"></canvas></div>
+    </div></div>
+    <div class="col-lg-8"><div class="card h-100">
+        <div class="card-header bg-white fw-semibold"><i class="bi bi-grid-3x3 text-primary me-1"></i>Proje × Çap Kırılımı <span class="text-muted small fw-normal">(gelen ton)</span></div>
+        <div class="card-body p-0"><div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0" style="font-size:.82rem">
+                <thead class="table-light"><tr><th>Proje</th><?php foreach($prjCapCaps as $cp): ?><th class="text-end"><?= h($cp) ?></th><?php endforeach; ?><th class="text-end">Toplam</th></tr></thead>
+                <tbody>
+                <?php foreach($prjCapMatris as $pk=>$caps): ?>
+                    <tr>
+                        <td class="fw-semibold"><span class="badge bg-dark"><?= h($pk) ?></span></td>
+                        <?php foreach($prjCapCaps as $cp): $v=$caps[$cp]??0; ?><td class="text-end font-monospace <?= $v<=0?'text-muted':'' ?>"><?= $v>0?$fmt($v):'—' ?></td><?php endforeach; ?>
+                        <td class="text-end font-monospace fw-bold text-primary"><?= $fmt($prjCapTop[$pk]??0) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if(!$prjCapMatris): ?><tr><td colspan="<?= count($prjCapCaps)+2 ?>" class="text-center text-muted py-4">Veri yok.</td></tr><?php endif; ?>
+                </tbody>
+                <?php if($prjCapMatris): ?>
+                <tfoot class="table-light fw-bold"><tr>
+                    <td class="text-end">TOPLAM</td>
+                    <?php foreach($prjCapCaps as $cp): $ct=0; foreach($prjCapMatris as $caps) $ct+=$caps[$cp]??0; ?><td class="text-end font-monospace"><?= $fmt($ct) ?></td><?php endforeach; ?>
+                    <td class="text-end font-monospace text-primary"><?= $fmt(array_sum($prjCapTop)) ?></td>
+                </tr></tfoot>
+                <?php endif; ?>
+            </table>
+        </div></div>
+    </div></div>
+</div>
+
 <!-- Firma bazlı teslim (Proje × Çap) -->
 <?php if (!empty($ftm['matris'])): ?>
 <div class="card mt-3">
@@ -188,6 +240,8 @@ const R = {
     cap: <?= json_encode(array_map(fn($r)=>['ad'=>$r['ad'],'tip'=>$r['tip'],'irs'=>(float)$r['irs'],'knt'=>(float)$r['knt']], $capRows), JSON_UNESCAPED_UNICODE) ?>,
     ted: <?= json_encode(array_map(fn($r)=>['firma'=>$r['firma'],'adet'=>(int)$r['adet'],'irs'=>(float)$r['irs'],'knt'=>(float)$r['knt']], $tedRows), JSON_UNESCAPED_UNICODE) ?>,
     proje: <?= json_encode(array_map(fn($r)=>['kod'=>$r['kod'],'adet'=>(int)$r['adet'],'ton'=>(float)$r['ton']], $prjRows), JSON_UNESCAPED_UNICODE) ?>,
+    projeCaps: <?= json_encode($prjCapCaps, JSON_UNESCAPED_UNICODE) ?>,
+    projeCap: <?= json_encode(array_map(fn($pk,$caps)=>['proje'=>$pk,'caps'=>$caps,'top'=>round($prjCapTop[$pk]??0,3)], array_keys($prjCapMatris), array_values($prjCapMatris)), JSON_UNESCAPED_UNICODE) ?>,
     detay: <?= json_encode(array_map(fn($r)=>['tarih'=>$r['irsaliye_tarih'],'irsaliye'=>$r['irsaliye_no'],'tedarikci'=>$r['tedarikci'],'proje'=>$r['proje'],'taseron'=>$r['taseron'],'plaka'=>$r['arac_plaka'],'kantar_fis'=>$r['kantar_fis_no'],'irs'=>(float)$r['irs'],'knt'=>(float)$r['knt']], $detayRows), JSON_UNESCAPED_UNICODE) ?>,
     firmaTeslim: <?= json_encode($firmaFlat, JSON_UNESCAPED_UNICODE) ?>
 };
@@ -204,6 +258,10 @@ const R = {
     if(R.cap.length) new Chart(document.getElementById('chCap'), { type:'bar',
         data:{ labels:R.cap.map(c=>c.ad), datasets:[{label:'İrsaliye (t)', data:R.cap.map(c=>c.irs), backgroundColor:teal, borderRadius:3}] },
         options:{ plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} } });
+    var elP=document.getElementById('chProje');
+    if(elP && R.proje.length) new Chart(elP, { type:'doughnut',
+        data:{ labels:R.proje.map(p=>p.kod), datasets:[{data:R.proje.map(p=>p.ton), backgroundColor:pal, borderWidth:0}] },
+        options:{ plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}}}, cutout:'60%' } });
 })();
 
 // ── Excel (ExcelJS) ───────────────────────────────────────────────────────────
@@ -231,6 +289,19 @@ async function exportExcel(){
         ws=wb.addWorksheet('Tedarikçi'); title(ws,'TEDARİKÇİ ÖZETİ');
         h=ws.addRow(['Tedarikçi','Sevkiyat','İrsaliye (t)','Kantar (t)','Fark (t)']); styleHdr(h);
         R.ted.forEach(t=>ws.addRow([t.firma,t.adet,t.irs,t.knt,t.knt-t.irs])); ws.columns.forEach(c=>c.width=18); ws.getColumn(1).width=24;
+
+        // Proje (kırılım + çap matrisi)
+        ws=wb.addWorksheet('Proje'); title(ws,'PROJE KIRILIMI');
+        h=ws.addRow(['Proje','Sevkiyat','Gelen (t)']); styleHdr(h);
+        R.proje.forEach(pp=>ws.addRow([pp.kod,pp.adet,pp.ton])); ws.addRow([]);
+        if (R.projeCap.length) {
+            let hc=ws.addRow(['Proje × Çap'].concat(R.projeCaps).concat(['Toplam'])); styleHdr(hc);
+            R.projeCap.forEach(row=>{
+                const cells=[row.proje].concat(R.projeCaps.map(c=>row.caps[c]||0)).concat([row.top]);
+                ws.addRow(cells);
+            });
+        }
+        ws.columns.forEach(c=>c.width=14); ws.getColumn(1).width=22;
 
         // Firma bazlı teslim
         if (R.firmaTeslim.length) {
