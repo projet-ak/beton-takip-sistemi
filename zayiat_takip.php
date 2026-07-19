@@ -132,6 +132,32 @@ foreach ($metrajlar as $m) {
     ]);
 }
 
+// ── Proje bazında zayiat özeti (tanımlı metraj satırlarının roll-up'ı) ────────
+// Parsel → proje haritası (kot/blok seviyesi parsel taşır; kalem seviyesi parselsiz → '—').
+$parselProje = [];
+try {
+    foreach ($pdo->query("SELECT p.id, COALESCE(pr.kod,'') kod, COALESCE(pr.aciklama,'') ad
+                          FROM parseller p LEFT JOIN projeler pr ON pr.id = p.proje_id") as $r) {
+        $parselProje[(int)$r['id']] = ['kod'=>$r['kod'], 'ad'=>$r['ad']];
+    }
+} catch (Throwable $e) { $parselProje = []; }
+
+$projeZayiat = [];
+foreach ($rowsBySeviye as $sev => $rows) {
+    foreach ($rows as $r) {
+        $pp = ($r['parsel_id'] ?? null) ? ($parselProje[(int)$r['parsel_id']] ?? null) : null;
+        $kod = ($pp && $pp['kod'] !== '') ? $pp['kod'] : '—';
+        $ad  = $pp['ad'] ?? ($kod === '—' ? 'Proje atanmamış' : '');
+        if (!isset($projeZayiat[$kod])) $projeZayiat[$kod] = ['ad'=>$ad,'teorik'=>0,'dokulen'=>0,'zayiat'=>0,'asim'=>0,'satir'=>0];
+        $projeZayiat[$kod]['teorik']  += (float)$r['teorik_m3'];
+        $projeZayiat[$kod]['dokulen'] += (float)$r['dokulen'];
+        $projeZayiat[$kod]['zayiat']  += (float)$r['zayiat'];
+        $projeZayiat[$kod]['satir']++;
+        if ($r['durumx'] === 'asim') $projeZayiat[$kod]['asim']++;
+    }
+}
+uasort($projeZayiat, fn($a,$b) => $b['dokulen'] <=> $a['dokulen']);
+
 // ── AJAX: metraj satırının irsaliyeleri (popup) ───────────────────────────────
 if (isset($_GET['detay']) && ctype_digit($_GET['detay'])) {
     $mid = (int)$_GET['detay'];
@@ -202,6 +228,43 @@ $sevIkon = ['kot'=>'bi-layers', 'blok'=>'bi-building', 'kalem'=>'bi-list-task'];
 <?php foreach(['success','error','warning','info'] as $t): $m=get_flash($t); if($m): ?>
 <div class="alert alert-<?= $t==='error'?'danger':$t ?>"><?= h($m) ?></div>
 <?php endif; endforeach; ?>
+
+<!-- Proje Bazında Zayiat Özeti -->
+<?php if ($projeZayiat): ?>
+<div class="row g-3 mb-4">
+    <div class="col-lg-5">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-semibold"><i class="bi bi-diagram-3 text-primary me-1"></i>Proje Bazında — Teorik vs Dökülen</div>
+            <div class="card-body"><canvas id="chProje" height="200"></canvas></div>
+        </div>
+    </div>
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-diagram-3 text-primary me-1"></i>Proje Bazında Zayiat</span>
+                <span class="small text-muted fw-normal" title="Tanımlı teorik metraj satırlarının parsel→proje bağına göre toplamı">tanımlı metraja göre</span>
+            </div>
+            <div class="card-body p-0"><div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light"><tr><th>Proje</th><th class="text-end">Teorik m³</th><th class="text-end">Dökülen m³</th><th class="text-end">Zayiat m³</th><th class="text-end">Zayiat %</th><th class="text-center">Limit Aşımı</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($projeZayiat as $kod=>$pz): $oran = $pz['teorik']>0 ? $pz['zayiat']/$pz['teorik']*100 : 0; ?>
+                        <tr>
+                            <td><span class="badge bg-dark"><?= h($kod) ?></span> <span class="small text-muted"><?= h($pz['ad']) ?></span></td>
+                            <td class="text-end font-monospace"><?= $fmt($pz['teorik']) ?></td>
+                            <td class="text-end font-monospace"><?= $fmt($pz['dokulen']) ?></td>
+                            <td class="text-end font-monospace fw-bold <?= $pz['zayiat']>0?'text-danger':'text-success' ?>"><?= ($pz['zayiat']>0?'+':'').$fmt($pz['zayiat']) ?></td>
+                            <td class="text-end font-monospace <?= $oran>5?'text-danger':'' ?>">%<?= $fmt($oran,1) ?></td>
+                            <td class="text-center"><?= $pz['asim']>0 ? '<span class="badge bg-danger">'.(int)$pz['asim'].'</span>' : '<span class="text-muted">0</span>' ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div></div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <ul class="nav nav-tabs mb-3" role="tablist">
     <?php $ilk = true; foreach ($sevAd as $sev=>$ad): ?>
@@ -341,6 +404,18 @@ document.addEventListener('DOMContentLoaded', function(){
                 ]},
                 options:{ plugins:{legend:{position:'bottom'}}, scales:{y:{beginAtZero:true}} } });
         });
+
+        // Proje bazlı teorik vs dökülen
+        var PROJE = <?= json_encode(array_map(fn($kod,$pz)=>['l'=>$kod,'t'=>(float)$pz['teorik'],'d'=>(float)$pz['dokulen'],'x'=>$pz['asim']>0], array_keys($projeZayiat), array_values($projeZayiat)), JSON_UNESCAPED_UNICODE) ?>;
+        var elP = document.getElementById('chProje');
+        if (elP && PROJE.length) {
+            new Chart(elP, { type:'bar',
+                data:{ labels: PROJE.map(r=>r.l), datasets:[
+                    { label:'Teorik (m³)', data: PROJE.map(r=>r.t), backgroundColor:'#00584E', borderRadius:3 },
+                    { label:'Dökülen (m³)', data: PROJE.map(r=>r.d), backgroundColor: PROJE.map(r=>r.x?'#dc3545':'#00C9B1'), borderRadius:3 }
+                ]},
+                options:{ plugins:{legend:{position:'bottom'}}, scales:{y:{beginAtZero:true}} } });
+        }
     }
 
     // ── İrsaliye detay popup ──
