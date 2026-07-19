@@ -225,6 +225,22 @@ try {
     }
     $pdoDemir->exec("SET FOREIGN_KEY_CHECKS=1");
 
+    // ── ifs_siparis_no indeksleri (eşleşme performansı + sipariş benzersizliği) ──
+    $idxVar = fn($tbl,$idx) => (int)$pdoDemir->query("SELECT COUNT(*) FROM information_schema.statistics
+        WHERE table_schema=DATABASE() AND table_name='{$tbl}' AND index_name='{$idx}'")->fetchColumn();
+    try { // sevkiyatlarda düz indeks (çoklu sevkiyat aynı siparişe bağlanır)
+        if ($idxVar('demir_sevkiyatlar','idx_ifs')===0) { $pdoDemir->exec("ALTER TABLE demir_sevkiyatlar ADD INDEX idx_ifs (ifs_siparis_no)"); $log[]=['ok','demir_sevkiyatlar.ifs indeksi eklendi']; }
+    } catch (Throwable $e) {}
+    try { // siparişlerde benzersizlik — yalnız mevcut mükerrer/'' değer yoksa UNIQUE, aksi halde düz indeks
+        if ($idxVar('demir_siparisler','uq_ifs')===0 && $idxVar('demir_siparisler','idx_ifs')===0) {
+            $dup = (int)$pdoDemir->query("SELECT COUNT(*) FROM (
+                SELECT ifs_siparis_no FROM demir_siparisler WHERE ifs_siparis_no IS NOT NULL
+                GROUP BY ifs_siparis_no HAVING COUNT(*)>1) t")->fetchColumn();
+            if ($dup===0) { $pdoDemir->exec("ALTER TABLE demir_siparisler ADD UNIQUE INDEX uq_ifs (ifs_siparis_no)"); $log[]=['ok','demir_siparisler.ifs UNIQUE eklendi']; }
+            else { $pdoDemir->exec("ALTER TABLE demir_siparisler ADD INDEX idx_ifs (ifs_siparis_no)"); $log[]=['warn',"demir_siparisler: {$dup} mükerrer IFS no var — UNIQUE eklenemedi, düz indeks eklendi (siparişleri düzeltip kurulumu tekrar açın)"]; }
+        }
+    } catch (Throwable $e) {}
+
     // ── Çaplar (teorik ağırlık kg/m ≈ 0.006165 × d²) ──────────────────────────
     // [ad, tip, birim_agirlik(kg/m), sıra]
     $caplar = [

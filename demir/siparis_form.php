@@ -73,6 +73,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($d['ifs_siparis_no'] === '')  $formError = 'IFS Sipariş No zorunludur (sevkiyatlarla eşleşme bunun üzerinden yapılır).';
     elseif (!$d['sozlesme_id'])       $formError = 'Sözleşme No zorunludur. Tanımlı sözleşme yoksa önce Sözleşmeler panelinden ekleyin.';
     elseif (!$kalemler)               $formError = 'En az bir çap için sipariş miktarı girin.';
+    else {
+        // Mükerrer IFS Sipariş No engeli — sevkiyat eşleşmesinin çift saymaması için benzersiz olmalı
+        $chk = $pdoDemir->prepare("SELECT id FROM demir_siparisler WHERE ifs_siparis_no = ? AND id <> ?");
+        $chk->execute([$d['ifs_siparis_no'], $editId ?: 0]);
+        if ($chk->fetchColumn()) $formError = 'Bu IFS Sipariş No zaten başka bir siparişte kayıtlı. Sevkiyat eşleşmesinin doğru olması için her sipariş benzersiz IFS no taşımalıdır.';
+    }
 
     if (!$formError) {
         $params = [$d['ifs_talep_no']?:null, $d['ifs_siparis_no'], $d['gonderen_firma']?:null,

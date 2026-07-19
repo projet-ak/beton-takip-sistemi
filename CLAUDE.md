@@ -154,7 +154,7 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · Tutanaklar · **Tutanak Taki
 | `sevkiyatlar.php` | Sevkiyat listesi; çap toplamı + **kantar farkı** (renkli); filtre; Excel dışa/içe aktar. |
 | `sevkiyat_form.php` | Çap bazında İrsaliye+Kantar (canlı fark). **Karekod+AI paneli** (QR→başlık, AI→çap/miktar). |
 | `siparisler.php` | Sipariş + **bakiye** (sipariş/gelen/kalan + % ilerleme). |
-| `siparis_form.php` | IFS Sipariş No **zorunlu** (eşleşme buna dayanır) + **Sözleşme No zorunlu** (`demir_siparisler.sozlesme_id`) + çap bazında sipariş miktarı. Sözleşme no liste+detayda gösterilir. |
+| `siparis_form.php` | IFS Sipariş No **zorunlu + mükerrer engelli** (eşleşme buna dayanır; benzersiz olmalı yoksa bakiye çift sayar) + **Sözleşme No zorunlu** (`demir_siparisler.sozlesme_id`) + çap bazında sipariş miktarı. `siparisler.php` mevcut mükerrer IFS no'ları uyarı bandında gösterir; `kurulum_demir.php` güvenliyse `ifs_siparis_no` UNIQUE + sevkiyatta düz indeks ekler. |
 | `siparis_detay.php` | Çap bazında bakiye + eşleşen sevkiyatlar. |
 | `tutanaklar.php` | Teslim tutanağı listesi (tonaj/bağ/evrak durumu). |
 | `tutanak_form.php` | **Otomatik no** `{PROJE}-{TASKOD}-NNN` + dinamik kalem satırları. |

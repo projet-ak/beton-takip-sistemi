@@ -49,6 +49,12 @@ $liste = $pdoDemir->query("
     ORDER BY sp.tarih DESC, sp.id DESC
 ")->fetchAll();
 
+// Mükerrer IFS Sipariş No tespiti (aynı no birden çok siparişte → bakiye çift sayar)
+$mukerrerIfs = $pdoDemir->query("
+    SELECT ifs_siparis_no, COUNT(*) n FROM demir_siparisler
+    WHERE ifs_siparis_no IS NOT NULL AND TRIM(ifs_siparis_no)<>''
+    GROUP BY ifs_siparis_no HAVING n>1 ORDER BY n DESC")->fetchAll();
+
 require_once __DIR__ . '/../includes/header.php';
 $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
 ?>
@@ -67,6 +73,20 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
 <?php foreach(['success','error','warning','info'] as $t): $m=get_flash($t); if($m): ?>
 <div class="alert alert-<?= $t==='error'?'danger':$t ?>"><?= h($m) ?></div>
 <?php endif; endforeach; ?>
+
+<?php if ($mukerrerIfs): ?>
+<div class="alert alert-warning d-flex align-items-start gap-2">
+    <i class="bi bi-exclamation-triangle-fill mt-1"></i>
+    <div>
+        <strong>Mükerrer IFS Sipariş No uyarısı:</strong> Aşağıdaki numaralar birden çok siparişte kayıtlı — bu durumda sevkiyat tonajı <u>her sipariş için ayrı ayrı sayılır (çift sayım)</u> ve gelen/kalan bakiye yanlış görünür. Lütfen bu siparişleri düzenleyip her birine benzersiz IFS no verin.
+        <div class="small mt-1">
+            <?php foreach ($mukerrerIfs as $mi): ?>
+                <span class="badge bg-danger me-1"><?= h($mi['ifs_siparis_no']) ?> · <?= (int)$mi['n'] ?> sipariş</span>
+            <?php endforeach; ?>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <div class="card">
     <div class="card-body p-0">
