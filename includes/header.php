@@ -309,6 +309,10 @@ if ($__user) {
           <i class="bi bi-pallet"></i><span>Palet Durumu</span></a>
       </li>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('raporlar.php') ?>" href="<?= $__rootPath ?>seramik/raporlar.php" data-label="Raporlar">
+          <i class="bi bi-bar-chart-line"></i><span>Raporlar</span></a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('import.php') ?>" href="<?= $__rootPath ?>seramik/import.php" data-label="Excel İçe Aktar">
           <i class="bi bi-cloud-arrow-up"></i><span>Excel İçe Aktar</span></a>
       </li>
@@ -340,6 +344,9 @@ if ($__user) {
         <a class="sidebar-nav-link" href="<?= $__rootPath ?>depo/kalemler.php?k=el_aleti" data-label="El Aletleri"><i class="bi bi-tools"></i><span>El Aletleri</span></a>
       </li>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('raporlar.php') ?>" href="<?= $__rootPath ?>depo/raporlar.php" data-label="Raporlar"><i class="bi bi-bar-chart-line"></i><span>Raporlar</span></a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('import.php') ?>" href="<?= $__rootPath ?>depo/import.php" data-label="Excel İçe Aktar"><i class="bi bi-cloud-arrow-up"></i><span>Excel İçe Aktar</span></a>
       </li>
     </ul>
@@ -361,6 +368,9 @@ if ($__user) {
       </li>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('tutanaklar.php') ?>" href="<?= $__rootPath ?>akaryakit/tutanaklar.php" data-label="Tutanaklar"><i class="bi bi-file-earmark-text"></i><span>Tutanaklar</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('raporlar.php') ?>" href="<?= $__rootPath ?>akaryakit/raporlar.php" data-label="Raporlar"><i class="bi bi-bar-chart-line"></i><span>Raporlar</span></a>
       </li>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('import.php') ?>" href="<?= $__rootPath ?>akaryakit/import.php" data-label="Excel İçe Aktar"><i class="bi bi-cloud-arrow-up"></i><span>Excel İçe Aktar</span></a>

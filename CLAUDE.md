@@ -18,7 +18,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   Stok = **AMBAR MEVCUT'a sabit** (SAYIM−GİDEN) + elle giriş − elle çıkış (Excel log'ları
   SAYIM/GİDEN'de zaten sayılı olduğundan stoka eklenmez). `includes/db_seramik.php` → `$pdoSeramik`.
   Sayfalar: index(dashboard) · girisler/giris_form · cikislar/cikis_form · stok · paletler ·
-  import (Giriş/Çıkış/Mevcut/Palet tam yenileme) · malzemeler/firmalar/taseronlar · kurulum_seramik.
+  import (Giriş/Çıkış/Mevcut/Palet tam yenileme) · malzemeler/firmalar/taseronlar · kurulum_seramik. raporlar (Chart.js + Excel: tür/malzeme stok, aylık giriş/çıkış).
   Malzeme eşleşmesi `sr_norm()` (I/İ katlama, *→X). `seramik/_ortak.php` ortak yardımcılar.
 - **Depo modülü** = `depo/` alt klasörü. Sarf malzeme + demirbaş + el aletleri stok/zimmet takibi.
   **Ayrı veritabanı** (`takbulut_depo`, `DEPO_DB_NAME`). Tek tablo `depo_kalemler` (kategori ENUM
@@ -26,7 +26,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   `includes/db_depo.php` → `$pdoDepo`. Sayfalar: index(dashboard: kategori kartları + mali değer KPI +
   tükenen liste) · kalemler(kategori bazlı liste, ?k=demirbas|sarf|el_aleti, arama, stok/tutar) ·
   kalem_form(ekle/düzenle) · import(DEMİRBAŞLAR/SARF MALZEME/EL ALETLERİ sayfaları, kategori bazlı tam
-  yenileme) · kurulum_depo. El aletleri: fiyat/disiplin yok, **Seri No + Zimmetli Kişi** var. Demirbaş/
+  yenileme) · raporlar (Chart.js + Excel: kategori/disiplin mali değer, en değerli kalemler) · kurulum_depo. El aletleri: fiyat/disiplin yok, **Seri No + Zimmetli Kişi** var. Demirbaş/
   sarf: birim fiyat → **mali değer** (STOK × B.Fiyat). `depo/_ortak.php` (dp_sayi, DP_KATEGORI, dp_ozet).
 - **Akaryakıt modülü** = `akaryakit/` alt klasörü. Şantiye mazot (dizel) stok + araç/makine bazında
   aylık tüketim takibi. **Ayrı veritabanı** (`takbulut_akaryakit`, `AKARYAKIT_DB_NAME`).
@@ -37,7 +37,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   günün Mazot/Km detayı JSON** `gunluk`), `akaryakit_tutanak` (aylık imzalı tüketim raporu satırları).
   Sayfalar: index(dashboard: stok KPI + aylık tüketim/kalan grafik + firma doughnut + en çok tüketen) ·
   aylik(dönem seçmeli araç tüketim tablosu + günlük detay modal) · stok(dönem zinciri, uyuşmayan geçiş
-  kırmızı, elle düzelt) · araclar/arac_form(CRUD) · tutanaklar + tutanak_pdf(A4) · import · kurulum_akaryakit.
+  kırmızı, elle düzelt) · araclar/arac_form(CRUD) · tutanaklar + tutanak_pdf(A4) · raporlar (Chart.js + Excel: aylık tüketim, firma/araç bazlı) · import · kurulum_akaryakit.
   Import: aylık sayfalar (OCAK 2026…) + TUTANAK sayfaları **dönem bazlı tam yenileme**; **Excel'in
   TOPLAM hücreleri bayat olduğundan stok hesaplanır** (devir+gelen, −kullanılan). Gün d → Mazot col
   `7+2d`, Km col `8+2d` (gün 1=col9…31=col69); özet col 71 aylık/72 çalışma/73 ortalama/74-76 okuma.
