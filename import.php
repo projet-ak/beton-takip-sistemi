@@ -370,13 +370,21 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                 }
                 $rowsCache = [];
                 $added = 0; $skipped = 0; $errors = []; $silinenTum = 0;
+                $fotoSnapshot = []; $fotoReattach = 0; $fotoOrphan = 0;
                 $atlananlar = []; // atlanan satırların nedenleriyle raporu
                 $resetAll = isset($_POST['reset_all']) && is_admin();
 
                 $pdo->beginTransaction();
                 try {
                     if ($resetAll) {
-                        // TAM YENİLEME: tüm mevcut irsaliyeler silinir (fotoğraf kayıtları CASCADE ile)
+                        // Fotoğrafları koru: silmeden önce irsaliye_no ile snapshot al
+                        // (CASCADE ile DB kaydı silinir; dosyalar diskte kalır → import sonrası
+                        //  aynı irsaliye_no'ya sahip yeni kayda yeniden bağlanır).
+                        $fotoSnapshot = $pdo->query("
+                            SELECT i.irsaliye_no, f.dosya_adi, f.dosya_yolu, f.created_by
+                            FROM irsaliye_fotolar f JOIN irsaliyeler i ON i.id = f.irsaliye_id
+                            WHERE i.irsaliye_no IS NOT NULL AND TRIM(i.irsaliye_no) <> ''")->fetchAll();
+                        // TAM YENİLEME: tüm mevcut irsaliyeler silinir
                         $silinenTum = (int)$pdo->query("SELECT COUNT(*) FROM irsaliyeler")->fetchColumn();
                         $pdo->exec("DELETE FROM irsaliyeler");
                         audit_log($pdo, 'irsaliyeler', 0, 'DELETE', null, ['tam_yenileme'=>true, 'silinen'=>$silinenTum]);
@@ -485,9 +493,26 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                     }
                     } // sayfa döngüsü sonu
 
+                    // Fotoğrafları yeniden bağla: snapshot'taki her fotoyu, aynı irsaliye_no'ya
+                    // sahip yeni irsaliye kaydına ekle (eşleşmeyen = o irsaliye artık Excel'de yok).
+                    if ($resetAll && $fotoSnapshot) {
+                        $noMap = [];
+                        foreach ($pdo->query("SELECT id, irsaliye_no FROM irsaliyeler WHERE irsaliye_no IS NOT NULL AND TRIM(irsaliye_no)<>''") as $ir) {
+                            $key = mb_strtoupper(trim((string)$ir['irsaliye_no']), 'UTF-8');
+                            if (!isset($noMap[$key])) $noMap[$key] = (int)$ir['id']; // ilk eşleşme
+                        }
+                        $insFoto = $pdo->prepare("INSERT INTO irsaliye_fotolar (irsaliye_id, dosya_adi, dosya_yolu, created_by) VALUES (?,?,?,?)");
+                        foreach ($fotoSnapshot as $f) {
+                            $key = mb_strtoupper(trim((string)$f['irsaliye_no']), 'UTF-8');
+                            if (isset($noMap[$key])) { $insFoto->execute([$noMap[$key], $f['dosya_adi'], $f['dosya_yolu'], $f['created_by']]); $fotoReattach++; }
+                            else $fotoOrphan++;
+                        }
+                    }
+
                     $pdo->commit();
                     $success = ($resetAll ? "TAM YENİLEME: önce {$silinenTum} mevcut kayıt silindi. " : '')
-                             . "Aktarım işlemi tamamlandı! $added kayıt eklendi, $skipped mükerrer veya geçersiz kayıt atlandı.";
+                             . "Aktarım işlemi tamamlandı! $added kayıt eklendi, $skipped mükerrer veya geçersiz kayıt atlandı."
+                             . (($resetAll && ($fotoReattach || $fotoOrphan)) ? " {$fotoReattach} fotoğraf yeniden bağlandı" . ($fotoOrphan ? ", {$fotoOrphan} fotoğraf eşleşmedi (irsaliye artık Excel'de yok)" : '') . "." : '');
 
                     // Oturum dosyalarını temizle
                     @unlink($tempPath);
