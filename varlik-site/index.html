@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ERN Varlık Yönetim — Şantiye Mobilizasyonu & Varlık Yönetimi</title>
+<meta name="description" content="ERN Holding iştiraki. Şantiye mobilizasyonu, iş makinesi ve ekipman yönetimi, depo & lojistik, tedarik ve varlık kontrolü.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+:root{
+  --ern:#00584E; --ern-2:#0A7D6C; --ern-deep:#032B25; --ern-ink:#04211C;
+  --gold:#C9A84C; --gold-2:#E0C878; --teal:#00C9B1;
+  --ink:#111B18; --body:#4A5B57; --muted:#8095901; --muted:#7C8C87;
+  --line:#E7EDEB; --paper:#F7F9F8; --white:#fff;
+  --max:1200px; --ease:cubic-bezier(.4,0,.2,1);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'Outfit',system-ui,sans-serif;color:var(--ink);background:var(--white);-webkit-font-smoothing:antialiased;line-height:1.6}
+a{color:inherit;text-decoration:none}
+img{max-width:100%;display:block}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 clamp(1.25rem,4vw,2.5rem)}
+section{position:relative}
+.eyebrow{display:inline-flex;align-items:center;gap:.55rem;font-size:.72rem;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--ern-2)}
+.eyebrow::before{content:'';width:26px;height:2px;background:var(--gold)}
+.eyebrow.light{color:var(--gold-2)}
+.eyebrow.light::before{background:var(--gold)}
+h2.sec{font-size:clamp(1.7rem,3.4vw,2.6rem);font-weight:800;letter-spacing:-.03em;line-height:1.1;margin:.9rem 0 1rem;color:var(--ink)}
+.lead{font-size:1.05rem;color:var(--body);max-width:62ch}
+
+/* ── NAV ── */
+header.nav{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.85);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.nav-in{display:flex;align-items:center;gap:1.5rem;height:74px}
+.brand{display:flex;align-items:center;gap:.7rem;font-weight:800;letter-spacing:-.02em}
+.brand .logo{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.05rem;font-weight:800;background:linear-gradient(135deg,var(--ern-2),var(--ern));box-shadow:0 6px 16px rgba(0,88,78,.28)}
+.brand-img{height:34px;width:auto;display:block}
+.brand-div{width:1px;height:30px;background:var(--line);flex-shrink:0}
+.brand b{font-size:1.02rem;line-height:1}
+.brand small{display:block;font-size:.62rem;letter-spacing:.18em;color:var(--gold);font-weight:700;text-transform:uppercase;margin-top:.15rem}
+nav.menu{margin-left:auto;display:flex;gap:1.6rem}
+nav.menu a{font-size:.9rem;font-weight:500;color:var(--body);position:relative;padding:.3rem 0;transition:color .2s}
+nav.menu a::after{content:'';position:absolute;left:0;bottom:-2px;width:0;height:2px;background:var(--gold);transition:width .25s var(--ease)}
+nav.menu a:hover{color:var(--ern)}nav.menu a:hover::after{width:100%}
+.nav-actions{display:flex;align-items:center;gap:.9rem}
+.langsw{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.lang-btn{border:none;background:none;font-family:inherit;font-size:.76rem;font-weight:700;padding:.42rem .6rem;color:var(--muted);cursor:pointer;transition:.2s}
+.lang-btn.active{background:var(--ern);color:#fff}
+.btn{display:inline-flex;align-items:center;gap:.5rem;font-family:inherit;font-weight:600;font-size:.9rem;padding:.7rem 1.25rem;border-radius:11px;border:none;cursor:pointer;transition:.22s var(--ease)}
+.btn-primary{background:linear-gradient(135deg,var(--ern-2),var(--ern));color:#fff;box-shadow:0 8px 22px rgba(0,88,78,.25)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(0,88,78,.35)}
+.btn-ghost{background:transparent;border:1.5px solid rgba(255,255,255,.35);color:#fff}
+.btn-ghost:hover{background:rgba(255,255,255,.1);border-color:#fff}
+.btn-gold{background:linear-gradient(135deg,var(--gold-2),var(--gold));color:var(--ern-ink)}
+.btn-gold:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(201,168,76,.35)}
+.navtog{display:none;background:none;border:none;font-size:1.5rem;color:var(--ern);cursor:pointer}
+
+/* ── HERO ── */
+.hero{position:relative;overflow:hidden;color:#fff;
+  background:radial-gradient(120% 90% at 85% 5%,rgba(0,201,177,.22),transparent 46%),
+            radial-gradient(80% 70% at 0% 100%,rgba(201,168,76,.14),transparent 55%),
+            linear-gradient(150deg,var(--ern-ink) 0%,var(--ern) 78%,var(--ern-2) 100%)}
+.hero::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);
+  background-size:52px 52px;
+  -webkit-mask-image:radial-gradient(115% 100% at 75% 15%,#000 32%,transparent 80%);
+  mask-image:radial-gradient(115% 100% at 75% 15%,#000 32%,transparent 80%)}
+.hero-in{position:relative;z-index:1;padding:clamp(3.5rem,8vh,6.5rem) 0 clamp(4rem,9vh,7rem)}
+.hero-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:3rem;align-items:center}
+.hero h1{font-size:clamp(2.1rem,4.6vw,3.7rem);font-weight:800;line-height:1.06;letter-spacing:-.04em;margin:1.1rem 0 1.25rem}
+.hero h1 span{color:var(--gold-2)}
+.hero p.sub{font-size:1.12rem;color:rgba(255,255,255,.72);max-width:44ch;margin-bottom:2rem}
+.hero-cta{display:flex;gap:.8rem;flex-wrap:wrap}
+.slogan{display:inline-flex;align-items:center;gap:.6rem;margin-top:2.2rem;font-size:.9rem;color:rgba(255,255,255,.6)}
+.slogan i{color:var(--gold)}
+.hero-card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:1.6rem;backdrop-filter:blur(8px)}
+.hero-card h4{font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--gold-2);font-weight:700;margin-bottom:1rem}
+.hc-row{display:flex;align-items:center;gap:.9rem;padding:.75rem 0;border-top:1px solid rgba(255,255,255,.08)}
+.hc-row:first-of-type{border-top:none}
+.hc-ic{width:38px;height:38px;border-radius:10px;background:rgba(0,201,177,.14);border:1px solid rgba(0,201,177,.2);display:flex;align-items:center;justify-content:center;color:var(--teal);font-size:1rem;flex-shrink:0}
+.hc-row b{font-size:.9rem;font-weight:600;display:block}
+.hc-row small{font-size:.76rem;color:rgba(255,255,255,.5)}
+
+/* ── STATS band ── */
+.stats{background:var(--ern-deep);color:#fff}
+.stats-in{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;padding:2.4rem 0}
+.stat{text-align:center;padding:.5rem}
+.stat .num{font-size:clamp(1.8rem,3.4vw,2.6rem);font-weight:800;letter-spacing:-.02em;color:var(--gold-2)}
+.stat .lbl{font-size:.82rem;color:rgba(255,255,255,.6);margin-top:.25rem}
+
+/* ── SECTIONS ── */
+.pad{padding:clamp(3.5rem,8vh,6rem) 0}
+.about-grid{display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:center}
+.about-visual{border-radius:20px;min-height:340px;position:relative;overflow:hidden;
+  background:radial-gradient(90% 80% at 20% 10%,rgba(0,201,177,.18),transparent 55%),linear-gradient(150deg,var(--ern) ,var(--ern-deep));
+  display:flex;align-items:flex-end;padding:1.8rem}
+.about-visual .badge{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(6px);border-radius:14px;padding:1rem 1.2rem;color:#fff}
+.about-visual .badge b{font-size:1.5rem;color:var(--gold-2)}
+.about-visual .badge span{font-size:.82rem;color:rgba(255,255,255,.7);display:block}
+.about ul{list-style:none;margin-top:1.5rem;display:grid;gap:.7rem}
+.about ul li{display:flex;gap:.7rem;align-items:flex-start;color:var(--body);font-size:.96rem}
+.about ul li i{color:var(--ern-2);margin-top:.15rem}
+
+/* services */
+.services{background:var(--paper)}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:1.25rem;margin-top:2.5rem}
+.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:1.6rem;transition:.25s var(--ease)}
+.card:hover{transform:translateY(-4px);box-shadow:0 18px 40px rgba(4,43,37,.09);border-color:transparent}
+.card .ic{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:var(--ern);background:linear-gradient(135deg,rgba(0,201,177,.14),rgba(0,88,78,.08));margin-bottom:1.1rem;transition:.25s var(--ease)}
+.card:hover .ic{background:linear-gradient(135deg,var(--ern-2),var(--ern));color:#fff;transform:rotate(-4deg)}
+.card h3{font-size:1.12rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.5rem}
+.card p{font-size:.92rem;color:var(--body)}
+
+/* process */
+.proc{display:grid;grid-template-columns:repeat(4,1fr);gap:1.25rem;margin-top:2.5rem;counter-reset:step}
+.step{position:relative;padding:1.5rem;border-radius:16px;background:#fff;border:1px solid var(--line)}
+.step::before{counter-increment:step;content:'0' counter(step);font-size:2.4rem;font-weight:800;color:rgba(0,88,78,.1);position:absolute;top:.8rem;right:1rem;line-height:1}
+.step .ic{color:var(--gold);font-size:1.4rem;margin-bottom:.7rem}
+.step h4{font-size:1rem;font-weight:700;margin-bottom:.35rem}
+.step p{font-size:.86rem;color:var(--body)}
+
+/* digital */
+.digital{background:linear-gradient(150deg,var(--ern-ink),var(--ern-deep));color:#fff;overflow:hidden;position:relative}
+.digital::before{content:'';position:absolute;width:520px;height:520px;border-radius:50%;background:radial-gradient(circle,rgba(0,201,177,.16),transparent 70%);top:-160px;right:-120px}
+.dig-grid{display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:center;position:relative;z-index:1}
+.dig-list{display:grid;gap:1rem;margin-top:1.6rem}
+.dig-item{display:flex;gap:.9rem;align-items:flex-start}
+.dig-item i{color:var(--teal);font-size:1.15rem;margin-top:.1rem}
+.dig-item b{font-weight:600}.dig-item span{color:rgba(255,255,255,.6);font-size:.9rem;display:block}
+.dig-panel{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:20px;padding:1.5rem}
+.dig-mods{display:grid;grid-template-columns:1fr 1fr;gap:.7rem}
+.mod{display:flex;align-items:center;gap:.65rem;padding:.7rem .8rem;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;font-size:.86rem}
+.mod i{color:var(--gold-2)}
+.store-badges{display:flex;flex-wrap:wrap;gap:.7rem;margin-top:1.9rem}
+.store{display:inline-flex;align-items:center;gap:.75rem;padding:.6rem 1.05rem;border-radius:13px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:#fff;transition:.22s var(--ease)}
+.store:hover{background:rgba(255,255,255,.12);transform:translateY(-2px);border-color:rgba(255,255,255,.25)}
+.store i{font-size:1.6rem;color:var(--gold-2)}
+.store.live i{color:var(--teal)}
+.store div{line-height:1.15}
+.store small{display:block;font-size:.6rem;letter-spacing:.09em;text-transform:uppercase;color:rgba(255,255,255,.55)}
+.store b{font-size:.95rem;font-weight:600}
+.store.live{background:linear-gradient(135deg,rgba(0,201,177,.16),rgba(0,88,78,.1));border-color:rgba(0,201,177,.3)}
+
+/* contact */
+.contact-grid{display:grid;grid-template-columns:.9fr 1.1fr;gap:3rem;margin-top:2.5rem}
+.cinfo{display:grid;gap:1.1rem}
+.crow{display:flex;gap:.9rem;align-items:flex-start}
+.crow .ic{width:44px;height:44px;flex-shrink:0;border-radius:12px;background:var(--paper);display:flex;align-items:center;justify-content:center;color:var(--ern);font-size:1.1rem}
+.crow b{display:block;font-size:.95rem}.crow span{color:var(--body);font-size:.9rem}
+form.cform{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:1.6rem;display:grid;gap:.9rem}
+form.cform .frow{display:grid;grid-template-columns:1fr 1fr;gap:.9rem}
+form.cform label{font-size:.78rem;font-weight:600;display:block;margin-bottom:.35rem}
+form.cform input,form.cform textarea{width:100%;font-family:inherit;font-size:.92rem;padding:.7rem .85rem;border:1.5px solid var(--line);border-radius:11px;background:#fff;outline:none;transition:.2s}
+form.cform input:focus,form.cform textarea:focus{border-color:var(--ern);box-shadow:0 0 0 4px rgba(0,88,78,.1)}
+
+/* footer */
+footer.ft{background:var(--ern-ink);color:rgba(255,255,255,.7);padding:3rem 0 1.5rem}
+.ft-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:2rem;padding-bottom:2rem;border-bottom:1px solid rgba(255,255,255,.1)}
+.ft h5{color:#fff;font-size:.8rem;letter-spacing:.12em;text-transform:uppercase;margin-bottom:1rem}
+.ft a{display:block;font-size:.9rem;padding:.25rem 0;color:rgba(255,255,255,.6);transition:.2s}
+.ft a:hover{color:var(--gold-2)}
+.ft-bottom{display:flex;justify-content:space-between;flex-wrap:wrap;gap:.5rem;padding-top:1.25rem;font-size:.8rem;color:rgba(255,255,255,.45)}
+.ft .brand small{color:var(--gold)}
+.ft .brand b{color:#fff}
+
+/* reveal anim */
+[data-rev]{opacity:0;transform:translateY(20px);transition:opacity .7s var(--ease),transform .7s var(--ease)}
+[data-rev].in{opacity:1;transform:none}
+
+@media(max-width:900px){
+  nav.menu,.nav-actions .btn{display:none}
+  .navtog{display:block}
+  .hero-grid,.about-grid,.dig-grid,.contact-grid{grid-template-columns:1fr;gap:2rem}
+  .cards,.proc{grid-template-columns:1fr 1fr}
+  .stats-in{grid-template-columns:1fr 1fr}
+  .ft-grid{grid-template-columns:1fr}
+}
+@media(max-width:560px){ .cards,.proc,form.cform .frow{grid-template-columns:1fr} }
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}[data-rev]{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<header class="nav">
+  <div class="wrap nav-in">
+    <a href="#" class="brand">
+      <img src="img/ern-logo-renkli.png" alt="ERN Holding" class="brand-img">
+      <span class="brand-div"></span>
+      <span class="brand-tx"><b>Varlık Yönetim</b><small data-tr="ERN Holding İştiraki" data-en="An ERN Holding Company">ERN Holding İştiraki</small></span>
+    </a>
+    <nav class="menu">
+      <a href="#kurumsal" data-tr="Kurumsal" data-en="About">Kurumsal</a>
+      <a href="#faaliyet" data-tr="Faaliyet Alanları" data-en="Services">Faaliyet Alanları</a>
+      <a href="#rakamlar" data-tr="Rakamlarla" data-en="Figures">Rakamlarla</a>
+      <a href="#surec" data-tr="Süreç" data-en="Process">Süreç</a>
+      <a href="#dijital" data-tr="Dijital Altyapı" data-en="Digital">Dijital Altyapı</a>
+      <a href="#iletisim" data-tr="İletişim" data-en="Contact">İletişim</a>
+    </nav>
+    <div class="nav-actions">
+      <div class="langsw">
+        <button class="lang-btn active" data-lang="tr">TR</button>
+        <button class="lang-btn" data-lang="en">EN</button>
+      </div>
+      <a href="https://takbulut.com/beton/" target="_blank" rel="noopener" class="btn btn-primary" data-tr="<i class='bi bi-box-arrow-in-right'></i> Sisteme Giriş" data-en="<i class='bi bi-box-arrow-in-right'></i> System Login"><i class="bi bi-box-arrow-in-right"></i> Sisteme Giriş</a>
+      <button class="navtog" aria-label="Menu"><i class="bi bi-list"></i></button>
+    </div>
+  </div>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap hero-in">
+    <div class="hero-grid">
+      <div>
+        <span class="eyebrow light" data-tr="ERN Holding İştiraki" data-en="An ERN Holding Company">ERN Holding İştiraki</span>
+        <h1 data-tr="Şantiyeyi kuran,<br><span>varlığı yöneten</span> güç." data-en="The force that <span>mobilizes sites</span> and manages assets.">Şantiyeyi kuran,<br><span>varlığı yöneten</span> güç.</h1>
+        <p class="sub" data-tr="Yeni projelerin mobilizasyonundan iş makinesi filosuna; depo, tedarik ve varlık kontrolüne kadar ERN Holding'in operasyonel omurgası." data-en="From mobilizing new projects to managing the equipment fleet, warehouse, procurement and asset control — the operational backbone of ERN Holding.">Yeni projelerin mobilizasyonundan iş makinesi filosuna; depo, tedarik ve varlık kontrolüne kadar ERN Holding'in operasyonel omurgası.</p>
+        <div class="hero-cta">
+          <a href="#faaliyet" class="btn btn-gold" data-tr="Faaliyet Alanlarımız" data-en="Our Services">Faaliyet Alanlarımız</a>
+          <a href="#iletisim" class="btn btn-ghost" data-tr="Bize Ulaşın" data-en="Get in Touch">Bize Ulaşın</a>
+        </div>
+        <div class="slogan"><i class="bi bi-patch-check-fill"></i><span data-tr="Gücümüz Tecrübemiz — 1989'dan bugüne." data-en="Our Strength is Experience — since 1989.">Gücümüz Tecrübemiz — 1989'dan bugüne.</span></div>
+      </div>
+      <div class="hero-card" data-rev>
+        <h4 data-tr="Tek Elden Operasyon" data-en="End-to-End Operations">Tek Elden Operasyon</h4>
+        <div class="hc-row"><div class="hc-ic"><i class="bi bi-truck-front"></i></div><div><b data-tr="Şantiye Mobilizasyonu" data-en="Site Mobilization">Şantiye Mobilizasyonu</b><small data-tr="Kurulum & saha organizasyonu" data-en="Setup & site organization">Kurulum & saha organizasyonu</small></div></div>
+        <div class="hc-row"><div class="hc-ic"><i class="bi bi-gear-wide-connected"></i></div><div><b data-tr="İş Makinesi & Ekipman" data-en="Machinery & Equipment">İş Makinesi & Ekipman</b><small data-tr="Filo, bakım, kiralama" data-en="Fleet, maintenance, rental">Filo, bakım, kiralama</small></div></div>
+        <div class="hc-row"><div class="hc-ic"><i class="bi bi-box-seam"></i></div><div><b data-tr="Depo & Tedarik" data-en="Warehouse & Procurement">Depo & Tedarik</b><small data-tr="Stok, lojistik, alım-satım" data-en="Stock, logistics, trading">Stok, lojistik, alım-satım</small></div></div>
+        <div class="hc-row"><div class="hc-ic"><i class="bi bi-shield-check"></i></div><div><b data-tr="Varlık Kontrolü" data-en="Asset Control">Varlık Kontrolü</b><small data-tr="Envanter, zimmet, değer takibi" data-en="Inventory, custody, valuation">Envanter, zimmet, değer takibi</small></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<section class="stats" id="rakamlar">
+  <div class="wrap stats-in">
+    <div class="stat"><div class="num">1989</div><div class="lbl" data-tr="Köklü Tecrübe" data-en="Since">Köklü Tecrübe</div></div>
+    <div class="stat"><div class="num">3</div><div class="lbl" data-tr="Ülkede Faaliyet" data-en="Countries">Ülkede Faaliyet</div></div>
+    <div class="stat"><div class="num">500+</div><div class="lbl" data-tr="İş Makinesi & Ekipman" data-en="Machinery & Equipment">İş Makinesi & Ekipman</div></div>
+    <div class="stat"><div class="num">1.500+</div><div class="lbl" data-tr="Çalışan" data-en="Employees">Çalışan</div></div>
+  </div>
+</section>
+
+<!-- ABOUT -->
+<section class="pad about" id="kurumsal">
+  <div class="wrap about-grid">
+    <div data-rev>
+      <span class="eyebrow" data-tr="Kurumsal" data-en="About Us">Kurumsal</span>
+      <h2 class="sec" data-tr="Holdingin operasyonel gücü" data-en="The operational power of the Holding">Holdingin operasyonel gücü</h2>
+      <p class="lead" data-tr="ERN Varlık Yönetim, ERN Holding'in yürüttüğü yeni projelerin sahada hayata geçirilmesinden, gruba ait tüm varlıkların verimli yönetimine kadar uzanan operasyonel süreçleri tek elden yürütür. Şantiye mobilizasyonu, iş makinesi ve ekipman filosu, depo ve lojistik, tedarik ve varlık kontrolü; sahanın ihtiyaç duyduğu her şeyi doğru zamanda, doğru yerde ve tam kontrolle sağlar." data-en="ERN Varlık Yönetim manages the full operational cycle of ERN Holding — from mobilizing new projects on site to the efficient management of all group assets. Site mobilization, machinery and equipment fleet, warehouse and logistics, procurement and asset control: everything the field needs, at the right time, in the right place, under full control.">ERN Varlık Yönetim, ERN Holding'in yürüttüğü yeni projelerin sahada hayata geçirilmesinden, gruba ait tüm varlıkların verimli yönetimine kadar uzanan operasyonel süreçleri tek elden yürütür.</p>
+      <ul>
+        <li><i class="bi bi-check-circle-fill"></i><span data-tr="Yeni projelerde hızlı ve eksiksiz saha kurulumu" data-en="Fast, complete site setup for new projects">Yeni projelerde hızlı ve eksiksiz saha kurulumu</span></li>
+        <li><i class="bi bi-check-circle-fill"></i><span data-tr="İş makinesi ve ekipman filosunun merkezi yönetimi" data-en="Central management of the machinery & equipment fleet">İş makinesi ve ekipman filosunun merkezi yönetimi</span></li>
+        <li><i class="bi bi-check-circle-fill"></i><span data-tr="Depo, stok ve tedarik zincirinde tam görünürlük" data-en="Full visibility across warehouse, stock and supply chain">Depo, stok ve tedarik zincirinde tam görünürlük</span></li>
+        <li><i class="bi bi-check-circle-fill"></i><span data-tr="Grup varlıklarının canlı envanter ve değer takibi" data-en="Live inventory and valuation of group assets">Grup varlıklarının canlı envanter ve değer takibi</span></li>
+      </ul>
+    </div>
+    <div class="about-visual" data-rev>
+      <div class="badge"><b data-tr="35+ Yıl" data-en="35+ Years">35+ Yıl</b><span data-tr="taahhüt, enerji ve gayrimenkulde tecrübe" data-en="of experience in contracting, energy & real estate">taahhüt, enerji ve gayrimenkulde tecrübe</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- SERVICES -->
+<section class="pad services" id="faaliyet">
+  <div class="wrap">
+    <div style="max-width:640px" data-rev>
+      <span class="eyebrow" data-tr="Faaliyet Alanları" data-en="Services">Faaliyet Alanları</span>
+      <h2 class="sec" data-tr="Sahadan varlığa, uçtan uca yönetim" data-en="From field to asset, end-to-end management">Sahadan varlığa, uçtan uca yönetim</h2>
+    </div>
+    <div class="cards">
+      <div class="card" data-rev><div class="ic"><i class="bi bi-truck-front-fill"></i></div><h3 data-tr="Şantiye Mobilizasyonu" data-en="Site Mobilization">Şantiye Mobilizasyonu</h3><p data-tr="Yeni projelerin saha kurulumu: altyapı, konteyner/ofis, enerji ve saha organizasyonunun hızlı ve eksiksiz hazırlanması." data-en="Site setup for new projects: infrastructure, containers/offices, power and rapid, complete field organization.">Yeni projelerin saha kurulumu: altyapı, konteyner/ofis, enerji ve saha organizasyonunun hızlı ve eksiksiz hazırlanması.</p></div>
+      <div class="card" data-rev><div class="ic"><i class="bi bi-gear-wide-connected"></i></div><h3 data-tr="İş Makinesi & Ekipman" data-en="Machinery & Equipment">İş Makinesi & Ekipman</h3><p data-tr="İş makinesi ve ekipman filosunun yönetimi; bakım, sevk, planlama ve verimlilik takibi." data-en="Management of the machinery and equipment fleet; maintenance, dispatch, planning and efficiency tracking.">İş makinesi ve ekipman filosunun yönetimi; bakım, sevk, planlama ve verimlilik takibi.</p></div>
+      <div class="card" data-rev><div class="ic"><i class="bi bi-key-fill"></i></div><h3 data-tr="Ekipman Kiralama" data-en="Equipment Rental">Ekipman Kiralama</h3><p data-tr="Grup içi ve dışı projelere iş makinesi ve ekipman kiralama, operasyonel destek ve sözleşme yönetimi." data-en="Machinery and equipment rental to group and external projects, with operational support and contract management.">Grup içi ve dışı projelere iş makinesi ve ekipman kiralama, operasyonel destek ve sözleşme yönetimi.</p></div>
+      <div class="card" data-rev><div class="ic"><i class="bi bi-box-seam-fill"></i></div><h3 data-tr="Depo & Lojistik" data-en="Warehouse & Logistics">Depo & Lojistik</h3><p data-tr="Merkezi ambar, stok yönetimi, sevkiyat ve sahalar arası lojistik ile kesintisiz malzeme akışı." data-en="Central warehouse, stock management, dispatch and inter-site logistics for uninterrupted material flow.">Merkezi ambar, stok yönetimi, sevkiyat ve sahalar arası lojistik ile kesintisiz malzeme akışı.</p></div>
+      <div class="card" data-rev><div class="ic"><i class="bi bi-cart-check-fill"></i></div><h3 data-tr="Tedarik & Mal Alım-Satım" data-en="Procurement & Trading">Tedarik & Mal Alım-Satım</h3><p data-tr="Malzeme temini, tedarikçi yönetimi, alım-satım süreçleri ve maliyet optimizasyonu." data-en="Material sourcing, supplier management, buy-sell processes and cost optimization.">Malzeme temini, tedarikçi yönetimi, alım-satım süreçleri ve maliyet optimizasyonu.</p></div>
+      <div class="card" data-rev><div class="ic"><i class="bi bi-clipboard-data-fill"></i></div><h3 data-tr="Varlık Kontrolü & Takip" data-en="Asset Control & Tracking">Varlık Kontrolü & Takip</h3><p data-tr="Gruba ait tüm varlıkların envanteri, zimmeti, konumu ve değerinin canlı ve şeffaf takibi." data-en="Live, transparent tracking of the inventory, custody, location and value of all group assets.">Gruba ait tüm varlıkların envanteri, zimmeti, konumu ve değerinin canlı ve şeffaf takibi.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- PROCESS -->
+<section class="pad" id="surec">
+  <div class="wrap">
+    <div style="max-width:640px" data-rev>
+      <span class="eyebrow" data-tr="Nasıl Çalışırız" data-en="How We Work">Nasıl Çalışırız</span>
+      <h2 class="sec" data-tr="Mobilizasyondan demobilizasyona" data-en="From mobilization to demobilization">Mobilizasyondan demobilizasyona</h2>
+    </div>
+    <div class="proc">
+      <div class="step" data-rev><div class="ic"><i class="bi bi-flag-fill"></i></div><h4 data-tr="Mobilizasyon" data-en="Mobilization">Mobilizasyon</h4><p data-tr="Saha kurulumu, ekipman ve ekip sevkiyatı, altyapının hazırlanması." data-en="Site setup, equipment and team deployment, infrastructure readiness.">Saha kurulumu, ekipman ve ekip sevkiyatı, altyapının hazırlanması.</p></div>
+      <div class="step" data-rev><div class="ic"><i class="bi bi-diagram-3-fill"></i></div><h4 data-tr="Operasyon" data-en="Operation">Operasyon</h4><p data-tr="Depo, tedarik, ekipman ve lojistiğin kesintisiz yürütülmesi." data-en="Uninterrupted running of warehouse, procurement, equipment and logistics.">Depo, tedarik, ekipman ve lojistiğin kesintisiz yürütülmesi.</p></div>
+      <div class="step" data-rev><div class="ic"><i class="bi bi-clipboard-check-fill"></i></div><h4 data-tr="Kontrol" data-en="Control">Kontrol</h4><p data-tr="Canlı envanter, maliyet ve varlık takibiyle tam şeffaflık." data-en="Full transparency via live inventory, cost and asset tracking.">Canlı envanter, maliyet ve varlık takibiyle tam şeffaflık.</p></div>
+      <div class="step" data-rev><div class="ic"><i class="bi bi-arrow-repeat"></i></div><h4 data-tr="Demobilizasyon" data-en="Demobilization">Demobilizasyon</h4><p data-tr="Proje sonu toplama, varlıkların geri kazanımı ve yeni sahaya aktarım." data-en="End-of-project teardown, asset recovery and transfer to the next site.">Proje sonu toplama, varlıkların geri kazanımı ve yeni sahaya aktarım.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- DIGITAL -->
+<section class="pad digital" id="dijital">
+  <div class="wrap dig-grid">
+    <div data-rev>
+      <span class="eyebrow light" data-tr="Dijital Altyapı" data-en="Digital Infrastructure">Dijital Altyapı</span>
+      <h2 class="sec" style="color:#fff" data-tr="Şantiye Takip Sistemi" data-en="Şantiye Takip Sistemi">Şantiye Takip Sistemi</h2>
+      <p style="color:rgba(255,255,255,.7);max-width:52ch" data-tr="Tüm operasyonu, kendi bünyemizde geliştirdiğimiz çok modüllü dijital takip sistemiyle uçtan uca yönetiyoruz. Sahadaki her hareket anlık kayıt altında; stok, maliyet ve varlık her an görünür." data-en="We manage the entire operation end-to-end with a multi-module digital tracking platform built in-house. Every field movement is recorded instantly; stock, cost and assets are always visible.">Tüm operasyonu, kendi bünyemizde geliştirdiğimiz çok modüllü dijital takip sistemiyle uçtan uca yönetiyoruz.</p>
+      <div class="dig-list">
+        <div class="dig-item"><i class="bi bi-qr-code-scan"></i><div><b data-tr="QR & AI ile hızlı okuma" data-en="QR & AI-powered capture">QR & AI ile hızlı okuma</b><span data-tr="İrsaliye ve belgelerin saniyeler içinde sisteme girişi" data-en="Documents and waybills captured in seconds">İrsaliye ve belgelerin saniyeler içinde sisteme girişi</span></div></div>
+        <div class="dig-item"><i class="bi bi-graph-up-arrow"></i><div><b data-tr="Canlı stok & zayiat" data-en="Live stock & waste">Canlı stok & zayiat</b><span data-tr="Depo ve saha stokunda anlık doğruluk" data-en="Real-time accuracy across warehouse and site">Depo ve saha stokunda anlık doğruluk</span></div></div>
+        <div class="dig-item"><i class="bi bi-file-earmark-bar-graph"></i><div><b data-tr="Anlık raporlama" data-en="Instant reporting">Anlık raporlama</b><span data-tr="Yönetime tek ekranda karar destek" data-en="Single-screen decision support for management">Yönetime tek ekranda karar destek</span></div></div>
+      </div>
+      <div class="store-badges">
+        <a class="store live" href="https://takbulut.com/beton/" target="_blank" rel="noopener">
+          <i class="bi bi-box-arrow-in-right"></i>
+          <div><small data-tr="Hemen kullan" data-en="Use now">Hemen kullan</small><b data-tr="Web'de Sisteme Giriş" data-en="Open Web App">Web'de Sisteme Giriş</b></div>
+        </a>
+        <a class="store" href="#" onclick="return false" aria-disabled="true">
+          <i class="bi bi-google-play"></i>
+          <div><small data-tr="Yakında" data-en="Coming soon">Yakında</small><b>Google Play</b></div>
+        </a>
+        <a class="store" href="#" onclick="return false" aria-disabled="true">
+          <i class="bi bi-apple"></i>
+          <div><small data-tr="Yakında" data-en="Coming soon">Yakında</small><b>App Store</b></div>
+        </a>
+      </div>
+    </div>
+    <div class="dig-panel" data-rev>
+      <h4 style="font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--gold-2);font-weight:700;margin-bottom:1rem" data-tr="Sistem Modülleri" data-en="Platform Modules">Sistem Modülleri</h4>
+      <div class="dig-mods">
+        <div class="mod"><i class="bi bi-truck"></i><span data-tr="Beton & İrsaliye" data-en="Concrete & Waybill">Beton & İrsaliye</span></div>
+        <div class="mod"><i class="bi bi-rulers"></i><span data-tr="İnşaat Demiri" data-en="Rebar">İnşaat Demiri</span></div>
+        <div class="mod"><i class="bi bi-grid-1x2"></i><span data-tr="Seramik Ambarı" data-en="Ceramic Depot">Seramik Ambarı</span></div>
+        <div class="mod"><i class="bi bi-box-seam"></i><span data-tr="Depo Yönetimi" data-en="Warehouse">Depo Yönetimi</span></div>
+        <div class="mod"><i class="bi bi-fuel-pump"></i><span data-tr="Akaryakıt" data-en="Fuel">Akaryakıt</span></div>
+        <div class="mod"><i class="bi bi-clipboard-data"></i><span data-tr="Varlık Takibi" data-en="Asset Tracking">Varlık Takibi</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CONTACT -->
+<section class="pad" id="iletisim">
+  <div class="wrap">
+    <div style="max-width:640px" data-rev>
+      <span class="eyebrow" data-tr="İletişim" data-en="Contact">İletişim</span>
+      <h2 class="sec" data-tr="Projeniz için bize ulaşın" data-en="Get in touch for your project">Projeniz için bize ulaşın</h2>
+    </div>
+    <div class="contact-grid">
+      <div class="cinfo" data-rev>
+        <div class="crow"><div class="ic"><i class="bi bi-geo-alt-fill"></i></div><div><b data-tr="Adres" data-en="Address">Adres</b><span>Reşit Galip Cad. No:83, Çankaya / Ankara</span></div></div>
+        <div class="crow"><div class="ic"><i class="bi bi-telephone-fill"></i></div><div><b data-tr="Telefon" data-en="Phone">Telefon</b><span><a href="tel:+903124056080" style="color:inherit">+90 312 405 60 80</a></span></div></div>
+        <div class="crow"><div class="ic"><i class="bi bi-envelope-fill"></i></div><div><b data-tr="E-posta" data-en="Email">E-posta</b><span><a href="mailto:info@ern.com.tr" style="color:inherit">info@ern.com.tr</a></span></div></div>
+        <div class="crow"><div class="ic"><i class="bi bi-globe2"></i></div><div><b data-tr="Grup" data-en="Group">Grup</b><span>ERN Holding — Taahhüt · Enerji · Gayrimenkul</span></div></div>
+      </div>
+      <form class="cform" onsubmit="return false">
+        <div class="frow">
+          <div><label data-tr="Ad Soyad" data-en="Full Name">Ad Soyad</label><input type="text" data-tr-ph data-tr-ph2="Adınız Soyadınız" data-en-ph2="Your name" placeholder="Adınız Soyadınız"></div>
+          <div><label data-tr="E-posta" data-en="Email">E-posta</label><input type="email" placeholder="ornek@firma.com"></div>
+        </div>
+        <div><label data-tr="Konu" data-en="Subject">Konu</label><input type="text" placeholder="—"></div>
+        <div><label data-tr="Mesajınız" data-en="Message">Mesajınız</label><textarea rows="4" placeholder="—"></textarea></div>
+        <button class="btn btn-primary" type="submit" style="justify-content:center" data-tr="Gönder" data-en="Send Message">Gönder</button>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="ft">
+  <div class="wrap">
+    <div class="ft-grid">
+      <div>
+        <a href="#" class="brand" style="color:#fff"><img src="img/ern-logo-beyaz.png" alt="ERN Holding" style="height:40px"><span class="brand-div" style="background:rgba(255,255,255,.22)"></span><span class="brand-tx"><b style="color:#fff">Varlık Yönetim</b><small data-tr="ERN Holding İştiraki" data-en="An ERN Holding Company">ERN Holding İştiraki</small></span></a>
+        <p style="margin-top:1rem;font-size:.9rem;max-width:36ch" data-tr="Şantiye mobilizasyonundan varlık kontrolüne, holdingin operasyonel omurgası." data-en="From site mobilization to asset control, the operational backbone of the Holding.">Şantiye mobilizasyonundan varlık kontrolüne, holdingin operasyonel omurgası.</p>
+      </div>
+      <div class="ft"><h5 data-tr="Kurumsal" data-en="Company">Kurumsal</h5>
+        <a href="#kurumsal" data-tr="Hakkımızda" data-en="About">Hakkımızda</a>
+        <a href="#faaliyet" data-tr="Faaliyet Alanları" data-en="Services">Faaliyet Alanları</a>
+        <a href="#dijital" data-tr="Dijital Altyapı" data-en="Digital">Dijital Altyapı</a>
+      </div>
+      <div class="ft"><h5 data-tr="İletişim" data-en="Contact">İletişim</h5>
+        <a href="#iletisim">Reşit Galip Cad. No:83, Çankaya / Ankara</a>
+        <a href="tel:+903124056080">+90 312 405 60 80</a>
+        <a href="mailto:info@ern.com.tr">info@ern.com.tr</a>
+        <a href="https://ern.com.tr" target="_blank" rel="noopener">ern.com.tr</a>
+      </div>
+    </div>
+    <div class="ft-bottom">
+      <span>© <span id="yil"></span> ERN Varlık Yönetim — <span data-tr="Tüm hakları saklıdır." data-en="All rights reserved.">Tüm hakları saklıdır.</span></span>
+      <span data-tr="Geliştirici: <b style='color:var(--gold-2);font-weight:600'>Tayyar Akbulut</b>" data-en="Developed by: <b style='color:var(--gold-2);font-weight:600'>Tayyar Akbulut</b>">Geliştirici: <b style="color:var(--gold-2);font-weight:600">Tayyar Akbulut</b></span>
+    </div>
+  </div>
+</footer>
+
+<script>
+// Dil değiştirme
+(function(){
+  var STORE='ern_lang';
+  function apply(l){
+    document.documentElement.lang=l;
+    document.querySelectorAll('[data-tr]').forEach(function(el){
+      var v=el.getAttribute('data-'+l); if(v!==null) el.innerHTML=v;
+    });
+    document.querySelectorAll('input[placeholder],textarea[placeholder]').forEach(function(){});
+    document.querySelectorAll('.lang-btn').forEach(function(b){ b.classList.toggle('active', b.dataset.lang===l); });
+    try{localStorage.setItem(STORE,l);}catch(e){}
+  }
+  document.querySelectorAll('.lang-btn').forEach(function(b){ b.addEventListener('click',function(){ apply(b.dataset.lang); }); });
+  var saved='tr'; try{ saved=localStorage.getItem(STORE)||'tr'; }catch(e){}
+  if(saved!=='tr') apply(saved);
+  document.getElementById('yil').textContent=new Date().getFullYear();
+})();
+// Scroll reveal
+(function(){
+  var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.12});
+  document.querySelectorAll('[data-rev]').forEach(function(el){io.observe(el);});
+})();
+// Mobil menü (basit)
+document.querySelector('.navtog').addEventListener('click',function(){
+  var m=document.querySelector('nav.menu');
+  var open=m.style.display==='flex';
+  m.style.cssText=open?'':'display:flex;position:absolute;top:74px;left:0;right:0;background:#fff;flex-direction:column;padding:1rem 1.5rem;gap:.4rem;border-bottom:1px solid var(--line);box-shadow:0 12px 24px rgba(0,0,0,.08)';
+});
+</script>
+</body>
+</html>
