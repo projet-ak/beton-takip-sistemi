@@ -84,8 +84,8 @@ $flashInfo = get_flash('login_info');
 
 // ── Logolar (beyaz versiyonlar — koyu yeşil panel üzerinde) ───────────────────
 // Dosya adlarında boşluk olduğu için rawurlencode ile güvenli URL üretiyoruz.
-$LOGO_TAAHHUT = 'uploads/' . rawurlencode('ERN Taahhut_Logo_Beyaz.png');
-$LOGO_HOLDING = 'uploads/' . rawurlencode('ERN Holding_Logo_Beyaz.png');
+$LOGO_TAAHHUT = 'uploads/logo/' . rawurlencode('ERN Taahhut_Logo_Beyaz.png');
+$LOGO_HOLDING = 'uploads/logo/' . rawurlencode('ERN Holding_Logo_Beyaz.png');
 ?>
 <!DOCTYPE html>
 <html lang="tr">
