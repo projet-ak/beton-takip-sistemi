@@ -137,7 +137,7 @@ function _ai_openrouter(string $system, array $parts, int $maxTokens): array
         [
             'Authorization: Bearer ' . OPENROUTER_API_KEY,
             'Content-Type: application/json',
-            'HTTP-Referer: https://takbulut.com/beton/',
+            'HTTP-Referer: https://ernsaha.com.tr/beton/',
             'X-Title: Beton Takip Sistemi',
         ],
         fn($d) => $d['choices'][0]['message']['content'] ?? null,

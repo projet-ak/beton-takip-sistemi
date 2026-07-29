@@ -42,7 +42,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   TOPLAM hücreleri bayat olduğundan stok hesaplanır** (devir+gelen, −kullanılan). Gün d → Mazot col
   `7+2d`, Km col `8+2d` (gün 1=col9…31=col69); özet col 71 aylık/72 çalışma/73 ortalama/74-76 okuma.
   `akaryakit/_ortak.php` (ak_sayi, ak_norm, ak_donemSira TR ay→sıra, ak_aracId, ak_donemler).
-- Geliştirici: **Tayyar Akbulut**. Sürüm: v3.0. Canlı: `https://takbulut.com/beton/`.
+- Geliştirici: **Tayyar Akbulut**. Sürüm: v3.0. Canlı: `https://ernsaha.com.tr/beton/` (eski: takbulut.com/beton/).
 
 > **⭐ TEMEL İLKE — Excel şablonu "kutsal kitap" (tek doğru kaynak).** Sistem, ilgili Excel
 > şablonunu **birebir yansıtır**; veri/toplam çelişkisinde **Excel esastır**, sistem ona göre
@@ -299,7 +299,7 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 > Önce mevcut **web projesi bitirilecek**; aşağıdakiler sıraya alınmıştır.
 
 ### A) Mobil Uygulama — iOS & Android (ERTELENDİ, web bitince)
-- **Yaklaşım:** Mevcut siteyi (takbulut.com/beton/) **Capacitor WebView wrapper** ile native kabuğa sarmak
+- **Yaklaşım:** Mevcut siteyi (ernsaha.com.tr/beton/) **Capacitor WebView wrapper** ile native kabuğa sarmak
   (kod yeniden yazılmaz, içerik sunucudan gelir → her deploy otomatik yansır; yalnız ikon/izin/isim
   değişince mağaza güncellemesi gerekir). Alternatifler: PWA "ana ekrana ekle" (en ucuz, mağazasız) /
   React Native-Flutter (en pahalı, API gerektirir — şu an gereksiz).

@@ -1,7 +1,7 @@
 <?php
 /**
  * deploy2.php — exec() gerektirmeyen deploy (ZipArchive + cURL)
- * Kullanım: https://takbulut.com/beton/deploy2.php?token=TOKEN
+ * Kullanım: https://ernsaha.com.tr/beton/deploy2.php?token=TOKEN
  *
  * GitHub repo private ise token parametresi ile PAT gönderin:
  *   ?token=TOKEN&ghpat=github_pat_xxxx

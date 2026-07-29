@@ -1,6 +1,6 @@
 <?php
 // ─── Beton Takip — Auto Deploy Webhook ───────────────────────────────────────
-// Kullanım: https://takbulut.com/deploy.php?token=TOKEN
+// Kullanım: https://ernsaha.com.tr/beton/deploy.php?token=TOKEN
 // ─────────────────────────────────────────────────────────────────────────────
 
 // DEPLOY_TOKEN artık config.php'den okunur (git-ignored) — koda sır gömülmez.
