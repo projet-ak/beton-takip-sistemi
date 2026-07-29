@@ -63,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && can_edit() && isset($_FILES['foto']
 
     foreach ($_FILES['foto']['tmp_name'] as $i => $tmpName) {
         if ($_FILES['foto']['error'][$i] !== UPLOAD_ERR_OK) continue;
-        $mime = mime_content_type($tmpName);
+        $mime = guess_mime($tmpName, $_FILES['foto']['name'][$i]);
         if (!in_array($mime, $allowed)) continue;
         if ($_FILES['foto']['size'][$i] > $maxSize) continue;
 

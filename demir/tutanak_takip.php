@@ -107,7 +107,7 @@ if ($canEdit && ($_POST['action'] ?? '') === 'evrak' && ctype_digit($_POST['id']
     $sid = (int)$_POST['id'];
     $rw = $pdoDemir->prepare("SELECT firma, tutanak_no, evrak_url FROM demir_tutanak_takip WHERE id=?");
     $rw->execute([$sid]); $rw = $rw->fetch();
-    $mime = mime_content_type($_FILES['evrak']['tmp_name']);
+    $mime = guess_mime($_FILES['evrak']['tmp_name'], $_FILES['evrak']['name']);
     $izin = ['application/pdf','image/jpeg','image/png','image/webp'];
     if (!$rw) {
         flash('error', 'Satır bulunamadı.');

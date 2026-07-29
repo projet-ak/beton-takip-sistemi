@@ -85,7 +85,7 @@ if ($canEdit && ($_POST['action'] ?? '') === 'hurda_evrak' && ctype_digit($_POST
     && isset($_FILES['evrak']) && $_FILES['evrak']['error']===UPLOAD_ERR_OK) {
     $hid = (int)$_POST['id'];
     $rw = $pdoDemir->prepare("SELECT hurda_no, evrak_url FROM demir_hurda WHERE id=?"); $rw->execute([$hid]); $rw = $rw->fetch();
-    $mime = mime_content_type($_FILES['evrak']['tmp_name']);
+    $mime = guess_mime($_FILES['evrak']['tmp_name'], $_FILES['evrak']['name']);
     $izin = ['application/pdf','image/jpeg','image/png','image/webp'];
     if (!$rw) {
         flash('error', 'Hurda kaydı bulunamadı.');

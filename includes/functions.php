@@ -100,6 +100,44 @@ function h(?string $s): string
 }
 
 /**
+ * Dosyanın MIME türünü güvenli tespit et.
+ * fileinfo eklentisi (finfo/mime_content_type) varsa onu kullanır; yoksa
+ * dosya uzantısından tahmin eder. Böylece sunucuda fileinfo kapalı olsa bile
+ * yükleme doğrulaması çökmeden çalışır.
+ *
+ * @param string $path     Geçici/gerçek dosya yolu
+ * @param string $filename Orijinal dosya adı (uzantı yedeği için)
+ */
+function guess_mime(string $path, string $filename = ''): string
+{
+    if (function_exists('finfo_open')) {
+        $fi = @finfo_open(FILEINFO_MIME_TYPE);
+        if ($fi) {
+            $m = @finfo_file($fi, $path);
+            @finfo_close($fi);
+            if (is_string($m) && $m !== '' && $m !== 'application/octet-stream') return $m;
+        }
+    }
+    if (function_exists('mime_content_type')) {
+        $m = @mime_content_type($path);
+        if (is_string($m) && $m !== '') return $m;
+    }
+    // Eklenti yoksa uzantıdan tahmin
+    $ext = strtolower(pathinfo($filename !== '' ? $filename : $path, PATHINFO_EXTENSION));
+    $map = [
+        'pdf'  => 'application/pdf',
+        'jpg'  => 'image/jpeg',  'jpeg' => 'image/jpeg',
+        'png'  => 'image/png',   'webp' => 'image/webp',
+        'gif'  => 'image/gif',   'bmp'  => 'image/bmp',
+        'doc'  => 'application/msword',
+        'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls'  => 'application/vnd.ms-excel',
+        'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ];
+    return $map[$ext] ?? 'application/octet-stream';
+}
+
+/**
  * Audit log kaydı yaz
  *
  * @param PDO    $pdo

@@ -44,9 +44,7 @@ if ($file['size'] > 20 * 1024 * 1024) {
     exit;
 }
 
-$finfo = finfo_open(FILEINFO_MIME_TYPE);
-$mime  = finfo_file($finfo, $file['tmp_name']);
-finfo_close($finfo);
+$mime  = guess_mime($file['tmp_name'], $file['name']);
 
 $allowedMimes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 if (!in_array($mime, $allowedMimes, true)) {

@@ -29,7 +29,7 @@ $canEdit = has_role('admin','teknik_ofis_admin','teknik_ofis','saha_sefi');
 
 // ── İmzalı evrak yükleme ──────────────────────────────────────────────────────
 if ($canEdit && $_SERVER['REQUEST_METHOD']==='POST' && isset($_FILES['evrak']) && $_FILES['evrak']['error']===UPLOAD_ERR_OK) {
-    $mime = mime_content_type($_FILES['evrak']['tmp_name']);
+    $mime = guess_mime($_FILES['evrak']['tmp_name'], $_FILES['evrak']['name']);
     $izin = ['application/pdf','image/jpeg','image/png','image/webp'];
     if (!in_array($mime, $izin, true)) {
         flash('error', 'Sadece PDF, JPG, PNG, WebP yüklenebilir.');

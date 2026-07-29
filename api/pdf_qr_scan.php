@@ -78,9 +78,7 @@ if ($file['error'] !== UPLOAD_ERR_OK) {
 }
 
 // MIME kontrolü
-$finfo = finfo_open(FILEINFO_MIME_TYPE);
-$mime  = finfo_file($finfo, $file['tmp_name']);
-finfo_close($finfo);
+$mime  = guess_mime($file['tmp_name'], $file['name']);
 if ($mime !== 'application/pdf') {
     echo json_encode(['ok' => false, 'msg' => 'Yalnızca PDF dosyası kabul edilir (alınan: ' . $mime . ')', 'code' => 'invalid_mime']);
     exit;

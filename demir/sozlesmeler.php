@@ -93,7 +93,7 @@ if ($canEdit && ($_POST['action'] ?? '') === 'evrak' && ctype_digit($_POST['id']
     && isset($_FILES['evrak']) && $_FILES['evrak']['error']===UPLOAD_ERR_OK) {
     $sid = (int)$_POST['id'];
     $rw = $pdoDemir->prepare("SELECT sozlesme_no, evrak_url FROM demir_sozlesmeler WHERE id=?"); $rw->execute([$sid]); $rw = $rw->fetch();
-    $mime = mime_content_type($_FILES['evrak']['tmp_name']);
+    $mime = guess_mime($_FILES['evrak']['tmp_name'], $_FILES['evrak']['name']);
     $ext  = strtolower(pathinfo($_FILES['evrak']['name'], PATHINFO_EXTENSION));
     $izinMime = ['application/pdf','image/jpeg','image/png','image/webp',
                  'application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/msword'];

@@ -30,9 +30,7 @@ $file = $_FILES['dosya'];
 if ($file['error'] !== UPLOAD_ERR_OK) { echo json_encode(['ok'=>false,'msg'=>'Yükleme hatası: '.$file['error']]); exit; }
 if ($file['size'] > 20*1024*1024) { echo json_encode(['ok'=>false,'msg'=>'Dosya çok büyük (maks 20 MB)']); exit; }
 
-$finfo = finfo_open(FILEINFO_MIME_TYPE);
-$mime = finfo_file($finfo, $file['tmp_name']);
-finfo_close($finfo);
+$mime = guess_mime($file['tmp_name'], $file['name']);
 $allow = ['application/pdf','image/jpeg','image/png','image/webp','image/gif'];
 if (!in_array($mime, $allow, true)) { echo json_encode(['ok'=>false,'msg'=>'Desteklenmeyen tür: '.$mime]); exit; }
 
