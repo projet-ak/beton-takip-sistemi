@@ -152,7 +152,7 @@ for ($tur = 0; $tur < $maxTur; $tur++) {
 
     $resp = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    unset($ch); // PHP 8.0+ curl_close() no-op (8.5'te deprecated)
 
     if ($resp === false || $httpCode !== 200) {
         $err = json_decode($resp, true);

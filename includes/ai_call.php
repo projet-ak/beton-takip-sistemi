@@ -160,7 +160,7 @@ function _ai_http(string $url, array $payload, array $headers, callable $extract
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $curlErr  = curl_error($ch);
-    curl_close($ch);
+    unset($ch); // PHP 8.0+ curl_close() no-op (8.5'te deprecated)
 
     if ($curlErr) return ['ok' => false, 'msg' => 'cURL hatası: ' . $curlErr];
 

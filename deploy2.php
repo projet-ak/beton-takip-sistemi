@@ -71,7 +71,7 @@ curl_setopt_array($ch, [
 curl_exec($ch);
 $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 $curlErr  = curl_error($ch);
-curl_close($ch);
+unset($ch); // PHP 8.0+ curl_close() no-op (8.5'te deprecated)
 fclose($fh);
 
 if ($curlErr) {
