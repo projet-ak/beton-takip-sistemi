@@ -309,7 +309,7 @@ if ($__user) {
       </li>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('paletler.php') ?>" href="<?= $__rootPath ?>seramik/paletler.php" data-label="Palet Durumu">
-          <i class="bi bi-pallet"></i><span>Palet Durumu</span></a>
+          <i class="bi bi-layers"></i><span>Palet Durumu</span></a>
       </li>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('raporlar.php') ?>" href="<?= $__rootPath ?>seramik/raporlar.php" data-label="Raporlar">
@@ -319,7 +319,7 @@ if ($__user) {
         <a class="sidebar-nav-link <?= __isActive('import.php') ?>" href="<?= $__rootPath ?>seramik/import.php" data-label="Excel İçe Aktar">
           <i class="bi bi-cloud-arrow-up"></i><span>Excel İçe Aktar</span></a>
       </li>
-      <li class="sidebar-heading">Tanımlar</li>
+      <li class="sidebar-nav-item mt-1"><div class="nav-section">Tanımlar</div></li>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('malzemeler.php') ?>" href="<?= $__rootPath ?>seramik/malzemeler.php"><i class="bi bi-grid-3x3"></i><span>Malzemeler</span></a>
       </li>

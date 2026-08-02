@@ -8,7 +8,7 @@ $pageTitle='Palet Durumu — Seramik';
 $liste=[]; try{ $liste=$pdoSeramik->query("SELECT * FROM seramik_palet ORDER BY tarih DESC, id DESC")->fetchAll(); }catch(Throwable $e){}
 require_once __DIR__.'/../includes/header.php';
 ?>
-<h4 class="mb-3"><i class="bi bi-pallet text-primary me-2"></i>Palet Durumu</h4>
+<h4 class="mb-3"><i class="bi bi-layers text-primary me-2"></i>Palet Durumu</h4>
 <div class="card border-0 shadow-sm"><div class="card-body p-0"><div class="table-responsive">
 <table class="table table-sm table-hover align-middle mb-0"><thead class="table-light"><tr><th>#</th><th>Tarih</th><th>Açıklama</th><th>Palet</th><th>Durum</th></tr></thead><tbody>
 <?php foreach($liste as $r): ?><tr>
