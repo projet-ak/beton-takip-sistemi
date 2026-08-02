@@ -13,39 +13,11 @@ if (!file_exists(__DIR__ . '/config.php')) {
 require_auth();
 require_once __DIR__ . '/includes/db.php';
 
-// Günlük otomatik yedek — admin dashboard'a her girdiğinde kontrol eder
+// Günlük otomatik yedek — admin dashboard'a her girdiğinde kontrol eder.
+// 5 veritabanının (beton/demir/seramik/depo/akaryakit) her biri ayrı dosyaya alınır.
 if (is_admin()) {
-    $__bakDir = __DIR__ . '/backups';
-    if (!is_dir($__bakDir)) mkdir($__bakDir, 0755, true);
-    if (!glob($__bakDir . '/auto_' . date('Y-m-d') . '*.sql.gz')) {
-        // yedek.php'deki createBackup fonksiyonu burada yoktur, inline yapalım
-        try {
-            $__fn  = 'auto_' . date('Y-m-d_H-i-s') . '.sql.gz';
-            $__fp  = $__bakDir . '/' . $__fn;
-            $__tbl = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
-            $__sql = "-- Beton Takip Otomatik Yedek\n-- " . date('Y-m-d H:i:s') . "\nSET FOREIGN_KEY_CHECKS=0;\n\n";
-            foreach ($__tbl as $__t) {
-                $__cr = $pdo->query("SHOW CREATE TABLE `$__t`")->fetch(PDO::FETCH_NUM);
-                $__sql .= "DROP TABLE IF EXISTS `$__t`;\n" . ($__cr[1] ?? '') . ";\n\n";
-                $__rows = $pdo->query("SELECT * FROM `$__t`")->fetchAll(PDO::FETCH_ASSOC);
-                if ($__rows) {
-                    $__cols = '`' . implode('`,`', array_keys($__rows[0])) . '`';
-                    $__sql .= "INSERT INTO `$__t` ($__cols) VALUES\n";
-                    $__vals = array_map(fn($r) => '(' . implode(',', array_map(fn($v) => $v === null ? 'NULL' : $pdo->quote($v), $r)) . ')', $__rows);
-                    $__sql .= implode(",\n", $__vals) . ";\n\n";
-                }
-            }
-            $__sql .= "SET FOREIGN_KEY_CHECKS=1;\n";
-            $__gz = gzopen($__fp, 'wb9');
-            gzwrite($__gz, $__sql);
-            gzclose($__gz);
-            // 30 günden eski otomatik yedekleri temizle
-            foreach (glob($__bakDir . '/auto_*.sql.gz') ?: [] as $__old) {
-                if (filemtime($__old) < strtotime('-30 days')) @unlink($__old);
-            }
-        } catch (Exception $__e) { /* sessizce geç */ }
-    }
-    unset($__bakDir, $__fn, $__fp, $__tbl, $__sql, $__rows, $__vals, $__gz);
+    require_once __DIR__ . '/includes/yedekleme.php';
+    try { yedek_otomatik_calistir(__DIR__ . '/backups'); } catch (Throwable $__e) { /* sessizce geç */ }
 }
 
 $pageTitle = 'Dashboard — Beton Takip Sistemi';
