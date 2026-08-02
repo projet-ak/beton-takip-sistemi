@@ -4,6 +4,12 @@ define('DB_NAME', 'veritabani_adi');
 define('DB_USER', 'kullanici_adi');
 define('DB_PASS', 'sifre');
 
+// ⚠ MODÜL AYIRMA UYARISI: Aşağıdaki *_DB_NAME sabitleri tanımsızsa ilgili modül
+//    ANA DB'yi kullanır (tablolar 'demir_'/'seramik_'/'depo_'/'akaryakit_' önekli).
+//    Sabiti SONRADAN eklerseniz modül yeni/boş DB'ye bakar; eski veriler ana DB'de
+//    kalır ve modül boş görünür. Önce tabloları yeni DB'ye taşıyın, sonra tanımlayın.
+//    Aktif DB'yi ilgili modülün kurulum_*.php sayfasındaki rozetten görebilirsiniz.
+
 // ── Demir modülü (ayrı DB — opsiyonel) ───────────────────────────────────────
 // Ayrı bir MySQL DB kullanacaksanız (önerilir) tanımlayın; kullanıcı/şifre aynıysa
 // yalnız DB adı yeterli. Tanımsızsa ana DB'de 'demir_' önekli tablolar kullanılır.

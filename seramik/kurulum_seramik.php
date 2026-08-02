@@ -124,6 +124,20 @@ require_once __DIR__ . '/../includes/header.php';
 ?>
 <h4 class="mb-3"><i class="bi bi-grid-1x2 text-primary me-2"></i>Seramik Modülü Kurulum</h4>
 
+<?php
+$__serAktifDb = defined('SERAMIK_DB_NAME') && SERAMIK_DB_NAME !== '' ? SERAMIK_DB_NAME : DB_NAME;
+$__serAyriMi  = defined('SERAMIK_DB_NAME') && SERAMIK_DB_NAME !== '' && SERAMIK_DB_NAME !== DB_NAME;
+?>
+<div class="alert <?= $__serAyriMi ? 'alert-success' : 'alert-warning' ?> py-2 mb-3 small">
+    <strong>Aktif veritabanı:</strong> <code><?= h($__serAktifDb) ?></code>
+    <?php if ($__serAyriMi): ?>
+        &mdash; &#10003; Beton'dan ayrı veritabanı kullanılıyor.
+    <?php else: ?>
+        &mdash; &#9888; Beton ile <strong>aynı</strong> veritabanı (tablolar <code>seramik_</code> önekli).
+        Ayırmak için config.php'ye <code>define('SERAMIK_DB_NAME','takbulut_seramik');</code> ekleyin.
+    <?php endif; ?>
+</div>
+
 <?php if ($hata): ?>
 <div class="alert alert-danger"><strong>Hata:</strong> <?= h($hata) ?></div>
 <?php else: ?>

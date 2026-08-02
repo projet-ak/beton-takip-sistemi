@@ -41,6 +41,19 @@ foreach (array_keys($tablolar) as $t) { try { $durum[$t]=(int)$pdoDepo->query("S
 require_once __DIR__ . '/../includes/header.php';
 ?>
 <h4 class="mb-3"><i class="bi bi-box-seam text-primary me-2"></i>Depo Modülü Kurulum</h4>
+<?php
+$__depoAktifDb = defined('DEPO_DB_NAME') && DEPO_DB_NAME !== '' ? DEPO_DB_NAME : DB_NAME;
+$__depoAyriMi  = defined('DEPO_DB_NAME') && DEPO_DB_NAME !== '' && DEPO_DB_NAME !== DB_NAME;
+?>
+<div class="alert <?= $__depoAyriMi ? 'alert-success' : 'alert-warning' ?> py-2 mb-3 small">
+    <strong>Aktif veritabanı:</strong> <code><?= h($__depoAktifDb) ?></code>
+    <?php if ($__depoAyriMi): ?>
+        &mdash; &#10003; Beton'dan ayrı veritabanı kullanılıyor.
+    <?php else: ?>
+        &mdash; &#9888; Beton ile <strong>aynı</strong> veritabanı (tablolar <code>depo_</code> önekli).
+        Ayırmak için config.php'ye <code>define('DEPO_DB_NAME','takbulut_depo');</code> ekleyin.
+    <?php endif; ?>
+</div>
 <?php if ($hata): ?><div class="alert alert-danger"><strong>Hata:</strong> <?= h($hata) ?></div>
 <?php else: ?><div class="alert alert-success"><i class="bi bi-check-circle me-1"></i>Şema hazır.</div><?php endif; ?>
 <div class="card"><div class="card-body"><table class="table table-sm mb-0"><thead class="table-light"><tr><th>Tablo</th><th class="text-end">Kayıt</th></tr></thead><tbody>
