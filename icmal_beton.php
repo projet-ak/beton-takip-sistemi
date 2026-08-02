@@ -116,7 +116,7 @@ require_once __DIR__ . '/includes/header.php';
                     ?>
                         <tr>
                             <?php if ($ilk): ?>
-                                <td rowspan="<?= count($satirlar) ?>" class="fw-semibold align-middle" style="background:#f7fafa"><?= h($firma) ?></td>
+                                <td rowspan="<?= count($satirlar) ?>" class="fw-semibold align-middle hucre-firma"><?= h($firma) ?></td>
                             <?php endif; ?>
                             <td><?= h($im['imalat']) ?></td>
                             <td class="text-end font-monospace"><?= icFmt($im['metraj']) ?></td>

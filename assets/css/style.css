@@ -965,6 +965,33 @@ html[data-dark="1"] .table > tfoot > tr > td.ftm-toplam {
     background-color: color-mix(in srgb, var(--ern-ultra) 26%, var(--bt-surface)) !important;
     color: var(--ern-ultra) !important;
 }
+
+/* ── Excel imalat sayfalarında bölüm/gruplama satırları ───────────────────────
+   (Bina Üstyapı, İstinat, Temel & Kazık, Mobilizasyon, Beton İcmali)
+   Önceden sabit açık renk (#eef6f4 / #f6eccf / #f7fafa) gömülüydü; karanlık
+   modda açık zemin + açık yazı okunmuyordu. Artık temaya göre çözülüyor.   */
+.satir-bolum { background: #eef6f4 !important; color: var(--ern) !important; font-weight: 700; }
+.satir-alt   { background: #f6eccf !important; color: #6b5411 !important;    font-weight: 700; }
+.hucre-firma { background: #f7fafa !important; }
+
+html[data-dark="1"] .satir-bolum {
+    background: color-mix(in srgb, var(--ern-ultra) 18%, var(--bt-surface)) !important;
+    color: var(--ern-ultra) !important;
+}
+html[data-dark="1"] .satir-alt {
+    background: color-mix(in srgb, var(--ern-gold) 20%, var(--bt-surface)) !important;
+    color: #E6C979 !important;
+}
+html[data-dark="1"] .hucre-firma {
+    background: var(--bt-bg-soft) !important;
+    color: var(--bt-text) !important;
+}
+
+/* Sürükle-bırak dosya alanı (imzalı evrak yükleme modalleri) */
+.dz-zone { background: #f8f9fa; transition: background .15s, border-color .15s; }
+.dz-zone:hover { background: var(--bt-tint); }
+html[data-dark="1"] .dz-zone { background: var(--bt-bg-soft); border-color: var(--bt-border) !important; }
+html[data-dark="1"] .dz-zone:hover { background: color-mix(in srgb, var(--ern-ultra) 10%, var(--bt-surface)); }
 html[data-dark="1"] table.table-hover tbody tr:hover { background-color: var(--bt-tint) !important; }
 html[data-dark="1"] .sticky-top { background: var(--bt-bg-soft) !important; }
 

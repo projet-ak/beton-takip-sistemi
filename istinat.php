@@ -114,14 +114,14 @@ function renderBolumluSayfa(array $grid): string {
         // Bölüm başlığı (tek metin hücresi)
         if (count($doluIdx)===1 && !is_numeric($ilk) && !preg_match('/^\d{4}-\d{2}-\d{2}/',$ilk)) {
             $cols = max(count($basliklar), count($row), 9);
-            echo '<tr><td colspan="'.$cols.'" style="background:#eef6f4;color:var(--ern);font-weight:700"><i class="bi bi-geo-alt-fill me-1"></i>'.h($ilk).'</td></tr>';
+            echo '<tr><td colspan="'.$cols.'" class="satir-bolum"><i class="bi bi-geo-alt-fill me-1"></i>'.h($ilk).'</td></tr>';
             continue;
         }
         // "PEYZAJ / DENER / parsel" gibi 2 hücreli üst başlık → bölüm
         if (count($doluIdx)<=3 && !is_numeric($ilk) && mb_stripos($ilk,'GROBETON')===false && mb_stripos($ilk,'ISTINAT')===false && mb_stripos($ilk,'ÇEVRE')===false) {
             $etiket = trim(implode(' — ', array_filter(array_map(fn($i)=>trim((string)($row[$i]??'')), $doluIdx))));
             $cols = max(count($basliklar), count($row), 9);
-            echo '<tr><td colspan="'.$cols.'" style="background:#f6eccf;color:#6b5411;font-weight:700"><i class="bi bi-bookmark-fill me-1"></i>'.h($etiket).'</td></tr>';
+            echo '<tr><td colspan="'.$cols.'" class="satir-alt"><i class="bi bi-bookmark-fill me-1"></i>'.h($etiket).'</td></tr>';
             continue;
         }
         // Veri satırı

@@ -278,7 +278,7 @@ function renderKazikSheet(array $grid, string $ad): string {
         // Bölüm başlığı: sadece 1 dolu hücre + metin
         if (count($doluIdx)===1 && !is_numeric($ilkMetin) && !preg_match('/^\d{4}-\d{2}-\d{2}/',$ilkMetin)) {
             $cols = max(count($basliklar), count($row), 11);
-            echo '<tr><td colspan="'.$cols.'" style="background:#eef6f4;color:var(--ern);font-weight:700"><i class="bi bi-geo-alt-fill me-1"></i>'.h($ilkMetin).'</td></tr>';
+            echo '<tr><td colspan="'.$cols.'" class="satir-bolum"><i class="bi bi-geo-alt-fill me-1"></i>'.h($ilkMetin).'</td></tr>';
             continue;
         }
         // Veri satırı

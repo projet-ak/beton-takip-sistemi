@@ -247,7 +247,7 @@ if (isset($_GET['tutanak_detay'])) {
             <form method="post" enctype="multipart/form-data" class="mt-2 dz-form">
                 <input type="hidden" name="action" value="evrak">
                 <input type="hidden" name="id" value="<?= $firstId ?>">
-                <label class="dz-zone d-flex flex-column align-items-center justify-content-center text-center p-4 border border-2 border-dashed rounded" style="cursor:pointer;background:#f8f9fa;border-style:dashed!important">
+                <label class="dz-zone d-flex flex-column align-items-center justify-content-center text-center p-4 border border-2 border-dashed rounded" style="cursor:pointer;border-style:dashed!important">
                     <i class="bi bi-cloud-arrow-up fs-2 text-secondary"></i>
                     <span class="fw-semibold mt-1">Dosyayı buraya sürükleyin ya da tıklayın</span>
                     <span class="small text-muted dz-name">PDF, JPG, PNG — maks 15 MB · “<?= h($tn) ?>” tutanağının tüm satırlarına işlenir</span>
@@ -439,7 +439,7 @@ $fmt = fn($n,$d=3) => number_format((float)$n, $d, ',', '.');
       <div class="modal-header"><h5 class="modal-title">İmzalı Evrak Yükle</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
         <div id="e_scope" class="alert alert-info py-2 px-3 small mb-2 d-none"></div>
-        <label class="dz-zone d-flex flex-column align-items-center justify-content-center text-center p-4 border border-2 border-dashed rounded" style="cursor:pointer;background:#f8f9fa;border-style:dashed!important">
+        <label class="dz-zone d-flex flex-column align-items-center justify-content-center text-center p-4 border border-2 border-dashed rounded" style="cursor:pointer;border-style:dashed!important">
             <i class="bi bi-cloud-arrow-up fs-2 text-secondary"></i>
             <span class="fw-semibold mt-1">Dosyayı buraya sürükleyin ya da tıklayın</span>
             <span class="small text-muted dz-name">PDF, JPG, PNG — maks 15 MB</span>

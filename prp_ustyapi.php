@@ -309,6 +309,26 @@ require_once __DIR__ . '/includes/header.php';
 .prp-metraj-vurgu { background:#f6eccf !important; color:#6b5411 !important; }
 .prp-table tbody tr:hover td:not(.prp-kot):not(.prp-metraj-vurgu) { background:#f1f8f6; }
 .prp-table tbody tr.prp-asim td:not(.prp-kot):not(.prp-metraj-vurgu) { background:#fbe9ea !important; }
+
+/* ── Karanlık mod karşılıkları ─────────────────────────────────────────────
+   Yukarıdaki sabit açık renkler (#fff/#eef6f4/#f6eccf/#f1f8f6/#fbe9ea)
+   karanlık modda açık zemin + açık yazı üretiyordu; satırlar okunmuyordu. */
+html[data-dark="1"] .prp-kpi { background:var(--bt-surface); border-color:var(--bt-border); }
+html[data-dark="1"] .prp-kot {
+    background:color-mix(in srgb,var(--ern-ultra) 15%,var(--bt-surface));
+    color:var(--ern-ultra);
+}
+html[data-dark="1"] .prp-metraj-vurgu {
+    background:color-mix(in srgb,var(--ern-gold) 22%,var(--bt-surface)) !important;
+    color:#E6C979 !important;
+}
+html[data-dark="1"] .prp-table tbody tr:hover td:not(.prp-kot):not(.prp-metraj-vurgu) {
+    background:color-mix(in srgb,var(--ern-ultra) 11%,var(--bt-surface));
+}
+html[data-dark="1"] .prp-table tbody tr.prp-asim td:not(.prp-kot):not(.prp-metraj-vurgu) {
+    background:color-mix(in srgb,#e05454 20%,var(--bt-surface)) !important;
+    color:#FFB4B4 !important;
+}
 </style>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>

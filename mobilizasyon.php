@@ -60,7 +60,7 @@ require_once __DIR__ . '/includes/header.php';
         // Bölüm başlığı (tek metin hücresi) → firma/iş adı
         if (count($doluIdx)===1 && !is_numeric($ilk)) {
             $cols = max(count($basliklar), count($row), 8);
-            echo '<tr><td colspan="'.$cols.'" style="background:#eef6f4;color:var(--ern);font-weight:700"><i class="bi bi-tag-fill me-1"></i>'.h($ilk).'</td></tr>';
+            echo '<tr><td colspan="'.$cols.'" class="satir-bolum"><i class="bi bi-tag-fill me-1"></i>'.h($ilk).'</td></tr>';
             continue;
         }
         // Veri satırı

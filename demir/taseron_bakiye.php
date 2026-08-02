@@ -384,7 +384,7 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
       <div class="modal-header"><h5 class="modal-title"><i class="bi bi-paperclip me-1"></i>İmzalı Hurda Tutanağı Yükle</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
         <div id="he_scope" class="alert alert-info py-2 px-3 small mb-2 d-none"></div>
-        <label class="dz-zone d-flex flex-column align-items-center justify-content-center text-center p-4 border border-2 rounded" style="cursor:pointer;background:#f8f9fa;border-style:dashed!important">
+        <label class="dz-zone d-flex flex-column align-items-center justify-content-center text-center p-4 border border-2 rounded" style="cursor:pointer;border-style:dashed!important">
             <i class="bi bi-cloud-arrow-up fs-2 text-secondary"></i>
             <span class="fw-semibold mt-1">Taranmış imzalı tutanağı buraya sürükleyin ya da tıklayın</span>
             <span class="small text-muted dz-name">PDF, JPG, PNG — maks 15 MB</span>
