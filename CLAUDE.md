@@ -68,6 +68,15 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   Her iki branch'i senkron tut (bazen kullanıcı GitHub web'den deploy branch'ine commit atar;
   push reddedilirse `git fetch` + merge/senkronla).
 
+### Barındırma (2026-08 itibarıyla)
+- **Canlı sunucu = kendi VPS'imiz** (Netlen, Ubuntu, IP 45.74.158.99), panel **aaPanel** (TR arayüz).
+  Site kökü: `/www/wwwroot/ernsaha.com.tr/beton/`. cPanel/takbulut.com **terk edildi** (arşiv).
+- `ernsahaoperasyon.com.tr` **ayrı bir projedir** (kurumsal tanıtım sitesi, `varlik-site/`);
+  bu uygulamayla ilgisi yok, oraya dokunma.
+- PHP 8.5. `curl_close()` deprecated → kullanma. `fileinfo` eklentisi kapalı olabilir:
+  MIME tespiti için `mime_content_type()`/`finfo_*` **doğrudan çağrılmaz**, `guess_mime()`
+  (functions.php) kullanılır — eklenti yoksa uzantıdan tahmin eder.
+
 ### Deploy yöntemi
 - **`deploy2.php`** (tercih edilen): tarayıcıdan `deploy2.php?token=...` açılır;
   GitHub'dan deploy branch zip'ini çekip `__DIR__`'e açar. Yalnız **`config.php` + `backups/`**
@@ -183,6 +192,15 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · Tutanaklar · **Tutanak Taki
 ---
 
 ## 6. Veritabanları
+
+> **Canlıda 5 AYRI veritabanı vardır** (2026-08 ayrıştırması). Her modül kendi DB'sinde:
+> `takbulut_beton` (beton) · `takbulut_demir` · `takbulut_seramik` · `takbulut_depo` ·
+> `takbulut_akaryakit`. Tümü `config.php`'deki `DEMIR_DB_NAME`/`SERAMIK_DB_NAME`/`DEPO_DB_NAME`/
+> `AKARYAKIT_DB_NAME` sabitleriyle etkinleştirilmiştir; tek DB kullanıcısı hepsine yetkili.
+> ⚠️ Bu sabitlerden biri **tanımsız kalırsa** ilgili modül sessizce **ana DB'ye** düşer ve veriler
+> "kaybolmuş" görünür (tablolar önekli olduğu için çakışma olmaz, ama modül boş açılır).
+> Aktif DB'yi ilgili modülün `kurulum_*.php` sayfasındaki **rozetten** görebilirsin
+> (yeşil = ayrı DB, sarı = ana DB). Yedekleme artık **5 DB'yi birden** kapsamalıdır.
 
 ### Beton (`kurulum.php`)
 Tanım tabloları (id/ad/aktif): beton_siniflari, katki_listesi, pompa_turleri, firmalar,
