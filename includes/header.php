@@ -154,6 +154,32 @@ if ($__user) {
       </li>
       <?php endif; ?>
 
+      <?php if(can_edit() || can_view_reports()): ?>
+      <li class="sidebar-nav-item mt-1"><div class="nav-section">Saha Takibi</div></li>
+      <?php if(can_edit()):
+        $__bekMsj = 0;
+        // Bekleyen mesaj rozeti — tablo henüz oluşmamışsa veya bağlantı yoksa sessiz geç
+        if (isset($pdo) && $pdo instanceof PDO) {
+            try { $__bekMsj = (int)$pdo->query("SELECT COUNT(*) FROM mesaj_kuyrugu WHERE durum='bekliyor'")->fetchColumn(); }
+            catch (Throwable $e) { $__bekMsj = 0; }
+        }
+      ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('mesajlar.php') ?>" href="<?= $__rootPath ?>mesajlar.php" data-label="Gelen Mesajlar">
+          <i class="bi bi-chat-dots"></i><span>Gelen Mesajlar</span>
+          <?php if($__bekMsj): ?><span class="badge bg-warning text-dark ms-auto"><?= $__bekMsj ?></span><?php endif; ?>
+        </a>
+      </li>
+      <?php endif; ?>
+      <?php if(can_view_reports()): ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('saha_analiz.php') ?>" href="<?= $__rootPath ?>saha_analiz.php" data-label="Saha Analizi">
+          <i class="bi bi-people"></i><span>Saha Analizi</span>
+        </a>
+      </li>
+      <?php endif; ?>
+      <?php endif; ?>
+
       <?php if(can_manage_definitions()): ?>
       <li class="sidebar-nav-item mt-1"><div class="nav-section">Yönetim</div></li>
 
@@ -195,7 +221,7 @@ if ($__user) {
       <?php endif; ?>
 
       <?php if(is_admin()): ?>
-      <?php $__araA = in_array($__page,['yedek.php','import.php','ai_ayarlar.php','veri_kontrol.php','aktivite.php','mesajlar.php','saha_analiz.php'],true); ?>
+      <?php $__araA = in_array($__page,['yedek.php','import.php','ai_ayarlar.php','veri_kontrol.php','aktivite.php'],true); ?>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= $__araA?'active':'' ?>" href="#subAra" data-bs-toggle="collapse" role="button" aria-expanded="<?= $__araA?'true':'false' ?>">
           <i class="bi bi-tools"></i><span>Araçlar</span><i class="bi bi-chevron-right chev"></i>
@@ -204,8 +230,6 @@ if ($__user) {
           <ul class="list-unstyled sidebar-sub">
             <li><a class="sidebar-sub-link <?= __isActive('yedek.php') ?>"      href="<?= $__rootPath ?>yedek.php">Yedekleme</a></li>
             <li><a class="sidebar-sub-link <?= __isActive('import.php') ?>"     href="<?= $__rootPath ?>import.php">Excel Aktarımı</a></li>
-            <li><a class="sidebar-sub-link <?= __isActive('mesajlar.php') ?>" href="<?= $__rootPath ?>mesajlar.php"><i class="bi bi-chat-dots me-1"></i>Gelen Mesajlar</a></li>
-            <li><a class="sidebar-sub-link <?= __isActive('saha_analiz.php') ?>" href="<?= $__rootPath ?>saha_analiz.php"><i class="bi bi-people me-1"></i>Saha Analizi</a></li>
             <li><a class="sidebar-sub-link <?= __isActive('veri_kontrol.php') ?>" href="<?= $__rootPath ?>veri_kontrol.php"><i class="bi bi-shield-check me-1"></i>Veri Kontrol</a></li>
             <li><a class="sidebar-sub-link <?= __isActive('aktivite.php') ?>" href="<?= $__rootPath ?>aktivite.php"><i class="bi bi-activity me-1"></i>Aktivite Raporu</a></li>
             <li><a class="sidebar-sub-link <?= __isActive('onbellek_temizle.php') ?>" href="<?= $__rootPath ?>onbellek_temizle.php"><i class="bi bi-arrow-clockwise me-1"></i>Önbellek Temizle</a></li>
