@@ -195,7 +195,7 @@ if ($__user) {
       <?php endif; ?>
 
       <?php if(is_admin()): ?>
-      <?php $__araA = in_array($__page,['yedek.php','import.php','ai_ayarlar.php','veri_kontrol.php','aktivite.php','mesajlar.php'],true); ?>
+      <?php $__araA = in_array($__page,['yedek.php','import.php','ai_ayarlar.php','veri_kontrol.php','aktivite.php','mesajlar.php','saha_analiz.php'],true); ?>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= $__araA?'active':'' ?>" href="#subAra" data-bs-toggle="collapse" role="button" aria-expanded="<?= $__araA?'true':'false' ?>">
           <i class="bi bi-tools"></i><span>Araçlar</span><i class="bi bi-chevron-right chev"></i>
@@ -205,6 +205,7 @@ if ($__user) {
             <li><a class="sidebar-sub-link <?= __isActive('yedek.php') ?>"      href="<?= $__rootPath ?>yedek.php">Yedekleme</a></li>
             <li><a class="sidebar-sub-link <?= __isActive('import.php') ?>"     href="<?= $__rootPath ?>import.php">Excel Aktarımı</a></li>
             <li><a class="sidebar-sub-link <?= __isActive('mesajlar.php') ?>" href="<?= $__rootPath ?>mesajlar.php"><i class="bi bi-chat-dots me-1"></i>Gelen Mesajlar</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('saha_analiz.php') ?>" href="<?= $__rootPath ?>saha_analiz.php"><i class="bi bi-people me-1"></i>Saha Analizi</a></li>
             <li><a class="sidebar-sub-link <?= __isActive('veri_kontrol.php') ?>" href="<?= $__rootPath ?>veri_kontrol.php"><i class="bi bi-shield-check me-1"></i>Veri Kontrol</a></li>
             <li><a class="sidebar-sub-link <?= __isActive('aktivite.php') ?>" href="<?= $__rootPath ?>aktivite.php"><i class="bi bi-activity me-1"></i>Aktivite Raporu</a></li>
             <li><a class="sidebar-sub-link <?= __isActive('onbellek_temizle.php') ?>" href="<?= $__rootPath ?>onbellek_temizle.php"><i class="bi bi-arrow-clockwise me-1"></i>Önbellek Temizle</a></li>

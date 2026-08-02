@@ -134,11 +134,16 @@ require_once __DIR__ . '/includes/header.php';
 ?>
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h4 class="mb-0"><i class="bi bi-chat-dots text-primary me-2"></i>Gelen Mesajlar</h4>
+    <div class="d-flex gap-2">
+    <?php if (can_view_reports()): ?>
+      <a href="saha_analiz.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-people me-1"></i>Saha Analizi</a>
+    <?php endif; ?>
     <form method="post" class="d-inline">
         <button name="toplu_coz" value="1" class="btn btn-outline-primary btn-sm" <?= $aiHazir?'':'disabled' ?>>
             <i class="bi bi-stars me-1"></i> Bekleyenleri AI ile Çözümle
         </button>
     </form>
+    </div>
 </div>
 
 <?php if (!$aiHazir): ?>

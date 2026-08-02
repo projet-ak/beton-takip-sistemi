@@ -132,24 +132,38 @@ function mesaj_ai_ayikla(PDO $pdo, string $metin): array
         return implode(' | ', array_map(fn($r) => $r['id'] . '=' . ($r['kod'] ?? '') . ($r['kod'] ?? '' ? ' ' : '') . $r[$alan], $rows));
     };
 
-    $system = "Sen bir şantiye beton irsaliye asistanısın. Sana WhatsApp'tan gelen serbest metin verilir; "
-        . "içindeki BETON SEVKİYAT bilgilerini çıkarıp SADECE JSON döndürürsün. Açıklama yazma, sadece JSON.\n\n"
-        . "Format: {\"kayitlar\":[{\"tip\":\"alis|iade\",\"irsaliye_no\":\"\",\"tarih\":\"YYYY-AA-GG\","
+    $system = "Sen bir şantiye saha asistanısın. Sana WhatsApp grubundan gelen serbest metin verilir; "
+        . "içindeki BETON SEVKİYATI ve SAHA OLAYLARINI çıkarıp SADECE JSON döndürürsün. Açıklama yazma, sadece JSON.\n\n"
+        . "Format:\n{\"kayitlar\":[{\"tip\":\"alis|iade\",\"irsaliye_no\":\"\",\"tarih\":\"YYYY-AA-GG\","
         . "\"arac_plaka\":\"\",\"miktar\":0,\"tedarikci_id\":null,\"beton_sinifi_id\":null,\"proje_id\":null,"
-        . "\"kivam_sinifi_id\":null,\"aciklama\":\"\",\"guven\":0.0}]}\n\n"
-        . "Kurallar:\n"
+        . "\"kivam_sinifi_id\":null,\"aciklama\":\"\",\"guven\":0.0}],\n"
+        . " \"olaylar\":[{\"tur\":\"personel_giris|personel_cikis|yetki|arac|is|diger\",\"kisi\":\"\",\"firma\":\"\","
+        . "\"yetkili\":\"\",\"arac_plaka\":\"\",\"tarih\":\"YYYY-AA-GG\",\"saat_bas\":\"HH:MM\",\"saat_bit\":\"HH:MM\","
+        . "\"sure_saat\":null,\"lokasyon\":\"\",\"aciklama\":\"\",\"guven\":0.0}]}\n\n"
+        . "SEVKİYAT kuralları:\n"
         . "- Bir mesajda birden fazla sevkiyat olabilir; her biri ayrı kayıt.\n"
-        . "- Sevkiyatla ilgisi olmayan mesajlarda {\"kayitlar\":[]} döndür.\n"
-        . "- ID alanlarını AŞAĞIDAKİ listelerden eşleştir; emin değilsen null bırak (uydurma).\n"
-        . "- miktar m³ cinsinden sayı (virgül yerine nokta).\n"
-        . "- tarih belirtilmemişse bugünün tarihini kullan: " . date('Y-m-d') . "\n"
-        . "- guven: 0..1 arası, çıkardığın bilgiye ne kadar güvendiğin.\n\n"
+        . "- Sevkiyat yoksa \"kayitlar\":[] döndür.\n"
+        . "- ID alanlarını AŞAĞIDAKİ listelerden eşleştir; emin değilsen null bırak (UYDURMA).\n"
+        . "- miktar m³ cinsinden sayı (virgül yerine nokta).\n\n"
+        . "OLAY kuralları (tür seçimi):\n"
+        . "- personel_giris / personel_cikis: birinin sahaya girmesi/çıkması. kisi = kişi adı, firma = bağlı olduğu firma/taşeron.\n"
+        . "- yetki: birine izin/onay/yetki verilmesi (ör. 'X'e giriş izni verildi'). yetkili = izni VEREN, kisi = izin ALAN.\n"
+        . "- arac: araç/iş makinesi sahada çalışması. arac_plaka, saat_bas, saat_bit, sure_saat (saat cinsinden ondalık).\n"
+        . "- is: imalat/iş bildirimi (döküm başladı, kalıp söküldü vb.).\n"
+        . "- diger: sahayla ilgili ama yukarıdakilere girmeyen bilgi.\n"
+        . "- Sahayla ilgisi olmayan sohbet mesajlarında \"olaylar\":[] döndür.\n"
+        . "- saat_bas/saat_bit yoksa null; sadece süre yazıyorsa sure_saat doldur.\n"
+        . "- lokasyon: blok/kot/parsel gibi yer bilgisi (ör. 'A blok +3.20').\n\n"
+        . "GENEL:\n"
+        . "- tarih belirtilmemişse bugünü kullan: " . date('Y-m-d') . "\n"
+        . "- guven: 0..1 arası, çıkardığın bilgiye ne kadar güvendiğin. Tahmin ettiysen düşük ver.\n"
+        . "- Kişi/firma adlarını mesajda yazıldığı gibi bırak, düzeltme.\n\n"
         . "TEDARİKÇİLER: "   . $liste($t['tedarikciler']) . "\n"
         . "BETON SINIFLARI: " . $liste($t['beton']) . "\n"
         . "PROJELER: "        . $liste($t['projeler']) . "\n"
         . "KIVAM: "           . $liste($t['kivam']);
 
-    $r = ai_call($system, [['type' => 'text', 'text' => $metin]], 1500);
+    $r = ai_call($system, [['type' => 'text', 'text' => $metin]], 2000);
     if (empty($r['ok'])) {
         return ['ok' => false, 'msg' => $r['msg'] ?? 'AI çağrısı başarısız'];
     }
@@ -158,10 +172,98 @@ function mesaj_ai_ayikla(PDO $pdo, string $metin): array
     // Model bazen ```json ... ``` sarar
     if (preg_match('/\{.*\}/s', $ham, $mm)) $ham = $mm[0];
     $j = json_decode($ham, true);
-    if (!is_array($j) || !isset($j['kayitlar']) || !is_array($j['kayitlar'])) {
+    if (!is_array($j) || (!isset($j['kayitlar']) && !isset($j['olaylar']))) {
         return ['ok' => false, 'msg' => 'AI yanıtı çözümlenemedi: ' . mb_substr($ham, 0, 180)];
     }
-    return ['ok' => true, 'kayitlar' => $j['kayitlar']];
+    return [
+        'ok'       => true,
+        'kayitlar' => is_array($j['kayitlar'] ?? null) ? $j['kayitlar'] : [],
+        'olaylar'  => is_array($j['olaylar']  ?? null) ? $j['olaylar']  : [],
+    ];
+}
+
+/** Saha olayları tablosu (analiz için). */
+function saha_semasi_kur(PDO $pdo): void
+{
+    $pdo->exec("CREATE TABLE IF NOT EXISTS saha_olaylari (
+        id          INT AUTO_INCREMENT PRIMARY KEY,
+        mesaj_id    INT NOT NULL,
+        tur         ENUM('personel_giris','personel_cikis','yetki','arac','is','diger') NOT NULL DEFAULT 'diger',
+        kisi        VARCHAR(150) DEFAULT NULL,
+        firma       VARCHAR(150) DEFAULT NULL,
+        yetkili     VARCHAR(150) DEFAULT NULL,
+        arac_plaka  VARCHAR(30)  DEFAULT NULL,
+        tarih       DATE         DEFAULT NULL,
+        saat_bas    TIME         DEFAULT NULL,
+        saat_bit    TIME         DEFAULT NULL,
+        sure_saat   DECIMAL(6,2) DEFAULT NULL,
+        lokasyon    VARCHAR(150) DEFAULT NULL,
+        aciklama    TEXT         DEFAULT NULL,
+        guven       DECIMAL(3,2) DEFAULT NULL,
+        created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_tarih (tarih),
+        KEY idx_tur (tur, tarih),
+        KEY idx_mesaj (mesaj_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+/** Geçerli olay türleri. */
+function saha_turler(): array
+{
+    return ['personel_giris','personel_cikis','yetki','arac','is','diger'];
+}
+
+/** "8:30" / "08.30" → "08:30:00"; geçersizse null. */
+function saha_saat_norm($v): ?string
+{
+    $v = trim((string)$v);
+    return preg_match('/^([01]?\d|2[0-3])[:.]([0-5]\d)$/', $v, $m)
+        ? sprintf('%02d:%02d:00', (int)$m[1], (int)$m[2]) : null;
+}
+
+/** Yalnız gerçekten var olan YYYY-AA-GG tarihini kabul et. */
+function saha_tarih_norm($v): ?string
+{
+    $v = trim((string)$v);
+    if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $v, $m)) return null;
+    return checkdate((int)$m[2], (int)$m[3], (int)$m[1]) ? $v : null;
+}
+
+/** AI'dan çıkan olayları kaydet (aynı mesajın eski olayları silinir → yeniden çözümleme güvenli). */
+function saha_olay_kaydet(PDO $pdo, int $mesajId, array $olaylar): int
+{
+    saha_semasi_kur($pdo);
+    $pdo->prepare("DELETE FROM saha_olaylari WHERE mesaj_id=?")->execute([$mesajId]);
+    if (!$olaylar) return 0;
+
+    $turler = saha_turler();
+    $kes    = fn($v, $n) => ($v === null || $v === '') ? null : mb_substr((string)$v, 0, $n);
+    $saat   = 'saha_saat_norm';
+    $tarih  = 'saha_tarih_norm';
+
+    $st = $pdo->prepare("INSERT INTO saha_olaylari
+        (mesaj_id,tur,kisi,firma,yetkili,arac_plaka,tarih,saat_bas,saat_bit,sure_saat,lokasyon,aciklama,guven)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+
+    $n = 0;
+    foreach ($olaylar as $o) {
+        if (!is_array($o)) continue;
+        $tur = in_array($o['tur'] ?? '', $turler, true) ? $o['tur'] : 'diger';
+        $sure = $o['sure_saat'] ?? null;
+        $sure = ($sure === null || $sure === '') ? null : round((float)str_replace(',', '.', (string)$sure), 2);
+        $guven = $o['guven'] ?? null;
+        $guven = ($guven === null || $guven === '') ? null : max(0, min(1, (float)$guven));
+
+        $st->execute([
+            $mesajId, $tur,
+            $kes($o['kisi'] ?? null, 150), $kes($o['firma'] ?? null, 150), $kes($o['yetkili'] ?? null, 150),
+            $kes(isset($o['arac_plaka']) ? strtoupper((string)$o['arac_plaka']) : null, 30),
+            $tarih($o['tarih'] ?? ''), $saat($o['saat_bas'] ?? ''), $saat($o['saat_bit'] ?? ''),
+            $sure, $kes($o['lokasyon'] ?? null, 150), $kes($o['aciklama'] ?? null, 2000), $guven,
+        ]);
+        $n++;
+    }
+    return $n;
 }
 
 /** Kuyruk satırını AI'dan geçir ve sonucu kaydet. */
@@ -180,5 +282,10 @@ function mesaj_isle(PDO $pdo, int $id): array
     }
     $pdo->prepare("UPDATE mesaj_kuyrugu SET ai_durum='islendi', ai_hata=NULL, ai_json=? WHERE id=?")
         ->execute([json_encode($r['kayitlar'], JSON_UNESCAPED_UNICODE), $id]);
+
+    // Saha olayları (personel giriş/çıkış, yetki, araç saati…) analiz için ayrı tabloya
+    try { $r['olay_sayisi'] = saha_olay_kaydet($pdo, $id, $r['olaylar'] ?? []); }
+    catch (Throwable $e) { $r['olay_sayisi'] = 0; }
+
     return $r;
 }
