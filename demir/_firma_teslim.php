@@ -104,7 +104,7 @@ function ftm_tablo_html(string $firma, array $prjler, callable $fmt): string {
     $h = '<div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">';
     $h .= '<thead class="table-light"><tr><th>Çap</th>';
     foreach ($projeler as $p) $h .= '<th class="text-end">'.h($p).'</th>';
-    $h .= '<th class="text-end table-secondary">Toplam</th></tr></thead><tbody>';
+    $h .= '<th class="text-end ftm-toplam">Toplam</th></tr></thead><tbody>';
     foreach ($caps as $c) {
         $rowT = 0.0; $cells = '';
         foreach ($projeler as $p) {
@@ -113,10 +113,10 @@ function ftm_tablo_html(string $firma, array $prjler, callable $fmt): string {
             $cells .= '<td class="text-end">'.($v!=0.0 ? $fmt($v) : '<span class="text-muted">—</span>').'</td>';
         }
         $genel += $rowT;
-        $h .= '<tr><td class="fw-semibold">'.h($c).'</td>'.$cells.'<td class="text-end fw-semibold table-secondary">'.$fmt($rowT).'</td></tr>';
+        $h .= '<tr><td class="fw-semibold">'.h($c).'</td>'.$cells.'<td class="text-end ftm-toplam">'.$fmt($rowT).'</td></tr>';
     }
     $h .= '</tbody><tfoot class="table-light fw-bold"><tr><td>TOPLAM</td>';
     foreach ($projeler as $p) $h .= '<td class="text-end">'.$fmt($colTop[$p]).'</td>';
-    $h .= '<td class="text-end">'.$fmt($genel).'</td></tr></tfoot></table></div>';
+    $h .= '<td class="text-end ftm-toplam">'.$fmt($genel).'</td></tr></tfoot></table></div>';
     return $h;
 }
