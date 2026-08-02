@@ -165,7 +165,7 @@ if ($__user) {
         }
       ?>
       <li class="sidebar-nav-item">
-        <a class="sidebar-nav-link <?= __isActive('mesajlar.php') ?>" href="<?= $__rootPath ?>mesajlar.php" data-label="Gelen Mesajlar">
+        <a class="sidebar-nav-link <?= __isActive('mesajlar.php') ?>" href="<?= $__rootPath ?>whatsapp/mesajlar.php" data-label="Gelen Mesajlar">
           <i class="bi bi-chat-dots"></i><span>Gelen Mesajlar</span>
           <?php if($__bekMsj): ?><span class="badge bg-warning text-dark ms-auto"><?= $__bekMsj ?></span><?php endif; ?>
         </a>
@@ -173,7 +173,7 @@ if ($__user) {
       <?php endif; ?>
       <?php if(can_view_reports()): ?>
       <li class="sidebar-nav-item">
-        <a class="sidebar-nav-link <?= __isActive('saha_analiz.php') ?>" href="<?= $__rootPath ?>saha_analiz.php" data-label="Saha Analizi">
+        <a class="sidebar-nav-link <?= __isActive('saha_analiz.php') ?>" href="<?= $__rootPath ?>whatsapp/saha_analiz.php" data-label="Saha Analizi">
           <i class="bi bi-people"></i><span>Saha Analizi</span>
         </a>
       </li>

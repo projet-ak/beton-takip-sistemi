@@ -1,9 +1,10 @@
 <?php
 /**
- * mesaj.php — Gelen mesaj kuyruğu (WhatsApp / manuel) yardımcıları
+ * _ortak.php — WhatsApp modülü ortak fonksiyonları (mesaj kuyruğu + saha olayları)
  *
- * Akış:  kaynak (WhatsApp botu / elle yapıştırma) → api/mesaj_al.php → mesaj_kuyrugu
- *        → AI ayrıştırma (mesaj_ai_ayikla) → mesajlar.php onay ekranı → irsaliyeler
+ * Akış:  kaynak (WhatsApp botu / elle yapıştırma) → whatsapp/api/mesaj_al.php
+ *        → mesaj_kuyrugu → AI ayrıştırma → whatsapp/mesajlar.php onay ekranı
+ *        → irsaliyeler + saha_olaylari (whatsapp/saha_analiz.php'de raporlanır)
  *
  * Mesajlar ASLA doğrudan irsaliye olmaz; her kayıt insan onayından geçer.
  */

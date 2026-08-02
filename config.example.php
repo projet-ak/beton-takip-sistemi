@@ -40,7 +40,7 @@ define('DB_PASS', 'sifre');
 // define('GITHUB_PAT', 'github_pat_xxx');
 
 // ── Gelen mesaj kuyruğu (WhatsApp vb. → mesajlar.php) ────────────────────────
-// api/mesaj_al.php bu token ile korunur. Güçlü ve rastgele olmalı
+// whatsapp/api/mesaj_al.php bu token ile korunur. Güçlü ve rastgele olmalı
 // (ör. PHP: bin2hex(random_bytes(24))). Meta Cloud API kullanılırsa webhook
 // "Verify Token" alanına da AYNI değer yazılır.
 // define('MESAJ_TOKEN', 'BURAYA_UZUN_RASTGELE_TOKEN');

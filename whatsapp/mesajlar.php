@@ -1,19 +1,20 @@
 <?php
 /**
- * mesajlar.php — Gelen Mesajlar / Onay Kuyruğu
+ * whatsapp/mesajlar.php — Gelen Mesajlar / Onay Kuyruğu
  *
  * WhatsApp (veya elle yapıştırma) ile gelen serbest metinler AI ile ayrıştırılır,
  * kullanıcı kontrol edip düzelttikten SONRA irsaliyeye dönüşür.
  * Otomatik kayıt yoktur — her satır insan onayından geçer.
  */
-require_once __DIR__ . '/includes/functions.php';
-require_once __DIR__ . '/includes/auth.php';
-if (!file_exists(__DIR__ . '/config.php')) { redirect('install.php'); }
+$rootPath = '../';                       // alt klasör: linkler ve login yönlendirmesi buna dayanır
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
+if (!file_exists(__DIR__ . '/../config.php')) { redirect('../install.php'); }
 require_auth();
-require_once __DIR__ . '/includes/db.php';
-require_once __DIR__ . '/includes/mesaj.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/_ortak.php';
 
-if (!can_edit()) { flash('error', 'Bu sayfa için yetkiniz yok.'); redirect('index.php'); }
+if (!can_edit()) { flash('error', 'Bu sayfa için yetkiniz yok.'); redirect('../index.php'); }
 
 $pageTitle = 'Gelen Mesajlar — Şantiye Takip Sistemi';
 mesaj_semasi_kur($pdo);
@@ -130,7 +131,7 @@ $hataliAi = (int)$pdo->query("SELECT COUNT(*) FROM mesaj_kuyrugu WHERE ai_durum=
 $t = mesaj_tanimlar($pdo);
 $aiHazir = defined('AI_PROVIDER') && AI_PROVIDER !== '';
 
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/../includes/header.php';
 ?>
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h4 class="mb-0"><i class="bi bi-chat-dots text-primary me-2"></i>Gelen Mesajlar</h4>
@@ -200,7 +201,7 @@ require_once __DIR__ . '/includes/header.php';
               <?php if ($m['durum']==='onaylandi'): ?>
                 <span class="badge bg-success">Onaylandı</span>
                 <?php if ($m['irsaliye_id']): ?>
-                  <a href="irsaliye_detay.php?id=<?= (int)$m['irsaliye_id'] ?>" class="badge bg-primary text-decoration-none">İrsaliye #<?= (int)$m['irsaliye_id'] ?></a>
+                  <a href="../irsaliye_detay.php?id=<?= (int)$m['irsaliye_id'] ?>" class="badge bg-primary text-decoration-none">İrsaliye #<?= (int)$m['irsaliye_id'] ?></a>
                 <?php endif; ?>
               <?php elseif ($m['durum']==='reddedildi'): ?>
                 <span class="badge bg-secondary">Reddedildi</span>
@@ -349,11 +350,11 @@ require_once __DIR__ . '/includes/header.php';
         </ol>
         <div class="border-top pt-2">
           <div class="fw-semibold text-body mb-1">Dış kaynak bağlantısı</div>
-          <code class="d-block" style="font-size:.7rem">POST /api/mesaj_al.php</code>
+          <code class="d-block" style="font-size:.7rem">POST /whatsapp/api/mesaj_al.php</code>
           <span>Token <code>MESAJ_TOKEN</code> (config.php) ile korunur.</span>
         </div>
       </div>
     </div>
   </div>
 </div>
-<?php require_once __DIR__ . '/includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>

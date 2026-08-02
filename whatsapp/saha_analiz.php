@@ -1,19 +1,20 @@
 <?php
 /**
- * saha_analiz.php — Saha Hareket Analizi
+ * whatsapp/saha_analiz.php — Saha Hareket Analizi
  *
  * WhatsApp grubundan gelen mesajlardan AI ile çıkarılan saha olaylarını
  * (personel giriş/çıkış, yetkilendirme, araç çalışma saatleri) raporlar.
- * Kaynak tablo: saha_olaylari (includes/mesaj.php → saha_olay_kaydet)
+ * Kaynak tablo: saha_olaylari (whatsapp/_ortak.php → saha_olay_kaydet)
  */
-require_once __DIR__ . '/includes/functions.php';
-require_once __DIR__ . '/includes/auth.php';
-if (!file_exists(__DIR__ . '/config.php')) { redirect('install.php'); }
+$rootPath = '../';
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
+if (!file_exists(__DIR__ . '/../config.php')) { redirect('../install.php'); }
 require_auth();
-require_once __DIR__ . '/includes/db.php';
-require_once __DIR__ . '/includes/mesaj.php';
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/_ortak.php';
 
-if (!can_view_reports()) { flash('error', 'Bu sayfa için yetkiniz yok.'); redirect('index.php'); }
+if (!can_view_reports()) { flash('error', 'Bu sayfa için yetkiniz yok.'); redirect('../index.php'); }
 
 $pageTitle = 'Saha Analizi — Şantiye Takip Sistemi';
 saha_semasi_kur($pdo);
@@ -85,7 +86,7 @@ $st = $pdo->prepare($zSql); $st->execute($p); $olaylar = $st->fetchAll(PDO::FETC
 $sayi = fn($v, $d = 1) => number_format((float)$v, $d, ',', '.');
 $qs   = fn(array $ek = []) => http_build_query(array_merge(['bas'=>$bas,'bit'=>$bit,'tur'=>$turF,'kisi'=>$kisiF], $ek));
 
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/../includes/header.php';
 ?>
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h4 class="mb-0"><i class="bi bi-people text-primary me-2"></i>Saha Analizi</h4>
@@ -290,4 +291,4 @@ require_once __DIR__ . '/includes/header.php';
 })();
 </script>
 <?php endif; ?>
-<?php require_once __DIR__ . '/includes/footer.php'; ?>
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>
