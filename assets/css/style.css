@@ -915,6 +915,19 @@ html[data-dark="1"] tr.table-success { --bs-table-bg: color-mix(in srgb,#198754 
 html[data-dark="1"] tr.table-danger  { --bs-table-bg: color-mix(in srgb,#dc3545 10%,var(--bt-surface)); }
 html[data-dark="1"] tr.table-warning { --bs-table-bg: color-mix(in srgb,#ffc107 10%,var(--bt-surface)); }
 html[data-dark="1"] tr.table-info    { --bs-table-bg: color-mix(in srgb,#0dcaf0 10%,var(--bt-surface)); }
+/* Hücre bazlı renk sınıfları (satır değil, tek td/th'ye verilenler) — ör. matris
+   tablolarındaki "Toplam" sütunu. Kural olmazsa açık zemin + açık yazı okunmaz. */
+html[data-dark="1"] td.table-secondary, html[data-dark="1"] th.table-secondary,
+html[data-dark="1"] td.table-active,    html[data-dark="1"] th.table-active {
+    --bs-table-bg: color-mix(in srgb,#6c757d 14%,var(--bt-surface));
+    --bs-table-color: var(--bt-text);
+    background-color: color-mix(in srgb,#6c757d 14%,var(--bt-surface)) !important;
+    color: var(--bt-text) !important;
+}
+html[data-dark="1"] td.table-success { background-color: color-mix(in srgb,#198754 14%,var(--bt-surface)) !important; color: var(--bt-text) !important; }
+html[data-dark="1"] td.table-danger  { background-color: color-mix(in srgb,#dc3545 14%,var(--bt-surface)) !important; color: var(--bt-text) !important; }
+html[data-dark="1"] td.table-warning { background-color: color-mix(in srgb,#ffc107 14%,var(--bt-surface)) !important; color: var(--bt-text) !important; }
+html[data-dark="1"] td.table-info    { background-color: color-mix(in srgb,#0dcaf0 14%,var(--bt-surface)) !important; color: var(--bt-text) !important; }
 html[data-dark="1"] table.table-hover tbody tr:hover { background-color: var(--bt-tint) !important; }
 html[data-dark="1"] .sticky-top { background: var(--bt-bg-soft) !important; }
 
