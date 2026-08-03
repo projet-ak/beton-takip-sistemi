@@ -27,14 +27,38 @@ $adSoyad = trim((string)($kullanici['full_name'] ?? $kullanici['username'] ?? ''
 // ── Elle mesaj ekle ───────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mesaj_ekle'])) {
     $metin = trim((string)($_POST['ham_metin'] ?? ''));
-    if ($metin === '') {
-        flash('error', 'Mesaj metni boş olamaz.');
+    // ── Görselleri yükle (kantar fişi / irsaliye fotoğrafı — AI okuyacak) ────
+    $gorseller = [];
+    $yuklemeHatasi = [];
+    if (!empty($_FILES['gorseller']['name'][0])) {
+        $dizin = __DIR__ . '/../uploads/whatsapp/' . date('Y/m');
+        if (!is_dir($dizin)) @mkdir($dizin, 0755, true);
+        $izin = ['image/jpeg','image/png','image/webp','image/gif'];
+        foreach ($_FILES['gorseller']['tmp_name'] as $i => $tmp) {
+            if (($_FILES['gorseller']['error'][$i] ?? 1) !== UPLOAD_ERR_OK) continue;
+            $ad   = (string)$_FILES['gorseller']['name'][$i];
+            $mime = guess_mime($tmp, $ad);
+            if (!in_array($mime, $izin, true))                 { $yuklemeHatasi[] = "$ad: desteklenmeyen tür"; continue; }
+            if (($_FILES['gorseller']['size'][$i] ?? 0) > 8*1024*1024) { $yuklemeHatasi[] = "$ad: 8 MB'dan büyük"; continue; }
+            $uzanti = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'jpg';
+            $hedef  = uniqid('wa_', true) . '.' . preg_replace('/[^a-z0-9]/', '', $uzanti);
+            if (move_uploaded_file($tmp, $dizin . '/' . $hedef)) {
+                $gorseller[] = 'uploads/whatsapp/' . date('Y/m') . '/' . $hedef;
+            }
+        }
+    }
+    if ($yuklemeHatasi) flash('error', implode(' · ', $yuklemeHatasi));
+
+    if ($metin === '' && !$gorseller) {
+        flash('error', 'Mesaj metni veya görsel gerekli.');
     } else {
+        $elleUrl = trim((string)($_POST['medya_url'] ?? ''));
+        if ($elleUrl !== '') $gorseller[] = $elleUrl;
         $r = mesaj_kuyruga_ekle($pdo, [
             'kaynak'    => 'manuel',
             'gonderen'  => trim((string)($_POST['gonderen'] ?? '')) ?: 'Elle giriş',
-            'metin'     => $metin,
-            'medya_url' => trim((string)($_POST['medya_url'] ?? '')),
+            'metin'     => $metin !== '' ? $metin : '(yalnız görsel)',
+            'medya'     => $gorseller,
         ]);
         if (!$r['ok'])                  flash('error', $r['msg'] ?? 'Eklenemedi.');
         elseif (!empty($r['mukerrer'])) flash('error', 'Bu mesaj zaten kuyrukta.');
@@ -200,11 +224,16 @@ require_once __DIR__ . '/../includes/header.php';
 
           <div class="p-2 rounded small font-monospace mb-2" style="background:var(--bt-tint);white-space:pre-wrap"><?= h($m['ham_metin']) ?></div>
 
-          <?php if ($m['medya_url']): ?>
-            <a href="<?= h($m['medya_url']) ?>" target="_blank" rel="noopener" class="d-inline-block mb-2">
-              <img src="<?= h($m['medya_url']) ?>" alt="Ek görsel" style="max-height:130px;max-width:100%"
-                   class="rounded border" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'badge bg-secondary',textContent:'📎 Ek: açmak için tıklayın'}))">
-            </a>
+          <?php $mGorseller = mesaj_gorseller($m); if ($mGorseller): ?>
+            <div class="d-flex flex-wrap gap-2 mb-2">
+              <?php foreach ($mGorseller as $gi => $gu):
+                $src = (strpos($gu, 'http') === 0) ? $gu : '../' . ltrim($gu, '/'); ?>
+                <a href="<?= h($src) ?>" target="_blank" rel="noopener">
+                  <img src="<?= h($src) ?>" alt="Ek görsel <?= $gi+1 ?>" style="max-height:130px;max-width:170px;object-fit:cover"
+                       class="rounded border" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'badge bg-secondary',textContent:'📎 Ek '+(<?= $gi ?>+1)}))">
+                </a>
+              <?php endforeach; ?>
+            </div>
           <?php endif; ?>
 
           <?php if ($m['ai_durum']==='hata'): ?>
@@ -284,23 +313,46 @@ require_once __DIR__ . '/../includes/header.php';
       <div class="card-header fw-semibold"><i class="bi bi-pencil-square me-1"></i> Elle Mesaj Ekle</div>
       <div class="card-body">
         <p class="small text-muted">Grup mesajını kopyalayıp yapıştırın; AI araç hareketlerini ve evrakları çıkarır.</p>
-        <form method="post">
+        <form method="post" enctype="multipart/form-data">
           <div class="mb-2">
             <label class="form-label small fw-semibold">Gönderen</label>
             <input name="gonderen" class="form-control form-control-sm" placeholder="Ad Soyad (opsiyonel)">
           </div>
           <div class="mb-2">
             <label class="form-label small fw-semibold">Mesaj</label>
-            <textarea name="ham_metin" rows="5" class="form-control form-control-sm" required
-                      placeholder="Örn: 34ABC123 mikser 08:30'da girdi 11:00'de çıktı, irsaliye fotoğrafı paylaşıldı, Ahmet Bey onayladı"></textarea>
+            <textarea name="ham_metin" rows="4" class="form-control form-control-sm"
+                      placeholder="Örn: Safi beton mikser yeni kapı çıkış"></textarea>
           </div>
           <div class="mb-2">
-            <label class="form-label small fw-semibold">Görsel bağlantısı <span class="text-muted">(opsiyonel)</span></label>
+            <label class="form-label small fw-semibold">
+              <i class="bi bi-camera me-1"></i>Görseller <span class="text-muted fw-normal">(kantar fişi, irsaliye, araç…)</span>
+            </label>
+            <input type="file" name="gorseller[]" class="form-control form-control-sm" accept="image/*" multiple
+                   onchange="waOnizle(this)">
+            <div class="form-text">Birden fazla seçebilirsiniz. AI fişteki plaka, giriş/çıkış saati ve firmayı okur.</div>
+            <div id="waOnizleme" class="d-flex flex-wrap gap-2 mt-2"></div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold">…veya görsel bağlantısı</label>
             <input name="medya_url" class="form-control form-control-sm" placeholder="https://…">
           </div>
           <button name="mesaj_ekle" value="1" class="btn btn-primary btn-sm w-100">
             <i class="bi bi-plus-lg me-1"></i> Ekle ve Çözümle</button>
         </form>
+        <script>
+        function waOnizle(inp){
+          var k = document.getElementById('waOnizleme'); k.innerHTML = '';
+          Array.prototype.slice.call(inp.files, 0, 6).forEach(function(f){
+            if (!f.type.startsWith('image/')) return;
+            var img = document.createElement('img');
+            img.style.cssText = 'height:64px;width:64px;object-fit:cover;border-radius:6px';
+            img.className = 'border';
+            img.src = URL.createObjectURL(f);
+            img.onload = function(){ URL.revokeObjectURL(img.src); };
+            k.appendChild(img);
+          });
+        }
+        </script>
       </div>
     </div>
 

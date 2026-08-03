@@ -22,9 +22,9 @@ $uid       = current_user_id();
 $kullanici = current_user();
 $adSoyad   = trim((string)($kullanici['full_name'] ?? $kullanici['username'] ?? ''));
 
-$EVRAK_AD = ['irsaliye'=>'İrsaliye','tutanak'=>'Tutanak','fatura'=>'Fatura','puantaj'=>'Puantaj',
+$EVRAK_AD = ['kantar'=>'Kantar Fişi','irsaliye'=>'İrsaliye','tutanak'=>'Tutanak','fatura'=>'Fatura','puantaj'=>'Puantaj',
              'ruhsat'=>'Ruhsat','foto'=>'Fotoğraf','diger'=>'Diğer'];
-$EVRAK_IK = ['irsaliye'=>'bi-receipt','tutanak'=>'bi-file-earmark-check','fatura'=>'bi-cash-coin',
+$EVRAK_IK = ['kantar'=>'bi-speedometer2','irsaliye'=>'bi-receipt','tutanak'=>'bi-file-earmark-check','fatura'=>'bi-cash-coin',
              'puantaj'=>'bi-calendar-week','ruhsat'=>'bi-card-heading','foto'=>'bi-image','diger'=>'bi-file-earmark'];
 
 // ── Tek evrak onayı / reddi ───────────────────────────────────────────────────
@@ -179,6 +179,7 @@ require_once __DIR__ . '/../includes/header.php';
               <?php if ($e['belge_no']): ?><div>No: <span class="font-monospace"><?= h((string)$e['belge_no']) ?></span></div><?php endif; ?>
               <?php if ($e['firma']): ?><div><?= h((string)$e['firma']) ?></div><?php endif; ?>
               <?php if ($e['arac_plaka']): ?><div class="font-monospace"><?= h((string)$e['arac_plaka']) ?></div><?php endif; ?>
+              <?php if (!empty($e['net_kg'])): ?><div><strong>Net:</strong> <?= number_format((float)$e['net_kg'],0,',','.') ?> kg</div><?php endif; ?>
               <div><?= $e['gun'] ? date('d.m.Y', strtotime($e['gun'])) : '—' ?>
                    <?php if ($e['gonderen']): ?>· <?= h((string)$e['gonderen']) ?><?php endif; ?></div>
             </div>

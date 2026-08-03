@@ -19,6 +19,7 @@ function mesaj_semasi_kur(PDO $pdo): void
         gonderen      VARCHAR(150) DEFAULT NULL,
         ham_metin     TEXT         NOT NULL,
         medya_url     VARCHAR(500) DEFAULT NULL,
+        medya_json    TEXT         DEFAULT NULL,
         mesaj_hash    CHAR(64)     NOT NULL,
         ai_json       LONGTEXT     DEFAULT NULL,
         ai_durum      ENUM('bekliyor','islendi','hata') NOT NULL DEFAULT 'bekliyor',
@@ -32,6 +33,22 @@ function mesaj_semasi_kur(PDO $pdo): void
         UNIQUE KEY uq_hash (mesaj_hash),
         KEY idx_durum (durum, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Mevcut kurulumlar için kademeli migration
+    try { $pdo->exec("ALTER TABLE mesaj_kuyrugu ADD COLUMN medya_json TEXT DEFAULT NULL AFTER medya_url"); }
+    catch (Throwable $e) { /* zaten var */ }
+}
+
+/** Mesaja ait tüm görsellerin listesi (medya_json varsa ondan, yoksa medya_url). */
+function mesaj_gorseller(array $mesaj): array
+{
+    $liste = [];
+    if (!empty($mesaj['medya_json'])) {
+        $j = json_decode((string)$mesaj['medya_json'], true);
+        if (is_array($j)) $liste = array_values(array_filter($j, 'is_string'));
+    }
+    if (!$liste && !empty($mesaj['medya_url'])) $liste = [(string)$mesaj['medya_url']];
+    return $liste;
 }
 
 /** Aynı mesajın iki kez kuyruğa girmesini engelleyen anahtar. */
@@ -59,10 +76,16 @@ function mesaj_kuyruga_ekle(PDO $pdo, array $m): array
         return ['ok' => true, 'mukerrer' => true, 'id' => (int)$mevcut];
     }
 
-    $pdo->prepare("INSERT INTO mesaj_kuyrugu (kaynak, grup_adi, gonderen, ham_metin, medya_url, mesaj_hash)
-                   VALUES (?,?,?,?,?,?)")
+    // Birden fazla görsel gelebilir: ilki medya_url'de, tamamı medya_json'da
+    $gorseller = [];
+    if (!empty($m['medya']) && is_array($m['medya'])) $gorseller = array_values(array_filter($m['medya'], 'is_string'));
+    elseif (trim((string)($m['medya_url'] ?? '')) !== '') $gorseller = [trim((string)$m['medya_url'])];
+
+    $pdo->prepare("INSERT INTO mesaj_kuyrugu (kaynak, grup_adi, gonderen, ham_metin, medya_url, medya_json, mesaj_hash)
+                   VALUES (?,?,?,?,?,?,?)")
         ->execute([$kaynak, trim((string)($m['grup'] ?? '')) ?: null, $gonderen ?: null,
-                   $metin, trim((string)($m['medya_url'] ?? '')) ?: null, $hash]);
+                   $metin, $gorseller[0] ?? null,
+                   $gorseller ? json_encode($gorseller, JSON_UNESCAPED_UNICODE) : null, $hash]);
 
     return ['ok' => true, 'mukerrer' => false, 'id' => (int)$pdo->lastInsertId()];
 }
@@ -122,7 +145,7 @@ function mesaj_tanimlar(PDO $pdo): array
  * Mesaj metnini AI ile ayrıştır → irsaliye adayı kayıtlar.
  * @return array{ok:bool, kayitlar?:array, msg?:string}
  */
-function mesaj_ai_ayikla(PDO $pdo, string $metin): array
+function mesaj_ai_ayikla(PDO $pdo, string $metin, array $gorseller = []): array
 {
     if (!function_exists('ai_call')) {
         require_once __DIR__ . '/../includes/ai_call.php';
@@ -141,9 +164,9 @@ function mesaj_ai_ayikla(PDO $pdo, string $metin): array
         . "\"arac_plaka\":\"\",\"arac_cinsi\":\"\",\"firma\":\"\",\"kisi\":\"\",\"yetkili\":\"\","
         . "\"tarih\":\"YYYY-AA-GG\",\"saat_bas\":\"HH:MM\",\"saat_bit\":\"HH:MM\",\"sure_saat\":null,"
         . "\"lokasyon\":\"\",\"aciklama\":\"\",\"guven\":0.0}],\n"
-        . " \"evraklar\":[{\"tur\":\"irsaliye|tutanak|fatura|puantaj|ruhsat|foto|diger\",\"baslik\":\"\","
+        . " \"evraklar\":[{\"tur\":\"kantar|irsaliye|tutanak|fatura|puantaj|ruhsat|foto|diger\",\"baslik\":\"\","
         . "\"belge_no\":\"\",\"firma\":\"\",\"arac_plaka\":\"\",\"tarih\":\"YYYY-AA-GG\","
-        . "\"onaylayan\":\"\",\"aciklama\":\"\",\"guven\":0.0}]}\n\n"
+        . "\"net_kg\":null,\"onaylayan\":\"\",\"aciklama\":\"\",\"guven\":0.0}]}\n\n"
         . "ARAÇ kuralları (ÖNCELİKLİ KONU):\n"
         . "- arac_giris: araç/kamyon/mikser/iş makinesi sahaya GİRDİ. saat_bas = giriş saati.\n"
         . "- arac_cikis: araç sahadan ÇIKTI. saat_bit = çıkış saati.\n"
@@ -158,6 +181,16 @@ function mesaj_ai_ayikla(PDO $pdo, string $metin): array
         . "- belge_no: irsaliye/fatura numarası gibi belge üzerindeki numara.\n"
         . "- onaylayan: mesajda 'X onayladı', 'X uygundur dedi', 'Y'nin onayıyla' gibi ifade varsa o kişi.\n"
         . "- Evrak yoksa \"evraklar\":[] döndür.\n\n"
+        . "GÖRSEL VARSA (çok önemli):\n"
+        . "- Mesajla birlikte fotoğraf gelebilir. Fotoğrafı OKU ve içindeki bilgileri kullan.\n"
+        . "- KANTAR FİŞİ (tartı fişi) tipik alanları: FİŞ NO, PLAKA, OPERATÖR, GİRİŞ TARİHİ,\n"
+        . "  ÇIKIŞ TARİHİ, FİRMA, MALZEME, 1./2. TARTIM, NET. Bunları gördüğünde:\n"
+        . "    • tur=\"kantar\" bir EVRAK kaydı çıkar (belge_no=FİŞ NO, firma=FİRMA, net_kg=NET kg sayısı).\n"
+        . "    • AYRICA tur=\"arac\" bir OLAY çıkar: arac_plaka=PLAKA, saat_bas=GİRİŞ saati,\n"
+        . "      saat_bit=ÇIKIŞ saati, tarih=GİRİŞ tarihi. Böylece aracın sahada kalma süresi hesaplanır.\n"
+        . "- Araç fotoğrafında plaka okunuyorsa onu kullan; metindeki plakayla çelişirse FİŞ/fotoğraftaki esastır.\n"
+        . "- Fotoğraftaki tarihler GG.AA.YYYY biçiminde olabilir; YYYY-AA-GG'ye çevir.\n"
+        . "- Görsel bulanık/okunmuyorsa uydurma; ilgili alanı boş bırak ve guven'i düşür.\n\n"
         . "GENEL:\n"
         . "- Bu modül BETON İRSALİYESİ OLUŞTURMAZ; sadece araç ve evrak takibi yapar.\n"
         . "- Sahayla ilgisi olmayan sohbet mesajlarında iki listeyi de boş döndür.\n"
@@ -165,7 +198,18 @@ function mesaj_ai_ayikla(PDO $pdo, string $metin): array
         . "- guven: 0..1 arası. Tahmin ettiysen DÜŞÜK ver, uydurma.\n"
         . "- Kişi/firma adlarını mesajda yazıldığı gibi bırak.";
 
-    $parts = [['type' => 'text', 'text' => $metin]];
+    // Görselleri AI'ya ekle (kantar fişi / irsaliye fotoğrafı okunsun)
+    $parts = [];
+    $kok   = dirname(__DIR__);
+    foreach (array_slice($gorseller, 0, 4) as $g) {          // en fazla 4 görsel
+        $yol = (strpos($g, 'http') === 0) ? null : $kok . '/' . ltrim($g, '/');
+        if ($yol === null || !is_file($yol) || filesize($yol) > 6 * 1024 * 1024) continue;
+        $mime = function_exists('guess_mime') ? guess_mime($yol, $yol) : 'image/jpeg';
+        if (strpos($mime, 'image/') !== 0) continue;
+        $parts[] = ['type' => 'image', 'mime' => $mime, 'data' => base64_encode(file_get_contents($yol))];
+    }
+    $parts[] = ['type' => 'text', 'text' => $metin !== '' ? $metin : '(mesajda metin yok, yalnız görsel var)'];
+
     $r = ai_call($system, $parts, 2000);
     if (empty($r['ok'])) {
         return ['ok' => false, 'msg' => $r['msg'] ?? 'AI çağrısı başarısız'];
@@ -223,7 +267,8 @@ function saha_semasi_kur(PDO $pdo): void
     $pdo->exec("CREATE TABLE IF NOT EXISTS saha_evrak (
         id          INT AUTO_INCREMENT PRIMARY KEY,
         mesaj_id    INT NOT NULL,
-        tur         ENUM('irsaliye','tutanak','fatura','puantaj','ruhsat','foto','diger') NOT NULL DEFAULT 'diger',
+        tur         ENUM('kantar','irsaliye','tutanak','fatura','puantaj','ruhsat','foto','diger') NOT NULL DEFAULT 'diger',
+        net_kg      DECIMAL(10,2) DEFAULT NULL,
         baslik      VARCHAR(200) DEFAULT NULL,
         belge_no    VARCHAR(100) DEFAULT NULL,
         firma       VARCHAR(150) DEFAULT NULL,
@@ -242,12 +287,19 @@ function saha_semasi_kur(PDO $pdo): void
         KEY idx_tur (tur, tarih),
         KEY idx_mesaj (mesaj_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    try { $pdo->exec("ALTER TABLE saha_evrak ADD COLUMN net_kg DECIMAL(10,2) DEFAULT NULL AFTER tarih"); }
+    catch (Throwable $e) { /* zaten var */ }
+    try { $pdo->exec("ALTER TABLE saha_evrak MODIFY COLUMN tur
+            ENUM('kantar','irsaliye','tutanak','fatura','puantaj','ruhsat','foto','diger')
+            NOT NULL DEFAULT 'diger'"); }
+    catch (Throwable $e) { /* zaten güncel */ }
 }
 
 /** Geçerli evrak türleri. */
 function evrak_turler(): array
 {
-    return ['irsaliye','tutanak','fatura','puantaj','ruhsat','foto','diger'];
+    return ['kantar','irsaliye','tutanak','fatura','puantaj','ruhsat','foto','diger'];
 }
 
 /** Türk plakasını normalize et: "34 abc 123" → "34ABC123". Tanınmazsa boşluksuz büyük harf. */
@@ -272,8 +324,8 @@ function evrak_kaydet(PDO $pdo, int $mesajId, array $evraklar, ?string $medyaUrl
     $kes = fn($v, $n) => ($v === null || $v === '') ? null : mb_substr((string)$v, 0, $n);
 
     $st = $pdo->prepare("INSERT INTO saha_evrak
-        (mesaj_id,tur,baslik,belge_no,firma,arac_plaka,tarih,dosya_url,gonderen,onaylayan,aciklama,guven)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+        (mesaj_id,tur,baslik,belge_no,firma,arac_plaka,tarih,net_kg,dosya_url,gonderen,onaylayan,aciklama,guven)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
 
     $n = 0;
     foreach ($evraklar as $e) {
@@ -286,7 +338,9 @@ function evrak_kaydet(PDO $pdo, int $mesajId, array $evraklar, ?string $medyaUrl
             $mesajId, $tur,
             $kes($e['baslik'] ?? null, 200), $kes($e['belge_no'] ?? null, 100),
             $kes($e['firma'] ?? null, 150), saha_plaka_norm($e['arac_plaka'] ?? null),
-            saha_tarih_norm($e['tarih'] ?? ''), $kes($medyaUrl, 500), $kes($gonderen, 150),
+            saha_tarih_norm($e['tarih'] ?? ''),
+            (($e['net_kg'] ?? null) === null || $e['net_kg'] === '') ? null : round((float)str_replace(',', '.', (string)$e['net_kg']), 2),
+            $kes($medyaUrl, 500), $kes($gonderen, 150),
             $kes($e['onaylayan'] ?? null, 150), $kes($e['aciklama'] ?? null, 2000), $guven,
         ]);
         $n++;
@@ -356,12 +410,13 @@ function saha_olay_kaydet(PDO $pdo, int $mesajId, array $olaylar): int
 /** Kuyruk satırını AI'dan geçir ve sonucu kaydet. */
 function mesaj_isle(PDO $pdo, int $id): array
 {
-    $s = $pdo->prepare("SELECT ham_metin, medya_url, gonderen FROM mesaj_kuyrugu WHERE id=?");
+    $s = $pdo->prepare("SELECT ham_metin, medya_url, medya_json, gonderen FROM mesaj_kuyrugu WHERE id=?");
     $s->execute([$id]);
     $row = $s->fetch(PDO::FETCH_ASSOC);
     if (!$row) return ['ok' => false, 'msg' => 'Mesaj bulunamadı'];
 
-    $r = mesaj_ai_ayikla($pdo, (string)$row['ham_metin']);
+    $gorseller = mesaj_gorseller($row);
+    $r = mesaj_ai_ayikla($pdo, (string)$row['ham_metin'], $gorseller);
     if (!$r['ok']) {
         $pdo->prepare("UPDATE mesaj_kuyrugu SET ai_durum='hata', ai_hata=? WHERE id=?")
             ->execute([mb_substr($r['msg'] ?? 'hata', 0, 500), $id]);
