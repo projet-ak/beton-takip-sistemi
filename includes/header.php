@@ -403,6 +403,18 @@ if ($__user) {
       <?php endif; ?>
       <?php if(can_view_reports()): ?>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('arac_takip.php') ?>" href="<?= $__rootPath ?>whatsapp/arac_takip.php" data-label="Araç Takibi">
+          <i class="bi bi-truck"></i><span>Araç Takibi</span>
+        </a>
+      </li>
+      <?php endif; ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('evraklar.php') ?>" href="<?= $__rootPath ?>whatsapp/evraklar.php" data-label="Evraklar">
+          <i class="bi bi-folder2-open"></i><span>Evraklar</span>
+        </a>
+      </li>
+      <?php if(can_view_reports()): ?>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('saha_analiz.php') ?>" href="<?= $__rootPath ?>whatsapp/saha_analiz.php" data-label="Saha Analizi">
           <i class="bi bi-people"></i><span>Saha Analizi</span>
         </a>

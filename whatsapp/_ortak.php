@@ -133,38 +133,40 @@ function mesaj_ai_ayikla(PDO $pdo, string $metin): array
         return implode(' | ', array_map(fn($r) => $r['id'] . '=' . ($r['kod'] ?? '') . ($r['kod'] ?? '' ? ' ' : '') . $r[$alan], $rows));
     };
 
-    $system = "Sen bir şantiye saha asistanısın. Sana WhatsApp grubundan gelen serbest metin verilir; "
-        . "içindeki BETON SEVKİYATI ve SAHA OLAYLARINI çıkarıp SADECE JSON döndürürsün. Açıklama yazma, sadece JSON.\n\n"
-        . "Format:\n{\"kayitlar\":[{\"tip\":\"alis|iade\",\"irsaliye_no\":\"\",\"tarih\":\"YYYY-AA-GG\","
-        . "\"arac_plaka\":\"\",\"miktar\":0,\"tedarikci_id\":null,\"beton_sinifi_id\":null,\"proje_id\":null,"
-        . "\"kivam_sinifi_id\":null,\"aciklama\":\"\",\"guven\":0.0}],\n"
-        . " \"olaylar\":[{\"tur\":\"personel_giris|personel_cikis|yetki|arac|is|diger\",\"kisi\":\"\",\"firma\":\"\","
-        . "\"yetkili\":\"\",\"arac_plaka\":\"\",\"tarih\":\"YYYY-AA-GG\",\"saat_bas\":\"HH:MM\",\"saat_bit\":\"HH:MM\","
-        . "\"sure_saat\":null,\"lokasyon\":\"\",\"aciklama\":\"\",\"guven\":0.0}]}\n\n"
-        . "SEVKİYAT kuralları:\n"
-        . "- Bir mesajda birden fazla sevkiyat olabilir; her biri ayrı kayıt.\n"
-        . "- Sevkiyat yoksa \"kayitlar\":[] döndür.\n"
-        . "- ID alanlarını AŞAĞIDAKİ listelerden eşleştir; emin değilsen null bırak (UYDURMA).\n"
-        . "- miktar m³ cinsinden sayı (virgül yerine nokta).\n\n"
-        . "OLAY kuralları (tür seçimi):\n"
-        . "- personel_giris / personel_cikis: birinin sahaya girmesi/çıkması. kisi = kişi adı, firma = bağlı olduğu firma/taşeron.\n"
-        . "- yetki: birine izin/onay/yetki verilmesi (ör. 'X'e giriş izni verildi'). yetkili = izni VEREN, kisi = izin ALAN.\n"
-        . "- arac: araç/iş makinesi sahada çalışması. arac_plaka, saat_bas, saat_bit, sure_saat (saat cinsinden ondalık).\n"
-        . "- is: imalat/iş bildirimi (döküm başladı, kalıp söküldü vb.).\n"
-        . "- diger: sahayla ilgili ama yukarıdakilere girmeyen bilgi.\n"
-        . "- Sahayla ilgisi olmayan sohbet mesajlarında \"olaylar\":[] döndür.\n"
-        . "- saat_bas/saat_bit yoksa null; sadece süre yazıyorsa sure_saat doldur.\n"
-        . "- lokasyon: blok/kot/parsel gibi yer bilgisi (ör. 'A blok +3.20').\n\n"
+    $system = "Sen bir şantiye giriş-kontrol asistanısın. WhatsApp saha grubundan gelen mesajı okur, "
+        . "içindeki ARAÇ HAREKETLERİNİ ve EVRAK/GÖRSEL bildirimlerini çıkarıp SADECE JSON döndürürsün. "
+        . "Açıklama yazma, sadece JSON.\n\n"
+        . "Format:\n"
+        . "{\"olaylar\":[{\"tur\":\"arac_giris|arac_cikis|arac|personel_giris|personel_cikis|yetki|is|diger\","
+        . "\"arac_plaka\":\"\",\"arac_cinsi\":\"\",\"firma\":\"\",\"kisi\":\"\",\"yetkili\":\"\","
+        . "\"tarih\":\"YYYY-AA-GG\",\"saat_bas\":\"HH:MM\",\"saat_bit\":\"HH:MM\",\"sure_saat\":null,"
+        . "\"lokasyon\":\"\",\"aciklama\":\"\",\"guven\":0.0}],\n"
+        . " \"evraklar\":[{\"tur\":\"irsaliye|tutanak|fatura|puantaj|ruhsat|foto|diger\",\"baslik\":\"\","
+        . "\"belge_no\":\"\",\"firma\":\"\",\"arac_plaka\":\"\",\"tarih\":\"YYYY-AA-GG\","
+        . "\"onaylayan\":\"\",\"aciklama\":\"\",\"guven\":0.0}]}\n\n"
+        . "ARAÇ kuralları (ÖNCELİKLİ KONU):\n"
+        . "- arac_giris: araç/kamyon/mikser/iş makinesi sahaya GİRDİ. saat_bas = giriş saati.\n"
+        . "- arac_cikis: araç sahadan ÇIKTI. saat_bit = çıkış saati.\n"
+        . "- arac: giriş ve çıkış AYNI mesajda verilmişse tek kayıt (saat_bas + saat_bit birlikte).\n"
+        . "- arac_plaka: Türk plakası biçimine normalize et (ör. '34 abc 123' → '34ABC123'). Emin değilsen boş bırak.\n"
+        . "- arac_cinsi: mikser, pompa, kamyon, ekskavatör, forklift vb. mesajda geçiyorsa yaz.\n"
+        . "- sure_saat: süre açıkça yazılmışsa (ör. '3 saat bekledi') ondalık sayı olarak yaz; yoksa null.\n"
+        . "- Aynı mesajda birden fazla araç varsa her biri AYRI kayıt.\n\n"
+        . "EVRAK kuralları:\n"
+        . "- Mesajda bir belge/görsel paylaşıldığı belirtiliyorsa (irsaliye fotoğrafı, tutanak, fatura,\n"
+        . "  puantaj, ruhsat vb.) evrak kaydı çıkar. Sadece metin bahsi de sayılır.\n"
+        . "- belge_no: irsaliye/fatura numarası gibi belge üzerindeki numara.\n"
+        . "- onaylayan: mesajda 'X onayladı', 'X uygundur dedi', 'Y'nin onayıyla' gibi ifade varsa o kişi.\n"
+        . "- Evrak yoksa \"evraklar\":[] döndür.\n\n"
         . "GENEL:\n"
+        . "- Bu modül BETON İRSALİYESİ OLUŞTURMAZ; sadece araç ve evrak takibi yapar.\n"
+        . "- Sahayla ilgisi olmayan sohbet mesajlarında iki listeyi de boş döndür.\n"
         . "- tarih belirtilmemişse bugünü kullan: " . date('Y-m-d') . "\n"
-        . "- guven: 0..1 arası, çıkardığın bilgiye ne kadar güvendiğin. Tahmin ettiysen düşük ver.\n"
-        . "- Kişi/firma adlarını mesajda yazıldığı gibi bırak, düzeltme.\n\n"
-        . "TEDARİKÇİLER: "   . $liste($t['tedarikciler']) . "\n"
-        . "BETON SINIFLARI: " . $liste($t['beton']) . "\n"
-        . "PROJELER: "        . $liste($t['projeler']) . "\n"
-        . "KIVAM: "           . $liste($t['kivam']);
+        . "- guven: 0..1 arası. Tahmin ettiysen DÜŞÜK ver, uydurma.\n"
+        . "- Kişi/firma adlarını mesajda yazıldığı gibi bırak.";
 
-    $r = ai_call($system, [['type' => 'text', 'text' => $metin]], 2000);
+    $parts = [['type' => 'text', 'text' => $metin]];
+    $r = ai_call($system, $parts, 2000);
     if (empty($r['ok'])) {
         return ['ok' => false, 'msg' => $r['msg'] ?? 'AI çağrısı başarısız'];
     }
@@ -173,13 +175,13 @@ function mesaj_ai_ayikla(PDO $pdo, string $metin): array
     // Model bazen ```json ... ``` sarar
     if (preg_match('/\{.*\}/s', $ham, $mm)) $ham = $mm[0];
     $j = json_decode($ham, true);
-    if (!is_array($j) || (!isset($j['kayitlar']) && !isset($j['olaylar']))) {
+    if (!is_array($j) || (!isset($j['olaylar']) && !isset($j['evraklar']))) {
         return ['ok' => false, 'msg' => 'AI yanıtı çözümlenemedi: ' . mb_substr($ham, 0, 180)];
     }
     return [
-        'ok'       => true,
-        'kayitlar' => is_array($j['kayitlar'] ?? null) ? $j['kayitlar'] : [],
-        'olaylar'  => is_array($j['olaylar']  ?? null) ? $j['olaylar']  : [],
+        'ok'      => true,
+        'olaylar' => is_array($j['olaylar']  ?? null) ? $j['olaylar']  : [],
+        'evrak'   => is_array($j['evraklar'] ?? null) ? $j['evraklar'] : [],
     ];
 }
 
@@ -189,7 +191,8 @@ function saha_semasi_kur(PDO $pdo): void
     $pdo->exec("CREATE TABLE IF NOT EXISTS saha_olaylari (
         id          INT AUTO_INCREMENT PRIMARY KEY,
         mesaj_id    INT NOT NULL,
-        tur         ENUM('personel_giris','personel_cikis','yetki','arac','is','diger') NOT NULL DEFAULT 'diger',
+        tur         ENUM('arac_giris','arac_cikis','arac','personel_giris','personel_cikis','yetki','is','diger') NOT NULL DEFAULT 'diger',
+        arac_cinsi  VARCHAR(80)  DEFAULT NULL,
         kisi        VARCHAR(150) DEFAULT NULL,
         firma       VARCHAR(150) DEFAULT NULL,
         yetkili     VARCHAR(150) DEFAULT NULL,
@@ -204,14 +207,97 @@ function saha_semasi_kur(PDO $pdo): void
         created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
         KEY idx_tarih (tarih),
         KEY idx_tur (tur, tarih),
+        KEY idx_plaka (arac_plaka, tarih),
         KEY idx_mesaj (mesaj_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Mevcut kurulumlar için kademeli migration (kolon/ENUM genişletme)
+    try { $pdo->exec("ALTER TABLE saha_olaylari ADD COLUMN arac_cinsi VARCHAR(80) DEFAULT NULL AFTER tur"); }
+    catch (Throwable $e) { /* zaten var */ }
+    try { $pdo->exec("ALTER TABLE saha_olaylari MODIFY COLUMN tur
+            ENUM('arac_giris','arac_cikis','arac','personel_giris','personel_cikis','yetki','is','diger')
+            NOT NULL DEFAULT 'diger'"); }
+    catch (Throwable $e) { /* zaten güncel */ }
+
+    // ── Evrak/görsel takibi ───────────────────────────────────────────────────
+    $pdo->exec("CREATE TABLE IF NOT EXISTS saha_evrak (
+        id          INT AUTO_INCREMENT PRIMARY KEY,
+        mesaj_id    INT NOT NULL,
+        tur         ENUM('irsaliye','tutanak','fatura','puantaj','ruhsat','foto','diger') NOT NULL DEFAULT 'diger',
+        baslik      VARCHAR(200) DEFAULT NULL,
+        belge_no    VARCHAR(100) DEFAULT NULL,
+        firma       VARCHAR(150) DEFAULT NULL,
+        arac_plaka  VARCHAR(30)  DEFAULT NULL,
+        tarih       DATE         DEFAULT NULL,
+        dosya_url   VARCHAR(500) DEFAULT NULL,
+        gonderen    VARCHAR(150) DEFAULT NULL,
+        onaylayan   VARCHAR(150) DEFAULT NULL,
+        onay_user   INT          DEFAULT NULL,
+        onay_at     DATETIME     DEFAULT NULL,
+        durum       ENUM('bekliyor','onaylandi','reddedildi') NOT NULL DEFAULT 'bekliyor',
+        aciklama    TEXT         DEFAULT NULL,
+        guven       DECIMAL(3,2) DEFAULT NULL,
+        created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_durum (durum, tarih),
+        KEY idx_tur (tur, tarih),
+        KEY idx_mesaj (mesaj_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+/** Geçerli evrak türleri. */
+function evrak_turler(): array
+{
+    return ['irsaliye','tutanak','fatura','puantaj','ruhsat','foto','diger'];
+}
+
+/** Türk plakasını normalize et: "34 abc 123" → "34ABC123". Tanınmazsa boşluksuz büyük harf. */
+function saha_plaka_norm($v): ?string
+{
+    $v = mb_strtoupper(trim((string)$v), 'UTF-8');
+    if ($v === '') return null;
+    $v = str_replace(['İ','I'], 'I', $v);
+    $sade = preg_replace('/[^A-Z0-9]/', '', $v);
+    return $sade !== '' ? mb_substr($sade, 0, 30) : null;
+}
+
+/** AI'dan çıkan evrakları kaydet (aynı mesajın eski BEKLEYEN evrakları silinir). */
+function evrak_kaydet(PDO $pdo, int $mesajId, array $evraklar, ?string $medyaUrl = null, ?string $gonderen = null): int
+{
+    saha_semasi_kur($pdo);
+    // Onaylanmış/reddedilmiş kayıtlara dokunma — yalnız bekleyenler yenilenir
+    $pdo->prepare("DELETE FROM saha_evrak WHERE mesaj_id=? AND durum='bekliyor'")->execute([$mesajId]);
+    if (!$evraklar) return 0;
+
+    $turler = evrak_turler();
+    $kes = fn($v, $n) => ($v === null || $v === '') ? null : mb_substr((string)$v, 0, $n);
+
+    $st = $pdo->prepare("INSERT INTO saha_evrak
+        (mesaj_id,tur,baslik,belge_no,firma,arac_plaka,tarih,dosya_url,gonderen,onaylayan,aciklama,guven)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+
+    $n = 0;
+    foreach ($evraklar as $e) {
+        if (!is_array($e)) continue;
+        $tur   = in_array($e['tur'] ?? '', $turler, true) ? $e['tur'] : 'diger';
+        $guven = $e['guven'] ?? null;
+        $guven = ($guven === null || $guven === '') ? null : max(0, min(1, (float)$guven));
+
+        $st->execute([
+            $mesajId, $tur,
+            $kes($e['baslik'] ?? null, 200), $kes($e['belge_no'] ?? null, 100),
+            $kes($e['firma'] ?? null, 150), saha_plaka_norm($e['arac_plaka'] ?? null),
+            saha_tarih_norm($e['tarih'] ?? ''), $kes($medyaUrl, 500), $kes($gonderen, 150),
+            $kes($e['onaylayan'] ?? null, 150), $kes($e['aciklama'] ?? null, 2000), $guven,
+        ]);
+        $n++;
+    }
+    return $n;
 }
 
 /** Geçerli olay türleri. */
 function saha_turler(): array
 {
-    return ['personel_giris','personel_cikis','yetki','arac','is','diger'];
+    return ['arac_giris','arac_cikis','arac','personel_giris','personel_cikis','yetki','is','diger'];
 }
 
 /** "8:30" / "08.30" → "08:30:00"; geçersizse null. */
@@ -243,8 +329,8 @@ function saha_olay_kaydet(PDO $pdo, int $mesajId, array $olaylar): int
     $tarih  = 'saha_tarih_norm';
 
     $st = $pdo->prepare("INSERT INTO saha_olaylari
-        (mesaj_id,tur,kisi,firma,yetkili,arac_plaka,tarih,saat_bas,saat_bit,sure_saat,lokasyon,aciklama,guven)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        (mesaj_id,tur,arac_cinsi,kisi,firma,yetkili,arac_plaka,tarih,saat_bas,saat_bit,sure_saat,lokasyon,aciklama,guven)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
 
     $n = 0;
     foreach ($olaylar as $o) {
@@ -256,9 +342,9 @@ function saha_olay_kaydet(PDO $pdo, int $mesajId, array $olaylar): int
         $guven = ($guven === null || $guven === '') ? null : max(0, min(1, (float)$guven));
 
         $st->execute([
-            $mesajId, $tur,
+            $mesajId, $tur, $kes($o['arac_cinsi'] ?? null, 80),
             $kes($o['kisi'] ?? null, 150), $kes($o['firma'] ?? null, 150), $kes($o['yetkili'] ?? null, 150),
-            $kes(isset($o['arac_plaka']) ? strtoupper((string)$o['arac_plaka']) : null, 30),
+            saha_plaka_norm($o['arac_plaka'] ?? null),
             $tarih($o['tarih'] ?? ''), $saat($o['saat_bas'] ?? ''), $saat($o['saat_bit'] ?? ''),
             $sure, $kes($o['lokasyon'] ?? null, 150), $kes($o['aciklama'] ?? null, 2000), $guven,
         ]);
@@ -270,23 +356,27 @@ function saha_olay_kaydet(PDO $pdo, int $mesajId, array $olaylar): int
 /** Kuyruk satırını AI'dan geçir ve sonucu kaydet. */
 function mesaj_isle(PDO $pdo, int $id): array
 {
-    $s = $pdo->prepare("SELECT ham_metin FROM mesaj_kuyrugu WHERE id=?");
+    $s = $pdo->prepare("SELECT ham_metin, medya_url, gonderen FROM mesaj_kuyrugu WHERE id=?");
     $s->execute([$id]);
-    $metin = $s->fetchColumn();
-    if ($metin === false) return ['ok' => false, 'msg' => 'Mesaj bulunamadı'];
+    $row = $s->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return ['ok' => false, 'msg' => 'Mesaj bulunamadı'];
 
-    $r = mesaj_ai_ayikla($pdo, (string)$metin);
+    $r = mesaj_ai_ayikla($pdo, (string)$row['ham_metin']);
     if (!$r['ok']) {
         $pdo->prepare("UPDATE mesaj_kuyrugu SET ai_durum='hata', ai_hata=? WHERE id=?")
             ->execute([mb_substr($r['msg'] ?? 'hata', 0, 500), $id]);
         return $r;
     }
     $pdo->prepare("UPDATE mesaj_kuyrugu SET ai_durum='islendi', ai_hata=NULL, ai_json=? WHERE id=?")
-        ->execute([json_encode($r['kayitlar'], JSON_UNESCAPED_UNICODE), $id]);
+        ->execute([json_encode(['olaylar' => $r['olaylar'], 'evrak' => $r['evrak']], JSON_UNESCAPED_UNICODE), $id]);
 
-    // Saha olayları (personel giriş/çıkış, yetki, araç saati…) analiz için ayrı tabloya
+    // Araç/saha hareketleri
     try { $r['olay_sayisi'] = saha_olay_kaydet($pdo, $id, $r['olaylar'] ?? []); }
     catch (Throwable $e) { $r['olay_sayisi'] = 0; }
+
+    // Evrak/görsel bildirimleri (mesajın medyası varsa ekli olarak taşınır)
+    try { $r['evrak_sayisi'] = evrak_kaydet($pdo, $id, $r['evrak'] ?? [], $row['medya_url'] ?? null, $row['gonderen'] ?? null); }
+    catch (Throwable $e) { $r['evrak_sayisi'] = 0; }
 
     return $r;
 }

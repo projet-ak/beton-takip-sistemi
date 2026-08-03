@@ -22,7 +22,10 @@ saha_semasi_kur($pdo);
 // ── Filtreler ─────────────────────────────────────────────────────────────────
 $bas = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['bas'] ?? '') ? $_GET['bas'] : date('Y-m-d', strtotime('-30 days'));
 $bit = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['bit'] ?? '') ? $_GET['bit'] : date('Y-m-d');
-$TURLER = ['personel_giris'=>'Personel Giriş','personel_cikis'=>'Personel Çıkış','yetki'=>'Yetkilendirme','arac'=>'Araç','is'=>'İş/İmalat','diger'=>'Diğer'];
+$TURLER = ['arac_giris'=>'Araç Giriş','arac_cikis'=>'Araç Çıkış','arac'=>'Araç',
+           'personel_giris'=>'Personel Giriş','personel_cikis'=>'Personel Çıkış',
+           'yetki'=>'Yetkilendirme','is'=>'İş/İmalat','diger'=>'Diğer'];
+$ARAC_TUR = "o.tur IN ('arac','arac_giris','arac_cikis')";   // araç sayılan türler
 $turF   = isset($_GET['tur']) && isset($TURLER[$_GET['tur']]) ? $_GET['tur'] : '';
 $kisiF  = trim((string)($_GET['kisi'] ?? ''));
 
@@ -43,8 +46,8 @@ $kpiSql = "SELECT
     SUM(o.tur='personel_cikis') cikis,
     SUM(o.tur='yetki')          yetki,
     COUNT(DISTINCT CASE WHEN o.tur='personel_giris' THEN o.kisi END) kisi_sayisi,
-    COUNT(DISTINCT CASE WHEN o.tur='arac' THEN o.arac_plaka END)     arac_sayisi,
-    COALESCE(SUM(CASE WHEN o.tur='arac' THEN o.sure_saat END),0)     arac_saat,
+    COUNT(DISTINCT CASE WHEN $ARAC_TUR THEN o.arac_plaka END)         arac_sayisi,
+    COALESCE(SUM(CASE WHEN $ARAC_TUR THEN o.sure_saat END),0)         arac_saat,
     COUNT(*) toplam
   $FROM $W";
 $st = $pdo->prepare($kpiSql); $st->execute($p); $kpi = $st->fetch(PDO::FETCH_ASSOC) ?: [];
@@ -53,7 +56,7 @@ $st = $pdo->prepare($kpiSql); $st->execute($p); $kpi = $st->fetch(PDO::FETCH_ASS
 $gSql = "SELECT $tarihIfade gun,
            SUM(o.tur='personel_giris') giris,
            SUM(o.tur='personel_cikis') cikis,
-           COALESCE(SUM(CASE WHEN o.tur='arac' THEN o.sure_saat END),0) arac_saat
+           COALESCE(SUM(CASE WHEN $ARAC_TUR THEN o.sure_saat END),0) arac_saat
          $FROM $W GROUP BY gun ORDER BY gun";
 $st = $pdo->prepare($gSql); $st->execute($p); $gunluk = $st->fetchAll(PDO::FETCH_ASSOC);
 
@@ -69,7 +72,7 @@ $st = $pdo->prepare($kSql); $st->execute($p); $kisiler = $st->fetchAll(PDO::FETC
 // ── Araç bazlı ────────────────────────────────────────────────────────────────
 $aSql = "SELECT o.arac_plaka, COUNT(*) kayit,
             COALESCE(SUM(o.sure_saat),0) saat, MAX($tarihIfade) son
-         $FROM $W AND o.tur='arac' AND o.arac_plaka IS NOT NULL AND o.arac_plaka <> ''
+         $FROM $W AND $ARAC_TUR AND o.arac_plaka IS NOT NULL AND o.arac_plaka <> ''
          GROUP BY o.arac_plaka ORDER BY saat DESC LIMIT 50";
 $st = $pdo->prepare($aSql); $st->execute($p); $araclar = $st->fetchAll(PDO::FETCH_ASSOC);
 
@@ -226,7 +229,7 @@ require_once __DIR__ . '/../includes/header.php';
       <tbody>
       <?php
       $rozet = ['personel_giris'=>'bg-success','personel_cikis'=>'bg-secondary','yetki'=>'bg-warning text-dark',
-                'arac'=>'bg-info text-dark','is'=>'bg-primary','diger'=>'bg-light text-dark border'];
+                'arac'=>'bg-info text-dark','arac_giris'=>'bg-success','arac_cikis'=>'bg-secondary','is'=>'bg-primary','diger'=>'bg-light text-dark border'];
       foreach ($olaylar as $o):
         $sa = $o['saat_bas'] ? substr((string)$o['saat_bas'],0,5) : '';
         if ($o['saat_bit']) $sa .= '–' . substr((string)$o['saat_bit'],0,5);
