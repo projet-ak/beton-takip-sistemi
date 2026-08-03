@@ -13,9 +13,12 @@ $__self = $_SERVER['PHP_SELF'] ?? '';
 $__module   = (strpos($__self,'/demir/')!==false) ? 'demir'
             : ((strpos($__self,'/seramik/')!==false) ? 'seramik'
             : ((strpos($__self,'/depo/')!==false) ? 'depo'
-            : ((strpos($__self,'/akaryakit/')!==false) ? 'akaryakit' : 'beton')));
-$__modAd    = ['beton'=>'Beton Takip','demir'=>'Demir Takip','seramik'=>'Seramik Takip','depo'=>'Depo Takip','akaryakit'=>'Akaryakıt Takip'][$__module] ?? 'Beton Takip';
-$__modHome  = ['beton'=>'index.php','demir'=>'demir/index.php','seramik'=>'seramik/index.php','depo'=>'depo/index.php','akaryakit'=>'akaryakit/index.php'][$__module];
+            : ((strpos($__self,'/akaryakit/')!==false) ? 'akaryakit'
+            : ((strpos($__self,'/whatsapp/')!==false) ? 'whatsapp' : 'beton'))));
+$__modAd    = ['beton'=>'Beton Takip','demir'=>'Demir Takip','seramik'=>'Seramik Takip','depo'=>'Depo Takip','akaryakit'=>'Akaryakıt Takip','whatsapp'=>'Saha Takip'][$__module] ?? 'Beton Takip';
+// Saha Takip girişi yetkiye göre: onay kuyruğu yetkisi yoksa doğrudan analiz sayfası
+$__waHome   = (function_exists('can_edit') && can_edit()) ? 'whatsapp/mesajlar.php' : 'whatsapp/saha_analiz.php';
+$__modHome  = ['beton'=>'index.php','demir'=>'demir/index.php','seramik'=>'seramik/index.php','depo'=>'depo/index.php','akaryakit'=>'akaryakit/index.php','whatsapp'=>$__waHome][$__module];
 
 // ── Aktivite izleme (oturum süresi + sayfa gezinme) ──────────────────────────
 // Ana (beton) DB'de tutulur; $pdo varsa onu, yoksa kendi bağlantısını kullanır.
@@ -152,32 +155,6 @@ if ($__user) {
           <i class="bi bi-bar-chart-line"></i><span>Raporlar</span>
         </a>
       </li>
-      <?php endif; ?>
-
-      <?php if(can_edit() || can_view_reports()): ?>
-      <li class="sidebar-nav-item mt-1"><div class="nav-section">Saha Takibi</div></li>
-      <?php if(can_edit()):
-        $__bekMsj = 0;
-        // Bekleyen mesaj rozeti — tablo henüz oluşmamışsa veya bağlantı yoksa sessiz geç
-        if (isset($pdo) && $pdo instanceof PDO) {
-            try { $__bekMsj = (int)$pdo->query("SELECT COUNT(*) FROM mesaj_kuyrugu WHERE durum='bekliyor'")->fetchColumn(); }
-            catch (Throwable $e) { $__bekMsj = 0; }
-        }
-      ?>
-      <li class="sidebar-nav-item">
-        <a class="sidebar-nav-link <?= __isActive('mesajlar.php') ?>" href="<?= $__rootPath ?>whatsapp/mesajlar.php" data-label="Gelen Mesajlar">
-          <i class="bi bi-chat-dots"></i><span>Gelen Mesajlar</span>
-          <?php if($__bekMsj): ?><span class="badge bg-warning text-dark ms-auto"><?= $__bekMsj ?></span><?php endif; ?>
-        </a>
-      </li>
-      <?php endif; ?>
-      <?php if(can_view_reports()): ?>
-      <li class="sidebar-nav-item">
-        <a class="sidebar-nav-link <?= __isActive('saha_analiz.php') ?>" href="<?= $__rootPath ?>whatsapp/saha_analiz.php" data-label="Saha Analizi">
-          <i class="bi bi-people"></i><span>Saha Analizi</span>
-        </a>
-      </li>
-      <?php endif; ?>
       <?php endif; ?>
 
       <?php if(can_manage_definitions()): ?>
@@ -406,6 +383,39 @@ if ($__user) {
       </li>
     </ul>
     <?php endif; ?>
+
+    <?php if($__module==='whatsapp'): /* ── SAHA TAKİP (WhatsApp) MENÜSÜ ── */ ?>
+    <ul class="sidebar-nav">
+      <?php if(can_edit()):
+        $__bekMsj = 0;
+        // Bekleyen mesaj rozeti — tablo henüz yoksa/bağlantı kurulmadıysa sessiz geç
+        if (isset($pdo) && $pdo instanceof PDO) {
+            try { $__bekMsj = (int)$pdo->query("SELECT COUNT(*) FROM mesaj_kuyrugu WHERE durum='bekliyor'")->fetchColumn(); }
+            catch (Throwable $e) { $__bekMsj = 0; }
+        }
+      ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('mesajlar.php') ?>" href="<?= $__rootPath ?>whatsapp/mesajlar.php" data-label="Gelen Mesajlar">
+          <i class="bi bi-chat-dots"></i><span>Gelen Mesajlar</span>
+          <?php if($__bekMsj): ?><span class="badge bg-warning text-dark ms-auto"><?= $__bekMsj ?></span><?php endif; ?>
+        </a>
+      </li>
+      <?php endif; ?>
+      <?php if(can_view_reports()): ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('saha_analiz.php') ?>" href="<?= $__rootPath ?>whatsapp/saha_analiz.php" data-label="Saha Analizi">
+          <i class="bi bi-people"></i><span>Saha Analizi</span>
+        </a>
+      </li>
+      <?php endif; ?>
+      <li class="sidebar-nav-item mt-1"><div class="nav-section">Beton</div></li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link" href="<?= $__rootPath ?>irsaliyeler.php" data-label="İrsaliyeler">
+          <i class="bi bi-file-earmark-text"></i><span>İrsaliyeler</span>
+        </a>
+      </li>
+    </ul>
+    <?php endif; ?>
   </div>
 
   <?php if($__user): ?>
@@ -468,6 +478,11 @@ if ($__user) {
       <a href="<?= $__rootPath ?>akaryakit/index.php" class="module-switch-item <?= $__module==='akaryakit'?'active':'' ?>">
         <i class="bi bi-fuel-pump"></i><span>Akaryakıt Takip</span>
       </a>
+      <?php if(can_edit() || can_view_reports()): ?>
+      <a href="<?= $__rootPath . $__waHome ?>" class="module-switch-item <?= $__module==='whatsapp'?'active':'' ?>">
+        <i class="bi bi-chat-dots"></i><span>Saha Takip</span>
+      </a>
+      <?php endif; ?>
     </div>
     <?php endif; ?>
 
