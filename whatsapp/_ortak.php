@@ -125,7 +125,7 @@ function mesaj_tanimlar(PDO $pdo): array
 function mesaj_ai_ayikla(PDO $pdo, string $metin): array
 {
     if (!function_exists('ai_call')) {
-        require_once __DIR__ . '/ai_call.php';
+        require_once __DIR__ . '/../includes/ai_call.php';
     }
     $t = mesaj_tanimlar($pdo);
 
