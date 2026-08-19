@@ -55,29 +55,48 @@ $pageTitle = 'İrsaliye Detay #' . $id . ' — Beton Takip Sistemi';
 
 // Fotoğraf yükleme
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && can_edit() && isset($_FILES['foto'])) {
-    $uploadDir = __DIR__ . '/uploads/irsaliye_' . $id . '/';
-    if (!is_dir($uploadDir)) { mkdir($uploadDir, 0755, true); }
-
     $allowed = ['image/jpeg','image/png','image/webp','image/gif','application/pdf'];
     $maxSize = 10 * 1024 * 1024; // 10 MB
 
-    foreach ($_FILES['foto']['tmp_name'] as $i => $tmpName) {
-        if ($_FILES['foto']['error'][$i] !== UPLOAD_ERR_OK) continue;
-        $mime = guess_mime($tmpName, $_FILES['foto']['name'][$i]);
-        if (!in_array($mime, $allowed)) continue;
-        if ($_FILES['foto']['size'][$i] > $maxSize) continue;
+    $yuklenen = 0;
+    $atlanan  = [];   // dosya adı → neden
 
-        $ext       = pathinfo($_FILES['foto']['name'][$i], PATHINFO_EXTENSION);
+    foreach ($_FILES['foto']['tmp_name'] as $i => $tmpName) {
+        $hata = (int)$_FILES['foto']['error'][$i];
+        $ad   = (string)$_FILES['foto']['name'][$i];
+        if ($hata === UPLOAD_ERR_NO_FILE) continue;                    // hiç dosya seçilmemiş
+        if ($hata !== UPLOAD_ERR_OK) { $atlanan[] = "$ad: yükleme hatası (kod $hata)"; continue; }
+
+        $mime = guess_mime($tmpName, $ad);
+        if (!in_array($mime, $allowed)) { $atlanan[] = "$ad: desteklenmeyen tür"; continue; }
+        if ($_FILES['foto']['size'][$i] > $maxSize) { $atlanan[] = "$ad: 10 MB sınırı aşıldı"; continue; }
+
+        $uploadDir = __DIR__ . '/uploads/irsaliye_' . $id . '/';
+        if (!is_dir($uploadDir)) { mkdir($uploadDir, 0755, true); }
+
+        $ext       = pathinfo($ad, PATHINFO_EXTENSION);
         $safeName  = uniqid('foto_', true) . '.' . strtolower($ext);
         $fullPath  = $uploadDir . $safeName;
         $relPath   = 'uploads/irsaliye_' . $id . '/' . $safeName;
 
         if (move_uploaded_file($tmpName, $fullPath)) {
             $pdo->prepare("INSERT INTO irsaliye_fotolar (irsaliye_id, dosya_adi, dosya_yolu, created_by) VALUES (?,?,?,?)")
-                ->execute([$id, $_FILES['foto']['name'][$i], $relPath, current_user_id()]);
+                ->execute([$id, $ad, $relPath, current_user_id()]);
+            $yuklenen++;
+        } else {
+            $atlanan[] = "$ad: diske yazılamadı";
         }
     }
-    flash('success', 'Fotoğraf(lar) yüklendi.');
+
+    if ($yuklenen === 0 && !$atlanan) {
+        flash('error', 'Dosya seçilmedi — önce fotoğraf seçin.');
+    } elseif ($yuklenen > 0 && !$atlanan) {
+        flash('success', "$yuklenen fotoğraf yüklendi.");
+    } elseif ($yuklenen > 0) {
+        flash('success', "$yuklenen yüklendi, " . count($atlanan) . ' atlandı: ' . implode(' · ', $atlanan));
+    } else {
+        flash('error', 'Hiçbir dosya yüklenemedi: ' . implode(' · ', $atlanan));
+    }
     redirect("irsaliye_detay.php?id={$id}");
 }
 
@@ -299,7 +318,7 @@ require_once __DIR__ . '/includes/header.php';
                 <?php if (can_edit()): ?>
                 <form method="post" enctype="multipart/form-data" class="mb-3">
                     <label class="form-label small">Fotoğraf / Belge Yükle</label>
-                    <input type="file" name="foto[]" class="form-control form-control-sm" multiple accept="image/*,application/pdf">
+                    <input type="file" name="foto[]" class="form-control form-control-sm" multiple accept="image/*,application/pdf" required>
                     <div class="form-text">JPG, PNG, WebP, PDF — maks 10 MB</div>
                     <button class="btn btn-sm btn-primary mt-2"><i class="bi bi-upload me-1"></i>Yükle</button>
                 </form>
