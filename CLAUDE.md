@@ -330,6 +330,17 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 
 > Önce mevcut **web projesi bitirilecek**; aşağıdakiler sıraya alınmıştır.
 
+### 0) WhatsApp grup bağlantısı (BEKLEMEDE — kullanıcı haber verecek)
+- **Karar verildi:** Baileys ile gruba bağlanılacak (WhatsApp Web protokolü, VPS'te Node dinleyici).
+  Kullanıcının **data hattı** aday numara — SMS doğrulaması alabiliyorsa kullanılacak; uygun zamanda
+  test edip haber verecek. O güne dek **elle yapıştırma** akışı kullanılıyor (çalışıyor, AI doğruluğu
+  gerçek kantar fişiyle %98+ doğrulandı).
+- **Hazır bekleyen altyapı:** `whatsapp/api/mesaj_al.php` (MESAJ_TOKEN'lı webhook, Meta formatı dahil),
+  görsel işleme + `meta_medya_indir()`. Yazılacak tek parça: Baileys Node servisi
+  (yalnız DİNLER, mesaj göndermez; oturum diske; QR ile eşleşme; ayrı SIM şart — ban riski).
+- Kurulum sırası: SIM'de WhatsApp aktive → numara gruba eklenir → Node servisi yazılır/başlatılır →
+  QR taratılır. Dinleyen telefon arada Wi-Fi'a bağlanmalı (14 gün kuralı).
+
 ### A) Mobil Uygulama — iOS & Android (ERTELENDİ, web bitince)
 - **Yaklaşım:** Mevcut siteyi (ernsaha.com.tr/beton/) **Capacitor WebView wrapper** ile native kabuğa sarmak
   (kod yeniden yazılmaz, içerik sunucudan gelir → her deploy otomatik yansır; yalnız ikon/izin/isim
