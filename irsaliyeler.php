@@ -107,6 +107,8 @@ $filtreProje  = isset($_GET['proje_id'])    && ctype_digit($_GET['proje_id'])   
 $filtreYil    = isset($_GET['yil'])         && ctype_digit($_GET['yil'])         ? (int)$_GET['yil']         : 0;
 $filtreAy     = isset($_GET['ay'])          && ctype_digit($_GET['ay'])          ? (int)$_GET['ay']          : 0;
 $filtreArama  = trim($_GET['ara'] ?? '');
+$DURUMLAR     = ['beklemede'=>'Beklemede','saha_onaylandi'=>'Saha Onaylı','onaylandi'=>'Teknik Onaylı','reddedildi'=>'Reddedildi'];
+$filtreDurum  = isset($_GET['durum']) && isset($DURUMLAR[$_GET['durum']]) ? $_GET['durum'] : '';
 $tarihBas     = isset($_GET['tarih_bas']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tarih_bas']) ? $_GET['tarih_bas'] : '';
 $tarihBit     = isset($_GET['tarih_bit']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tarih_bit']) ? $_GET['tarih_bit'] : '';
 $ihrac        = isset($_GET['export']) && in_array($_GET['export'], ['csv','xlsx'], true) ? $_GET['export'] : '';
@@ -119,6 +121,7 @@ if ($filtreParsel) { $where[] = 'i.parsel_id = ?';        $params[] = $filtrePar
 if ($filtreBlok)   { $where[] = 'i.blok_id = ?';          $params[] = $filtreBlok; }
 if ($filtreBS)     { $where[] = 'i.beton_sinifi_id = ?';  $params[] = $filtreBS; }
 if ($filtreProje)  { $where[] = 'i.proje_id = ?';         $params[] = $filtreProje; }
+if ($filtreDurum)  { $where[] = 'i.durum = ?';            $params[] = $filtreDurum; }
 if ($filtreYil)    { $where[] = 'YEAR(i.tarih) = ?';      $params[] = $filtreYil; }
 if ($filtreAy)     { $where[] = 'MONTH(i.tarih) = ?';     $params[] = $filtreAy; }
 if ($tarihBas !== '') { $where[] = 'i.tarih >= ?';        $params[] = $tarihBas; }
@@ -431,6 +434,15 @@ require_once __DIR__ . '/includes/header.php';
                 </select>
             </div>
             <?php endif; ?>
+            <div class="col-sm-6 col-md-2">
+                <label class="form-label small mb-1">Onay Durumu</label>
+                <select name="durum" class="form-select form-select-sm">
+                    <option value="">Tümü</option>
+                    <?php foreach ($DURUMLAR as $dk => $dv): ?>
+                        <option value="<?= h($dk) ?>" <?= $filtreDurum === $dk ? 'selected' : '' ?>><?= h($dv) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
             <div class="col-sm-6 col-md-2">
                 <label class="form-label small mb-1">Başlangıç Tarihi</label>
                 <input type="date" name="tarih_bas" class="form-control form-control-sm" value="<?= h($tarihBas) ?>">
