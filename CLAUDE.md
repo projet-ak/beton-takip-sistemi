@@ -83,8 +83,9 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   korumalıdır (deploy dosyaları artık sır içermediğinden normal güncellenir). **`DEPLOY_TOKEN`
   ve `GITHUB_PAT` `config.php`'de** (git-ignored) tanımlanır — koda/git'e sır girmez. `setup.php`
   kaldırıldı. ⚠️ Token/PAT'ı **buraya (CLAUDE.md) yazma** — güvenlik.
-- **GitHub Actions** (`.github/workflows/deploy.yml`): deploy branch push'unda FTP ile cPanel'e.
-  `secrets.FTP_PASSWORD` gerekli (yoksa başarısız). `.htaccess`/`config.php`/`backups/` hariç.
+- GitHub Actions FTP workflow'u **kaldırıldı** (cPanel terk edildi; tek deploy yolu deploy2.php).
+- deploy2.php **kalıntı temizliği** yapar: repodan taşınan/kaldırılan dosyalar `$obsolete`
+  listesindedir ve her deploy'da sunucudan silinir. Dosya taşırken bu listeye ekle.
 - **Not**: her kod düzenlemesinde `php -l` ile lint et; gömülü JS'i `node --check` ile doğrula.
 
 ---
@@ -154,6 +155,11 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   - Giriş ucu **`whatsapp/api/mesaj_al.php`** (`MESAJ_TOKEN`, Meta webhook doğrulamalı; yol `/api/` içerdiği için CSRF muaf). Ortak katman **`whatsapp/_ortak.php`**.
   - Tablolar: `mesaj_kuyrugu` · `saha_olaylari` (tur: arac_giris/arac_cikis/arac/personel_*/yetki/is/diger + `arac_cinsi`) · `saha_evrak` (tur/belge_no/dosya_url/**onaylayan**/onay_user/onay_at/durum). Plaka `saha_plaka_norm()` ile normalize ("34 abc 123"→"34ABC123").
   - **Resmî puantaj/İSG/giriş-çıkış kaydı değildir** (her sayfada uyarı bandı).
+  - Raporlar (araç/analiz) varsayılan **yalnız onaylanmış** mesajları sayar ("Bekleyenler dahil" anahtarı var).
+  - **Retention**: yalnız REDDEDİLEN mesajlar `MESAJ_SAKLAMA_GUN` (90) sonra görselleriyle silinir
+    (`mesaj_temizle`, mesajlar.php'de olasılıksal tetik). Onaylılar arşivdir, silinmez.
+  - Meta bağlantısı kurulursa: `WHATSAPP_GRAPH_TOKEN` tanımlanınca gelen fotoğraflar otomatik iner
+    (`meta_medya_indir`, media id → uploads/whatsapp/Y/m/).
 - Diğer: `kullanicilar.php` (admin), `ai_ayarlar.php`, `yedek.php`, `import.php`, `kurulum.php` (seed).
 
 ---

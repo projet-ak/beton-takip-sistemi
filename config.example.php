@@ -44,6 +44,10 @@ define('DB_PASS', 'sifre');
 // (ör. PHP: bin2hex(random_bytes(24))). Meta Cloud API kullanılırsa webhook
 // "Verify Token" alanına da AYNI değer yazılır.
 // define('MESAJ_TOKEN', 'BURAYA_UZUN_RASTGELE_TOKEN');
+// Reddedilen mesajlar kaç gün sonra görselleriyle silinsin (onaylılar arşiv, silinmez):
+// define('MESAJ_SAKLAMA_GUN', 90);
+// Meta Cloud API kullanılıyorsa gelen fotoğrafları indirmek için Graph erişim tokeni:
+// define('WHATSAPP_GRAPH_TOKEN', '');
 
 // ── Oturum / AI (opsiyonel) ──────────────────────────────────────────────────
 // define('SESSION_LIFETIME', 3600);

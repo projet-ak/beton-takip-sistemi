@@ -20,6 +20,12 @@ $pageTitle = 'Gelen Mesajlar — Saha Takip';
 mesaj_semasi_kur($pdo);
 saha_semasi_kur($pdo);
 
+// Olasılıksal retention: reddedilen eski mesajlar + görselleri temizlenir
+// (onaylılar arşivdir, silinmez). Aktivite izleme deseniyle aynı yaklaşım.
+if (mt_rand(1, 200) === 1) {
+    try { mesaj_temizle($pdo); } catch (Throwable $e) { /* sessiz geç */ }
+}
+
 $uid     = current_user_id();
 $kullanici = current_user();
 $adSoyad = trim((string)($kullanici['full_name'] ?? $kullanici['username'] ?? ''));

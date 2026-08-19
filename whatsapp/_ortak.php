@@ -63,23 +63,28 @@ function mesaj_kuyruga_ekle(PDO $pdo, array $m): array
 {
     mesaj_semasi_kur($pdo);
     $metin = trim((string)($m['metin'] ?? ''));
-    if ($metin === '' && empty($m['medya_url'])) {
+    if ($metin === '' && empty($m['medya_url']) && empty($m['medya'])) {
         return ['ok' => false, 'msg' => 'Boş mesaj'];
     }
+    if ($metin === '') $metin = '(yalnız görsel)';   // hash + AI girişi boş kalmasın
     $kaynak   = trim((string)($m['kaynak']   ?? 'whatsapp')) ?: 'whatsapp';
     $gonderen = trim((string)($m['gonderen'] ?? ''));
-    $hash     = mesaj_hash($kaynak, $gonderen, $metin, trim((string)($m['mesaj_id'] ?? '')));
+
+    // Birden fazla görsel gelebilir: ilki medya_url'de, tamamı medya_json'da
+    $gorseller = [];
+    if (!empty($m['medya']) && is_array($m['medya'])) $gorseller = array_values(array_filter($m['medya'], 'is_string'));
+    elseif (trim((string)($m['medya_url'] ?? '')) !== '') $gorseller = [trim((string)$m['medya_url'])];
+
+    // Harici mesaj id yoksa görseller de hash'e girer — yalnız-görsel iki farklı
+    // mesaj (aynı gönderen, aynı yer tutucu metin) mükerrer sayılmasın
+    $hashMetin = $metin . ($gorseller ? '|' . implode('|', $gorseller) : '');
+    $hash      = mesaj_hash($kaynak, $gonderen, $hashMetin, trim((string)($m['mesaj_id'] ?? '')));
 
     $var = $pdo->prepare("SELECT id FROM mesaj_kuyrugu WHERE mesaj_hash = ? LIMIT 1");
     $var->execute([$hash]);
     if ($mevcut = $var->fetchColumn()) {
         return ['ok' => true, 'mukerrer' => true, 'id' => (int)$mevcut];
     }
-
-    // Birden fazla görsel gelebilir: ilki medya_url'de, tamamı medya_json'da
-    $gorseller = [];
-    if (!empty($m['medya']) && is_array($m['medya'])) $gorseller = array_values(array_filter($m['medya'], 'is_string'));
-    elseif (trim((string)($m['medya_url'] ?? '')) !== '') $gorseller = [trim((string)$m['medya_url'])];
 
     $pdo->prepare("INSERT INTO mesaj_kuyrugu (kaynak, grup_adi, gonderen, ham_metin, medya_url, medya_json, mesaj_hash)
                    VALUES (?,?,?,?,?,?,?)")
@@ -112,8 +117,11 @@ function mesaj_webhook_coz(array $body): array
                         'kaynak'   => 'whatsapp',
                         'grup'     => $val['metadata']['display_phone_number'] ?? null,
                         'gonderen' => ($adlar[$from] ?? '') ?: $from,
-                        'metin'    => (string)($msg['text']['body'] ?? ($msg['caption'] ?? '')),
+                        'metin'    => (string)($msg['text']['body'] ?? ($msg['image']['caption'] ?? ($msg['caption'] ?? ''))),
                         'mesaj_id' => (string)($msg['id'] ?? ''),
+                        // Fotoğraflı mesaj: Meta medyayı doğrudan vermez, id verir;
+                        // indirme mesaj_al.php'de WHATSAPP_GRAPH_TOKEN ile yapılır
+                        'meta_medya_id' => (string)($msg['image']['id'] ?? ($msg['document']['id'] ?? '')),
                     ];
                 }
             }
@@ -124,6 +132,53 @@ function mesaj_webhook_coz(array $body): array
         return array_values(array_filter($body['mesajlar'], 'is_array'));
     }
     return [$body];
+}
+
+/**
+ * Meta Cloud API medyasını indir → uploads/whatsapp/Y/m/ altına kaydet.
+ * Meta, webhook'ta dosyayı değil yalnız media id verir; dosya iki adımda alınır:
+ *   1) graph.facebook.com/{id} → geçici indirme URL'i   2) URL → binary (Bearer token)
+ * @return string|null Göreli yol (uploads/whatsapp/...), hata/indirilemezse null
+ */
+function meta_medya_indir(string $mediaId, string $token): ?string
+{
+    if ($mediaId === '' || $token === '') return null;
+
+    $getir = function (string $url, array $headers) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 3,
+            CURLOPT_TIMEOUT        => 30,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_HTTPHEADER     => $headers,
+        ]);
+        $body = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        unset($ch);
+        return ($body !== false && $code === 200) ? $body : null;
+    };
+
+    // 1) media id → geçici URL + mime
+    $meta = $getir('https://graph.facebook.com/v20.0/' . rawurlencode($mediaId), ['Authorization: Bearer ' . $token]);
+    $j = $meta !== null ? json_decode($meta, true) : null;
+    if (!is_array($j) || empty($j['url'])) return null;
+
+    // 2) URL → binary (en fazla 8 MB kabul)
+    $veri = $getir((string)$j['url'], ['Authorization: Bearer ' . $token]);
+    if ($veri === null || strlen($veri) > 8 * 1024 * 1024) return null;
+
+    $uzanti = match ((string)($j['mime_type'] ?? '')) {
+        'image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp',
+        'application/pdf' => 'pdf', default => 'jpg',
+    };
+    $dizin = dirname(__DIR__) . '/uploads/whatsapp/' . date('Y/m');
+    if (!is_dir($dizin)) @mkdir($dizin, 0755, true);
+    $ad = uniqid('wa_', true) . '.' . $uzanti;
+    if (file_put_contents($dizin . '/' . $ad, $veri) === false) return null;
+
+    return 'uploads/whatsapp/' . date('Y/m') . '/' . $ad;
 }
 
 /** AI'ya verilecek tanım listeleri (eşleştirme için). */
@@ -434,4 +489,49 @@ function mesaj_isle(PDO $pdo, int $id): array
     catch (Throwable $e) { $r['evrak_sayisi'] = 0; }
 
     return $r;
+}
+
+/**
+ * Kuyruk temizliği (retention) — yalnız REDDEDİLEN mesajlar silinir.
+ *
+ * Onaylanan mesajlar arşivdir (evrak görselleri + raporların kaynağı) ve
+ * ASLA silinmez; bekleyenler de kullanıcı karar verene dek durur.
+ * Reddedilmiş bir mesajın tek tek ONAYLANMIŞ evrakı varsa o mesaj da korunur.
+ * Saklama süresi config: MESAJ_SAKLAMA_GUN (varsayılan 90).
+ *
+ * @return array{mesaj:int, gorsel:int}
+ */
+function mesaj_temizle(PDO $pdo, ?int $gun = null): array
+{
+    $gun = $gun ?? (defined('MESAJ_SAKLAMA_GUN') ? max(7, (int)MESAJ_SAKLAMA_GUN) : 90);
+    $silinenMesaj = 0; $silinenGorsel = 0;
+
+    $adaylar = $pdo->prepare(
+        "SELECT m.id, m.medya_url, m.medya_json
+         FROM mesaj_kuyrugu m
+         WHERE m.durum = 'reddedildi'
+           AND m.islenen_at IS NOT NULL
+           AND m.islenen_at < DATE_SUB(NOW(), INTERVAL {$gun} DAY)
+           AND NOT EXISTS (SELECT 1 FROM saha_evrak e
+                           WHERE e.mesaj_id = m.id AND e.durum = 'onaylandi')
+         LIMIT 200");
+    $adaylar->execute();
+
+    $kok = realpath(dirname(__DIR__));           // uygulama kökü
+    foreach ($adaylar->fetchAll(PDO::FETCH_ASSOC) as $m) {
+        // Görselleri diskten sil — yalnız uploads/whatsapp/ altındakiler
+        foreach (mesaj_gorseller($m) as $g) {
+            if (strpos($g, 'uploads/whatsapp/') !== 0) continue;
+            $yol = realpath($kok . '/' . $g);
+            if ($yol && strpos($yol, $kok . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'whatsapp') === 0
+                && is_file($yol) && @unlink($yol)) {
+                $silinenGorsel++;
+            }
+        }
+        $pdo->prepare("DELETE FROM saha_evrak    WHERE mesaj_id=?")->execute([$m['id']]);
+        $pdo->prepare("DELETE FROM saha_olaylari WHERE mesaj_id=?")->execute([$m['id']]);
+        $pdo->prepare("DELETE FROM mesaj_kuyrugu WHERE id=?")->execute([$m['id']]);
+        $silinenMesaj++;
+    }
+    return ['mesaj' => $silinenMesaj, 'gorsel' => $silinenGorsel];
 }

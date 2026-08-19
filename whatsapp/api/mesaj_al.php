@@ -76,6 +76,16 @@ if (!is_array($body)) {
 // Meta Cloud API / toplu / tek mesaj — üçü de sade formata çevrilir
 $mesajlar = mesaj_webhook_coz($body);
 
+// Meta fotoğraflı mesajları: media id → dosyayı indir (WHATSAPP_GRAPH_TOKEN gerekli)
+$graphToken = defined('WHATSAPP_GRAPH_TOKEN') ? (string)WHATSAPP_GRAPH_TOKEN : '';
+foreach ($mesajlar as &$__m) {
+    if (!empty($__m['meta_medya_id']) && $graphToken !== '') {
+        $yol = meta_medya_indir((string)$__m['meta_medya_id'], $graphToken);
+        if ($yol !== null) $__m['medya'] = array_merge($__m['medya'] ?? [], [$yol]);
+    }
+}
+unset($__m);
+
 $eklenen = 0; $mukerrer = 0; $hatali = 0; $idler = [];
 foreach ($mesajlar as $m) {
     if (!is_array($m)) { $hatali++; continue; }

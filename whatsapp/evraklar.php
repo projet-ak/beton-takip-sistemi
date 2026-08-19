@@ -60,7 +60,7 @@ if ($araF) { $w[] = "(e.baslik LIKE ? OR e.belge_no LIKE ? OR e.firma LIKE ? OR 
              array_push($p, "%$araF%", "%$araF%", "%$araF%", "%$araF%", "%$araF%"); }
 $W = 'WHERE ' . implode(' AND ', $w);
 
-$sql = "SELECT e.*, $tarihIfade AS gun, m.ham_metin, m.medya_url AS mesaj_medya, u.full_name AS onay_ad
+$sql = "SELECT e.*, $tarihIfade AS gun, m.ham_metin, m.medya_url AS mesaj_medya, m.medya_json AS mesaj_medya_json, u.full_name AS onay_ad
         FROM saha_evrak e
         LEFT JOIN mesaj_kuyrugu m ON m.id = e.mesaj_id
         LEFT JOIN users u ON u.id = e.onay_user
@@ -154,18 +154,34 @@ require_once __DIR__ . '/../includes/header.php';
   <div class="card-body">
     <div class="row g-3">
       <?php foreach ($liste as $e):
-        $gorsel = $e['dosya_url'] ?: $e['mesaj_medya'];
+        // Galeri: evrağın kendi dosyası + mesajın TÜM görselleri (mükerrersiz)
+        $galeri = array_values(array_unique(array_filter(array_merge(
+            [$e['dosya_url']],
+            mesaj_gorseller(['medya_json' => $e['mesaj_medya_json'] ?? null, 'medya_url' => $e['mesaj_medya'] ?? null])
+        ))));
+        $srcOf  = fn(string $u) => (strpos($u, 'http') === 0) ? $u : '../' . ltrim($u, '/');
         $rozet  = ['bekliyor'=>'bg-warning text-dark','onaylandi'=>'bg-success','reddedildi'=>'bg-secondary'][$e['durum']] ?? 'bg-light text-dark';
         $g      = $e['guven'] !== null ? (float)$e['guven'] : null;
       ?>
       <div class="col-12 col-md-6 col-xl-4">
         <div class="card h-100">
-          <?php if ($gorsel): ?>
-            <a href="<?= h($gorsel) ?>" target="_blank" rel="noopener">
-              <img src="<?= h($gorsel) ?>" class="card-img-top" alt="Evrak görseli"
+          <?php if ($galeri): ?>
+            <a href="<?= h($srcOf($galeri[0])) ?>" target="_blank" rel="noopener">
+              <img src="<?= h($srcOf($galeri[0])) ?>" class="card-img-top" alt="Evrak görseli"
                    style="height:150px;object-fit:cover"
                    onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'p-3 text-center text-muted small',innerHTML:'📎 Ek dosya — açmak için tıklayın'}))">
             </a>
+            <?php if (count($galeri) > 1): ?>
+              <div class="d-flex gap-1 px-2 pt-2 flex-wrap">
+                <?php foreach (array_slice($galeri, 1, 5) as $gi => $gu): ?>
+                  <a href="<?= h($srcOf($gu)) ?>" target="_blank" rel="noopener">
+                    <img src="<?= h($srcOf($gu)) ?>" alt="Ek <?= $gi+2 ?>" class="rounded border"
+                         style="width:44px;height:44px;object-fit:cover"
+                         onerror="this.style.display='none'">
+                  </a>
+                <?php endforeach; ?>
+              </div>
+            <?php endif; ?>
           <?php endif; ?>
           <div class="card-body py-2">
             <div class="d-flex justify-content-between align-items-start gap-1 mb-1">
