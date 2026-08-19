@@ -470,6 +470,37 @@ require_once __DIR__ . '/includes/header.php';
     <input type="hidden" name="toplu_islem" id="topluIslemField" value="sil">
 
     <?php if (can_edit()): ?>
+    <!-- Hızlı seçim: 1800 kayıtta tek tek işaretlemeyi ve "tümü"nün onaylıları da
+         kapmasını önler. Yalnız bu sayfadaki (filtrelenmiş) satırlara uygulanır. -->
+    <div class="d-flex justify-content-end mb-2">
+        <div class="dropdown">
+            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="bi bi-check2-square me-1"></i>Hızlı Seçim
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                <li><h6 class="dropdown-header">Bu sayfadaki kayıtlardan</h6></li>
+                <li><button type="button" class="dropdown-item" onclick="secDurum('beklemede')">
+                    <i class="bi bi-clock text-warning me-2"></i>Beklemede olanlar
+                    <span class="badge bg-secondary ms-1" data-say="beklemede">0</span></button></li>
+                <li><button type="button" class="dropdown-item" onclick="secDurum('saha_onaylandi')">
+                    <i class="bi bi-check-circle text-success me-2"></i>Saha onaylı olanlar
+                    <span class="badge bg-secondary ms-1" data-say="saha_onaylandi">0</span></button></li>
+                <li><button type="button" class="dropdown-item" onclick="secDurum('onaylandi')">
+                    <i class="bi bi-patch-check text-primary me-2"></i>Teknik onaylı olanlar
+                    <span class="badge bg-secondary ms-1" data-say="onaylandi">0</span></button></li>
+                <li><button type="button" class="dropdown-item" onclick="secDurum('reddedildi')">
+                    <i class="bi bi-x-circle text-danger me-2"></i>Reddedilenler
+                    <span class="badge bg-secondary ms-1" data-say="reddedildi">0</span></button></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><button type="button" class="dropdown-item" onclick="secDurum('*')">
+                    <i class="bi bi-list-check me-2"></i>Tümü
+                    <span class="badge bg-secondary ms-1" data-say="*">0</span></button></li>
+                <li><button type="button" class="dropdown-item text-muted" onclick="secimTemizle()">
+                    <i class="bi bi-x-lg me-2"></i>Seçimi temizle</button></li>
+            </ul>
+        </div>
+    </div>
+
     <div class="d-flex flex-wrap align-items-center mb-2 gap-2" id="topluBar" style="display:none !important;">
         <span class="text-muted small fw-semibold"><span id="secimSay">0</span> kayıt seçili</span>
 
@@ -542,7 +573,8 @@ require_once __DIR__ . '/includes/header.php';
                             <tr>
                                 <?php if (can_edit()): ?>
                                 <td class="text-center tbl-hide-mobile">
-                                    <input type="checkbox" name="secim[]" value="<?= (int)$r['id'] ?>" class="form-check-input secSatir">
+                                    <input type="checkbox" name="secim[]" value="<?= (int)$r['id'] ?>"
+                                           class="form-check-input secSatir" data-durum="<?= h($r['durum']) ?>">
                                 </td>
                                 <?php endif; ?>
                                 <td class="text-center text-muted small tbl-hide-mobile"><?= h($r['sira_no'] ?: '-') ?></td>
@@ -668,6 +700,26 @@ require_once __DIR__ . '/includes/header.php';
         if (secTumu) secTumu.checked = false;
         guncelle();
     };
+
+    // Duruma göre hızlı seçim ('*' = tümü). Mevcut seçimin yerine geçer.
+    window.secDurum = function (durum) {
+        satirlar.forEach(c => c.checked = (durum === '*') || c.dataset.durum === durum);
+        guncelle();
+    };
+
+    // Menüdeki rozetlere bu sayfadaki durum sayılarını yaz
+    (function () {
+        const say = {};
+        satirlar.forEach(c => { const d = c.dataset.durum || ''; say[d] = (say[d] || 0) + 1; });
+        document.querySelectorAll('[data-say]').forEach(el => {
+            const k = el.dataset.say;
+            const n = (k === '*') ? satirlar.length : (say[k] || 0);
+            el.textContent = n;
+            // Kaydı olmayan seçeneği pasifleştir (boşuna tıklanmasın)
+            const btn = el.closest('.dropdown-item');
+            if (btn && n === 0) { btn.classList.add('disabled'); btn.setAttribute('aria-disabled', 'true'); }
+        });
+    })();
 
     window.topluOnay = function (islem, msg) {
         const sec = document.querySelectorAll('.secSatir:checked');
