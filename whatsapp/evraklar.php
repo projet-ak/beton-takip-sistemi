@@ -35,13 +35,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && can_edit() && isset($_POST['ev_onay
                    WHERE id=?")
         ->execute([$uid, $adSoyad, (int)$_POST['ev_onay']]);
     flash('success', 'Evrak onaylandı.');
-    redirect('evraklar.php' . (isset($_POST['q']) ? '?' . (string)$_POST['q'] : ''));
+    redirect('evraklar.php' . (isset($_POST['q']) ? '?' . preg_replace('/[^\w=&%.\-]/', '', (string)$_POST['q']) : ''));
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && can_edit() && isset($_POST['ev_red']) && ctype_digit($_POST['ev_red'])) {
     $pdo->prepare("UPDATE saha_evrak SET durum='reddedildi', onay_user=?, onay_at=NOW() WHERE id=?")
         ->execute([$uid, (int)$_POST['ev_red']]);
     flash('success', 'Evrak reddedildi.');
-    redirect('evraklar.php' . (isset($_POST['q']) ? '?' . (string)$_POST['q'] : ''));
+    redirect('evraklar.php' . (isset($_POST['q']) ? '?' . preg_replace('/[^\w=&%.\-]/', '', (string)$_POST['q']) : ''));
 }
 
 // ── Filtreler ─────────────────────────────────────────────────────────────────

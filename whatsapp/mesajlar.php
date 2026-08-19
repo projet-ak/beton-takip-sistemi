@@ -74,6 +74,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mesaj_ekle'])) {
 
 // ── AI ile (yeniden) çözümle ──────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['ai_coz']) && ctype_digit($_POST['ai_coz'])) {
+    // Yalnız bekleyen mesaj yeniden çözümlenebilir — onaylanmış mesajın verisi değişmesin
+    $dk = $pdo->prepare("SELECT durum FROM mesaj_kuyrugu WHERE id=?");
+    $dk->execute([(int)$_POST['ai_coz']]);
+    if ($dk->fetchColumn() !== 'bekliyor') {
+        flash('error', 'Yalnız onay bekleyen mesajlar yeniden çözümlenebilir.');
+        redirect('mesajlar.php');
+    }
     $r = mesaj_isle($pdo, (int)$_POST['ai_coz']);
     flash($r['ok'] ? 'success' : 'error', $r['ok']
         ? ((int)($r['olay_sayisi'] ?? 0) . ' hareket, ' . (int)($r['evrak_sayisi'] ?? 0) . ' evrak bulundu.')

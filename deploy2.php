@@ -146,6 +146,33 @@ for ($i = 0; $i < $zip->numFiles; $i++) {
 $zip->close();
 @unlink($zipFile);
 
+// ── Kalıntı temizliği ─────────────────────────────────────────────────────
+// Repodan taşınan/kaldırılan dosyalar: zip yalnız EKLER, silmez — eskiler
+// sunucuda çalışır halde kalır (ör. kökteki eski mesajlar.php irsaliye
+// oluşturabilirdi). Taşıma/kaldırma yapıldığında bu listeye ekle.
+$obsolete = [
+    'mesajlar.php',                       // → whatsapp/mesajlar.php
+    'saha_analiz.php',                    // → whatsapp/saha_analiz.php
+    'includes/mesaj.php',                 // → whatsapp/_ortak.php
+    'api/mesaj_al.php',                   // → whatsapp/api/mesaj_al.php
+    'setup.php',                          // kaldırıldı (güvenlik)
+    'metraj_takip.php',                   // kaldırıldı (sayfalar ayrıştı)
+    'uploads/ERN Holding_Logo_Beyaz.jpg.jpeg',   // → uploads/logo/
+    'uploads/ERN Holding_Logo_Beyaz.png',
+    'uploads/ERN Holding_Logo_Renkli (1).png',
+    'uploads/ERN Holding_Logo_Renkli.jpg.jpeg',
+    'uploads/ERN Holding_Logo_Renkli.png',
+    'uploads/ERN Taahhut_Logo_Beyaz.jpg.jpeg',
+    'uploads/ERN Taahhut_Logo_Beyaz.png',
+    'uploads/ERN Taahhut_Logo_Renkli.jpg.jpeg',
+    'uploads/ERN Taahhut_Logo_Renkli.png',
+];
+$deleted = [];
+foreach ($obsolete as $obs) {
+    $p = $destDir . '/' . $obs;
+    if (is_file($p) && @unlink($p)) $deleted[] = $obs;
+}
+
 // OPcache'i sıfırla — yoksa güncellenen dosyalar eski derlenmiş haliyle sunulmaya devam eder
 $opcache = 'yok';
 if (function_exists('opcache_reset')) {
@@ -155,8 +182,9 @@ clearstatcache(true);
 
 echo json_encode([
     'ok'      => true,
-    'msg'     => "$count dosya güncellendi",
+    'msg'     => "$count dosya güncellendi" . ($deleted ? ', ' . count($deleted) . ' kalıntı silindi' : ''),
     'branch'  => $branch,
     'opcache' => $opcache,
     'skipped' => $skipped,
+    'silinen' => $deleted,
 ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);

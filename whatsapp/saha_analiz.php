@@ -28,10 +28,13 @@ $TURLER = ['arac_giris'=>'Araç Giriş','arac_cikis'=>'Araç Çıkış','arac'=>
 $ARAC_TUR = "o.tur IN ('arac','arac_giris','arac_cikis')";   // araç sayılan türler
 $turF   = isset($_GET['tur']) && isset($TURLER[$_GET['tur']]) ? $_GET['tur'] : '';
 $kisiF  = trim((string)($_GET['kisi'] ?? ''));
+$bekDahil = ($_GET['bekleyen'] ?? '') === '1';   // onaylanmamış mesajları da dahil et
 
 // tarih NULL olan olaylarda mesajın geliş tarihini kullan
 $tarihIfade = "COALESCE(o.tarih, DATE(m.created_at))";
 $w = ["$tarihIfade BETWEEN ? AND ?"];
+// İnsan onayı ilkesi: varsayılan yalnız ONAYLANMIŞ mesajların olayları raporlanır
+$w[] = $bekDahil ? "COALESCE(m.durum,'bekliyor') <> 'reddedildi'" : "m.durum = 'onaylandi'";
 $p = [$bas, $bit];
 if ($turF)  { $w[] = "o.tur = ?";  $p[] = $turF; }
 if ($kisiF) { $w[] = "(o.kisi LIKE ? OR o.firma LIKE ? OR o.yetkili LIKE ? OR o.arac_plaka LIKE ?)";
@@ -115,12 +118,18 @@ require_once __DIR__ . '/../includes/header.php';
         <?php endforeach; ?>
       </select>
     </div>
-    <div class="col-6 col-md-3">
+    <div class="col-6 col-md-2">
       <label class="form-label small mb-0">Kişi / Firma / Plaka</label>
       <input name="kisi" value="<?= h($kisiF) ?>" class="form-control form-control-sm" placeholder="ara…">
     </div>
-    <div class="col-12 col-md-2 d-grid">
-      <button class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>Filtrele</button>
+    <div class="col-6 col-md-2">
+      <div class="form-check form-switch small mt-3">
+        <input class="form-check-input" type="checkbox" name="bekleyen" value="1" id="bekSw" <?= $bekDahil?'checked':'' ?>>
+        <label class="form-check-label" for="bekSw" title="Varsayılan: yalnız onaylanmış mesajlar sayılır">Bekleyenler dahil</label>
+      </div>
+    </div>
+    <div class="col-12 col-md-1 d-grid">
+      <button class="btn btn-primary btn-sm"><i class="bi bi-funnel"></i></button>
     </div>
   </div>
 </div></form>
@@ -129,7 +138,8 @@ require_once __DIR__ . '/../includes/header.php';
   <div class="alert alert-info">
     <i class="bi bi-info-circle me-1"></i>
     Bu aralıkta saha olayı yok. Mesajlar <a href="mesajlar.php" class="alert-link">Gelen Mesajlar</a>
-    ekranında AI ile çözümlendikçe buraya düşer.
+    ekranında çözümlenip <strong>onaylandıkça</strong> buraya düşer.
+    <?php if (!$bekDahil): ?>(Henüz onaylanmamışları görmek için "Bekleyenler dahil" seçeneğini açın.)<?php endif; ?>
   </div>
 <?php endif; ?>
 

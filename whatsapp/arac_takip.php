@@ -26,9 +26,12 @@ saha_semasi_kur($pdo);
 $bas    = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['bas'] ?? '') ? $_GET['bas'] : date('Y-m-d', strtotime('-14 days'));
 $bit    = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['bit'] ?? '') ? $_GET['bit'] : date('Y-m-d');
 $plakaF = saha_plaka_norm($_GET['plaka'] ?? '') ?? '';
+$bekDahil = ($_GET['bekleyen'] ?? '') === '1';   // onaylanmamış mesajları da dahil et
 
 $tarihIfade = "COALESCE(o.tarih, DATE(m.created_at))";
 $w = ["$tarihIfade BETWEEN ? AND ?", "o.tur IN ('arac_giris','arac_cikis','arac')"];
+// İnsan onayı ilkesi: varsayılan yalnız ONAYLANMIŞ mesajların hareketleri raporlanır
+$w[] = $bekDahil ? "COALESCE(m.durum,'bekliyor') <> 'reddedildi'" : "m.durum = 'onaylandi'";
 $p = [$bas, $bit];
 if ($plakaF !== '') { $w[] = "o.arac_plaka LIKE ?"; $p[] = "%$plakaF%"; }
 
@@ -142,12 +145,18 @@ require_once __DIR__ . '/../includes/header.php';
       <label class="form-label small mb-0">Bitiş</label>
       <input type="date" name="bit" value="<?= h($bit) ?>" class="form-control form-control-sm">
     </div>
-    <div class="col-8 col-md-4">
+    <div class="col-8 col-md-3">
       <label class="form-label small mb-0">Plaka</label>
       <input name="plaka" value="<?= h($plakaF) ?>" class="form-control form-control-sm" placeholder="34ABC123">
     </div>
-    <div class="col-4 col-md-2 d-grid">
-      <button class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>Filtrele</button>
+    <div class="col-8 col-md-2">
+      <div class="form-check form-switch small mt-3">
+        <input class="form-check-input" type="checkbox" name="bekleyen" value="1" id="bekSw" <?= $bekDahil?'checked':'' ?>>
+        <label class="form-check-label" for="bekSw" title="Varsayılan: yalnız onaylanmış mesajlar sayılır">Bekleyenler dahil</label>
+      </div>
+    </div>
+    <div class="col-4 col-md-1 d-grid">
+      <button class="btn btn-primary btn-sm"><i class="bi bi-funnel"></i></button>
     </div>
   </div>
 </div></form>
@@ -155,7 +164,8 @@ require_once __DIR__ . '/../includes/header.php';
 <?php if (!$toplamZiyaret): ?>
   <div class="alert alert-info"><i class="bi bi-info-circle me-1"></i>
     Bu aralıkta araç hareketi yok. Mesajlar <a href="mesajlar.php" class="alert-link">Gelen Mesajlar</a>
-    ekranında çözümlendikçe buraya düşer.</div>
+    ekranında çözümlenip <strong>onaylandıkça</strong> buraya düşer.
+    <?php if (!$bekDahil): ?>(Henüz onaylanmamışları görmek için "Bekleyenler dahil" seçeneğini açın.)<?php endif; ?></div>
 <?php endif; ?>
 
 <div class="row g-3 mb-4">
