@@ -112,6 +112,9 @@ $filtreDurum  = isset($_GET['durum']) && isset($DURUMLAR[$_GET['durum']]) ? $_GE
 $tarihBas     = isset($_GET['tarih_bas']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tarih_bas']) ? $_GET['tarih_bas'] : '';
 $tarihBit     = isset($_GET['tarih_bit']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tarih_bit']) ? $_GET['tarih_bit'] : '';
 $ihrac        = isset($_GET['export']) && in_array($_GET['export'], ['csv','xlsx'], true) ? $_GET['export'] : '';
+// Fatura Eşleştirme ekranından gelen bağ (irsaliyeler.fatura_id kolonu runtime eklenir)
+$filtreFatura = isset($_GET['fatura_id']) && ctype_digit((string)$_GET['fatura_id']) ? (int)$_GET['fatura_id'] : 0;
+if ($filtreFatura && !$pdo->query("SHOW COLUMNS FROM irsaliyeler LIKE 'fatura_id'")->fetch()) $filtreFatura = 0;
 
 $where  = $tip !== 'tum' ? ['i.tip = ?'] : [];
 $params = $tip !== 'tum' ? [$tip] : [];
@@ -122,6 +125,7 @@ if ($filtreBlok)   { $where[] = 'i.blok_id = ?';          $params[] = $filtreBlo
 if ($filtreBS)     { $where[] = 'i.beton_sinifi_id = ?';  $params[] = $filtreBS; }
 if ($filtreProje)  { $where[] = 'i.proje_id = ?';         $params[] = $filtreProje; }
 if ($filtreDurum)  { $where[] = 'i.durum = ?';            $params[] = $filtreDurum; }
+if ($filtreFatura) { $where[] = 'i.fatura_id = ?';       $params[] = $filtreFatura; }
 if ($filtreYil)    { $where[] = 'YEAR(i.tarih) = ?';      $params[] = $filtreYil; }
 if ($filtreAy)     { $where[] = 'MONTH(i.tarih) = ?';     $params[] = $filtreAy; }
 if ($tarihBas !== '') { $where[] = 'i.tarih >= ?';        $params[] = $tarihBas; }

@@ -264,6 +264,11 @@ try {
 
     $pdo->exec("SET FOREIGN_KEY_CHECKS=1");
 
+    // ── Fatura eşleştirme (faturalar tablosu + irsaliyeler.fatura_id) ─────────
+    require_once __DIR__ . '/includes/fatura.php';
+    fat_semasi_kur($pdo);
+    $log[] = ['ok', 'faturalar tablosu oluşturuldu / zaten mevcuttu (+ irsaliyeler.fatura_id)'];
+
     // ── İndeksleri garanti et (mevcut DB'lerde CREATE TABLE indeks eklemez) ────
     $idxEnsure = [
         ['irsaliyeler', 'idx_tip_tarih', '(tip, tarih)'],

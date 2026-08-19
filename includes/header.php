@@ -155,6 +155,11 @@ if ($__user) {
           <i class="bi bi-bar-chart-line"></i><span>Raporlar</span>
         </a>
       </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('fatura_eslestir.php') ?>" href="<?= $__rootPath ?>fatura_eslestir.php" data-label="Fatura">
+          <i class="bi bi-receipt-cutoff"></i><span>Fatura Eşleştirme</span>
+        </a>
+      </li>
       <?php endif; ?>
 
       <?php if(can_manage_definitions()): ?>
