@@ -88,6 +88,25 @@ function getOrCreateProje(PDO $pdo, ?string $kod): ?int {
 }
 
 /**
+ * Satır GERÇEK bir irsaliye verisi mi?
+ *
+ * Excel şablonunda "Sıra" sütunu formülle binlerce satır aşağı uzatılmış ve
+ * toplam hücreleri 0 üretiyor; bu satırlar boş görünse de teknik olarak dolu.
+ * Bu yüzden "hiçbir hücre dolu değil" testi yetmez — satırı ancak KİLİT
+ * alanlardan (irsaliye no / tarih / tedarikçi / plaka / miktar) en az biri
+ * doluysa veri sayarız. Sıra numarası veya sıfır tek başına satır yapmaz.
+ */
+function satirVeriMi(array $r, array $colMapping): bool {
+    foreach (['irsaliye_no', 'tarih', 'tedarikci', 'arac_plaka', 'miktar'] as $k) {
+        if (!isset($colMapping[$k])) continue;
+        $v = trim((string)($r[$colMapping[$k]] ?? ''));
+        if ($v === '' || $v === '0') continue;
+        return true;
+    }
+    return false;
+}
+
+/**
  * İmalat/metraj/zayiat sayfalarını (PRP Bina Üstyapı, İksa Kazık, İCMAL, Metraj …)
  * metraj_sayfa tablosuna grid (JSON) olarak kaydeder — İmalat Sayfaları / PRP / İcmal
  * ekranları buradan okur. Sayfa1, VERİ ve KOT hariç (KOT Kotlar sayfasında yönetilir).
@@ -394,7 +413,9 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                     foreach ($idxler as $idx) {
                         if (!isset($rows[$idx])) continue;
                         $r = $rows[$idx];
-                        
+                        // Formülle uzatılmış sahte satır seçilmişse sessizce atla (rapora girmesin)
+                        if (!satirVeriMi($r, $colMapping)) continue;
+
                         // Sütun verilerini eşle
                         $val = function($key, $default = null) use ($r, $colMapping) {
                             if (isset($colMapping[$key]) && isset($r[$colMapping[$key]])) {
@@ -667,7 +688,8 @@ require_once __DIR__ . '/includes/header.php';
                             </tr>
                             <?php for ($i = $dataStartIdx; $i < $totalRows; $i++):
                                 $r = $rows[$i];
-                                if (count(array_filter($r)) === 0) continue;
+                                // Formülle uzatılmış sahte satırları ele (sıra no / 0 dolu ama veri yok)
+                                if (!satirVeriMi($r, $colMapping)) continue;
                                 $hasValidRows = true;
 
                                 $getVal = function($key) use ($r, $colMapping) {
