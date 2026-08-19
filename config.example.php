@@ -48,6 +48,9 @@ define('DB_PASS', 'sifre');
 // define('MESAJ_SAKLAMA_GUN', 90);
 // Meta Cloud API kullanılıyorsa gelen fotoğrafları indirmek için Graph erişim tokeni:
 // define('WHATSAPP_GRAPH_TOKEN', '');
+// Telegram bot köprüsü (whatsapp/api/telegram_al.php): @BotFather'dan alınan token.
+// Webhook: https://api.telegram.org/bot<TOKEN>/setWebhook?url=<site>/whatsapp/api/telegram_al.php&secret_token=<MESAJ_TOKEN>
+// define('TELEGRAM_BOT_TOKEN', '');
 
 // ── Oturum / AI (opsiyonel) ──────────────────────────────────────────────────
 // define('SESSION_LIFETIME', 3600);

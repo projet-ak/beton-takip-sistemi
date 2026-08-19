@@ -181,6 +181,73 @@ function meta_medya_indir(string $mediaId, string $token): ?string
     return 'uploads/whatsapp/' . date('Y/m') . '/' . $ad;
 }
 
+/**
+ * Telegram Bot API medyasını indir → uploads/whatsapp/Y/m/ altına kaydet.
+ * İki adım: getFile (file_id → file_path) → dosya indirme. 8 MB sınır.
+ * @return string|null Göreli yol, hata durumunda null
+ */
+function telegram_medya_indir(string $fileId, string $botToken): ?string
+{
+    if ($fileId === '' || $botToken === '') return null;
+
+    $getir = function (string $url) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 3,
+            CURLOPT_TIMEOUT        => 30,
+            CURLOPT_SSL_VERIFYPEER => true,
+        ]);
+        $body = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        unset($ch);
+        return ($body !== false && $code === 200) ? $body : null;
+    };
+
+    $meta = $getir('https://api.telegram.org/bot' . $botToken . '/getFile?file_id=' . rawurlencode($fileId));
+    $j = $meta !== null ? json_decode($meta, true) : null;
+    $filePath = is_array($j) ? (string)($j['result']['file_path'] ?? '') : '';
+    if ($filePath === '') return null;
+
+    $veri = $getir('https://api.telegram.org/file/bot' . $botToken . '/' . $filePath);
+    if ($veri === null || strlen($veri) > 8 * 1024 * 1024) return null;
+
+    $uzanti = strtolower(pathinfo($filePath, PATHINFO_EXTENSION)) ?: 'jpg';
+    if (!in_array($uzanti, ['jpg','jpeg','png','webp','gif','pdf'], true)) $uzanti = 'jpg';
+    $dizin = dirname(__DIR__) . '/uploads/whatsapp/' . date('Y/m');
+    if (!is_dir($dizin)) @mkdir($dizin, 0755, true);
+    $ad = uniqid('tg_', true) . '.' . $uzanti;
+    if (file_put_contents($dizin . '/' . $ad, $veri) === false) return null;
+
+    return 'uploads/whatsapp/' . date('Y/m') . '/' . $ad;
+}
+
+/**
+ * Bekleyen bir mesaja sonradan görsel (ve yer tutucu yerine gerçek metin) iliştir.
+ * Telegram albümleri parça parça gelir; ilk parça mesajı açar, sonrakiler buraya eklenir.
+ * Yeni görsel eklendiğinde ai_durum 'bekliyor'a döner (tüm görsellerle yeniden çözümlensin).
+ */
+function mesaj_medya_ekle(PDO $pdo, int $id, array $yeniGorseller, string $metin = ''): bool
+{
+    $s = $pdo->prepare("SELECT durum, ham_metin, medya_url, medya_json FROM mesaj_kuyrugu WHERE id=?");
+    $s->execute([$id]);
+    $row = $s->fetch(PDO::FETCH_ASSOC);
+    if (!$row || $row['durum'] !== 'bekliyor') return false;
+
+    $tum = array_values(array_unique(array_merge(
+        mesaj_gorseller($row),
+        array_values(array_filter($yeniGorseller, 'is_string'))
+    )));
+    $yeniMetin = ($metin !== '' && trim((string)$row['ham_metin']) === '(yalnız görsel)') ? $metin : (string)$row['ham_metin'];
+
+    $pdo->prepare("UPDATE mesaj_kuyrugu
+                   SET medya_url=?, medya_json=?, ham_metin=?, ai_durum='bekliyor', ai_hata=NULL
+                   WHERE id=?")
+        ->execute([$tum[0] ?? null, $tum ? json_encode($tum, JSON_UNESCAPED_UNICODE) : null, $yeniMetin, $id]);
+    return true;
+}
+
 /** AI'ya verilecek tanım listeleri (eşleştirme için). */
 function mesaj_tanimlar(PDO $pdo): array
 {

@@ -152,7 +152,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   - **`whatsapp/arac_takip.php`** (`can_view_reports()`) — **kaç araç girdi, ne kadar kaldı**. Süre 3 kaynaktan: `sure_saat` → aynı kayıtta `saat_bas`+`saat_bit` → `arac_giris`/`arac_cikis` eşleştirme (aynı gün+plaka, gece yarısını aşan geçişler dahil). Eşleşmeyenler "açık" rozetiyle ayrı sayılır.
   - **`whatsapp/evraklar.php`** — paylaşılan belgeler **türüne göre gruplu** (irsaliye/tutanak/fatura/puantaj/ruhsat/foto), görseliyle ve **onayı veren kişiyle**. Tek tek onay/ret.
   - **`whatsapp/saha_analiz.php`** (`can_view_reports()`) — genel saha hareketi (personel giriş/çıkış, yetkilendirme) + zaman çizelgesi.
-  - Giriş ucu **`whatsapp/api/mesaj_al.php`** (`MESAJ_TOKEN`, Meta webhook doğrulamalı; yol `/api/` içerdiği için CSRF muaf). Ortak katman **`whatsapp/_ortak.php`**.
+  - Giriş uçları: **`whatsapp/api/mesaj_al.php`** (genel + Meta webhook) ve **`whatsapp/api/telegram_al.php`** (**Telegram bot köprüsü** — resmî Bot API, risksiz; WhatsApp'tan 'Paylaş→Telegram→bot' ile ya da botun üye olduğu Telegram grubundan otomatik beslenir; `TELEGRAM_BOT_TOKEN` + setWebhook secret_token=`MESAJ_TOKEN`; fotoğraf `telegram_medya_indir()` ile iner, albümler `media_group_id`→`mesaj_medya_ekle()` ile tek mesajda birleşir; grup için BotFather /setprivacy Disable). İkisi de `MESAJ_TOKEN` korumalı, `/api/` yolunda (CSRF muaf). Ortak katman **`whatsapp/_ortak.php`**.
   - Tablolar: `mesaj_kuyrugu` · `saha_olaylari` (tur: arac_giris/arac_cikis/arac/personel_*/yetki/is/diger + `arac_cinsi`) · `saha_evrak` (tur/belge_no/dosya_url/**onaylayan**/onay_user/onay_at/durum). Plaka `saha_plaka_norm()` ile normalize ("34 abc 123"→"34ABC123").
   - **Resmî puantaj/İSG/giriş-çıkış kaydı değildir** (her sayfada uyarı bandı).
   - Raporlar (araç/analiz) varsayılan **yalnız onaylanmış** mesajları sayar ("Bekleyenler dahil" anahtarı var).
@@ -331,6 +331,9 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 > Önce mevcut **web projesi bitirilecek**; aşağıdakiler sıraya alınmıştır.
 
 ### 0) WhatsApp grup bağlantısı (BEKLEMEDE — kullanıcı haber verecek)
+- **Telegram köprüsü KURULDU** (`whatsapp/api/telegram_al.php`): risksiz ara çözüm — mesajlar WhatsApp'tan
+  'Paylaş→Telegram→bot' ile iki dokunuşta iletilir, görseller tam kalite düşer. Aktifleştirme: BotFather'dan
+  bot + `TELEGRAM_BOT_TOKEN` + setWebhook (uç dosyanın başındaki yorumda adım adım).
 - **Karar verildi:** Baileys ile gruba bağlanılacak (WhatsApp Web protokolü, VPS'te Node dinleyici).
   Kullanıcının **data hattı** aday numara — SMS doğrulaması alabiliyorsa kullanılacak; uygun zamanda
   test edip haber verecek. O güne dek **elle yapıştırma** akışı kullanılıyor (çalışıyor, AI doğruluğu
