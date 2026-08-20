@@ -14,6 +14,7 @@ if (!file_exists(__DIR__ . '/config.php')) { redirect('install.php'); }
 require_auth(['admin','teknik_ofis_admin','teknik_ofis']);
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/fatura.php';
+require_once __DIR__ . '/includes/belge.php';
 
 $pageTitle = 'Fatura Eşleştirme — Beton Takip Sistemi';
 try { fat_semasi_kur($pdo); } catch (Throwable $e) { flash('error', 'Şema hatası: '.$e->getMessage()); }
@@ -82,7 +83,22 @@ if (($_POST['action'] ?? '') === 'kaydet') {
             'eksik_adet'   => (int)($_POST['eksik_adet'] ?? 0),
             'notlar'       => trim((string)($_POST['notlar'] ?? '')) ?: null,
         ], $ids, current_user_id(), trim((string)($_POST['dosya_url'] ?? '')) ?: null);
-        flash('success', "Fatura kaydedildi: {$r['baglanan']} irsaliye faturaya bağlandı.");
+
+        // Fatura dosyasını eşleşen her irsaliyenin belgelerine de ekle (irsaliye ekranından görünsün)
+        $dosya = trim((string)($_POST['dosya_url'] ?? ''));
+        $eklenen = 0;
+        if ($dosya !== '' && $ids) {
+            blg_semasi_kur($pdo);
+            $vr = $pdo->prepare("SELECT COUNT(*) FROM irsaliye_fotolar WHERE irsaliye_id=? AND dosya_yolu=?");
+            foreach ($ids as $iid) {
+                $vr->execute([$iid, $dosya]);
+                if ((int)$vr->fetchColumn() > 0) continue;   // aynı fatura ikinci kez eklenmesin
+                blg_ekle($pdo, (int)$iid, 'Fatura ' . trim((string)($_POST['fatura_no'] ?? '')), $dosya, 'fatura', null, current_user_id());
+                $eklenen++;
+            }
+        }
+        flash('success', "Fatura kaydedildi: {$r['baglanan']} irsaliye faturaya bağlandı"
+                       . ($eklenen ? ", fatura {$eklenen} irsaliyenin belgelerine eklendi." : "."));
     } catch (Throwable $e) {
         flash('error', 'Kayıt hatası: '.$e->getMessage());
     }

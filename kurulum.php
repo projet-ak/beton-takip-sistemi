@@ -269,6 +269,11 @@ try {
     fat_semasi_kur($pdo);
     $log[] = ['ok', 'faturalar tablosu oluşturuldu / zaten mevcuttu (+ irsaliyeler.fatura_id)'];
 
+    // ── Belge okuma (irsaliye_fotolar.tur / .okunan) ──────────────────────────
+    require_once __DIR__ . '/includes/belge.php';
+    blg_semasi_kur($pdo);
+    $log[] = ['ok', 'irsaliye_fotolar belge kolonları (tur, okunan) eklendi / zaten mevcuttu'];
+
     // ── İndeksleri garanti et (mevcut DB'lerde CREATE TABLE indeks eklemez) ────
     $idxEnsure = [
         ['irsaliyeler', 'idx_tip_tarih', '(tip, tarih)'],

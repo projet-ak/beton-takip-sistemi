@@ -114,6 +114,12 @@ if ($__user) {
         </a>
       </li>
 
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('belge_dagit.php') ?>" href="<?= $__rootPath ?>belge_dagit.php" data-label="Belge Oku">
+          <i class="bi bi-magic"></i><span>Belge Oku & Dağıt</span>
+        </a>
+      </li>
+
       <?php if(can_view_reports()): ?>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('zayiat_takip.php') ?>" href="<?= $__rootPath ?>zayiat_takip.php" data-label="Zayiat Takip">

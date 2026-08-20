@@ -9,6 +9,8 @@ if (!file_exists(__DIR__ . '/config.php')) { redirect('install.php'); }
 
 require_auth();
 require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/belge.php';
+try { blg_semasi_kur($pdo); } catch (Throwable $e) { /* kolonlar zaten varsa geç */ }
 
 $id = isset($_GET['id']) && ctype_digit($_GET['id']) ? (int)$_GET['id'] : 0;
 if (!$id) { flash('error', 'Geçersiz istek.'); redirect('irsaliyeler.php'); }
@@ -53,13 +55,17 @@ if (!$row) { flash('error', 'İrsaliye bulunamadı.'); redirect('irsaliyeler.php
 
 $pageTitle = 'İrsaliye Detay #' . $id . ' — Beton Takip Sistemi';
 
-// Fotoğraf yükleme
+// Belge / fotoğraf yükleme (kantar fişi ve fatura AI ile okunur)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && can_edit() && isset($_FILES['foto'])) {
     $allowed = ['image/jpeg','image/png','image/webp','image/gif','application/pdf'];
     $maxSize = 10 * 1024 * 1024; // 10 MB
+    $tur     = isset($_POST['tur']) && isset(BLG_TURLER[$_POST['tur']]) ? $_POST['tur'] : 'foto';
+    $oku     = !empty($_POST['oku']) && in_array($tur, ['kantar','fatura','irsaliye'], true);
 
     $yuklenen = 0;
     $atlanan  = [];   // dosya adı → neden
+    $okundu   = 0;
+    $uygulanan = [];
 
     foreach ($_FILES['foto']['tmp_name'] as $i => $tmpName) {
         $hata = (int)$_FILES['foto']['error'][$i];
@@ -71,32 +77,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && can_edit() && isset($_FILES['foto']
         if (!in_array($mime, $allowed)) { $atlanan[] = "$ad: desteklenmeyen tür"; continue; }
         if ($_FILES['foto']['size'][$i] > $maxSize) { $atlanan[] = "$ad: 10 MB sınırı aşıldı"; continue; }
 
-        $uploadDir = __DIR__ . '/uploads/irsaliye_' . $id . '/';
-        if (!is_dir($uploadDir)) { mkdir($uploadDir, 0755, true); }
+        $dosya = blg_dosya_tasi($tmpName, $ad, $id, __DIR__);
+        if (!$dosya) { $atlanan[] = "$ad: diske yazılamadı"; continue; }
 
-        $ext       = pathinfo($ad, PATHINFO_EXTENSION);
-        $safeName  = uniqid('foto_', true) . '.' . strtolower($ext);
-        $fullPath  = $uploadDir . $safeName;
-        $relPath   = 'uploads/irsaliye_' . $id . '/' . $safeName;
+        // AI okuma — dosya diske yazıldıktan SONRA (okuma başarısız olsa da belge kaybolmaz)
+        $veri = null;
+        if ($oku) {
+            try { $veri = blg_ai_oku($dosya['tam'], $mime, $tur); } catch (Throwable $e) { $veri = null; }
+            if ($veri) $okundu++;
+        }
+        blg_ekle($pdo, $id, $ad, $dosya['yol'], $tur, $veri, current_user_id());
+        $yuklenen++;
 
-        if (move_uploaded_file($tmpName, $fullPath)) {
-            $pdo->prepare("INSERT INTO irsaliye_fotolar (irsaliye_id, dosya_adi, dosya_yolu, created_by) VALUES (?,?,?,?)")
-                ->execute([$id, $ad, $relPath, current_user_id()]);
-            $yuklenen++;
-        } else {
-            $atlanan[] = "$ad: diske yazılamadı";
+        // Kantar fişi okunduysa boş kantar alanlarını doldur
+        if ($veri && $tur === 'kantar' && !empty($_POST['kantar_uygula'])) {
+            $uygulanan = array_merge($uygulanan, blg_kantar_uygula($pdo, $id, $veri, current_user_id()));
         }
     }
 
+    $turAd = blg_tur_ad($tur);
     if ($yuklenen === 0 && !$atlanan) {
-        flash('error', 'Dosya seçilmedi — önce fotoğraf seçin.');
-    } elseif ($yuklenen > 0 && !$atlanan) {
-        flash('success', "$yuklenen fotoğraf yüklendi.");
-    } elseif ($yuklenen > 0) {
-        flash('success', "$yuklenen yüklendi, " . count($atlanan) . ' atlandı: ' . implode(' · ', $atlanan));
+        flash('error', 'Dosya seçilmedi — önce dosya seçin.');
     } else {
-        flash('error', 'Hiçbir dosya yüklenemedi: ' . implode(' · ', $atlanan));
+        $mesaj = [];
+        if ($yuklenen > 0) $mesaj[] = "$yuklenen $turAd yüklendi";
+        if ($oku)          $mesaj[] = ($okundu > 0 ? "$okundu tanesi AI ile okundu" : 'AI okuma başarısız (belge yine de kaydedildi)');
+        if ($uygulanan)    $mesaj[] = 'İrsaliyeye yazıldı: ' . implode(' · ', $uygulanan);
+        if ($atlanan)      $mesaj[] = count($atlanan) . ' atlandı: ' . implode(' · ', $atlanan);
+        flash($yuklenen > 0 ? 'success' : 'error', implode(' — ', $mesaj));
     }
+    redirect("irsaliye_detay.php?id={$id}");
+}
+
+// Okunan kantar değerlerini sonradan uygula
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && can_edit() && ($_POST['action'] ?? '') === 'kantar_uygula') {
+    $bid = (int)($_POST['belge_id'] ?? 0);
+    $b = $pdo->prepare("SELECT okunan FROM irsaliye_fotolar WHERE id=? AND irsaliye_id=?");
+    $b->execute([$bid, $id]);
+    $ok = json_decode((string)$b->fetchColumn(), true);
+    if (is_array($ok)) {
+        $u = blg_kantar_uygula($pdo, $id, $ok, current_user_id());
+        flash($u ? 'success' : 'info', $u ? 'İrsaliyeye yazıldı: ' . implode(' · ', $u)
+                                         : 'Yazılacak boş alan kalmadı — mevcut değerler korundu.');
+    } else { flash('error', 'Bu belgede okunmuş veri yok.'); }
     redirect("irsaliye_detay.php?id={$id}");
 }
 
@@ -107,9 +130,13 @@ if (can_edit() && isset($_GET['foto_sil']) && ctype_digit($_GET['foto_sil'])) {
     $frow->execute([$fid, $id]);
     $frow = $frow->fetch();
     if ($frow) {
-        @unlink(__DIR__ . '/' . $frow['dosya_yolu']);
         $pdo->prepare("DELETE FROM irsaliye_fotolar WHERE id=?")->execute([$fid]);
-        flash('success', 'Fotoğraf silindi.');
+        // Aynı dosya birden çok irsaliyeye bağlı olabilir (ör. tek fatura → 9 irsaliye);
+        // diskten yalnız son bağ da koptuğunda sil.
+        $kalan = $pdo->prepare("SELECT COUNT(*) FROM irsaliye_fotolar WHERE dosya_yolu=?");
+        $kalan->execute([$frow['dosya_yolu']]);
+        if ((int)$kalan->fetchColumn() === 0) @unlink(__DIR__ . '/' . $frow['dosya_yolu']);
+        flash('success', 'Belge silindi.');
     }
     redirect("irsaliye_detay.php?id={$id}");
 }
@@ -118,6 +145,15 @@ if (can_edit() && isset($_GET['foto_sil']) && ctype_digit($_GET['foto_sil'])) {
 $fotolar = $pdo->prepare("SELECT * FROM irsaliye_fotolar WHERE irsaliye_id=? ORDER BY created_at");
 $fotolar->execute([$id]);
 $fotolar = $fotolar->fetchAll();
+
+// Bağlı fatura (fatura_eslestir.php ile kurulan bağ)
+$bagliFatura = null;
+if (!empty($row['fatura_id'])) {
+    $f = $pdo->prepare("SELECT f.*, t.ad AS tedarikci FROM faturalar f
+                        LEFT JOIN tedarikciler t ON t.id = f.tedarikci_id WHERE f.id = ?");
+    $f->execute([(int)$row['fatura_id']]);
+    $bagliFatura = $f->fetch() ?: null;
+}
 
 require_once __DIR__ . '/includes/header.php';
 ?>
@@ -308,20 +344,63 @@ require_once __DIR__ . '/includes/header.php';
             </div>
         </div>
 
-        <!-- Fotoğraflar -->
+        <?php if ($bagliFatura): ?>
+        <!-- Bağlı fatura -->
+        <div class="card mb-3 border-success">
+            <div class="card-header bg-white fw-semibold"><i class="bi bi-receipt-cutoff text-success me-1"></i> Bağlı Fatura</div>
+            <div class="card-body small">
+                <div class="fw-bold"><?= h($bagliFatura['fatura_no']) ?></div>
+                <div class="text-muted"><?= h(format_date($bagliFatura['tarih'])) ?><?= $bagliFatura['tedarikci'] ? ' · '.h($bagliFatura['tedarikci']) : '' ?></div>
+                <?php if ($bagliFatura['tutar'] !== null): ?>
+                <div class="mt-1">Tutar: <strong><?= format_number($bagliFatura['tutar'], 2) ?> ₺</strong></div>
+                <?php endif; ?>
+                <div class="mt-2 d-flex gap-1 flex-wrap">
+                    <?php if ($bagliFatura['dosya_url']): ?>
+                    <a href="<?= h($bagliFatura['dosya_url']) ?>" target="_blank" class="btn btn-sm btn-outline-success py-0"><i class="bi bi-file-earmark-pdf me-1"></i>Faturayı Aç</a>
+                    <?php endif; ?>
+                    <a href="irsaliyeler.php?tip=tum&fatura_id=<?= (int)$bagliFatura['id'] ?>" class="btn btn-sm btn-outline-secondary py-0">Aynı Faturadakiler</a>
+                </div>
+            </div>
+        </div>
+        <?php endif; ?>
+
+        <!-- Belgeler -->
         <div class="card">
             <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
-                <span><i class="bi bi-images text-primary me-1"></i> Fotoğraflar</span>
+                <span><i class="bi bi-images text-primary me-1"></i> Belgeler & Fotoğraflar</span>
                 <span class="badge bg-secondary"><?= count($fotolar) ?></span>
             </div>
             <div class="card-body">
                 <?php if (can_edit()): ?>
                 <form method="post" enctype="multipart/form-data" class="mb-3">
-                    <label class="form-label small">Fotoğraf / Belge Yükle</label>
+                    <label class="form-label small">Belge Türü</label>
+                    <select name="tur" id="blgTur" class="form-select form-select-sm mb-2" onchange="blgTurDegis()">
+                        <?php foreach (BLG_TURLER as $k => $bt): ?>
+                        <option value="<?= h($k) ?>"><?= h($bt['ad']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
                     <input type="file" name="foto[]" class="form-control form-control-sm" multiple accept="image/*,application/pdf" required>
                     <div class="form-text">JPG, PNG, WebP, PDF — maks 10 MB</div>
+                    <div id="blgOkuKutu" class="mt-2 d-none">
+                        <div class="form-check form-check-sm">
+                            <input class="form-check-input" type="checkbox" name="oku" value="1" id="blgOku" checked>
+                            <label class="form-check-label small" for="blgOku">Belgeyi <strong>AI ile oku</strong> (fiş/fatura alanlarını çıkarsın)</label>
+                        </div>
+                        <div class="form-check form-check-sm" id="blgUygulaKutu">
+                            <input class="form-check-input" type="checkbox" name="kantar_uygula" value="1" id="blgUygula" checked>
+                            <label class="form-check-label small" for="blgUygula">Okunan kantar değerlerini <strong>boş alanlara yaz</strong></label>
+                        </div>
+                    </div>
                     <button class="btn btn-sm btn-primary mt-2"><i class="bi bi-upload me-1"></i>Yükle</button>
                 </form>
+                <script>
+                function blgTurDegis(){
+                    var t = document.getElementById('blgTur').value;
+                    document.getElementById('blgOkuKutu').classList.toggle('d-none', !['kantar','fatura','irsaliye'].includes(t));
+                    document.getElementById('blgUygulaKutu').classList.toggle('d-none', t !== 'kantar');
+                }
+                blgTurDegis();
+                </script>
                 <?php endif; ?>
 
                 <?php if ($fotolar): ?>
@@ -332,7 +411,14 @@ require_once __DIR__ . '/includes/header.php';
                             <?php
                             $ext = strtolower(pathinfo($f['dosya_yolu'], PATHINFO_EXTENSION));
                             $imgExts = ['jpg','jpeg','png','webp','gif'];
+                            $fTur = $f['tur'] ?? 'foto';
+                            $fOku = !empty($f['okunan']) ? json_decode((string)$f['okunan'], true) : null;
                             ?>
+                            <?php if ($fTur !== 'foto'): ?>
+                            <span class="badge bg-dark position-absolute top-0 start-0 m-1" style="z-index:2">
+                                <i class="bi <?= h(blg_tur_ikon($fTur)) ?> me-1"></i><?= h(blg_tur_ad($fTur)) ?>
+                            </span>
+                            <?php endif; ?>
                             <?php if (in_array($ext, $imgExts)): ?>
                                 <a href="<?= h($f['dosya_yolu']) ?>" target="_blank">
                                     <img src="<?= h($f['dosya_yolu']) ?>" class="img-thumbnail w-100" style="height:80px;object-fit:cover" alt="Fotoğraf">
@@ -351,6 +437,32 @@ require_once __DIR__ . '/includes/header.php';
                             </a>
                             <?php endif; ?>
                         </div>
+                        <?php if (is_array($fOku)): ?>
+                        <div class="border rounded p-2 mt-1 small bg-body-tertiary">
+                            <?php
+                            $satir = [];
+                            if (!empty($fOku['fis_no']))      $satir[] = 'Fiş No: <strong>'.h($fOku['fis_no']).'</strong>';
+                            if (!empty($fOku['irsaliye_no'])) $satir[] = 'İrsaliye: <strong>'.h($fOku['irsaliye_no']).'</strong>';
+                            if (!empty($fOku['plaka']))       $satir[] = 'Plaka: <strong>'.h($fOku['plaka']).'</strong>';
+                            if (isset($fOku['net_kg']) && $fOku['net_kg'] !== null) $satir[] = 'Net: <strong>'.format_number($fOku['net_kg'], 2).' kg</strong>';
+                            if (!empty($fOku['giris_saati']) || !empty($fOku['cikis_saati']))
+                                $satir[] = 'Saat: <strong>'.h($fOku['giris_saati'] ?: '?').' → '.h($fOku['cikis_saati'] ?: '?').'</strong>';
+                            if (!empty($fOku['firma']))       $satir[] = 'Firma: '.h($fOku['firma']);
+                            echo $satir ? implode('<br>', $satir) : '<span class="text-muted">Okunabilir alan bulunamadı.</span>';
+                            $guven = (float)($fOku['guven'] ?? 0);
+                            ?>
+                            <?php if ($guven > 0 && $guven < 0.8): ?>
+                            <div class="text-warning mt-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>Düşük güven (<?= number_format($guven*100, 0) ?>%) — kontrol edin.</div>
+                            <?php endif; ?>
+                            <?php if (can_edit() && $fTur === 'kantar'): ?>
+                            <form method="post" class="mt-1">
+                                <input type="hidden" name="action" value="kantar_uygula">
+                                <input type="hidden" name="belge_id" value="<?= (int)$f['id'] ?>">
+                                <button class="btn btn-xs btn-outline-primary py-0"><i class="bi bi-arrow-down-square me-1"></i>İrsaliyeye yaz</button>
+                            </form>
+                            <?php endif; ?>
+                        </div>
+                        <?php endif; ?>
                     </div>
                     <?php endforeach; ?>
                 </div>
