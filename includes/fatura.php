@@ -304,6 +304,29 @@ function fat_baskaya_bagli(PDO $pdo, array $irsIds, int $haric = 0): array
     return $out;
 }
 
+/**
+ * Bir faturaya bağlı irsaliyeleri döndürür (mutabakat ekranında listelemek için).
+ * @param int[] $faturaIds  Birden çok fatura verilirse sonuç fatura_id'ye göre gruplanır.
+ * @return array<int, array>  fatura_id => irsaliye satırları
+ */
+function fat_bagli_irsaliyeler(PDO $pdo, array $faturaIds): array
+{
+    $faturaIds = array_values(array_unique(array_filter(array_map('intval', $faturaIds))));
+    if (!$faturaIds) return [];
+    $yer = implode(',', array_fill(0, count($faturaIds), '?'));
+    $st = $pdo->prepare("SELECT i.id, i.fatura_id, i.irsaliye_no, i.tarih, i.miktar, i.arac_plaka, i.durum,
+                                t.ad AS tedarikci, bs.ad AS beton_sinifi
+                         FROM irsaliyeler i
+                         LEFT JOIN tedarikciler t ON t.id = i.tedarikci_id
+                         LEFT JOIN beton_siniflari bs ON bs.id = i.beton_sinifi_id
+                         WHERE i.fatura_id IN ($yer)
+                         ORDER BY i.tarih, i.irsaliye_no");
+    $st->execute($faturaIds);
+    $out = [];
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) $out[(int)$r['fatura_id']][] = $r;
+    return $out;
+}
+
 /** faturalar tablosunu garanti et (runtime migration). */
 function fat_semasi_kur(PDO $pdo): void
 {

@@ -72,9 +72,11 @@ if (($_POST['action'] ?? '') === 'coz') {
             // Mükerrer kontrolü: fatura zaten kayıtlı mı, irsaliyeler başka faturaya bağlı mı
             $mevcut  = fat_mevcut($pdo, $veri['fatura_no'], $veri['ettn']);
             $baskasi = fat_baskaya_bagli($pdo, array_column($eslesme['eslesen'], 'id'), (int)($mevcut['id'] ?? 0));
+            // Zaten kayıtlıysa hangi irsaliyelere bağlı olduğunu ekranda göster
+            $mevcutIrs = $mevcut ? (fat_bagli_irsaliyeler($pdo, [(int)$mevcut['id']])[(int)$mevcut['id']] ?? []) : [];
 
             $sonuc = ['veri'=>$veri, 'eslesme'=>$eslesme, 'kaynak'=>$kaynak, 'dosya_url'=>$dosyaUrl,
-                      'metin'=>$metin, 'mevcut'=>$mevcut, 'baskasi'=>$baskasi];
+                      'metin'=>$metin, 'mevcut'=>$mevcut, 'baskasi'=>$baskasi, 'mevcut_irs'=>$mevcutIrs];
         }
     }
 }
@@ -134,6 +136,8 @@ $kayitli = $pdo->query("SELECT f.*, t.ad AS tedarikci,
                                (SELECT COUNT(*) FROM irsaliyeler i WHERE i.fatura_id = f.id) AS bagli
                         FROM faturalar f LEFT JOIN tedarikciler t ON t.id = f.tedarikci_id
                         ORDER BY f.tarih DESC, f.id DESC LIMIT 100")->fetchAll();
+// Her faturanın bağlı irsaliyeleri — listede satır açılınca gösterilir
+$kayitliIrs = $kayitli ? fat_bagli_irsaliyeler($pdo, array_column($kayitli, 'id')) : [];
 
 require_once __DIR__ . '/includes/header.php';
 $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
@@ -323,12 +327,17 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
 <input type="hidden" name="eksik_adet" value="<?= $eksikAdet ?>">
 
 <?php
-$mevcut  = $sonuc['mevcut']  ?? null;
-$baskasi = $sonuc['baskasi'] ?? [];
+$mevcut    = $sonuc['mevcut']  ?? null;
+$baskasi   = $sonuc['baskasi'] ?? [];
+$mevcutIrs = $sonuc['mevcut_irs'] ?? [];
+// Şimdi eşleşenlerin hangileri bu faturaya ZATEN bağlı, hangileri yeni?
+$mevcutIrsId = array_map(fn($r) => (int)$r['id'], $mevcutIrs);
+$yeniBag = $eskiBag = 0;
+foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $eskiBag++ : $yeniBag++; }
 ?>
 <?php if ($mevcut): ?>
 <div class="alert alert-warning">
-    <h6 class="alert-heading"><i class="bi bi-files me-1"></i>Bu fatura sistemde ZATEN KAYITLI</h6>
+    <h6 class="alert-heading"><i class="bi bi-files me-1"></i>Bu fatura sistemde ZATEN İŞLENMİŞ</h6>
     <div class="small">
         <strong><?= h($mevcut['fatura_no']) ?></strong> · <?= h(format_date($mevcut['tarih'])) ?>
         <?= $mevcut['tedarikci'] ? ' · '.h($mevcut['tedarikci']) : '' ?>
@@ -338,10 +347,48 @@ $baskasi = $sonuc['baskasi'] ?? [];
         <div class="mt-1"><i class="bi bi-info-circle me-1"></i>Fatura numarası farklı ama <strong>ETTN aynı</strong> —
             aynı e-faturanın başka numarayla girilmiş hali. ETTN faturanın değişmez kimliğidir.</div>
         <?php endif; ?>
+
+        <?php if ($mevcutIrs): ?>
+        <div class="mt-3 fw-semibold">Bu faturaya bağlı irsaliyeler (<?= count($mevcutIrs) ?>):</div>
+        <div class="table-responsive mt-1">
+            <table class="table table-sm table-bordered bg-body mb-1" style="max-width:820px">
+                <thead class="table-light"><tr>
+                    <th>İrsaliye No</th><th>Tarih</th><th>Plaka</th><th>Beton</th>
+                    <th class="text-end">m³</th><th>Durum</th><th>Şimdiki faturada</th>
+                </tr></thead>
+                <tbody>
+                <?php $mToplam = 0.0; foreach ($mevcutIrs as $mi): $mToplam += (float)$mi['miktar'];
+                      $halaVar = in_array((int)$mi['id'], array_map(fn($x)=>(int)$x['id'], $e['eslesen']), true); ?>
+                    <tr class="<?= $halaVar ? '' : 'table-warning' ?>">
+                        <td><a href="irsaliye_detay.php?id=<?= (int)$mi['id'] ?>" target="_blank"><code><?= h($mi['irsaliye_no']) ?></code></a></td>
+                        <td><?= h(format_date($mi['tarih'])) ?></td>
+                        <td><?= h((string)$mi['arac_plaka']) ?></td>
+                        <td><?= h((string)$mi['beton_sinifi']) ?></td>
+                        <td class="text-end"><?= $fmt($mi['miktar']) ?></td>
+                        <td><?= h($mi['durum']) ?></td>
+                        <td><?= $halaVar ? '<span class="text-success">✓ var</span>'
+                                         : '<span class="text-danger fw-bold">✗ yok — bağ kopacak</span>' ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+                <tfoot class="table-light fw-bold"><tr>
+                    <td colspan="4" class="text-end">Toplam</td><td class="text-end"><?= $fmt($mToplam) ?></td><td colspan="2"></td>
+                </tr></tfoot>
+            </table>
+        </div>
+        <?php endif; ?>
+
         <div class="mt-2">
-            Kaydedersen <strong>yeni kayıt oluşmaz</strong>, mevcut kayıt güncellenir ve irsaliye bağları
-            aşağıdaki listeye göre yeniden kurulur.
-            <a href="irsaliyeler.php?tip=tum&fatura_id=<?= (int)$mevcut['id'] ?>" class="alert-link">Mevcut bağlı irsaliyeleri gör</a>
+            <?php if ($yeniBag === 0 && $eskiBag > 0): ?>
+                <i class="bi bi-check-circle-fill text-success me-1"></i>
+                <strong>Değişiklik yok</strong> — şu an eşleşen <?= $eskiBag ?> irsaliyenin hepsi zaten bu faturaya bağlı.
+                Tekrar kaydetmene gerek yok.
+            <?php else: ?>
+                Kaydedersen <strong>yeni kayıt oluşmaz</strong>, mevcut kayıt güncellenir:
+                <strong><?= $yeniBag ?></strong> yeni bağ kurulur,
+                <strong><?= $eskiBag ?></strong> bağ zaten var.
+            <?php endif; ?>
+            <a href="irsaliyeler.php?tip=tum&fatura_id=<?= (int)$mevcut['id'] ?>" class="alert-link ms-1">İrsaliye listesinde aç</a>
         </div>
     </div>
 </div>
@@ -527,14 +574,21 @@ $baskasi = $sonuc['baskasi'] ?? [];
                 <th class="text-end">m³</th><th class="text-end">Bağlı İrs.</th><th class="text-end">Eksik</th><th>Dosya</th><th></th>
             </tr></thead>
             <tbody>
-            <?php foreach ($kayitli as $f): ?>
+            <?php foreach ($kayitli as $f): $fIrs = $kayitliIrs[(int)$f['id']] ?? []; ?>
                 <tr>
                     <td><code><?= h($f['fatura_no']) ?></code></td>
                     <td><?= h(format_date($f['tarih'])) ?></td>
                     <td><?= h((string)$f['tedarikci']) ?></td>
                     <td class="text-end"><?= $f['tutar']!==null?$fmt($f['tutar']).' ₺':'—' ?></td>
                     <td class="text-end"><?= $f['miktar_m3']!==null?$fmt($f['miktar_m3']):'—' ?></td>
-                    <td class="text-end"><?= (int)$f['bagli'] ?></td>
+                    <td class="text-end">
+                        <?php if ($fIrs): ?>
+                        <button class="btn btn-sm btn-link p-0 text-decoration-none" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#fi<?= (int)$f['id'] ?>">
+                            <?= count($fIrs) ?> <i class="bi bi-chevron-down small"></i>
+                        </button>
+                        <?php else: ?><?= (int)$f['bagli'] ?><?php endif; ?>
+                    </td>
                     <td class="text-end <?= (int)$f['eksik_adet']?'text-danger fw-bold':'' ?>"><?= (int)$f['eksik_adet'] ?></td>
                     <td><?php if ($f['dosya_url']): ?><a href="<?= h($f['dosya_url']) ?>" target="_blank"><i class="bi bi-file-earmark-pdf"></i></a><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
                     <td class="text-end">
@@ -544,6 +598,42 @@ $baskasi = $sonuc['baskasi'] ?? [];
                         <?php endif; ?>
                     </td>
                 </tr>
+                <?php if ($fIrs): ?>
+                <tr class="collapse" id="fi<?= (int)$f['id'] ?>">
+                    <td colspan="9" class="bg-body-tertiary">
+                        <div class="small fw-semibold mb-1">
+                            <?= h($f['fatura_no']) ?> faturasına bağlı irsaliyeler (<?= count($fIrs) ?>)
+                        </div>
+                        <table class="table table-sm table-bordered bg-body mb-0" style="max-width:760px">
+                            <thead class="table-light"><tr>
+                                <th>İrsaliye No</th><th>Tarih</th><th>Plaka</th><th>Beton</th><th class="text-end">m³</th><th>Durum</th>
+                            </tr></thead>
+                            <tbody>
+                            <?php $ft = 0.0; foreach ($fIrs as $fi): $ft += (float)$fi['miktar']; ?>
+                                <tr>
+                                    <td><a href="irsaliye_detay.php?id=<?= (int)$fi['id'] ?>" target="_blank"><code><?= h($fi['irsaliye_no']) ?></code></a></td>
+                                    <td><?= h(format_date($fi['tarih'])) ?></td>
+                                    <td><?= h((string)$fi['arac_plaka']) ?></td>
+                                    <td><?= h((string)$fi['beton_sinifi']) ?></td>
+                                    <td class="text-end"><?= $fmt($fi['miktar']) ?></td>
+                                    <td><?= h($fi['durum']) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                            <tfoot class="table-light fw-bold"><tr>
+                                <td colspan="4" class="text-end">Toplam</td>
+                                <td class="text-end"><?= $fmt($ft) ?></td>
+                                <td class="<?= ($f['miktar_m3']!==null && abs($ft-(float)$f['miktar_m3'])>0.01) ? 'text-danger' : 'text-success' ?>">
+                                    <?php if ($f['miktar_m3'] !== null): ?>
+                                        fatura <?= $fmt($f['miktar_m3']) ?> m³
+                                        <?= abs($ft-(float)$f['miktar_m3'])>0.01 ? '(fark '.$fmt($ft-(float)$f['miktar_m3']).')' : '✓' ?>
+                                    <?php endif; ?>
+                                </td>
+                            </tr></tfoot>
+                        </table>
+                    </td>
+                </tr>
+                <?php endif; ?>
             <?php endforeach; ?>
             </tbody>
         </table>
