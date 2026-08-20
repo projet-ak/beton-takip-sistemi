@@ -91,7 +91,110 @@ function fat_metinden_cikar(string $metin): array
         }
     }
     $d['irsaliyeler'] = array_values($bulunan);
-    return $d;
+
+    // Metne karekot içeriği de yapıştırılmış olabilir — varsa o esas alınır
+    return fat_qr_birlestir($d, fat_qr_coz($metin));
+}
+
+/**
+ * GİB e-Fatura KAREKODU (faturanın altındaki QR) içeriğini çözer.
+ *
+ * Karekod, faturanın kendi beyanıdır: fatura no, tarih, ETTN, satıcı VKN ve
+ * ödenecek tutar burada BİREBİR yazar. Metin/OCR tahminine göre çok daha güvenilir,
+ * bu yüzden çakışmada karekod esastır.
+ *
+ * Örnek: {"vkntckn":"7371227729","avkntckn":"9650496315","senaryo":"TEMELFATURA",
+ *         "tip":"TEVKIFAT","tarih":"2026-08-12","no":"SGA2026000000819",
+ *         "ettn":"...","parabirimi":"TRY","malhizmettoplam":"281520.00",
+ *         "kdvmatrah(20)":"281520.00","hesaplanankdv(20)":"56304.00",
+ *         "kdvmatrah(40)":"56304.00","hesaplanankdv(40)":"22521.60",
+ *         "vergidahil":"315302.40","odenecek":"315302.40"}
+ *
+ * ⚠ Karekoptaki "vergidahil", faturada YAZAN "Vergiler Dahil Toplam Tutar"dan
+ *   farklı olabilir: tevkifatlı faturada karekot tevkifat DÜŞÜLMÜŞ tutarı verir
+ *   (315.302,40), kağıtta ise brüt (337.824,00) yazar. Bu yüzden brüt tutar
+ *   karekottan DEĞİL, metinden alınır.
+ *
+ * @return array|null  Çözülemezse null
+ */
+function fat_qr_coz(?string $s): ?array
+{
+    $s = trim((string)$s);
+    if ($s === '') return null;
+    if (preg_match('/\{.*\}/s', $s, $m)) $s = $m[0];      // metin içine gömülü JSON
+    $j = json_decode($s, true);
+    if (!is_array($j)) return null;
+
+    // Anahtarları küçült/boşluk temizle (bazı entegratörler farklı yazıyor)
+    $k = [];
+    foreach ($j as $ad => $deger) $k[strtolower(str_replace(' ', '', (string)$ad))] = $deger;
+    if (!isset($k['no']) && !isset($k['ettn'])) return null;  // e-Fatura karekodu değil
+
+    $tevkifat = null;
+    foreach ($k as $ad => $deger) {
+        if (str_starts_with($ad, 'hesaplanankdvtevkifat') || $ad === 'hesaplanankdv(40)') {
+            $tevkifat = fat_sayi((string)$deger);
+        }
+    }
+
+    return [
+        'fatura_no' => isset($k['no']) ? strtoupper(trim((string)$k['no'])) : null,
+        'tarih'     => isset($k['tarih']) ? fat_tarih_norm((string)$k['tarih']) : null,
+        'ettn'      => isset($k['ettn']) ? strtoupper(trim((string)$k['ettn'])) : null,
+        'vkn'       => isset($k['vkntckn'])  ? preg_replace('/\D/', '', (string)$k['vkntckn'])  : null,
+        'alici_vkn' => isset($k['avkntckn']) ? preg_replace('/\D/', '', (string)$k['avkntckn']) : null,
+        'senaryo'   => isset($k['senaryo']) ? (string)$k['senaryo'] : null,
+        'tip'       => isset($k['tip']) ? (string)$k['tip'] : null,
+        'matrah'    => isset($k['malhizmettoplam']) ? fat_sayi((string)$k['malhizmettoplam']) : null,
+        'tevkifat'  => $tevkifat,
+        'vergidahil'=> isset($k['vergidahil']) ? fat_sayi((string)$k['vergidahil']) : null,
+        'tutar'     => isset($k['odenecek']) ? fat_sayi((string)$k['odenecek']) : null,
+    ];
+}
+
+/**
+ * Karekot verisini metinden çıkarılan alanlarla birleştirir.
+ * Karekot ESAS alınır; metinden gelen değer farklıysa 'uyari' listesine yazılır
+ * (sessizce ezmek yerine kullanıcıya gösterilir).
+ */
+function fat_qr_birlestir(array $veri, ?array $qr): array
+{
+    $veri['qr'] = $qr;
+    $veri['uyari'] = [];
+    if (!$qr) return $veri;
+
+    $karsilastir = [
+        'fatura_no' => 'Fatura No',
+        'tarih'     => 'Fatura Tarihi',
+        'ettn'      => 'ETTN',
+        'tutar'     => 'Ödenecek Tutar',
+    ];
+    foreach ($karsilastir as $alan => $etiket) {
+        $q = $qr[$alan] ?? null;
+        if ($q === null || $q === '') continue;
+        $m = $veri[$alan] ?? null;
+        if ($m !== null && $m !== '') {
+            $ayni = ($alan === 'tutar') ? (abs((float)$m - (float)$q) < 0.01)
+                                        : (mb_strtoupper((string)$m, 'UTF-8') === mb_strtoupper((string)$q, 'UTF-8'));
+            if (!$ayni) $veri['uyari'][] = $etiket . ': karekot "' . $q . '" · metin "' . $m . '" — karekot esas alındı';
+        }
+        $veri[$alan] = $q;
+    }
+    // Brüt tutar metinden gelir; yoksa karekottaki vergidahil kullanılır
+    if (($veri['brut_tutar'] ?? null) === null && ($qr['vergidahil'] ?? null) !== null) {
+        $veri['brut_tutar'] = $qr['vergidahil'];
+    }
+    return $veri;
+}
+
+/** Karekottaki satıcı VKN'sinden tedarikçiyi bulur. */
+function fat_tedarikci_bul(PDO $pdo, ?string $vkn): ?array
+{
+    $vkn = preg_replace('/\D/', '', (string)$vkn);
+    if ($vkn === '') return null;
+    $st = $pdo->prepare("SELECT id, ad, vkn FROM tedarikciler WHERE REPLACE(REPLACE(vkn,' ',''),'-','') = ? LIMIT 1");
+    $st->execute([$vkn]);
+    return $st->fetch(PDO::FETCH_ASSOC) ?: null;
 }
 
 /**

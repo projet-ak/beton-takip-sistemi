@@ -27,6 +27,8 @@ if (($_POST['action'] ?? '') === 'coz') {
     $metin    = trim((string)($_POST['metin'] ?? ''));
     $kaynak   = 'yapistirma';
     $dosyaUrl = null;
+    // Karekot: tarayıcıda okunan (gizli alan) ya da elle yapıştırılan içerik
+    $qr       = fat_qr_coz((string)($_POST['qr'] ?? ''));
 
     if (!empty($_FILES['dosya']['tmp_name']) && is_uploaded_file($_FILES['dosya']['tmp_name'])) {
         $tmp  = $_FILES['dosya']['tmp_name'];
@@ -51,7 +53,7 @@ if (($_POST['action'] ?? '') === 'coz') {
             $k = null;
             $okunan = fat_dosyadan_metin($tam, $mime, $k);
             if ($okunan !== null && $okunan !== '') { $metin = $okunan; $kaynak = $k ?: 'dosya'; }
-            elseif ($metin === '') {
+            elseif ($metin === '' && !$qr) {
                 $hata = 'Dosyadan metin okunamadı (sunucuda pdftotext yok ve AI okuma başarısız). '
                       . 'Faturayı PDF görüntüleyicide açıp metni kopyalayıp aşağıdaki kutuya yapıştırın.';
             }
@@ -59,10 +61,12 @@ if (($_POST['action'] ?? '') === 'coz') {
     }
 
     if (!$hata) {
-        if ($metin === '') {
-            $hata = 'Fatura dosyası yükleyin veya fatura metnini yapıştırın.';
+        if ($metin === '' && !$qr) {
+            $hata = 'Fatura dosyası yükleyin, fatura metnini yapıştırın veya karekot içeriğini girin.';
         } else {
-            $veri    = fat_metinden_cikar($metin);
+            $veri = fat_metinden_cikar($metin);
+            // Metinde karekot yoksa ayrı gelen karekot verisini uygula (karekot esastır)
+            if ($qr && empty($veri['qr'])) $veri = fat_qr_birlestir($veri, $qr);
             $eslesme = fat_eslestir($pdo, $veri['irsaliyeler']);
             $sonuc   = ['veri'=>$veri, 'eslesme'=>$eslesme, 'kaynak'=>$kaynak, 'dosya_url'=>$dosyaUrl, 'metin'=>$metin];
         }
@@ -145,12 +149,15 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
             <input type="hidden" name="action" value="coz">
             <div class="col-md-6">
                 <label class="form-label">e-Fatura dosyası <span class="text-muted small">(PDF, JPG, PNG — en fazla 20 MB)</span></label>
-                <input type="file" name="dosya" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.webp">
-                <div class="form-text">Metin katmanı olmayan (taranmış) faturalar AI ile okunur.</div>
+                <input type="file" name="dosya" id="fatDosya" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.webp">
+                <div class="form-text">Faturanın altındaki <strong>karekod</strong> otomatik okunur; metin katmanı yoksa AI devreye girer.</div>
+                <input type="hidden" name="qr" id="fatQr">
+                <div id="fatQrDurum" class="small mt-2"></div>
             </div>
             <div class="col-md-6">
                 <label class="form-label">…veya fatura metnini yapıştırın</label>
-                <textarea name="metin" class="form-control" rows="4" placeholder="Fatura No: ANM2026000004710&#10;Fatura Tarihi: 28-07-2026&#10;İrsaliye No: ANM2026-4710 …"></textarea>
+                <textarea name="metin" class="form-control" rows="4" placeholder="Fatura No: SGA2026000000819&#10;Fatura Tarihi: 12-08-2026&#10;SKB2026000011503 SKB2026000011507 …"></textarea>
+                <div class="form-text">Karekod içeriğini (<code>{"vkntckn":…}</code>) de buraya yapıştırabilirsiniz — otomatik tanınır.</div>
             </div>
             <div class="col-12">
                 <button class="btn btn-primary"><i class="bi bi-search me-1"></i>Çözümle ve Eşleştir</button>
@@ -159,6 +166,126 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
         </form>
     </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script>if (typeof pdfjsLib !== 'undefined') pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';</script>
+<script>
+// ── Karekod (GİB e-Fatura QR) tarayıcı ───────────────────────────────────────
+// Fatura seçilir seçilmez tarayıcıda okunur; sunucuya JSON olarak gider.
+(function () {
+    var dosyaEl = document.getElementById('fatDosya');
+    var qrEl    = document.getElementById('fatQr');
+    var durumEl = document.getElementById('fatQrDurum');
+    if (!dosyaEl) return;
+
+    function durum(sinif, ikon, mesaj) {
+        durumEl.className = 'small mt-2 text-' + sinif;
+        durumEl.innerHTML = '<i class="bi ' + ikon + ' me-1"></i>' + mesaj;
+    }
+
+    function kontrastArtir(img) {
+        var s = img.data, d = new Uint8ClampedArray(s.length);
+        for (var i = 0; i < s.length; i += 4) {
+            var g = 0.299 * s[i] + 0.587 * s[i + 1] + 0.114 * s[i + 2];
+            var v = Math.max(0, Math.min(255, 2.2 * (g - 128) + 128));
+            d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
+        }
+        return new ImageData(d, img.width, img.height);
+    }
+
+    // e-Fatura karekodu mu? (JSON + 'no'/'ettn' alanı)
+    function faturaQrMi(metin) {
+        if (!metin || metin.indexOf('{') < 0) return false;
+        try {
+            var j = JSON.parse(metin.substring(metin.indexOf('{'), metin.lastIndexOf('}') + 1));
+            return !!(j && (j.no || j.ettn));
+        } catch (e) { return false; }
+    }
+
+    async function canvasTara(canvas, ctx) {
+        if ('BarcodeDetector' in window) {
+            try {
+                var det = new BarcodeDetector({ formats: ['qr_code'] });
+                var bulunan = await det.detect(canvas);
+                for (var i = 0; i < bulunan.length; i++) {
+                    if (faturaQrMi(bulunan[i].rawValue)) return bulunan[i].rawValue;
+                }
+            } catch (e) { /* jsQR'a düş */ }
+        }
+        if (typeof jsQR === 'undefined') return null;
+        var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        var r = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
+        if (r && faturaQrMi(r.data)) return r.data;
+        var k = kontrastArtir(img);
+        r = jsQR(k.data, k.width, k.height, { inversionAttempts: 'attemptBoth' });
+        return (r && faturaQrMi(r.data)) ? r.data : null;
+    }
+
+    async function pdfTara(buf) {
+        if (typeof pdfjsLib === 'undefined') return null;
+        var pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+        var canvas = document.createElement('canvas');
+        var ctx = canvas.getContext('2d', { willReadFrequently: true });
+        var sayfaSayisi = Math.min(pdf.numPages, 3);
+        var olcekler = [2.5, 4.0];
+        for (var s = 1; s <= sayfaSayisi; s++) {
+            var page = await pdf.getPage(s);
+            for (var o = 0; o < olcekler.length; o++) {
+                var vp = page.getViewport({ scale: olcekler[o] });
+                canvas.width = vp.width; canvas.height = vp.height;
+                await page.render({ canvasContext: ctx, viewport: vp }).promise;
+                var v = await canvasTara(canvas, ctx);
+                if (v) return v;
+            }
+        }
+        return null;
+    }
+
+    function gorselTara(dataUrl) {
+        return new Promise(function (cozumle) {
+            var im = new Image();
+            im.onload = async function () {
+                var canvas = document.createElement('canvas');
+                var ctx = canvas.getContext('2d', { willReadFrequently: true });
+                var buyut = Math.min(3, Math.max(1, 1600 / Math.max(im.width, im.height)));
+                canvas.width = im.width * buyut; canvas.height = im.height * buyut;
+                ctx.drawImage(im, 0, 0, canvas.width, canvas.height);
+                cozumle(await canvasTara(canvas, ctx));
+            };
+            im.onerror = function () { cozumle(null); };
+            im.src = dataUrl;
+        });
+    }
+
+    dosyaEl.addEventListener('change', async function () {
+        qrEl.value = '';
+        var f = dosyaEl.files && dosyaEl.files[0];
+        if (!f) { durumEl.innerHTML = ''; return; }
+        durum('muted', 'bi-hourglass-split', 'Karekod aranıyor…');
+        try {
+            var deger = null;
+            if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+                deger = await pdfTara(await f.arrayBuffer());
+            } else {
+                deger = await gorselTara(URL.createObjectURL(f));
+            }
+            if (deger) {
+                qrEl.value = deger;
+                var j = JSON.parse(deger.substring(deger.indexOf('{'), deger.lastIndexOf('}') + 1));
+                durum('success', 'bi-qr-code-scan',
+                      'Karekod okundu: <strong>' + (j.no || '?') + '</strong> · ' + (j.tarih || '?') +
+                      ' · ödenecek <strong>' + (j.odenecek || '?') + '</strong>');
+            } else {
+                durum('warning', 'bi-exclamation-triangle',
+                      'Karekod bulunamadı — fatura yine de metinden okunacak. Karekod içeriğini elle yapıştırabilirsiniz.');
+            }
+        } catch (e) {
+            durum('warning', 'bi-exclamation-triangle', 'Karekod taranamadı: ' + e.message);
+        }
+    });
+})();
+</script>
 
 <?php if ($sonuc):
     $v = $sonuc['veri']; $e = $sonuc['eslesme'];
@@ -187,6 +314,47 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
 <input type="hidden" name="dosya_url" value="<?= h((string)$sonuc['dosya_url']) ?>">
 <input type="hidden" name="eksik_adet" value="<?= $eksikAdet ?>">
 
+<?php $qr = $v['qr'] ?? null; $qrTed = $qr ? fat_tedarikci_bul($pdo, $qr['vkn'] ?? null) : null; ?>
+<?php if ($qr): ?>
+<div class="card mb-3 border-success">
+    <div class="card-header bg-white fw-semibold text-success"><i class="bi bi-qr-code-scan me-1"></i> Karekod Okundu — faturanın kendi beyanı</div>
+    <div class="card-body">
+        <div class="row g-2 small">
+            <div class="col-md-3"><span class="text-muted">Fatura No</span><div class="fw-bold"><?= h((string)$qr['fatura_no']) ?></div></div>
+            <div class="col-md-2"><span class="text-muted">Tarih</span><div class="fw-bold"><?= h(format_date($qr['tarih'])) ?></div></div>
+            <div class="col-md-3"><span class="text-muted">Satıcı VKN</span>
+                <div class="fw-bold"><?= h((string)$qr['vkn']) ?>
+                    <?php if ($qrTed): ?><span class="badge bg-success ms-1"><?= h($qrTed['ad']) ?></span>
+                    <?php else: ?><span class="badge bg-warning text-dark ms-1">tanımlı değil</span><?php endif; ?>
+                </div></div>
+            <div class="col-md-2"><span class="text-muted">Tip</span><div class="fw-bold"><?= h((string)$qr['tip']) ?></div></div>
+            <div class="col-md-2"><span class="text-muted">Ödenecek</span><div class="fw-bold"><?= $qr['tutar']!==null?$fmt($qr['tutar']).' ₺':'—' ?></div></div>
+            <?php if ($qr['matrah'] !== null): ?>
+            <div class="col-md-3"><span class="text-muted">Mal/Hizmet Toplam</span><div><?= $fmt($qr['matrah']) ?> ₺</div></div>
+            <?php endif; ?>
+            <?php if ($qr['tevkifat'] !== null): ?>
+            <div class="col-md-3"><span class="text-muted">KDV Tevkifat</span><div><?= $fmt($qr['tevkifat']) ?> ₺</div></div>
+            <?php endif; ?>
+            <div class="col-md-6"><span class="text-muted">ETTN</span><div class="text-break"><code><?= h((string)$qr['ettn']) ?></code></div></div>
+        </div>
+        <?php if (!$qrTed && !empty($qr['vkn'])): ?>
+        <div class="alert alert-warning py-2 small mt-3 mb-0">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            <strong><?= h($qr['vkn']) ?></strong> VKN'si hiçbir tedarikçide kayıtlı değil — tedarikçiyi aşağıdan elle seçin veya
+            <a href="tedarikciler.php">Tedarikçiler</a> ekranından VKN'yi girin ki bir daha sorulmasın.
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if (!empty($v['uyari'])): ?>
+<div class="alert alert-warning">
+    <strong><i class="bi bi-exclamation-triangle-fill me-1"></i>Karekod ile fatura metni çelişiyor</strong>
+    <ul class="mb-0 mt-1 small"><?php foreach ($v['uyari'] as $u): ?><li><?= h($u) ?></li><?php endforeach; ?></ul>
+</div>
+<?php endif; ?>
+
 <div class="card mb-3">
     <div class="card-header bg-white fw-semibold"><i class="bi bi-file-earmark-text me-1"></i> Fatura Bilgileri</div>
     <div class="card-body row g-3">
@@ -198,8 +366,9 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
             <select name="tedarikci_id" class="form-select">
                 <option value="">— seçiniz —</option>
                 <?php
-                $onerId = 0;
-                if ($e['eslesen']) { // eşleşen irsaliyelerin tedarikçisini öner
+                // Öncelik: karekottaki VKN (kesin) → eşleşen irsaliyelerin tedarikçisi (tahmin)
+                $onerId = $qrTed ? (int)$qrTed['id'] : 0;
+                if (!$onerId && $e['eslesen']) {
                     $ilk = $e['eslesen'][0];
                     foreach ($tedarikciler as $td) if ($td['ad'] === $ilk['tedarikci']) $onerId = (int)$td['id'];
                 }
