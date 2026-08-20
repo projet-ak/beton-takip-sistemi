@@ -245,6 +245,65 @@ function fat_eslestir(PDO $pdo, array $numaralar): array
     return ['eslesen'=>$eslesen, 'eksik'=>$eksik, 'ozet'=>['adet'=>count($eslesen), 'miktar'=>$miktar]];
 }
 
+/**
+ * Bu fatura sistemde zaten kayıtlı mı? (fatura no VEYA ETTN ile)
+ *
+ * ETTN faturanın gerçek benzersiz kimliğidir; entegratör no'yu farklı biçimde
+ * yazsa bile ETTN aynı kalır — bu yüzden ikisi de kontrol edilir.
+ *
+ * @return array|null  Kayıt varsa bilgileri (+ bagli irsaliye sayısı), yoksa null
+ */
+function fat_mevcut(PDO $pdo, ?string $faturaNo, ?string $ettn = null): ?array
+{
+    $no   = trim((string)$faturaNo);
+    $ettn = trim((string)$ettn);
+    if ($no === '' && $ettn === '') return null;
+
+    $kos = []; $par = [];
+    if ($no !== '')   { $kos[] = 'f.fatura_no = ?'; $par[] = $no; }
+    if ($ettn !== '') { $kos[] = 'f.ettn = ?';      $par[] = $ettn; }
+
+    $st = $pdo->prepare("SELECT f.*, t.ad AS tedarikci,
+                                (SELECT COUNT(*) FROM irsaliyeler i WHERE i.fatura_id = f.id) AS bagli
+                         FROM faturalar f LEFT JOIN tedarikciler t ON t.id = f.tedarikci_id
+                         WHERE " . implode(' OR ', $kos) . " LIMIT 1");
+    $st->execute($par);
+    $r = $st->fetch(PDO::FETCH_ASSOC) ?: null;
+    if ($r) {
+        // Hangi alandan yakalandı — kullanıcıya net söylemek için
+        $r['eslesme_alani'] = ($no !== '' && $r['fatura_no'] === $no) ? 'fatura_no' : 'ettn';
+    }
+    return $r;
+}
+
+/**
+ * Eşleşen irsaliyelerden BAŞKA bir faturaya bağlı olanları bulur.
+ * Aynı irsaliyenin iki faturada görünmesi çift faturalandırma demektir —
+ * sessizce üzerine yazmak yerine kullanıcıya gösterilir.
+ *
+ * @param int[] $irsIds
+ * @return array<int, array{irsaliye_no:string, fatura_no:string, fatura_id:int}>  irsaliye_id => bilgi
+ */
+function fat_baskaya_bagli(PDO $pdo, array $irsIds, int $haric = 0): array
+{
+    $irsIds = array_values(array_filter(array_map('intval', $irsIds)));
+    if (!$irsIds) return [];
+    $yer = implode(',', array_fill(0, count($irsIds), '?'));
+    $sql = "SELECT i.id, i.irsaliye_no, f.id AS fatura_id, f.fatura_no
+            FROM irsaliyeler i JOIN faturalar f ON f.id = i.fatura_id
+            WHERE i.id IN ($yer) AND i.fatura_id IS NOT NULL";
+    $par = $irsIds;
+    if ($haric > 0) { $sql .= ' AND f.id <> ?'; $par[] = $haric; }
+    $st = $pdo->prepare($sql);
+    $st->execute($par);
+
+    $out = [];
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $out[(int)$r['id']] = ['irsaliye_no' => $r['irsaliye_no'], 'fatura_no' => $r['fatura_no'], 'fatura_id' => (int)$r['fatura_id']];
+    }
+    return $out;
+}
+
 /** faturalar tablosunu garanti et (runtime migration). */
 function fat_semasi_kur(PDO $pdo): void
 {

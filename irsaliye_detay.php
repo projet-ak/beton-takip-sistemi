@@ -66,6 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && can_edit() && isset($_FILES['foto']
     $atlanan  = [];   // dosya adı → neden
     $okundu   = 0;
     $uygulanan = [];
+    $mukerrer = [];
 
     foreach ($_FILES['foto']['tmp_name'] as $i => $tmpName) {
         $hata = (int)$_FILES['foto']['error'][$i];
@@ -86,6 +87,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && can_edit() && isset($_FILES['foto']
             try { $veri = blg_ai_oku($dosya['tam'], $mime, $tur); } catch (Throwable $e) { $veri = null; }
             if ($veri) $okundu++;
         }
+        // Mükerrer önleme: aynı fiş/belge bu irsaliyeye zaten ekliyse tekrar ekleme
+        $eski = blg_mukerrer($pdo, $id, $tur, $veri, $ad, $dosya['tam'], __DIR__);
+        if ($eski) {
+            @unlink($dosya['tam']);
+            $mukerrer[] = $ad;
+            continue;
+        }
         blg_ekle($pdo, $id, $ad, $dosya['yol'], $tur, $veri, current_user_id());
         $yuklenen++;
 
@@ -96,15 +104,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && can_edit() && isset($_FILES['foto']
     }
 
     $turAd = blg_tur_ad($tur);
-    if ($yuklenen === 0 && !$atlanan) {
+    if ($yuklenen === 0 && !$atlanan && !$mukerrer) {
         flash('error', 'Dosya seçilmedi — önce dosya seçin.');
     } else {
         $mesaj = [];
         if ($yuklenen > 0) $mesaj[] = "$yuklenen $turAd yüklendi";
-        if ($oku)          $mesaj[] = ($okundu > 0 ? "$okundu tanesi AI ile okundu" : 'AI okuma başarısız (belge yine de kaydedildi)');
+        if ($oku && $yuklenen > 0) $mesaj[] = ($okundu > 0 ? "$okundu tanesi AI ile okundu" : 'AI okuma başarısız (belge yine de kaydedildi)');
         if ($uygulanan)    $mesaj[] = 'İrsaliyeye yazıldı: ' . implode(' · ', $uygulanan);
+        if ($mukerrer)     $mesaj[] = count($mukerrer) . ' belge zaten ekliydi, mükerrer eklenmedi: ' . implode(' · ', $mukerrer);
         if ($atlanan)      $mesaj[] = count($atlanan) . ' atlandı: ' . implode(' · ', $atlanan);
-        flash($yuklenen > 0 ? 'success' : 'error', implode(' — ', $mesaj));
+        flash(($yuklenen > 0 || $mukerrer) ? 'success' : 'error', implode(' — ', $mesaj));
     }
     redirect("irsaliye_detay.php?id={$id}");
 }

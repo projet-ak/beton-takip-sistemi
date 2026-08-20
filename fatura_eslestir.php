@@ -68,7 +68,13 @@ if (($_POST['action'] ?? '') === 'coz') {
             // Metinde karekot yoksa ayrı gelen karekot verisini uygula (karekot esastır)
             if ($qr && empty($veri['qr'])) $veri = fat_qr_birlestir($veri, $qr);
             $eslesme = fat_eslestir($pdo, $veri['irsaliyeler']);
-            $sonuc   = ['veri'=>$veri, 'eslesme'=>$eslesme, 'kaynak'=>$kaynak, 'dosya_url'=>$dosyaUrl, 'metin'=>$metin];
+
+            // Mükerrer kontrolü: fatura zaten kayıtlı mı, irsaliyeler başka faturaya bağlı mı
+            $mevcut  = fat_mevcut($pdo, $veri['fatura_no'], $veri['ettn']);
+            $baskasi = fat_baskaya_bagli($pdo, array_column($eslesme['eslesen'], 'id'), (int)($mevcut['id'] ?? 0));
+
+            $sonuc = ['veri'=>$veri, 'eslesme'=>$eslesme, 'kaynak'=>$kaynak, 'dosya_url'=>$dosyaUrl,
+                      'metin'=>$metin, 'mevcut'=>$mevcut, 'baskasi'=>$baskasi];
         }
     }
 }
@@ -89,20 +95,22 @@ if (($_POST['action'] ?? '') === 'kaydet') {
         ], $ids, current_user_id(), trim((string)($_POST['dosya_url'] ?? '')) ?: null);
 
         // Fatura dosyasını eşleşen her irsaliyenin belgelerine de ekle (irsaliye ekranından görünsün)
-        $dosya = trim((string)($_POST['dosya_url'] ?? ''));
-        $eklenen = 0;
+        $dosya   = trim((string)($_POST['dosya_url'] ?? ''));
+        $faturaNo = trim((string)($_POST['fatura_no'] ?? ''));
+        $eklenen = 0; $zaten = 0;
         if ($dosya !== '' && $ids) {
-            blg_semasi_kur($pdo);
-            $vr = $pdo->prepare("SELECT COUNT(*) FROM irsaliye_fotolar WHERE irsaliye_id=? AND dosya_yolu=?");
+            // Mükerrer önleme fatura NUMARASINA bakar; dosya yolu her yüklemede değişir,
+            // ona bakmak aynı faturayı ikinci kez eklerdi.
+            $kimlik = ['fatura_no' => $faturaNo];
             foreach ($ids as $iid) {
-                $vr->execute([$iid, $dosya]);
-                if ((int)$vr->fetchColumn() > 0) continue;   // aynı fatura ikinci kez eklenmesin
-                blg_ekle($pdo, (int)$iid, 'Fatura ' . trim((string)($_POST['fatura_no'] ?? '')), $dosya, 'fatura', null, current_user_id());
+                if (blg_mukerrer($pdo, (int)$iid, 'fatura', $kimlik)) { $zaten++; continue; }
+                blg_ekle($pdo, (int)$iid, 'Fatura ' . $faturaNo, $dosya, 'fatura', $kimlik, current_user_id());
                 $eklenen++;
             }
         }
         flash('success', "Fatura kaydedildi: {$r['baglanan']} irsaliye faturaya bağlandı"
-                       . ($eklenen ? ", fatura {$eklenen} irsaliyenin belgelerine eklendi." : "."));
+                       . ($eklenen ? ", fatura {$eklenen} irsaliyenin belgelerine eklendi" : "")
+                       . ($zaten   ? ", {$zaten} irsaliyede zaten ekliydi (mükerrer eklenmedi)" : "") . ".");
     } catch (Throwable $e) {
         flash('error', 'Kayıt hatası: '.$e->getMessage());
     }
@@ -314,6 +322,48 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
 <input type="hidden" name="dosya_url" value="<?= h((string)$sonuc['dosya_url']) ?>">
 <input type="hidden" name="eksik_adet" value="<?= $eksikAdet ?>">
 
+<?php
+$mevcut  = $sonuc['mevcut']  ?? null;
+$baskasi = $sonuc['baskasi'] ?? [];
+?>
+<?php if ($mevcut): ?>
+<div class="alert alert-warning">
+    <h6 class="alert-heading"><i class="bi bi-files me-1"></i>Bu fatura sistemde ZATEN KAYITLI</h6>
+    <div class="small">
+        <strong><?= h($mevcut['fatura_no']) ?></strong> · <?= h(format_date($mevcut['tarih'])) ?>
+        <?= $mevcut['tedarikci'] ? ' · '.h($mevcut['tedarikci']) : '' ?>
+        · <strong><?= (int)$mevcut['bagli'] ?></strong> irsaliye bağlı
+        · <?= h(format_date($mevcut['created_at'])) ?> tarihinde kaydedilmiş
+        <?php if ($mevcut['eslesme_alani'] === 'ettn'): ?>
+        <div class="mt-1"><i class="bi bi-info-circle me-1"></i>Fatura numarası farklı ama <strong>ETTN aynı</strong> —
+            aynı e-faturanın başka numarayla girilmiş hali. ETTN faturanın değişmez kimliğidir.</div>
+        <?php endif; ?>
+        <div class="mt-2">
+            Kaydedersen <strong>yeni kayıt oluşmaz</strong>, mevcut kayıt güncellenir ve irsaliye bağları
+            aşağıdaki listeye göre yeniden kurulur.
+            <a href="irsaliyeler.php?tip=tum&fatura_id=<?= (int)$mevcut['id'] ?>" class="alert-link">Mevcut bağlı irsaliyeleri gör</a>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if ($baskasi): ?>
+<div class="alert alert-danger">
+    <h6 class="alert-heading"><i class="bi bi-exclamation-octagon-fill me-1"></i><?= count($baskasi) ?> irsaliye BAŞKA bir faturaya bağlı</h6>
+    <div class="small">
+        Aynı irsaliyenin iki faturada görünmesi <strong>çift faturalandırma</strong> anlamına gelebilir.
+        Kaydedersen bu irsaliyeler eski faturadan kopar ve bu faturaya bağlanır.
+        <ul class="mb-0 mt-1">
+            <?php foreach ($baskasi as $b): ?>
+            <li><code><?= h($b['irsaliye_no']) ?></code> → şu an
+                <a href="irsaliyeler.php?tip=tum&fatura_id=<?= (int)$b['fatura_id'] ?>" class="alert-link"><?= h($b['fatura_no']) ?></a> faturasında</li>
+            <?php endforeach; ?>
+        </ul>
+        <div class="mt-2">Taşınmasını istemediğin satırların işaretini aşağıdaki listeden kaldır.</div>
+    </div>
+</div>
+<?php endif; ?>
+
 <?php $qr = $v['qr'] ?? null; $qrTed = $qr ? fat_tedarikci_bul($pdo, $qr['vkn'] ?? null) : null; ?>
 <?php if ($qr): ?>
 <div class="card mb-3 border-success">
@@ -410,8 +460,8 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
                 <th class="text-end">m³</th><th>Durum</th><th></th>
             </tr></thead>
             <tbody>
-            <?php foreach ($e['eslesen'] as $r): ?>
-                <tr>
+            <?php foreach ($e['eslesen'] as $r): $cakisma = isset($baskasi[(int)$r['id']]); ?>
+                <tr class="<?= $cakisma ? 'table-danger' : '' ?>">
                     <td><input type="checkbox" class="form-check-input irs-chk" name="irs_id[]" value="<?= (int)$r['id'] ?>" checked></td>
                     <td><code><?= h($r['fatura_gosterim']) ?></code></td>
                     <td><code><?= h($r['irsaliye_no']) ?></code></td>
@@ -420,7 +470,13 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
                     <td><?= h((string)$r['beton_sinifi']) ?></td>
                     <td><?= h((string)$r['arac_plaka']) ?></td>
                     <td class="text-end"><?= $fmt($r['miktar']) ?></td>
-                    <td><span class="badge bg-<?= $r['durum']==='reddedildi'?'danger':($r['durum']==='beklemede'?'secondary':'success') ?>"><?= h($r['durum']) ?></span></td>
+                    <td><span class="badge bg-<?= $r['durum']==='reddedildi'?'danger':($r['durum']==='beklemede'?'secondary':'success') ?>"><?= h($r['durum']) ?></span>
+                        <?php if (isset($baskasi[(int)$r['id']])): ?>
+                        <span class="badge bg-danger" title="Bu irsaliye başka bir faturaya bağlı">
+                            <i class="bi bi-exclamation-triangle-fill me-1"></i><?= h($baskasi[(int)$r['id']]['fatura_no']) ?>
+                        </span>
+                        <?php endif; ?>
+                    </td>
                     <td class="text-end"><a class="btn btn-sm btn-outline-secondary py-0" href="irsaliye_detay.php?id=<?= (int)$r['id'] ?>" target="_blank"><i class="bi bi-box-arrow-up-right"></i></a></td>
                 </tr>
             <?php endforeach; ?>
@@ -449,7 +505,10 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
 <?php endif; ?>
 
 <div class="mb-4">
-    <button class="btn btn-success" <?= $eslesenAdet?'':'disabled' ?>><i class="bi bi-save me-1"></i>Faturayı Kaydet ve İrsaliyeleri Bağla</button>
+    <button class="btn btn-<?= $baskasi ? 'warning' : 'success' ?>" <?= $eslesenAdet?'':'disabled' ?>
+            <?= $baskasi ? 'onclick="return confirm(\'İşaretli irsaliyelerden bazıları başka bir faturaya bağlı. Bu faturaya taşınsın mı?\')"' : '' ?>>
+        <i class="bi bi-save me-1"></i><?= $mevcut ? 'Mevcut Faturayı Güncelle' : 'Faturayı Kaydet' ?> ve İrsaliyeleri Bağla
+    </button>
     <a href="fatura_eslestir.php" class="btn btn-outline-secondary">Vazgeç</a>
 </div>
 </form>

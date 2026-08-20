@@ -167,6 +167,65 @@ function blg_irsaliye_bul(PDO $pdo, array $v): array
     return ['irsaliye' => null, 'yontem' => 'bulunamadi', 'adaylar' => []];
 }
 
+/**
+ * Bu belge bu irsaliyeye zaten eklenmiş mi? (mükerrer önleme)
+ *
+ * Dosya adı/yolu her yüklemede değiştiği için ona bakmak yetmez; belgenin
+ * KİMLİĞİNE bakılır: kantar fişinde fiş no, fatura/irsaliyede belge numarası.
+ * Kimlik yoksa aynı tür + aynı dosya adı tekrarı mükerrer sayılır.
+ */
+function blg_mukerrer(PDO $pdo, int $irsId, string $tur, ?array $okunan,
+                      string $dosyaAdi = '', ?string $yeniDosya = null, string $kokDizin = ''): ?array
+{
+    blg_semasi_kur($pdo);
+    $st = $pdo->prepare("SELECT id, dosya_adi, dosya_yolu, okunan, created_at
+                         FROM irsaliye_fotolar WHERE irsaliye_id = ? AND tur = ?");
+    $st->execute([$irsId, $tur]);
+    $mevcutlar = $st->fetchAll(PDO::FETCH_ASSOC);
+    if (!$mevcutlar) return null;
+
+    // 1) Belge kimliği (fiş no / irsaliye no / fatura no) — en güvenilir ölçüt
+    $kimlik = blg_kimlik($okunan);
+    if ($kimlik !== null) {
+        foreach ($mevcutlar as $m) {
+            if (blg_kimlik(json_decode((string)$m['okunan'], true)) === $kimlik) return $m;
+        }
+    }
+
+    // 2) Dosya içeriği aynı mı — aynı baytlar aynı belgedir (fotoğraflar için de geçerli)
+    if ($yeniDosya !== null && is_file($yeniDosya)) {
+        $kok  = rtrim($kokDizin !== '' ? $kokDizin : dirname(__DIR__), '/') . '/';
+        $boy  = filesize($yeniDosya);
+        $hash = null;
+        foreach ($mevcutlar as $m) {
+            $eski = $kok . $m['dosya_yolu'];
+            if (!is_file($eski) || filesize($eski) !== $boy) continue;   // boyut farklıysa okumaya gerek yok
+            $hash ??= md5_file($yeniDosya);
+            if (md5_file($eski) === $hash) return $m;
+        }
+    }
+
+    // 3) Kimlik taşıyan belgelerde dosya adı tekrarı da mükerrer sayılır.
+    //    Fotoğraflarda SAYILMAZ: telefonlar farklı fotoğraflara aynı adı verir (IMG_0001.jpg).
+    if ($kimlik === null && $dosyaAdi !== '' && in_array($tur, ['kantar','fatura','irsaliye'], true)) {
+        foreach ($mevcutlar as $m) {
+            if (mb_strtolower($m['dosya_adi']) === mb_strtolower($dosyaAdi)) return $m;
+        }
+    }
+    return null;
+}
+
+/** Okunan alanlardan belgenin kimliğini üretir (fiş no > irsaliye no); yoksa null. */
+function blg_kimlik(?array $okunan): ?string
+{
+    if (!is_array($okunan)) return null;
+    foreach (['fis_no', 'irsaliye_no', 'fatura_no'] as $alan) {
+        $v = trim((string)($okunan[$alan] ?? ''));
+        if ($v !== '') return $alan . ':' . fat_irs_norm($v);
+    }
+    return null;
+}
+
 /** Belgeyi irsaliyeye ekler (dosya zaten diskte). @return int belge id */
 function blg_ekle(PDO $pdo, int $irsId, string $dosyaAdi, string $relPath, string $tur, ?array $okunan, ?int $uid): int
 {

@@ -56,6 +56,17 @@ if (($_POST['action'] ?? '') === 'dagit' && !empty($_FILES['belge']['tmp_name'])
         }
 
         $irs = $bul['irsaliye'];
+
+        // Mükerrer önleme: aynı fiş/belge bu irsaliyeye zaten eklenmişse tekrar ekleme
+        $eski = blg_mukerrer($pdo, (int)$irs['id'], $tur, $veri, $ad, $gecici, __DIR__);
+        if ($eski) {
+            @unlink($gecici);
+            $sonuclar[] = ['ad'=>$ad,'durum'=>'mukerrer','veri'=>$veri,'irsaliye'=>$irs,
+                           'mesaj'=>'Bu belge ' . $irs['irsaliye_no'] . ' irsaliyesine zaten ekli ('
+                                  . format_date($eski['created_at']) . ') — tekrar eklenmedi'];
+            continue;
+        }
+
         $tas = blg_dosya_tasi($gecici, $ad, (int)$irs['id'], __DIR__);
         if (!$tas) { $sonuclar[] = ['ad'=>$ad,'durum'=>'hata','mesaj'=>'İrsaliye klasörüne taşınamadı']; continue; }
         blg_ekle($pdo, (int)$irs['id'], $ad, $tas['yol'], $tur, $veri, current_user_id());
@@ -144,10 +155,12 @@ $YONTEM = ['irsaliye_no'=>'irsaliye no ile', 'plaka_tarih'=>'plaka + tarih ile',
 </div>
 
 <?php if ($sonuclar):
-    $ok = count(array_filter($sonuclar, fn($r) => $r['durum'] === 'eslesti'));
-    $kalan = count($sonuclar) - $ok; ?>
+    $ok  = count(array_filter($sonuclar, fn($r) => $r['durum'] === 'eslesti'));
+    $muk = count(array_filter($sonuclar, fn($r) => $r['durum'] === 'mukerrer'));
+    $kalan = count($sonuclar) - $ok - $muk; ?>
 <div class="alert alert-<?= $kalan ? 'warning' : 'success' ?>">
-    <strong><?= count($sonuclar) ?></strong> belge işlendi — <strong class="text-success"><?= $ok ?></strong> irsaliyeye eklendi,
+    <strong><?= count($sonuclar) ?></strong> belge işlendi — <strong class="text-success"><?= $ok ?></strong> irsaliyeye eklendi<?php
+    if ($muk): ?>, <strong class="text-secondary"><?= $muk ?></strong> zaten ekliydi (mükerrer eklenmedi)<?php endif; ?>,
     <strong class="<?= $kalan?'text-danger':'' ?>"><?= $kalan ?></strong> beklemede.
 </div>
 
@@ -159,7 +172,7 @@ $YONTEM = ['irsaliye_no'=>'irsaliye no ile', 'plaka_tarih'=>'plaka + tarih ile',
         <thead class="table-light"><tr><th>Dosya</th><th>Okunan</th><th>Sonuç</th></tr></thead>
         <tbody>
         <?php foreach ($sonuclar as $r): ?>
-        <tr class="<?= $r['durum']==='eslesti'?'':'table-warning' ?>">
+        <tr class="<?= $r['durum']==='eslesti' ? '' : ($r['durum']==='mukerrer' ? 'table-secondary' : 'table-warning') ?>">
             <td class="small"><?= h($r['ad']) ?></td>
             <td class="small">
                 <?php $v = $r['veri'] ?? null; if ($v): $p = [];
@@ -177,6 +190,11 @@ $YONTEM = ['irsaliye_no'=>'irsaliye no ile', 'plaka_tarih'=>'plaka + tarih ile',
                     <a href="irsaliye_detay.php?id=<?= (int)$i['id'] ?>" target="_blank"><strong><?= h($i['irsaliye_no']) ?></strong></a>
                     <span class="text-muted">(<?= h($YONTEM[$r['yontem']] ?? $r['yontem']) ?>)</span>
                     <?php if (!empty($r['yazilan'])): ?><div class="text-success">↳ <?= h(implode(' · ', $r['yazilan'])) ?></div><?php endif; ?>
+                <?php elseif ($r['durum'] === 'mukerrer'): ?>
+                    <i class="bi bi-files text-secondary me-1"></i><?= h($r['mesaj']) ?>
+                    <?php if (!empty($r['irsaliye'])): ?>
+                    <a href="irsaliye_detay.php?id=<?= (int)$r['irsaliye']['id'] ?>" target="_blank">İrsaliyeyi aç</a>
+                    <?php endif; ?>
                 <?php else: ?>
                     <i class="bi bi-exclamation-triangle-fill text-warning me-1"></i><?= h($r['mesaj']) ?>
                     <?php if (!empty($r['gecici'])): ?>
