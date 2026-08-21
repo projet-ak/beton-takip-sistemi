@@ -6,6 +6,7 @@ require_once __DIR__ . '/../includes/auth.php';
 if (!file_exists(__DIR__ . '/../config.php')) { redirect('../install.php'); }
 require_auth(['admin']);
 require_once __DIR__ . '/../includes/db_depo.php';
+require_once __DIR__ . '/_ortak.php';
 
 $pageTitle = 'Depo Kurulum';
 
@@ -32,7 +33,11 @@ $tablolar = [
 ];
 
 $hata = null; $log = [];
-try { foreach ($tablolar as $ad=>$sql){ $pdoDepo->exec($sql); $log[]=$ad; } }
+try {
+    foreach ($tablolar as $ad=>$sql){ $pdoDepo->exec($sql); $log[]=$ad; }
+    dp_hareket_semasi_kur($pdoDepo);           // hareket defteri (giriş/çıkış)
+    $log[] = 'depo_hareketler';
+}
 catch (Throwable $e) { $hata = $e->getMessage(); }
 
 $durum = [];

@@ -23,10 +23,15 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 - **Depo modülü** = `depo/` alt klasörü. Sarf malzeme + demirbaş + el aletleri stok/zimmet takibi.
   **Ayrı veritabanı** (`takbulut_depo`, `DEPO_DB_NAME`). Tek tablo `depo_kalemler` (kategori ENUM
   `demirbas`/`sarf`/`el_aleti`). **Stok = SAYIM + GELEN − GİDEN** (kalem defteri modeli; ayrı log yok).
-  `includes/db_depo.php` → `$pdoDepo`. Sayfalar: index(dashboard: kategori kartları + mali değer KPI +
-  tükenen liste) · kalemler(kategori bazlı liste, ?k=demirbas|sarf|el_aleti, arama, stok/tutar) ·
-  kalem_form(ekle/düzenle) · import(DEMİRBAŞLAR/SARF MALZEME/EL ALETLERİ sayfaları, kategori bazlı tam
-  yenileme) · raporlar (Chart.js + Excel: kategori/disiplin mali değer, en değerli kalemler) · kurulum_depo. El aletleri: fiyat/disiplin yok, **Seri No + Zimmetli Kişi** var. Demirbaş/
+  `includes/db_depo.php` → `$pdoDepo`. **Hareket defteri** `depo_hareketler` (tur giris/cikis × kaynak depo/taseron;
+  tarih, belge_tarihi, belge_no [irsaliye no / fiş no], malzeme, ozellik, birim, miktar, firma [gönderen/çıkış
+  yapılan/taşeron], teslim_alan, onay, lokasyon, aciklama) — `depo_kalemler` stoğun FOTOĞRAFI, `depo_hareketler`
+  o stoğu oluşturan TEK TEK HAREKETLER. Sayfalar: index(dashboard: kategori kartları + mali değer KPI +
+  tükenen liste + **hareket özeti/son hareketler/en çok hareket gören firmalar**) · kalemler(kategori bazlı liste,
+  ?k=demirbas|sarf|el_aleti, arama, stok/tutar) · kalem_form(ekle/düzenle) · **hareketler**(giriş/çıkış defteri:
+  tür/kaynak/firma/tarih aralığı/serbest metin filtreleri + KPI + sayfalama + Excel) · import(7 sayfa: DEMİRBAŞLAR/
+  SARF MALZEME/EL ALETLERİ → stok, MALZEME GİRİŞ-ÇIKIŞ + TAŞERON MALZEME GİRİŞ-TESLİMAT → hareket; her biri kendi
+  türünde tam yenileme, dosyada olmayan sayfaya dokunulmaz) · raporlar (Chart.js + Excel: kategori/disiplin mali değer, en değerli kalemler) · kurulum_depo. El aletleri: fiyat/disiplin yok, **Seri No + Zimmetli Kişi** var. Demirbaş/
   sarf: birim fiyat → **mali değer** (STOK × B.Fiyat). `depo/_ortak.php` (dp_sayi, DP_KATEGORI, dp_ozet).
 - **Akaryakıt modülü** = `akaryakit/` alt klasörü. Şantiye mazot (dizel) stok + araç/makine bazında
   aylık tüketim takibi. **Ayrı veritabanı** (`takbulut_akaryakit`, `AKARYAKIT_DB_NAME`).
@@ -302,6 +307,11 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 - **Demir sayfası şablonu**: başta `$rootPath='../'` + `require ../includes/...` + `require_auth(...)` +
   `require ../includes/db_demir.php`; sonunda `require ../includes/footer.php`.
 - **Türkçe sayı**: virgül ondalık (`str_replace(',','.')` parse; `number_format(...,',','.')` göster).
+- **Excel başlık/sayfa eşleme (depo deseni)**: sayfa adı **içerir** mantığıyla bulunur ("KARTAL-BATIYAKASI SARF
+  MALZEME" → SARF MALZEME) ve bir sayfa **yalnız bir türe** atanır ("TAŞERON MALZEME GİRİŞ", "MALZEME GİRİŞ"i de
+  içerdiğinden çift aktarım olurdu). Sütunlar sabit indeksle DEĞİL başlık metninden bulunur (`dpHarita`), bir sütun
+  tek alana bağlanır. `dpNorm()` Türkçe harfleri ASCII'ye katlar (İIış→I, Ş→S, Ğ→G, Ü→U, Ö→O, Ç→C) — aksi halde
+  'DEMİRBAŞLAR' ile 'DEMIRBAS' eşleşmez ve arama sessizce boş döner.
 - **Excel içe aktarma**: `SimpleXLSX::parse` + `rows($sheetIndex, $limit)` (bellek için limit ver;
   formüllü sayfalar 1M satır bildirebilir). Sayfayı isimle bul, başlık satırını içerikle tespit et.
 - **Deploy sonrası**: kod değişikliği canlıya gitmesi için deploy2.php URL'si çalıştırılmalı.
