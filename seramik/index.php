@@ -11,6 +11,7 @@ require_once __DIR__ . '/_ortak.php';
 $pageTitle = 'Seramik Takip — Dashboard';
 $kurulu = true; $stok = []; $sonGiris = []; $sonCikis = [];
 $topGiren=0;$topCikan=0;$topStok=0;$malSay=0;$tukenen=0;$paletSay=0;
+$aylar=[]; $aylikG=[]; $aylikC=[];
 try {
     $stok = sr_stok($pdoSeramik);
     foreach($stok as $s){ $topGiren+=(float)$s['giren']; $topCikan+=(float)$s['cikan']; $topStok+=(float)$s['stok']; if((float)$s['stok']<=0)$tukenen++; }
@@ -18,6 +19,16 @@ try {
     $sonGiris=$pdoSeramik->query("SELECT g.gelis_tarihi,g.belge_no,g.miktar,g.birim,m.ad malzeme,f.ad firma FROM seramik_giris g LEFT JOIN seramik_malzemeler m ON m.id=g.malzeme_id LEFT JOIN seramik_firmalar f ON f.id=g.firma_id ORDER BY g.gelis_tarihi DESC, g.id DESC LIMIT 8")->fetchAll();
     $sonCikis=$pdoSeramik->query("SELECT c.cikis_tarihi,c.fis_no,c.miktar,c.birim,m.ad malzeme,t.ad taseron FROM seramik_cikis c LEFT JOIN seramik_malzemeler m ON m.id=c.malzeme_id LEFT JOIN seramik_taseronlar t ON t.id=c.taseron_id ORDER BY c.cikis_tarihi DESC, c.id DESC LIMIT 8")->fetchAll();
     $paletSay=(int)$pdoSeramik->query("SELECT COUNT(*) FROM seramik_palet")->fetchColumn();
+
+    // Aylık giriş/çıkış trendi (son 12 ay, m²)
+    $aylikG = []; $aylikC = [];
+    foreach($pdoSeramik->query("SELECT DATE_FORMAT(gelis_tarihi,'%Y-%m') ay, SUM(miktar) m
+        FROM seramik_giris WHERE gelis_tarihi IS NOT NULL GROUP BY ay ORDER BY ay DESC LIMIT 12") as $r) $aylikG[$r['ay']]=(float)$r['m'];
+    foreach($pdoSeramik->query("SELECT DATE_FORMAT(cikis_tarihi,'%Y-%m') ay, SUM(miktar) m
+        FROM seramik_cikis WHERE cikis_tarihi IS NOT NULL GROUP BY ay ORDER BY ay DESC LIMIT 12") as $r) $aylikC[$r['ay']]=(float)$r['m'];
+    $aylar = array_unique(array_merge(array_keys($aylikG), array_keys($aylikC)));
+    sort($aylar);
+    $aylar = array_slice($aylar, -12);
 } catch (Throwable $e) { $kurulu = false; }
 
 $fmt=fn($n)=>number_format((float)$n,2,',','.');
@@ -46,6 +57,32 @@ require_once __DIR__ . '/../includes/header.php';
     <a href="stok.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-boxes me-1"></i>Stok</a>
     <a href="import.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-cloud-arrow-up me-1"></i>Excel İçe Aktar</a>
 </div>
+
+<?php if (!empty($aylar)): ?>
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white fw-semibold"><i class="bi bi-graph-up text-primary me-1"></i> Aylık Giriş / Çıkış (m²)</div>
+    <div class="card-body"><canvas id="srAylik" height="80"></canvas></div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+    if (typeof Chart === 'undefined') return;
+    new Chart(document.getElementById('srAylik'), {
+        type: 'bar',
+        data: {
+            labels: <?= json_encode($aylar) ?>,
+            datasets: [
+                { label: 'Giriş',  data: <?= json_encode(array_map(fn($a)=>round($aylikG[$a]??0,1), $aylar)) ?>,
+                  backgroundColor: 'rgba(25,135,84,.65)' },
+                { label: 'Çıkış', data: <?= json_encode(array_map(fn($a)=>round($aylikC[$a]??0,1), $aylar)) ?>,
+                  backgroundColor: 'rgba(220,53,69,.6)' }
+            ]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom' } },
+                   scales: { y: { beginAtZero: true } } }
+    });
+});
+</script>
+<?php endif; ?>
 
 <div class="row g-3">
     <div class="col-lg-5">

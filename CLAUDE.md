@@ -17,7 +17,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   **Ayrı veritabanı** (`takbulut_seramik`, `SERAMIK_DB_NAME`). Tablolar `seramik_` önekli.
   Stok = **AMBAR MEVCUT'a sabit** (SAYIM−GİDEN) + elle giriş − elle çıkış (Excel log'ları
   SAYIM/GİDEN'de zaten sayılı olduğundan stoka eklenmez). `includes/db_seramik.php` → `$pdoSeramik`.
-  Sayfalar: index(dashboard) · girisler/giris_form · cikislar/cikis_form · stok · paletler ·
+  Sayfalar: index(dashboard + aylık giriş/çıkış Chart.js trendi) · girisler/giris_form · cikislar/cikis_form · stok · paletler ·
   import (Giriş/Çıkış/Mevcut/Palet tam yenileme) · malzemeler/firmalar/taseronlar · kurulum_seramik. raporlar (Chart.js + Excel: tür/malzeme stok, aylık giriş/çıkış).
   Malzeme eşleşmesi `sr_norm()` (I/İ katlama, *→X). `seramik/_ortak.php` ortak yardımcılar.
 - **Depo modülü** = `depo/` alt klasörü. Sarf malzeme + demirbaş + el aletleri stok/zimmet takibi.
@@ -124,7 +124,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 
 ## 4. Beton Modülü (kök dizin)
 
-- **`index.php`** — Dashboard; admin girişinde günlük otomatik yedek (`backups/`, gzip, 30 gün). **Proje → Parsel → Blok → Kot hiyerarşi akordeonu** (dökülen m³, etkin proje `COALESCE(i.proje_id, par.proje_id)`; proje filtresine saygılı).
+- **`index.php`** — Dashboard; admin girişinde günlük otomatik yedek (`backups/`, gzip, 30 gün). **Fatura & belge aksiyon kartları** (işlenen fatura/bağlı irsaliye/faturasız irsaliye/eksik sayısı → fatura_eslestir; bekleyen belge sayısı → belge_dagit; tablolar yoksa gizli). **Proje → Parsel → Blok → Kot hiyerarşi akordeonu** (dökülen m³, etkin proje `COALESCE(i.proje_id, par.proje_id)`; proje filtresine saygılı).
 - **`irsaliyeler.php`** — Alış/İade/Tüm liste. Filtreler, toplu saha/teknik onay, **toplu güncelleme** (`toplu_islem=guncelle`: Proje→Parsel→Blok→Kot kademeli modal + Açıklama; yalnız doldurulan alanlar değişir, `can_edit()`), **whitelist sıralama**
   (sütun başlığına tıkla), CSV/XLSX export.
 - **`irsaliye_form.php` / `irsaliye_detay.php`** — ekle/düzenle (durum bazlı yetki) / detay + **belge yükleme**: tür seçimli (Fotoğraf/Kantar Fişi/Fatura/İrsaliye/Diğer); kantar/fatura/irsaliye seçilirse **AI okur**, okunan alanlar belge kartında gösterilir (düşük güvende uyarı) ve "İrsaliyeye yaz" ile boş kantar alanlarına aktarılır. Bağlı fatura kartı (`irsaliyeler.fatura_id`) + "Aynı Faturadakiler" bağlantısı. Aynı dosya birden çok irsaliyeye bağlıysa diskten yalnız son bağ koptuğunda silinir.
@@ -178,7 +178,7 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · **Sipariş Talepleri** · **
 
 | Dosya | Amaç |
 |---|---|
-| `index.php` | **Genel Bakış dashboard**: KPI kartları (gelen/kantar farkı/sevkiyat/kalan sipariş/tutanak/iade/taşeron net) + çap(bar)/proje(doughnut)/aylık(line) grafikleri + son sevkiyatlar + **firma bazlı teslim matrisi** (firma seçici, Proje × Çap, `_firma_teslim.php`) + **sözleşme bazlı çap dağılımı** (sözleşme seçici; çap başına Sipariş/Teslim/Kalan, sozlesme_id bağından). Opsiyonel tablolar try/catch. |
+| `index.php` | **Genel Bakış dashboard**: KPI kartları (gelen/kantar farkı/sevkiyat/kalan sipariş/tutanak/iade/taşeron net) + **IFS talep şeridi** (talep adedi/sipariş/teslim/kalan + mutabakat uyumsuz çap rozeti; talep tablosu boşsa gizli) + çap(bar)/proje(doughnut)/aylık(line) grafikleri + son sevkiyatlar + **firma bazlı teslim matrisi** (firma seçici, Proje × Çap, `_firma_teslim.php`) + **sözleşme bazlı çap dağılımı** (sözleşme seçici; çap başına Sipariş/Teslim/Kalan, sozlesme_id bağından). Opsiyonel tablolar try/catch. |
 | `_firma_teslim.php` | Ortak: `firma_teslim_matrisi()` — uygulama tutanakları + Tutanak Takip defteri birleşik (tutanak_no dedup, iade netten düşer) → firma→proje→çap matrisi; `ftm_tablo_html()` render. |
 | `sozlesmeler.php` | **Sözleşme No paneli**: taşeron sözleşmeleri CRUD (no+taşeron+proje+konu, mükerrer engel) + **ıslak imzalı sözleşme dosyası** (PDF/DOCX/DOC/görsel, sürükle-bırak, tıkla-aç; dosya `uploads/demir_sozlesme/{id}/`, DB'de yalnız URL) + sözleşme bazında teslim toplamı, **bağlı tutanak listesi (imzalı evrak linkleriyle)** ve çap kırılımı. `demir_tutanaklar.sozlesme_id` bağı; `tutanak_form.php`'de Sözleşme No **zorunlu**; tutanak listesi/detay/PDF'te gösterilir. |
 | `sevkiyatlar.php` | Sevkiyat listesi; çap toplamı + **kantar farkı** (renkli); filtre; Excel dışa/içe aktar. |

@@ -75,6 +75,33 @@ try {
         LEFT JOIN demir_projeler p ON p.id = s.proje_id
         GROUP BY s.id ORDER BY s.irsaliye_tarih DESC, s.id DESC LIMIT 8")->fetchAll();
 
+    // Sipariş Talepleri (IFS) + mutabakat özeti — tablolar runtime oluşur, yoksa gizle
+    $talepOzet = null;
+    try {
+        $to = $pdoDemir->query("SELECT COUNT(DISTINCT t.id) adet,
+                                       COALESCE(SUM(k.siparis_kg),0)/1000 sip,
+                                       COALESCE(SUM(k.teslim_kg),0)/1000 tes
+                                FROM demir_talepler t
+                                LEFT JOIN demir_talep_kalemleri k ON k.talep_id = t.id")->fetch();
+        if ($to && (int)$to['adet'] > 0) {
+            // Mutabakat: çap bazında talep teslimi ↔ saha irsaliyesi (tolerans 0,5 t veya %1)
+            $mtTalep = []; $mtSaha = [];
+            foreach ($pdoDemir->query("SELECT COALESCE(c.ad, k.cap_label, '—') cl, SUM(k.teslim_kg)/1000 tes
+                                       FROM demir_talep_kalemleri k LEFT JOIN demir_caplar c ON c.id = k.cap_id
+                                       GROUP BY cl") as $r) $mtTalep[$r['cl']] = (float)$r['tes'];
+            foreach ($pdoDemir->query("SELECT COALESCE(c.ad,'—') cl, SUM(sk.irsaliye_miktar) irs
+                                       FROM demir_sevkiyat_kalemleri sk LEFT JOIN demir_caplar c ON c.id = sk.cap_id
+                                       GROUP BY cl") as $r) $mtSaha[$r['cl']] = (float)$r['irs'];
+            $uyumsuz = 0;
+            foreach (array_unique(array_merge(array_keys($mtTalep), array_keys($mtSaha))) as $cl) {
+                $t2 = $mtTalep[$cl] ?? 0.0; $s2 = $mtSaha[$cl] ?? 0.0;
+                if (abs($t2 - $s2) > max(0.5, 0.01 * max($t2, $s2))) $uyumsuz++;
+            }
+            $talepOzet = ['adet' => (int)$to['adet'], 'sip' => (float)$to['sip'],
+                          'tes' => (float)$to['tes'], 'uyumsuz' => $uyumsuz];
+        }
+    } catch (Throwable $e) { $talepOzet = null; }
+
     // Firma bazlı teslim matrisi (proje × çap)
     $ftm = firma_teslim_matrisi($pdoDemir);
 
@@ -157,6 +184,41 @@ $farkRenk = abs($fark)<0.0005 ? '#6c757d' : ($fark<0 ? '#dc3545' : '#198754');
     <div class="col-6 col-lg-3"><?= $kart('bi-wallet2','#0dcaf0', $fmt($taseronNet).' t', 'Taşeronda Net', 'taseron_bakiye.php', 'Teslim − İade − Hurda'.($hurdaTon>0?' ('.$fmt($hurdaTon).' t)':'')) ?></div>
     <div class="col-6 col-lg-3"><?= $kart('bi-rulers','#20c997', $capSayi, 'Çap Tanımı', 'caplar.php', 'Taşeron: <strong>'.$tasSayi.'</strong>') ?></div>
 </div>
+
+<?php if (!empty($talepOzet)): $tk = $talepOzet['sip'] - $talepOzet['tes']; ?>
+<!-- IFS Sipariş Talepleri + Mutabakat -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-center">
+            <div class="col-6 col-md-2">
+                <div class="text-muted small"><i class="bi bi-clipboard-data me-1"></i>IFS Talebi</div>
+                <a href="talepler.php" class="fs-5 fw-bold text-decoration-none"><?= (int)$talepOzet['adet'] ?></a>
+            </div>
+            <div class="col-6 col-md-2">
+                <div class="text-muted small">Talep Sipariş</div>
+                <div class="fs-6 fw-bold"><?= $fmt($talepOzet['sip']) ?> t</div>
+            </div>
+            <div class="col-6 col-md-2">
+                <div class="text-muted small">Teslim Alınan</div>
+                <div class="fs-6 fw-bold text-success"><?= $fmt($talepOzet['tes']) ?> t</div>
+            </div>
+            <div class="col-6 col-md-2">
+                <div class="text-muted small">Kalan</div>
+                <div class="fs-6 fw-bold <?= $tk > 0.5 ? 'text-danger' : 'text-muted' ?>"><?= $fmt($tk) ?> t</div>
+            </div>
+            <div class="col-12 col-md-4 text-md-end">
+                <?php if ($talepOzet['uyumsuz'] > 0): ?>
+                <a href="mutabakat.php" class="btn btn-sm btn-outline-warning">
+                    <i class="bi bi-exclamation-triangle me-1"></i><?= (int)$talepOzet['uyumsuz'] ?> çapta talep↔saha farkı</a>
+                <?php else: ?>
+                <a href="mutabakat.php" class="btn btn-sm btn-outline-success"><i class="bi bi-check2-circle me-1"></i>Talep ↔ Saha uyumlu</a>
+                <?php endif; ?>
+                <a href="talepler.php" class="btn btn-sm btn-outline-primary ms-1">Talepler <i class="bi bi-chevron-right"></i></a>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <div class="row g-3 mb-3">
     <div class="col-lg-8">

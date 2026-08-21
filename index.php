@@ -207,6 +207,24 @@ try {
     $bekleyenTeknik = (int)$pdo->query("SELECT COUNT(*) FROM irsaliyeler WHERE durum='saha_onaylandi'")->fetchColumn();
 } catch (Exception $e) {}
 
+// Fatura eşleştirme + bekleyen belge durumu (dashboard aksiyon kartları)
+$faturaOzet = null; $bekleyenBelge = 0;
+try {
+    $fs = $pdo->query("SELECT COUNT(*) adet, COALESCE(SUM(eksik_adet),0) eksik FROM faturalar")->fetch();
+    if ($fs && (int)$fs['adet'] > 0) {
+        $faturaOzet = [
+            'adet'   => (int)$fs['adet'],
+            'eksik'  => (int)$fs['eksik'],
+            'bagli'  => (int)$pdo->query("SELECT COUNT(*) FROM irsaliyeler WHERE fatura_id IS NOT NULL")->fetchColumn(),
+            'bagsiz' => (int)$pdo->query("SELECT COUNT(*) FROM irsaliyeler WHERE tip='alis' AND durum<>'reddedildi' AND fatura_id IS NULL")->fetchColumn(),
+        ];
+    }
+} catch (Throwable $e) { $faturaOzet = null; }   // faturalar/fatura_id henüz kurulmadıysa gizle
+try {
+    $bd = __DIR__ . '/uploads/belge_bekleyen';
+    if (is_dir($bd)) $bekleyenBelge = count(array_filter((array)glob($bd . '/*'), 'is_file'));
+} catch (Throwable $e) { $bekleyenBelge = 0; }
+
 // Kantar farkı özeti (bu ay)
 try {
     $st = $pdo->prepare(
@@ -392,6 +410,46 @@ html[data-dark="1"] .trend-down { background:rgba(224,84,84,.14); color:#ff8080;
             <div>
                 <div class="fw-bold" style="color:var(--ern);font-size:.95rem;"><?= $bekleyenTeknik ?> İrsaliye Teknik Onay Bekliyor</div>
                 <div class="small text-muted">Teknik ofis incelemesi gerekiyor</div>
+            </div>
+            <i class="bi bi-arrow-right ms-auto text-muted"></i>
+        </a>
+    </div>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
+
+<!-- Fatura & Belge durumu -->
+<?php if (($faturaOzet || $bekleyenBelge > 0) && can_view_reports()): ?>
+<div class="row g-3 mb-4">
+    <?php if ($faturaOzet): ?>
+    <div class="col-sm-6">
+        <a href="fatura_eslestir.php" class="d-flex align-items-center gap-3 p-3 rounded-3 text-decoration-none h-100"
+           style="background:rgba(13,110,253,.06);border:1.5px solid rgba(13,110,253,.2);">
+            <div style="width:40px;height:40px;border-radius:10px;background:rgba(13,110,253,.12);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">
+                <i class="bi bi-receipt-cutoff" style="color:#0d6efd"></i>
+            </div>
+            <div>
+                <div class="fw-bold" style="color:#0d6efd;font-size:.95rem;">
+                    <?= (int)$faturaOzet['adet'] ?> fatura işlendi · <?= (int)$faturaOzet['bagli'] ?> irsaliye bağlı
+                </div>
+                <div class="small text-muted">
+                    <?= (int)$faturaOzet['bagsiz'] ?> irsaliye henüz faturasız<?= $faturaOzet['eksik'] > 0 ? ' · <span class="text-danger fw-semibold">'.(int)$faturaOzet['eksik'].' irsaliye faturada var ama sistemde yok</span>' : '' ?>
+                </div>
+            </div>
+            <i class="bi bi-arrow-right ms-auto text-muted"></i>
+        </a>
+    </div>
+    <?php endif; ?>
+    <?php if ($bekleyenBelge > 0): ?>
+    <div class="col-sm-6">
+        <a href="belge_dagit.php" class="d-flex align-items-center gap-3 p-3 rounded-3 text-decoration-none h-100"
+           style="background:rgba(220,53,69,.06);border:1.5px solid rgba(220,53,69,.25);">
+            <div style="width:40px;height:40px;border-radius:10px;background:rgba(220,53,69,.12);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">
+                <i class="bi bi-file-earmark-x" style="color:#dc3545"></i>
+            </div>
+            <div>
+                <div class="fw-bold" style="color:#dc3545;font-size:.95rem;"><?= $bekleyenBelge ?> belge irsaliyesiz bekliyor</div>
+                <div class="small text-muted">Eşleşmeyen kantar fişi/fatura — 7 gün içinde elle bağlanmazsa silinir</div>
             </div>
             <i class="bi bi-arrow-right ms-auto text-muted"></i>
         </a>
