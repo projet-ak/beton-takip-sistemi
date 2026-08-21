@@ -28,7 +28,7 @@ try { $pdoDemir->query("SELECT 1 FROM demir_talep_kalemleri LIMIT 1"); }
 catch (Throwable $e) { $talepVar = false; }
 
 // ── Filtre: proje ────────────────────────────────────────────────────────────
-$projeler = $pdoDemir->query("SELECT id, kod, ad FROM demir_projeler ORDER BY kod")->fetchAll();
+$projeler = $pdoDemir->query("SELECT id, kod, aciklama FROM demir_projeler ORDER BY kod")->fetchAll();
 $fProje = isset($_GET['proje']) && ctype_digit((string)$_GET['proje']) ? (int)$_GET['proje'] : 0;
 $fProjeKod = '';
 foreach ($projeler as $p) if ((int)$p['id'] === $fProje) $fProjeKod = $p['kod'];
@@ -123,7 +123,7 @@ require_once __DIR__ . '/../includes/header.php';
         <select name="proje" class="form-select form-select-sm" onchange="this.form.submit()">
             <option value="">Tüm projeler</option>
             <?php foreach ($projeler as $p): ?>
-            <option value="<?= (int)$p['id'] ?>" <?= $fProje===(int)$p['id']?'selected':'' ?>><?= h($p['kod']) ?> — <?= h($p['ad']) ?></option>
+            <option value="<?= (int)$p['id'] ?>" <?= $fProje===(int)$p['id']?'selected':'' ?>><?= h($p['kod']) ?><?= $p['aciklama'] !== '' ? ' — '.h($p['aciklama']) : '' ?></option>
             <?php endforeach; ?>
         </select>
     </div>
