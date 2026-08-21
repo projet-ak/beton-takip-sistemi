@@ -121,6 +121,37 @@ if (($_POST['action'] ?? '') === 'kaydet') {
     redirect('fatura_eslestir.php');
 }
 
+// ── 2b) Eksik listesi kayıp eski kayıt: saklı PDF'ten yeniden tara ──────────
+if (($_POST['action'] ?? '') === 'eksik_tara' && ctype_digit((string)($_POST['fatura_id'] ?? ''))) {
+    $fid = (int)$_POST['fatura_id'];
+    $f = $pdo->prepare("SELECT * FROM faturalar WHERE id = ?"); $f->execute([$fid]);
+    $f = $f->fetch();
+    if (!$f) { flash('error', 'Fatura bulunamadı.'); redirect('fatura_eslestir.php?eksik=1'); }
+
+    $tam = $f['dosya_url'] ? __DIR__ . '/' . $f['dosya_url'] : '';
+    if ($tam === '' || !is_file($tam)) {
+        flash('error', 'Bu faturanın kayıtlı dosyası yok (metin yapıştırarak işlenmiş) — faturayı yukarıdan yeniden yükleyin, kaydettiğinizde eksik numaralar dolar.');
+        redirect('fatura_eslestir.php?eksik=1');
+    }
+    $mime = guess_mime($tam, basename($tam));
+    $metin = fat_dosyadan_metin($tam, $mime);
+    if ($metin === null || $metin === '') {
+        flash('error', 'Dosya okunamadı (AI okuma başarısız) — faturayı yukarıdan yeniden yükleyip kaydedin.');
+        redirect('fatura_eslestir.php?eksik=1');
+    }
+    $veri = fat_metinden_cikar($metin);
+    $esl  = fat_eslestir($pdo, $veri['irsaliyeler']);
+    $u = $pdo->prepare("UPDATE faturalar SET eksik_adet = ?, eksik_liste = ? WHERE id = ?");
+    $u->execute([count($esl['eksik']),
+                 json_encode(array_values($esl['eksik']), JSON_UNESCAPED_UNICODE), $fid]);
+    audit_log($pdo, 'faturalar', $fid, 'UPDATE', null,
+              ['eksik_tara' => true, 'eksik' => $esl['eksik']], current_user_id());
+    flash($esl['eksik'] ? 'warning' : 'success',
+          $esl['eksik'] ? 'Fatura yeniden tarandı — eksik irsaliyeler: ' . implode(', ', $esl['eksik'])
+                        : 'Fatura yeniden tarandı — faturadaki tüm irsaliyeler artık sistemde var, eksik kalmadı.');
+    redirect('fatura_eslestir.php?eksik=1');
+}
+
 // ── 3) Fatura sil (bağları çöz) ─────────────────────────────────────────────
 if (is_admin() && isset($_GET['sil']) && ctype_digit((string)$_GET['sil'])) {
     $fid = (int)$_GET['sil'];
@@ -137,11 +168,12 @@ if (is_admin() && isset($_GET['sil']) && ctype_digit((string)$_GET['sil'])) {
 $eksikOzet = [];
 if (isset($_GET['eksik'])) {
     try {
-        foreach ($pdo->query("SELECT fatura_no, tarih, eksik_adet, eksik_liste FROM faturalar
+        foreach ($pdo->query("SELECT id, fatura_no, tarih, eksik_adet, eksik_liste, dosya_url FROM faturalar
                               WHERE eksik_adet > 0 ORDER BY tarih DESC") as $r) {
             $liste = json_decode((string)$r['eksik_liste'], true);
-            $eksikOzet[] = ['fatura_no' => $r['fatura_no'], 'tarih' => $r['tarih'],
-                            'adet' => (int)$r['eksik_adet'], 'liste' => is_array($liste) ? $liste : []];
+            $eksikOzet[] = ['id' => (int)$r['id'], 'fatura_no' => $r['fatura_no'], 'tarih' => $r['tarih'],
+                            'adet' => (int)$r['eksik_adet'], 'liste' => is_array($liste) ? $liste : [],
+                            'dosya' => (string)$r['dosya_url']];
         }
     } catch (Throwable $e) { $eksikOzet = []; }
 }
@@ -187,8 +219,12 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
             </div>
             <div class="small text-muted mt-1">Bu numaralar sisteme girildikten sonra faturayı yeniden çözümleyip kaydedin — bağ kurulur, eksik düşer.</div>
             <?php else: ?>
-            <div class="small text-muted mt-1"><i class="bi bi-info-circle me-1"></i>Numara listesi bu fatura kaydedilirken saklanmamış (eski kayıt).
-                Faturayı yeniden yükleyip <strong>Çözümle</strong> → <strong>Güncelle</strong> derseniz eksik numaralar listelenir.</div>
+            <form method="post" class="mt-1 d-flex align-items-center gap-2 flex-wrap">
+                <input type="hidden" name="action" value="eksik_tara">
+                <input type="hidden" name="fatura_id" value="<?= (int)$eo['id'] ?>">
+                <button class="btn btn-sm btn-outline-danger py-0"><i class="bi bi-search me-1"></i>Eksik irsaliyeleri bul</button>
+                <span class="small text-muted">Kayıtlı fatura dosyası yeniden okunur, eksik numaralar burada listelenir<?= $eo['dosya'] === '' ? ' — <strong>bu faturanın dosyası yok</strong>, yukarıdan yeniden yüklemek gerekir' : '' ?>.</span>
+            </form>
             <?php endif; ?>
         </div>
     <?php endforeach; endif; ?>
