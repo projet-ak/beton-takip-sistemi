@@ -246,6 +246,11 @@ if ($__user) {
         </a>
       </li>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('talepler.php') ?>" href="<?= $__rootPath ?>demir/talepler.php" data-label="Sipariş Talepleri">
+          <i class="bi bi-clipboard-data"></i><span>Sipariş Talepleri</span>
+        </a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('tutanaklar.php') ?>" href="<?= $__rootPath ?>demir/tutanaklar.php" data-label="Tutanaklar">
           <i class="bi bi-file-earmark-check"></i><span>Tutanaklar</span>
         </a>

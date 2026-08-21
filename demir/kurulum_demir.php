@@ -207,6 +207,32 @@ try {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (taseron_id) REFERENCES demir_taseronlar(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        'demir_talepler' => "CREATE TABLE IF NOT EXISTS demir_talepler (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            talep_no VARCHAR(40) NOT NULL COMMENT 'IFS talep no (110307 veya birleşik 111779-112123)',
+            tarih DATE NULL,
+            sayfa_adi VARCHAR(150) NULL,
+            firma VARCHAR(200) NULL,
+            proje VARCHAR(60) NULL,
+            parsel VARCHAR(30) NULL,
+            statu VARCHAR(40) NULL,
+            created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_talep (talep_no)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
+        'demir_talep_kalemleri' => "CREATE TABLE IF NOT EXISTS demir_talep_kalemleri (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            talep_id INT NOT NULL,
+            kod VARCHAR(30) NULL COMMENT 'IFS malzeme no (I2602-0005…)',
+            aciklama VARCHAR(200) NULL,
+            cap_id INT NULL,
+            cap_label VARCHAR(40) NULL,
+            firma VARCHAR(120) NULL COMMENT 'kalem düzeyinde: bir talepte birden çok firma olabilir',
+            siparis_kg DECIMAL(14,1) NOT NULL DEFAULT 0,
+            teslim_kg  DECIMAL(14,1) NOT NULL DEFAULT 0,
+            KEY (talep_id), KEY (cap_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
     ];
 
     foreach ($tablolar as $ad => $sql) {
