@@ -222,7 +222,8 @@ try {
 } catch (Throwable $e) { $faturaOzet = null; }   // faturalar/fatura_id henüz kurulmadıysa gizle
 try {
     $bd = __DIR__ . '/uploads/belge_bekleyen';
-    if (is_dir($bd)) $bekleyenBelge = count(array_filter((array)glob($bd . '/*'), 'is_file'));
+    if (is_dir($bd)) $bekleyenBelge = count(array_filter((array)glob($bd . '/*'),
+        fn($g) => is_file($g) && !str_ends_with($g, '.json')));   // .json = bekleme not dosyası, belge değil
 } catch (Throwable $e) { $bekleyenBelge = 0; }
 
 // Kantar farkı özeti (bu ay)
@@ -423,7 +424,7 @@ html[data-dark="1"] .trend-down { background:rgba(224,84,84,.14); color:#ff8080;
 <div class="row g-3 mb-4">
     <?php if ($faturaOzet): ?>
     <div class="col-sm-6">
-        <a href="fatura_eslestir.php" class="d-flex align-items-center gap-3 p-3 rounded-3 text-decoration-none h-100"
+        <a href="fatura_eslestir.php<?= $faturaOzet['eksik'] > 0 ? '?eksik=1' : '' ?>" class="d-flex align-items-center gap-3 p-3 rounded-3 text-decoration-none h-100"
            style="background:rgba(13,110,253,.06);border:1.5px solid rgba(13,110,253,.2);">
             <div style="width:40px;height:40px;border-radius:10px;background:rgba(13,110,253,.12);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">
                 <i class="bi bi-receipt-cutoff" style="color:#0d6efd"></i>
@@ -433,7 +434,7 @@ html[data-dark="1"] .trend-down { background:rgba(224,84,84,.14); color:#ff8080;
                     <?= (int)$faturaOzet['adet'] ?> fatura işlendi · <?= (int)$faturaOzet['bagli'] ?> irsaliye bağlı
                 </div>
                 <div class="small text-muted">
-                    <?= (int)$faturaOzet['bagsiz'] ?> irsaliye henüz faturasız<?= $faturaOzet['eksik'] > 0 ? ' · <span class="text-danger fw-semibold">'.(int)$faturaOzet['eksik'].' irsaliye faturada var ama sistemde yok</span>' : '' ?>
+                    <?= (int)$faturaOzet['bagsiz'] ?> irsaliye henüz faturasız<?= $faturaOzet['eksik'] > 0 ? ' · <span class="text-danger fw-semibold">'.(int)$faturaOzet['eksik'].' irsaliye faturada var ama sistemde yok — hangileri olduğunu gör</span>' : '' ?>
                 </div>
             </div>
             <i class="bi bi-arrow-right ms-auto text-muted"></i>
@@ -449,7 +450,7 @@ html[data-dark="1"] .trend-down { background:rgba(224,84,84,.14); color:#ff8080;
             </div>
             <div>
                 <div class="fw-bold" style="color:#dc3545;font-size:.95rem;"><?= $bekleyenBelge ?> belge irsaliyesiz bekliyor</div>
-                <div class="small text-muted">Eşleşmeyen kantar fişi/fatura — 7 gün içinde elle bağlanmazsa silinir</div>
+                <div class="small text-muted">Eşleşmeyen kantar fişi/fatura — tıklayın, okunan bilgilerle ilgili irsaliyeye bağlayın</div>
             </div>
             <i class="bi bi-arrow-right ms-auto text-muted"></i>
         </a>

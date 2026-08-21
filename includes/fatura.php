@@ -348,6 +348,11 @@ function fat_semasi_kur(PDO $pdo): void
         KEY idx_tarih (tarih)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+    // faturalar.eksik_liste — faturada olup sistemde bulunamayan irsaliye numaraları (JSON).
+    // Yalnız sayı (eksik_adet) hangi irsaliyelerin eksik olduğunu söyleyemiyordu.
+    $var = $pdo->query("SHOW COLUMNS FROM faturalar LIKE 'eksik_liste'")->fetch();
+    if (!$var) $pdo->exec("ALTER TABLE faturalar ADD COLUMN eksik_liste TEXT NULL AFTER eksik_adet");
+
     // irsaliyeler.fatura_id — faturaya bağ (fatura_no alanı taramada ETTN ile dolduğundan
     // güvenilir bağ için ayrı kolon tutulur).
     $var = $pdo->query("SHOW COLUMNS FROM irsaliyeler LIKE 'fatura_id'")->fetch();
@@ -434,17 +439,19 @@ function fat_kaydet(PDO $pdo, array $fatura, array $irsIds, ?int $userId = null,
             $fatura['ettn'] ?: null,
             count($irsIds),
             (int)($fatura['eksik_adet'] ?? 0),
+            !empty($fatura['eksik_liste']) && is_array($fatura['eksik_liste'])
+                ? json_encode(array_values($fatura['eksik_liste']), JSON_UNESCAPED_UNICODE) : null,
             $dosyaUrl,
             $fatura['notlar'] ?? null,
         ];
         if ($fid) {
             $u = $pdo->prepare("UPDATE faturalar SET tarih=?, tedarikci_id=?, tutar=?, miktar_m3=?, ettn=?,
-                                irsaliye_adet=?, eksik_adet=?, dosya_url=COALESCE(?, dosya_url), notlar=? WHERE id=?");
+                                irsaliye_adet=?, eksik_adet=?, eksik_liste=?, dosya_url=COALESCE(?, dosya_url), notlar=? WHERE id=?");
             $u->execute(array_merge($alan, [$fid]));
         } else {
             $i = $pdo->prepare("INSERT INTO faturalar (fatura_no, tarih, tedarikci_id, tutar, miktar_m3, ettn,
-                                irsaliye_adet, eksik_adet, dosya_url, notlar, created_by)
-                                VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+                                irsaliye_adet, eksik_adet, eksik_liste, dosya_url, notlar, created_by)
+                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
             $i->execute(array_merge([$no], $alan, [$userId]));
             $fid = (int)$pdo->lastInsertId();
         }

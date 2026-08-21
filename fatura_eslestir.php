@@ -93,6 +93,8 @@ if (($_POST['action'] ?? '') === 'kaydet') {
             'miktar'       => $_POST['miktar'] ?? null,
             'ettn'         => trim((string)($_POST['ettn'] ?? '')) ?: null,
             'eksik_adet'   => (int)($_POST['eksik_adet'] ?? 0),
+            'eksik_liste'  => is_array($el = json_decode((string)($_POST['eksik_liste'] ?? ''), true))
+                              ? array_slice(array_map('strval', $el), 0, 500) : [],
             'notlar'       => trim((string)($_POST['notlar'] ?? '')) ?: null,
         ], $ids, current_user_id(), trim((string)($_POST['dosya_url'] ?? '')) ?: null);
 
@@ -131,6 +133,19 @@ if (is_admin() && isset($_GET['sil']) && ctype_digit((string)$_GET['sil'])) {
     redirect('fatura_eslestir.php');
 }
 
+// Dashboard'daki "faturada var ama sistemde yok" kartından gelinirse eksikleri özetle
+$eksikOzet = [];
+if (isset($_GET['eksik'])) {
+    try {
+        foreach ($pdo->query("SELECT fatura_no, tarih, eksik_adet, eksik_liste FROM faturalar
+                              WHERE eksik_adet > 0 ORDER BY tarih DESC") as $r) {
+            $liste = json_decode((string)$r['eksik_liste'], true);
+            $eksikOzet[] = ['fatura_no' => $r['fatura_no'], 'tarih' => $r['tarih'],
+                            'adet' => (int)$r['eksik_adet'], 'liste' => is_array($liste) ? $liste : []];
+        }
+    } catch (Throwable $e) { $eksikOzet = []; }
+}
+
 $tedarikciler = $pdo->query("SELECT id, ad, vkn FROM tedarikciler ORDER BY ad")->fetchAll();
 $kayitli = $pdo->query("SELECT f.*, t.ad AS tedarikci,
                                (SELECT COUNT(*) FROM irsaliyeler i WHERE i.fatura_id = f.id) AS bagli
@@ -153,6 +168,33 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
 <div class="alert alert-<?= $t==='error'?'danger':$t ?>"><?= h($m) ?></div>
 <?php endif; endforeach; ?>
 <?php if ($hata): ?><div class="alert alert-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i><?= h($hata) ?></div><?php endif; ?>
+
+<?php if (isset($_GET['eksik'])): ?>
+<div class="card mb-4 border-danger">
+    <div class="card-header bg-white fw-semibold text-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i> Faturada Olup Sistemde Olmayan İrsaliyeler</div>
+    <div class="card-body">
+    <?php if (!$eksikOzet): ?>
+        <div class="text-success"><i class="bi bi-check-circle me-1"></i>Eksik irsaliyesi olan fatura yok.</div>
+    <?php else: foreach ($eksikOzet as $eo): ?>
+        <div class="mb-3">
+            <div class="fw-semibold"><code><?= h($eo['fatura_no']) ?></code>
+                <span class="text-muted small"><?= h(format_date($eo['tarih'])) ?> · <?= (int)$eo['adet'] ?> eksik irsaliye</span></div>
+            <?php if ($eo['liste']): ?>
+            <div class="d-flex flex-wrap gap-1 mt-1">
+                <?php foreach ($eo['liste'] as $n): ?>
+                <span class="badge bg-danger-subtle text-danger border border-danger-subtle"><?= h($n) ?></span>
+                <?php endforeach; ?>
+            </div>
+            <div class="small text-muted mt-1">Bu numaralar sisteme girildikten sonra faturayı yeniden çözümleyip kaydedin — bağ kurulur, eksik düşer.</div>
+            <?php else: ?>
+            <div class="small text-muted mt-1"><i class="bi bi-info-circle me-1"></i>Numara listesi bu fatura kaydedilirken saklanmamış (eski kayıt).
+                Faturayı yeniden yükleyip <strong>Çözümle</strong> → <strong>Güncelle</strong> derseniz eksik numaralar listelenir.</div>
+            <?php endif; ?>
+        </div>
+    <?php endforeach; endif; ?>
+    </div>
+</div>
+<?php endif; ?>
 
 <div class="card mb-4">
     <div class="card-header bg-white fw-semibold"><i class="bi bi-upload me-1"></i> Fatura Yükle / Metin Yapıştır</div>
@@ -325,6 +367,7 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
 <input type="hidden" name="action" value="kaydet">
 <input type="hidden" name="dosya_url" value="<?= h((string)$sonuc['dosya_url']) ?>">
 <input type="hidden" name="eksik_adet" value="<?= $eksikAdet ?>">
+<input type="hidden" name="eksik_liste" value="<?= h(json_encode($e['eksik'], JSON_UNESCAPED_UNICODE)) ?>">
 
 <?php
 $mevcut    = $sonuc['mevcut']  ?? null;
@@ -589,7 +632,11 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                         </button>
                         <?php else: ?><?= (int)$f['bagli'] ?><?php endif; ?>
                     </td>
-                    <td class="text-end <?= (int)$f['eksik_adet']?'text-danger fw-bold':'' ?>"><?= (int)$f['eksik_adet'] ?></td>
+                    <td class="text-end <?= (int)$f['eksik_adet']?'text-danger fw-bold':'' ?>">
+                        <?php if ((int)$f['eksik_adet'] > 0): $fel = json_decode((string)($f['eksik_liste'] ?? ''), true); ?>
+                        <a href="?eksik=1" class="text-danger text-decoration-none" title="<?= h(is_array($fel) ? implode(', ', $fel) : 'numara listesi için tıklayın') ?>"><?= (int)$f['eksik_adet'] ?> <i class="bi bi-box-arrow-up-right small"></i></a>
+                        <?php else: ?>0<?php endif; ?>
+                    </td>
                     <td><?php if ($f['dosya_url']): ?><a href="<?= h($f['dosya_url']) ?>" target="_blank"><i class="bi bi-file-earmark-pdf"></i></a><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
                     <td class="text-end">
                         <a class="btn btn-sm btn-outline-secondary py-0" href="irsaliyeler.php?fatura_id=<?= (int)$f['id'] ?>">İrsaliyeler</a>

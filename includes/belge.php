@@ -292,3 +292,33 @@ function blg_kantar_uygula(PDO $pdo, int $irsId, array $v, ?int $uid = null): ar
     audit_log($pdo, 'irsaliyeler', $irsId, 'UPDATE', $mev, ['kantar_fisinden' => $yapilan], $uid);
     return $yapilan;
 }
+
+/** Bekleyen belgenin yanına not dosyası yazar (orijinal ad, tür, okunan veri). */
+function blg_bekleme_notu(string $dosyaYolu, array $not): void
+{
+    $not['zaman'] = date('Y-m-d H:i:s');
+    @file_put_contents($dosyaYolu . '.json', json_encode($not, JSON_UNESCAPED_UNICODE));
+}
+
+/** Bekleyen belgenin not dosyasını okur; yoksa boş dizi döner. */
+function blg_bekleme_notu_oku(string $dosyaYolu): array
+{
+    $j = @file_get_contents($dosyaYolu . '.json');
+    $d = $j !== false ? json_decode($j, true) : null;
+    return is_array($d) ? $d : [];
+}
+
+/** Bekleme klasöründeki belgeleri (not bilgileriyle) listeler — .json yan dosyaları hariç. */
+function blg_bekleyenler(string $klasor): array
+{
+    $out = [];
+    foreach ((array)glob(rtrim($klasor, '/') . '/*') as $g) {
+        if (!is_file($g) || str_ends_with($g, '.json')) continue;
+        $not = blg_bekleme_notu_oku($g);
+        $out[] = ['dosya' => basename($g), 'yol' => $g, 'zaman' => date('d.m.Y H:i', filemtime($g)),
+                  'ad' => $not['ad'] ?? basename($g), 'tur' => $not['tur'] ?? 'diger',
+                  'okunan' => $not['okunan'] ?? null];
+    }
+    usort($out, fn($a, $b) => $b['zaman'] <=> $a['zaman']);
+    return $out;
+}
