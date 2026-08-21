@@ -251,6 +251,11 @@ if ($__user) {
         </a>
       </li>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('mutabakat.php') ?>" href="<?= $__rootPath ?>demir/mutabakat.php" data-label="Talep Mutabakatı">
+          <i class="bi bi-check2-square"></i><span>Talep Mutabakatı</span>
+        </a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('tutanaklar.php') ?>" href="<?= $__rootPath ?>demir/tutanaklar.php" data-label="Tutanaklar">
           <i class="bi bi-file-earmark-check"></i><span>Tutanaklar</span>
         </a>

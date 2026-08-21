@@ -173,7 +173,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 
 ## 5. Demir Modülü (`demir/`)
 
-Sidebar: Dashboard · Sevkiyatlar · Siparişler · **Sipariş Talepleri** · Tutanaklar · **Tutanak Takip** · **İade Tutanakları** ·
+Sidebar: Dashboard · Sevkiyatlar · Siparişler · **Sipariş Talepleri** · **Talep Mutabakatı** · Tutanaklar · **Tutanak Takip** · **İade Tutanakları** ·
 **Taşeron Bakiye** · **Sözleşmeler** · İcmal · Raporlar · Proje Dışı İşler · Tanımlar(Projeler/Çaplar/Tedarikçiler/Taşeronlar).
 
 | Dosya | Amaç |
@@ -187,6 +187,7 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · **Sipariş Talepleri** · Tu
 | `siparis_form.php` | IFS Sipariş No **zorunlu + mükerrer engelli** (eşleşme buna dayanır; benzersiz olmalı yoksa bakiye çift sayar) + **Sözleşme No zorunlu** (`demir_siparisler.sozlesme_id`) + çap bazında sipariş miktarı. `siparisler.php` mevcut mükerrer IFS no'ları uyarı bandında gösterir; `kurulum_demir.php` güvenliyse `ifs_siparis_no` UNIQUE + sevkiyatta düz indeks ekler. |
 | `siparis_detay.php` | Çap bazında bakiye + eşleşen sevkiyatlar. |
 | `talepler.php` | **IFS Sipariş Talepleri** ("Demir Siparişleri Takip Tablosu" Excel'i): her sayfa bir talep (Talep No; birleşik "111779-112123" desteklenir, çift Miktar kolonu varsa "Toplam" okunur). Çap **Malzeme Açıklamasından** çıkar ("Nervürlü 26 Mm"→Ø26, "Q188/188"→hasır) ve `demir_caplar`'a bağlanır; firma KALEM düzeyinde (bir talepte PRP+OSMAN CAMCI olabilir). Tarih sayfa adından. İçe aktarma tam yenileme; liste + çap özet matrisi + firma/proje filtre + collapse kalem kırılımı. ⚠ Talep No (110307…) ≠ IFS Sipariş No (706589…) — sipariş bakiyesine karışmaz, Excel birebir yansır. Tablolar `demir_talepler`+`demir_talep_kalemleri` (runtime + kurulum). |
+| `mutabakat.php` | **Talep ↔ Saha Mutabakatı**: IFS taleplerindeki "Teslim Alınan" (kg) ile sevkiyatların irsaliye/kantar miktarı (ton) **çap bazında** karşılaştırılır; tolerans 0,5 t veya %1. Rozetler: Uyumlu / Saha eksik (talep fazla, kırmızı) / Saha fazla (mavi — talep dosyası 110307 öncesini kapsamadığından beklenen durum) / Yalnız talepte-sahada. Proje filtresi (talep tarafı LIKE, saha tarafı proje_id). **Tarih filtresi bilerek yok** (talep tarihi=sipariş günü ≠ sevkiyat tarihi=geliş günü). |
 | `tutanaklar.php` | Teslim tutanağı listesi (tonaj/bağ/evrak durumu). |
 | `tutanak_form.php` | **Otomatik no** `{PROJE}-{TASKOD}-NNN` + dinamik kalem satırları. |
 | `tutanak_detay.php` | Görüntüleme + **imzalı evrak yükleme** (`uploads/demir_tutanak/{id}/`). |
