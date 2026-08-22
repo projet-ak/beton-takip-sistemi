@@ -231,7 +231,7 @@ if (isset($_GET['ajax'])) {
 function sel($val, $check): string {
     return ((string)$val === (string)$check) ? 'selected' : '';
 }
-function val(array $row = null, string $key, $default = ''): string {
+function val(?array $row, string $key, $default = ''): string {
     return h((string)(($row[$key] ?? null) ?? $default));
 }
 

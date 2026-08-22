@@ -486,6 +486,14 @@ html[data-dark="1"] .trend-down { background:rgba(224,84,84,.14); color:#ff8080;
             <span>Raporlar</span>
         </a>
     </div>
+    <?php if (has_role('admin','teknik_ofis_admin')): ?>
+    <div class="col-6 col-sm-3 col-md-2">
+        <a href="import.php" class="qa-btn w-100">
+            <i class="bi bi-cloud-arrow-up" style="color:#6f42c1"></i>
+            <span>Excel Aktar</span>
+        </a>
+    </div>
+    <?php endif; ?>
 </div>
 <?php endif; ?>
 
