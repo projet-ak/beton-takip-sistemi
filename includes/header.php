@@ -286,6 +286,10 @@ if ($__user) {
         </a>
       </li>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('zayiat.php') ?>" href="<?= $__rootPath ?>demir/zayiat.php" data-label="Zayiat">
+          <i class="bi bi-graph-down-arrow"></i><span>Zayiat Takibi</span></a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('raporlar.php') ?>" href="<?= $__rootPath ?>demir/raporlar.php" data-label="Raporlar">
           <i class="bi bi-bar-chart-line"></i><span>Raporlar</span>
         </a>
@@ -334,6 +338,10 @@ if ($__user) {
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('paletler.php') ?>" href="<?= $__rootPath ?>seramik/paletler.php" data-label="Palet Durumu">
           <i class="bi bi-layers"></i><span>Palet Durumu</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('zayiat.php') ?>" href="<?= $__rootPath ?>seramik/zayiat.php" data-label="Zayiat">
+          <i class="bi bi-graph-down-arrow"></i><span>Zayiat Takibi</span></a>
       </li>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('raporlar.php') ?>" href="<?= $__rootPath ?>seramik/raporlar.php" data-label="Raporlar">

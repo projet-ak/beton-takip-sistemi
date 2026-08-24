@@ -38,6 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $miktar  = dp_sayi($_POST['miktar'] ?? '');
     $tarih   = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['tarih'] ?? '') ? $_POST['tarih'] : date('Y-m-d');
     $kalemId = isset($_POST['kalem_id']) && ctype_digit((string)$_POST['kalem_id']) ? (int)$_POST['kalem_id'] : null;
+    $hurda   = ($tur === 'cikis' && !empty($_POST['hurda'])) ? 1 : 0;   // hurda yalnız çıkışta
 
     if ($malzeme === '' || $miktar <= 0) {
         flash('error', 'Malzeme adı ve sıfırdan büyük miktar zorunludur.');
@@ -60,25 +61,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             trim((string)($_POST['lokasyon'] ?? '')) ?: null,
             trim((string)($_POST['aciklama'] ?? '')) ?: null,
             $kalemId,
+            $hurda,
         ];
         try {
             $pdoDepo->beginTransaction();
             if ($id && $row) {
                 dp_stok_islet($pdoDepo, $row['kalem_id'] ? (int)$row['kalem_id'] : null, $row['tur'], (float)$row['miktar'], -1);
                 $u = $pdoDepo->prepare("UPDATE depo_hareketler SET tur=?, kaynak=?, tarih=?, belge_tarihi=?, belge_no=?,
-                        malzeme=?, ozellik=?, birim=?, miktar=?, firma=?, teslim_alan=?, onay=?, lokasyon=?, aciklama=?, kalem_id=?
+                        malzeme=?, ozellik=?, birim=?, miktar=?, firma=?, teslim_alan=?, onay=?, lokasyon=?, aciklama=?, kalem_id=?, hurda=?
                         WHERE id=? AND elle=1");
                 $u->execute(array_merge($alanlar, [$id]));
             } else {
                 $i = $pdoDepo->prepare("INSERT INTO depo_hareketler
-                        (tur,kaynak,tarih,belge_tarihi,belge_no,malzeme,ozellik,birim,miktar,firma,teslim_alan,onay,lokasyon,aciklama,kalem_id,elle)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)");
+                        (tur,kaynak,tarih,belge_tarihi,belge_no,malzeme,ozellik,birim,miktar,firma,teslim_alan,onay,lokasyon,aciklama,kalem_id,hurda,elle)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)");
                 $i->execute($alanlar);
                 $id = (int)$pdoDepo->lastInsertId();
             }
             dp_stok_islet($pdoDepo, $kalemId, $tur, $miktar, 1);
             $pdoDepo->commit();
-            flash('success', ($tur === 'giris' ? 'Giriş' : 'Çıkış') . ' kaydedildi'
+            flash('success', ($hurda ? 'Hurdaya ayırma' : ($tur === 'giris' ? 'Giriş' : 'Çıkış')) . ' kaydedildi'
                            . ($kalemId ? ' ve stok kalemine işlendi.' : '.'));
             redirect('hareketler.php?tutanak=' . $id);
         } catch (Throwable $e) {
@@ -117,7 +119,7 @@ require_once __DIR__ . '/../includes/header.php';
         </div>
         <div class="col-6 col-md-2">
             <label class="form-label">Kaynak</label>
-            <select name="kaynak" class="form-select">
+            <select name="kaynak" class="form-select" id="kaynakSec">
                 <option value="depo"    <?= ($row['kaynak'] ?? 'depo')==='depo'?'selected':'' ?>>Depo malzemesi</option>
                 <option value="taseron" <?= ($row['kaynak'] ?? '')==='taseron'?'selected':'' ?>>Taşeron malzemesi</option>
             </select>
@@ -194,6 +196,16 @@ require_once __DIR__ . '/../includes/header.php';
             <div class="form-text">Seçilirse <?= $g ? 'GELEN' : 'GİDEN' ?> miktarı artar; kayıt silinirse geri alınır.</div>
         </div>
 
+        <div class="col-12" id="hurdaKutu" style="<?= $g ? 'display:none' : '' ?>">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="hurda" value="1" id="hurdaChk"
+                       <?= !empty($row['hurda']) ? 'checked' : '' ?>>
+                <label class="form-check-label" for="hurdaChk">
+                    <strong>Hurdaya ayırma</strong> <span class="text-muted small">— malzeme kullanım dışı; hurda listesinde ayrıca izlenir, stoktan düşer</span>
+                </label>
+            </div>
+        </div>
+
         <div class="col-12">
             <button class="btn btn-<?= $g ? 'success' : 'danger' ?>"><i class="bi bi-save me-1"></i><?= $id ? 'Güncelle' : 'Kaydet' ?></button>
             <a href="hareketler.php" class="btn btn-outline-secondary">Vazgeç</a>
@@ -206,6 +218,8 @@ function trDegis(t){
     var g = t === 'giris';
     document.getElementById('lblBelge').textContent = g ? 'İrsaliye No' : 'Fiş No';
     document.getElementById('lblFirma').textContent = g ? 'Gönderen Firma' : 'Çıkış Yapılan Firma / Taşeron';
+    document.getElementById('hurdaKutu').style.display = g ? 'none' : '';
+    if (g) document.getElementById('hurdaChk').checked = false;
 }
 // Malzeme adı yazılınca aynı adlı stok kalemini otomatik seç
 document.getElementById('malzemeAd').addEventListener('change', function(){

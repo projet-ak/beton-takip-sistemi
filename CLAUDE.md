@@ -18,18 +18,18 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   Stok = **AMBAR MEVCUT'a sabit** (SAYIM−GİDEN) + elle giriş − elle çıkış (Excel log'ları
   SAYIM/GİDEN'de zaten sayılı olduğundan stoka eklenmez). `includes/db_seramik.php` → `$pdoSeramik`.
   Sayfalar: index(dashboard + aylık giriş/çıkış Chart.js trendi) · girisler/giris_form · cikislar/cikis_form · stok · paletler ·
-  import (Giriş/Çıkış/Mevcut/Palet tam yenileme) · malzemeler/firmalar/taseronlar · kurulum_seramik. raporlar (Chart.js + Excel: tür/malzeme stok, aylık giriş/çıkış).
+  import (Giriş/Çıkış/Mevcut/Palet tam yenileme) · malzemeler/firmalar/taseronlar · kurulum_seramik · **zayiat** (malzeme bazlı teorik m² vs ambar çıkışı; limit varsayılan %7; tablo `seramik_metraj` runtime). raporlar'a **PDF/Yazdır** (ERN Taahhüt logolu) eklendi. raporlar (Chart.js + Excel: tür/malzeme stok, aylık giriş/çıkış).
   Malzeme eşleşmesi `sr_norm()` (I/İ katlama, *→X). `seramik/_ortak.php` ortak yardımcılar.
 - **Depo modülü** = `depo/` alt klasörü. Sarf malzeme + demirbaş + el aletleri stok/zimmet takibi.
   **Ayrı veritabanı** (`takbulut_depo`, `DEPO_DB_NAME`). Tek tablo `depo_kalemler` (kategori ENUM
   `demirbas`/`sarf`/`el_aleti`). **Stok = SAYIM + GELEN − GİDEN** (kalem defteri modeli; ayrı log yok).
   `includes/db_depo.php` → `$pdoDepo`. **Hareket defteri** `depo_hareketler` (tur giris/cikis × kaynak depo/taseron;
   tarih, belge_tarihi, belge_no [irsaliye no / fiş no], malzeme, ozellik, birim, miktar, firma [gönderen/çıkış
-  yapılan/taşeron], teslim_alan, onay, lokasyon, aciklama, elle [günlük kayıt], kalem_id [stok bağı]) — `depo_kalemler` stoğun FOTOĞRAFI, `depo_hareketler`
+  yapılan/taşeron], teslim_alan, onay, lokasyon, aciklama, elle [günlük kayıt], kalem_id [stok bağı], hurda [hurdaya ayırma çıkışı — Hurdalar filtresi/rozeti/KPI]) — `depo_kalemler` stoğun FOTOĞRAFI, `depo_hareketler`
   o stoğu oluşturan TEK TEK HAREKETLER. Sayfalar: index(dashboard: kategori kartları + mali değer KPI +
   tükenen liste + **hareket özeti/son hareketler/en çok hareket gören firmalar**) · kalemler(kategori bazlı liste,
   ?k=demirbas|sarf|el_aleti, arama, stok/tutar) · kalem_form(ekle/düzenle) · **hareketler**(giriş/çıkış defteri:
-  tür/kaynak/firma/tarih aralığı/serbest metin filtreleri + KPI + sayfalama + Excel; elle kayıtlarda düzenle/sil) · **hareket_form**(günlük elle giriş/çıkış: `elle=1` işaretli — Excel tam yenilemesinde KORUNUR [import `elle=0` siler]; opsiyonel "stok kalemine işle" `kalem_id` → depo_kalemler GELEN/GİDEN güncellenir, silme/düzenlemede `dp_stok_islet()` geri alır; malzeme datalist'ten seçilince kalem otomatik eşleşir) · **hareket_tutanak**(hareket başına A4 tutanak: giriş=TESLİM ALMA, çıkış=TESLİM; **ERN Taahhüt** logolu, kayıt sonrası bannerdan ve listeden yazdırılır) · import(7 sayfa: DEMİRBAŞLAR/
+  tür/kaynak/firma/tarih aralığı/serbest metin filtreleri + KPI + sayfalama + Excel; elle kayıtlarda düzenle/sil) · **hareket_form**(günlük elle giriş/çıkış: `elle=1` işaretli — Excel tam yenilemesinde KORUNUR [import `elle=0` siler]; opsiyonel "stok kalemine işle" `kalem_id` → depo_kalemler GELEN/GİDEN güncellenir, silme/düzenlemede `dp_stok_islet()` geri alır; malzeme datalist'ten seçilince kalem otomatik eşleşir) · **hareket_tutanak**(hareket başına A4 tutanak: giriş=TESLİM ALMA, çıkış=TESLİM, hurda=HURDAYA AYIRMA; **ERN Taahhüt** logolu, kayıt sonrası bannerdan ve listeden yazdırılır) · import(7 sayfa: DEMİRBAŞLAR/
   SARF MALZEME/EL ALETLERİ → stok, MALZEME GİRİŞ-ÇIKIŞ + TAŞERON MALZEME GİRİŞ-TESLİMAT → hareket; her biri kendi
   türünde tam yenileme, dosyada olmayan sayfaya dokunulmaz) · raporlar (Chart.js + Excel: kategori/disiplin mali değer, en değerli kalemler) · kurulum_depo. El aletleri: fiyat/disiplin yok, **Seri No + Zimmetli Kişi** var. Demirbaş/
   sarf: birim fiyat → **mali değer** (STOK × B.Fiyat). `depo/_ortak.php` (dp_sayi, DP_KATEGORI, dp_ozet).
@@ -60,7 +60,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 ### Teknoloji
 - Backend: PHP (framework yok), PDO/MySQL 8, prepared statements her yerde.
 - Frontend: Bootstrap 5.3.3 + Bootstrap Icons, Chart.js 4.4.4, Google Fonts (Outfit), sunucu-tarafı render + PWA (`manifest.json`, `sw.js`).
-- Excel: `Shuchkin\SimpleXLSX` (composer, okuma) + `includes/XlsxWriter.php` (yazma) + client-side **ExcelJS** (formatlı rapor).
+- Excel: `Shuchkin\SimpleXLSX` (composer, okuma) + `includes/XlsxWriter.php` (yazma; **varsayılan ERN Taahhüt logolu** — kurucu 2. parametre false ile kapatılır, başlık 4. satıra kayar) + client-side **ExcelJS** (formatlı rapor).
 - AI: Claude (Haiku 4.5) / Gemini / OpenRouter — `AI_PROVIDER` ile seçilir (`includes/ai_call.php`).
 
 ---
@@ -199,6 +199,7 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · **Sipariş Talepleri** · **
 | `taseron_bakiye.php` | **Net Elinde = Teslim Alınan + Devraldığı − İade Ettiği − Hurda Satışı** (çap bazında açılır; hurda **çaptan bağımsız** düşülür). Teslim/iade kaynakları: uygulama tutanakları **+ Tutanak Takip defteri** (firma adı eşleşir; aynı tutanak_no uygulamada varsa çift sayılmaz). Defterde irsaliye alanı başka firma adıyla başlayan teslimler (ör. YILDIZLAR ← "DENER U030") **Devraldığı** sayılır. Hurda CRUD (modal, otomatik no `{TASKOD}-HRD-NNN`) + kayıt listesi + **imza tutanağı** (`hurda_pdf.php`). Tablo `demir_hurda` (runtime + kurulum). |
 | `_iade_ortak.php` | İade ortak: şema garantisi (`iade_semasi_kur`) + `iade_num` + `iade_no_uret`. |
 | `icmal.php` / `icmal_pdf.php` | Gelen demir mutabakatı (çap+tedarikçi) + Excel/PDF. **Çap değerine tıklayınca popup** (AJAX `?cap_detay=`): o çaptaki sevkiyatlar→irsaliyeye (`sevkiyat_form.php?id=`), siparişler→(`siparis_detay.php?id=`) **o çap için gelen/kalan bakiye ile**, teslim tutanakları→(`tutanak_detay.php?id=`). |
+| `zayiat.php` | **Demir Zayiat Takibi**: teorik metraj (proje×çap, elle, modal) vs teslim edilen (tutanaklar + Tutanak Takip defteri, tutanak_no dedup); zayiat/oran/limit % (varsayılan 3), LİMİT AŞIMI kırmızı. Tablo `demir_metraj` (runtime). |
 | `raporlar.php` | Chart.js + **ExcelJS** (Özet/Aylık/Tedarikçi/**Proje**/Detay) + PDF (yazdırma penceresi). **Proje kırılımı**: proje bazlı doughnut + **Proje × Çap matris tablosu** (gelen ton, çap kolonları sıra no'ya göre) + Excel "Proje" sayfası. |
 | `projeler.php` | Proje CRUD (kod+ad), **mükerrer önleme (kod VEYA ad)**. |
 | `proje_detay.php` | Proje detayı: çap bazında gelen demir + siparişler+bakiye + sevkiyatlar. |

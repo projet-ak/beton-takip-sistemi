@@ -41,6 +41,7 @@ $tur     = isset($GLOBALS['DP_HAREKET'][$_GET['tur'] ?? ''])  ? $_GET['tur']    
 $kaynak  = isset($GLOBALS['DP_KAYNAK'][$_GET['kaynak'] ?? '']) ? $_GET['kaynak'] : '';
 $ara     = trim($_GET['ara'] ?? '');
 $firma   = trim($_GET['firma'] ?? '');
+$hurdaF  = ($_GET['hurda'] ?? '') === '1';
 $bas     = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['bas'] ?? '') ? $_GET['bas'] : '';
 $bit     = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['bit'] ?? '') ? $_GET['bit'] : '';
 $sayfa   = max(1, (int)($_GET['s'] ?? 1));
@@ -50,6 +51,7 @@ $where = []; $par = [];
 if ($tur)    { $where[] = 'tur = ?';    $par[] = $tur; }
 if ($kaynak) { $where[] = 'kaynak = ?'; $par[] = $kaynak; }
 if ($firma)  { $where[] = 'firma = ?';  $par[] = $firma; }
+if ($hurdaF) { $where[] = 'hurda = 1'; }
 if ($bas)    { $where[] = 'tarih >= ?'; $par[] = $bas; }
 if ($bit)    { $where[] = 'tarih <= ?'; $par[] = $bit; }
 if ($ara !== '') {
@@ -59,6 +61,7 @@ if ($ara !== '') {
 $wsql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
 
 // Filtreye uyan özet (sayfalamadan bağımsız)
+$hurdaOzet = $pdoDepo->query("SELECT COUNT(*) adet, COALESCE(SUM(miktar),0) miktar FROM depo_hareketler WHERE hurda=1")->fetch();
 $oz = $pdoDepo->prepare("SELECT COUNT(*) adet, SUM(miktar) miktar,
                                 SUM(CASE WHEN tur='giris' THEN miktar ELSE 0 END) giris,
                                 SUM(CASE WHEN tur='cikis' THEN miktar ELSE 0 END) cikis,
@@ -112,7 +115,8 @@ $fmt  = fn($n) => number_format((float)$n, 2, ',', '.');
 $fmt0 = fn($n) => number_format((float)$n, 0, ',', '.');
 $qs = function(array $ek = []) {
     $p = array_merge(['tur'=>$_GET['tur']??'','kaynak'=>$_GET['kaynak']??'','ara'=>$_GET['ara']??'',
-                      'firma'=>$_GET['firma']??'','bas'=>$_GET['bas']??'','bit'=>$_GET['bit']??''], $ek);
+                      'firma'=>$_GET['firma']??'','bas'=>$_GET['bas']??'','bit'=>$_GET['bit']??'',
+                      'hurda'=>$_GET['hurda']??''], $ek);
     return 'hareketler.php?' . http_build_query(array_filter($p, fn($v) => $v !== '' && $v !== null));
 };
 require_once __DIR__ . '/../includes/header.php';
@@ -125,6 +129,7 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="d-flex gap-2 flex-wrap">
         <a href="hareket_form.php?tur=giris" class="btn btn-success btn-sm"><i class="bi bi-box-arrow-in-down me-1"></i>Yeni Giriş</a>
         <a href="hareket_form.php?tur=cikis" class="btn btn-danger btn-sm"><i class="bi bi-box-arrow-up me-1"></i>Yeni Çıkış</a>
+        <a href="hareketler.php?hurda=1" class="btn btn-<?= $hurdaF ? '' : 'outline-' ?>warning btn-sm"><i class="bi bi-trash3 me-1"></i>Hurdalar</a>
         <a href="<?= h($qs(['disaaktar'=>'xlsx'])) ?>" class="btn btn-outline-success btn-sm">
             <i class="bi bi-file-earmark-excel me-1"></i>Excel'e Aktar</a>
         <a href="import.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-cloud-arrow-up me-1"></i>İçe Aktar</a>
@@ -156,6 +161,11 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="text-muted small">Farklı Malzeme</div><div class="fs-5 fw-bold"><?= $fmt0($oz['malzeme_adet']) ?></div></div></div></div>
     <div class="col-6 col-lg"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
         <div class="text-muted small">Firma / Taşeron</div><div class="fs-5 fw-bold"><?= $fmt0($oz['firma_adet']) ?></div></div></div></div>
+    <?php if ((int)$hurdaOzet['adet'] > 0): ?>
+    <div class="col-6 col-lg"><div class="card border-0 shadow-sm h-100 border border-warning"><div class="card-body py-2">
+        <div class="text-muted small">Hurdaya Ayrılan</div>
+        <div class="fs-5 fw-bold text-warning-emphasis"><a href="hareketler.php?hurda=1" class="text-decoration-none"><?= (int)$hurdaOzet['adet'] ?> kayıt</a></div></div></div></div>
+    <?php endif; ?>
     <div class="col-6 col-lg"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
         <div class="text-muted small">Tarih Aralığı</div>
         <div class="fw-bold small"><?= $oz['ilk'] ? h(format_date($oz['ilk'])).' — '.h(format_date($oz['son'])) : '—' ?></div></div></div></div>
@@ -210,6 +220,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <span class="badge bg-<?= $g?'success':'danger' ?>"><i class="bi <?= h($GLOBALS['DP_HAREKET'][$r['tur']]['ikon']) ?>"></i></span>
                 <?php if ($r['kaynak']==='taseron'): ?><span class="badge bg-secondary" title="Taşeron malzemesi">T</span><?php endif; ?>
                 <?php if (!empty($r['elle'])): ?><span class="badge bg-info text-dark" title="Elle girilen günlük kayıt — Excel eşitlemesinde korunur">elle</span><?php endif; ?>
+                <?php if (!empty($r['hurda'])): ?><span class="badge bg-warning text-dark" title="Hurdaya ayrıldı">hurda</span><?php endif; ?>
             </td>
             <td class="text-nowrap"><?= h(format_date($r['tarih'])) ?></td>
             <td class="font-monospace small"><?= h($r['belge_no'] ?: '—') ?></td>

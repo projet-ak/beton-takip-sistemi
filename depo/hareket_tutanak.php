@@ -26,7 +26,8 @@ if (!$hr) { flash('error', 'Hareket bulunamadı.'); redirect('hareketler.php'); 
 $g   = $hr['tur'] === 'giris';
 $no  = 'DEP-' . ($g ? 'G' : 'C') . '-' . str_pad((string)$hr['id'], 5, '0', STR_PAD_LEFT);
 $fmt = fn($n) => number_format((float)$n, 2, ',', '.');
-$baslik = $g ? 'MALZEME TESLİM ALMA TUTANAĞI' : 'MALZEME TESLİM TUTANAĞI';
+$baslik = !empty($hr['hurda']) ? 'MALZEME HURDAYA AYIRMA TUTANAĞI'
+        : ($g ? 'MALZEME TESLİM ALMA TUTANAĞI' : 'MALZEME TESLİM TUTANAĞI');
 ?>
 <!DOCTYPE html>
 <html lang="tr"><head>
@@ -103,9 +104,10 @@ $baslik = $g ? 'MALZEME TESLİM ALMA TUTANAĞI' : 'MALZEME TESLİM TUTANAĞI';
   </table>
 
   <div class="note">
-    Yukarıda cinsi, miktarı ve özellikleri belirtilen malzeme<?= $g
-        ? ' eksiksiz ve hasarsız olarak teslim alınmıştır'
-        : ', belirtilen firmaya/kişiye eksiksiz olarak teslim edilmiştir' ?>.
+    Yukarıda cinsi, miktarı ve özellikleri belirtilen malzeme<?= !empty($hr['hurda'])
+        ? ' kullanım dışı kalması nedeniyle HURDAYA AYRILMIŞTIR'
+        : ($g ? ' eksiksiz ve hasarsız olarak teslim alınmıştır'
+              : ', belirtilen firmaya/kişiye eksiksiz olarak teslim edilmiştir') ?>.
     İşbu tutanak iki nüsha düzenlenmiş olup taraflarca imza altına alınmıştır.
   </div>
 
