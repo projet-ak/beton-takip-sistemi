@@ -43,7 +43,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   Sayfalar: index(dashboard: stok KPI + aylık tüketim/kalan grafik + firma doughnut + en çok tüketen) ·
   aylik(dönem seçmeli araç tüketim tablosu + günlük detay modal) · stok(dönem zinciri, uyuşmayan geçiş
   kırmızı, elle düzelt) · araclar/arac_form(CRUD) · tutanaklar + tutanak_pdf(A4) · raporlar (Chart.js + Excel: aylık tüketim, firma/araç bazlı) · import · kurulum_akaryakit.
-  Import: aylık sayfalar (OCAK 2026…) + TUTANAK sayfaları **dönem bazlı tam yenileme**; **Excel'in
+  Import: aylık sayfalar (OCAK 2026…) + TUTANAK sayfaları **dönem bazlı tam yenileme**; sayfa altındaki **imza bloğu** (DEPO ŞEFİ…/MALİ İŞLER ŞEFİ:/İMZA:/TARİH:) `ak_imza_satiri()` ile atlanır — aksi halde 'İMZA:' adlı araçlar oluşuyordu; `ak_imza_temizle()` eski çöp araç/tüketim/tutanak kayıtlarını import sonunda siler; **Excel'in
   TOPLAM hücreleri bayat olduğundan stok hesaplanır** (devir+gelen, −kullanılan). Gün d → Mazot col
   `7+2d`, Km col `8+2d` (gün 1=col9…31=col69); özet col 71 aylık/72 çalışma/73 ortalama/74-76 okuma.
   `akaryakit/_ortak.php` (ak_sayi, ak_norm, ak_donemSira TR ay→sıra, ak_aracId, ak_donemler).

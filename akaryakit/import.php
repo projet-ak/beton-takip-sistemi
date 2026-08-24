@@ -98,6 +98,10 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && !empty($_FILES['dosya']['tmp_name']))
                     $sofor = trim((string)($row[6]??''));
                     $cinsi = trim((string)($row[7]??''));
                     if ($sofor==='' && $cinsi==='') continue;
+                    // Sayfa altındaki İMZA BLOĞU veri değildir:
+                    //   "DEPO ŞEFİ S/AKARYAKIT SORUMLUSU:" / "MALİ İŞLER ŞEFİ:" / "İMZA:" / "TARİH:"
+                    // Bu satırların şoför/cinsi hücrelerine bu etiketler düşer ve araç sanılırdı.
+                    if (ak_imza_satiri($row)) continue;
                     if ($sofor==='') $sofor = $cinsi; // güvence
                     $aracId = ak_aracId($pdoAkaryakit, [
                         'sinif'=>trim((string)($row[1]??'')), 'mak_no'=>trim((string)($row[2]??'')),
@@ -123,8 +127,11 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && !empty($_FILES['dosya']['tmp_name']))
             }
 
             $st['arac'] = (int)$pdoAkaryakit->query("SELECT COUNT(*) FROM akaryakit_araclar")->fetchColumn();
+            // Eski içe aktarmalardan kalan imza-bloğu çöp kayıtlarını da temizle
+            $imzaTemiz = ak_imza_temizle($pdoAkaryakit);
             $pdoAkaryakit->commit();
             $sonuc = $st;
+            if ($imzaTemiz > 0) $sonuc['imza_temiz'] = $imzaTemiz;
         } catch (Throwable $e) { $pdoAkaryakit->rollBack(); $hata='İçe aktarma hatası: '.$e->getMessage(); }
     }
 }
@@ -138,6 +145,7 @@ require_once __DIR__ . '/../includes/header.php';
     <strong><?= (int)$sonuc['ay'] ?></strong> ay (stok), <strong><?= (int)$sonuc['tuketim'] ?></strong> araç-tüketim satırı,
     <strong><?= (int)$sonuc['tutanak'] ?></strong> tutanak satırı · toplam <strong><?= (int)$sonuc['arac'] ?></strong> araç/makine tanımlı.
     <?php if($sonuc['donem']): ?><div class="small mt-1">Dönemler: <?= h(implode(', ',$sonuc['donem'])) ?></div><?php endif; ?>
+    <?php if(!empty($sonuc['imza_temiz'])): ?><div class="small mt-1 text-warning-emphasis"><i class="bi bi-eraser me-1"></i><?= (int)$sonuc['imza_temiz'] ?> imza-bloğu çöp kaydı (İMZA:/TARİH:/ŞEFİ…) temizlendi.</div><?php endif; ?>
     <div class="small mt-1"><a href="index.php" class="alert-link">Dashboard</a> · <a href="aylik.php" class="alert-link">Aylık Takip</a></div>
 </div>
 <?php endif; ?>

@@ -65,3 +65,44 @@ function ak_donemler(PDO $pdo): array {
     try { return $pdo->query("SELECT * FROM akaryakit_donemler ORDER BY donem_sira DESC, id DESC")->fetchAll(); }
     catch (Throwable $e) { return []; }
 }
+
+/**
+ * Ay sayfalarının altındaki imza bloğu satırı mı? (İMZA:/TARİH:/…ŞEFİ:/MÜDÜRÜ/SORUMLUSU)
+ * Bu satırlar araç verisi değildir; içe aktarmada atlanır.
+ */
+function ak_imza_satiri(array $row): bool {
+    foreach (array_slice($row, 0, 10) as $c) {
+        $u = mb_strtoupper(trim((string)$c), 'UTF-8');
+        if ($u === '') continue;
+        foreach (['İMZA', 'IMZA', 'TARİH:', 'TARIH:', 'ŞEFİ', 'SEFI', 'MÜDÜR', 'MUDUR', 'SORUMLUSU'] as $y) {
+            if (mb_strpos($u, $y) !== false) return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Daha önce imza bloğundan araç sanılıp kaydedilmiş çöp kayıtları temizler
+ * (araç + tüketim + tutanak satırları). İçe aktarma sonunda çağrılır.
+ * @return int silinen araç sayısı
+ */
+function ak_imza_temizle(PDO $pdo): int {
+    $silinen = 0;
+    foreach ($pdo->query("SELECT id, sofor, cinsi, firma FROM akaryakit_araclar") as $a) {
+        if (ak_imza_satiri([$a['sofor'], $a['cinsi'], $a['firma']])) {
+            $pdo->prepare("DELETE FROM akaryakit_tuketim WHERE arac_id=?")->execute([(int)$a['id']]);
+            $pdo->prepare("DELETE FROM akaryakit_araclar WHERE id=?")->execute([(int)$a['id']]);
+            $silinen++;
+        }
+    }
+    try {
+        $st = $pdo->query("SELECT id, sofor, arac_detay, firma_detay FROM akaryakit_tutanak");
+        foreach ($st as $t) {
+            if (ak_imza_satiri([$t['sofor'], $t['arac_detay'], $t['firma_detay']])) {
+                $pdo->prepare("DELETE FROM akaryakit_tutanak WHERE id=?")->execute([(int)$t['id']]);
+                $silinen++;
+            }
+        }
+    } catch (Throwable $e) {}
+    return $silinen;
+}
