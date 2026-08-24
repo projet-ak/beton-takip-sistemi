@@ -156,7 +156,7 @@ $orderSQL = $sort
 
 // Sıralama linkleri için korunacak query parametreleri (sort/dir hariç)
 $qsKeep = $_GET;
-unset($qsKeep['sort'], $qsKeep['dir'], $qsKeep['export'], $qsKeep['sil']);
+unset($qsKeep['sort'], $qsKeep['dir'], $qsKeep['export'], $qsKeep['sil'], $qsKeep['s']);   // sıralama değişince 1. sayfaya dön
 
 /** Sıralanabilir tablo başlığı (<a>) üretir */
 function sortBaslik(string $key, string $label): string {
@@ -169,6 +169,18 @@ function sortBaslik(string $key, string $label): string {
     return '<a href="' . h($url) . '" class="text-reset text-decoration-none d-inline-flex align-items-center gap-1" style="white-space:nowrap">'
          . h($label) . ' <i class="bi ' . $icon . '" style="font-size:.7rem"></i></a>';
 }
+
+// ── Sayfalama (100 kayıt/sayfa). Excel dışa aktarma SAYFALAMASIZ tüm filtreyi alır.
+$sayfaAdet = 100;
+$sayfaNo   = max(1, (int)($_GET['s'] ?? 1));
+$topStmt = $pdo->prepare("SELECT COUNT(*) c, COALESCE(SUM(i.miktar),0) m FROM irsaliyeler i {$whereSQL}");
+$topStmt->execute($params);
+$topRow = $topStmt->fetch();
+$toplamKayit = (int)$topRow['c'];
+$toplamM3Tum = (float)$topRow['m'];
+$sonSayfa = max(1, (int)ceil($toplamKayit / $sayfaAdet));
+if ($sayfaNo > $sonSayfa) $sayfaNo = $sonSayfa;
+$limitSQL = $ihrac ? '' : ('LIMIT ' . $sayfaAdet . ' OFFSET ' . (($sayfaNo - 1) * $sayfaAdet));
 
 $stmt = $pdo->prepare("
     SELECT i.*,
@@ -199,11 +211,12 @@ $stmt = $pdo->prepare("
     LEFT JOIN projeler pr         ON pr.id  = i.proje_id
     {$whereSQL}
     {$orderSQL}
+    {$limitSQL}
 ");
 $stmt->execute($params);
 $liste = $stmt->fetchAll();
 
-$toplamM3 = array_sum(array_column($liste, 'miktar'));
+$toplamM3 = $toplamM3Tum;   // filtreye uyan TÜM kayıtların m³'ü (yalnız görünen sayfa değil)
 
 // ── Evrak kontrol: her irsaliyenin belgeleri (tür bazında ilk dosya) ─────────
 // fatura = bağlı fatura dosyası (fatura_id) VEYA tur='fatura' belge;
@@ -388,7 +401,7 @@ require_once __DIR__ . '/includes/header.php';
             <?php endif; ?>
         </h4>
         <div class="text-muted small mt-1">
-            Toplam: <strong><?= count($liste) ?></strong> kayıt &mdash;
+            Toplam: <strong><?= $toplamKayit ?></strong> kayıt &mdash;
             <strong><?= format_number($toplamM3, 2) ?> m³</strong>
         </div>
     </div>
@@ -603,6 +616,7 @@ require_once __DIR__ . '/includes/header.php';
                             <th><?= sortBaslik('durum', 'Durum') ?></th>
                             <th><?= sortBaslik('tarih', 'Tarih') ?></th>
                             <th><?= sortBaslik('irsaliye', 'İrsaliye No') ?></th>
+                            <th class="text-center" title="Evrak kontrol: fatura · irsaliye görseli · kantar fişi (renkli = var, soluk = eksik)">Evrak</th>
                             <th class="tbl-hide-tablet"><?= sortBaslik('plaka', 'Plaka') ?></th>
                             <th><?= sortBaslik('tedarikci', 'Tedarikçi') ?></th>
                             <th><?= sortBaslik('beton', 'Beton Sınıfı') ?></th>
@@ -610,7 +624,6 @@ require_once __DIR__ . '/includes/header.php';
                             <th class="tbl-hide-mobile"><?= sortBaslik('pompa', 'Pompa') ?></th>
                             <th class="tbl-hide-mobile"><?= sortBaslik('firma', 'Firma') ?></th>
                             <th class="text-end"><?= sortBaslik('miktar', 'Miktar') ?></th>
-                            <th class="text-center" title="Evrak kontrol: fatura · irsaliye görseli · kantar fişi (renkli = var, soluk = eksik)">Evrak</th>
                             <th class="tbl-hide-mobile">Açıklama</th>
                             <?php if (can_edit()): ?><th class="text-end">İşlem</th><?php endif; ?>
                         </tr>
@@ -636,6 +649,18 @@ require_once __DIR__ . '/includes/header.php';
                                         <?= h($r['irsaliye_no'] ?: '#'.$r['id']) ?>
                                     </a>
                                 </td>
+                                <td class="text-center text-nowrap">
+                                    <?php
+                                    $ev = $evrak[(int)$r['id']] ?? [];
+                                    // Fatura: önce bağlı faturanın PDF'i, yoksa 'fatura' türünde yüklenmiş belge
+                                    $fYol = !empty($r['fatura_id']) && !empty($fatDosya[(int)$r['fatura_id']])
+                                          ? $fatDosya[(int)$r['fatura_id']] : ($ev['fatura'] ?? null);
+                                    echo evrak_ikon($fYol, 'bi-receipt-cutoff', '#0d6efd', 'Fatura', 'Fatura yok');
+                                    echo evrak_ikon($ev['irsaliye'] ?? null, 'bi-file-earmark-image', '#198754', 'İrsaliye görseli', 'İrsaliye görseli yok');
+                                    echo evrak_ikon($ev['kantar'] ?? null, 'bi-truck', '#fd7e14', 'Kantar fişi', 'Kantar fişi yok');
+                                    if (!empty($ev['foto'])) echo evrak_ikon($ev['foto'], 'bi-camera', '#6c757d', 'Fotoğraf', '');
+                                    ?>
+                                </td>
                                 <td class="text-nowrap small tbl-hide-tablet"><?= h($r['arac_plaka'] ?: '-') ?></td>
                                 <td><span class="badge bg-secondary"><?= h($r['tedarikci_adi'] ?? '-') ?></span></td>
                                 <td><?= h($r['beton_sinifi_adi'] ?? '-') ?></td>
@@ -648,18 +673,6 @@ require_once __DIR__ . '/includes/header.php';
                                 <td class="small tbl-hide-mobile"><?= h($r['firma_adi'] ?? '-') ?></td>
                                 <td class="text-end fw-semibold text-nowrap">
                                     <?= format_number($r['miktar'], 2) ?> <span class="text-muted small"><?= h($r['birim']) ?></span>
-                                </td>
-                                <td class="text-center text-nowrap">
-                                    <?php
-                                    $ev = $evrak[(int)$r['id']] ?? [];
-                                    // Fatura: önce bağlı faturanın PDF'i, yoksa 'fatura' türünde yüklenmiş belge
-                                    $fYol = !empty($r['fatura_id']) && !empty($fatDosya[(int)$r['fatura_id']])
-                                          ? $fatDosya[(int)$r['fatura_id']] : ($ev['fatura'] ?? null);
-                                    echo evrak_ikon($fYol, 'bi-receipt-cutoff', '#0d6efd', 'Fatura', 'Fatura yok');
-                                    echo evrak_ikon($ev['irsaliye'] ?? null, 'bi-file-earmark-image', '#198754', 'İrsaliye görseli', 'İrsaliye görseli yok');
-                                    echo evrak_ikon($ev['kantar'] ?? null, 'bi-truck', '#fd7e14', 'Kantar fişi', 'Kantar fişi yok');
-                                    if (!empty($ev['foto'])) echo evrak_ikon($ev['foto'], 'bi-camera', '#6c757d', 'Fotoğraf', '');
-                                    ?>
                                 </td>
                                 <td class="text-muted small tbl-hide-mobile" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                                     <?= h($r['aciklama'] ?: '') ?>
@@ -701,11 +714,11 @@ require_once __DIR__ . '/includes/header.php';
                             <?php endforeach; ?>
                             <tr class="table-secondary fw-bold">
                                 <?php
-                                $preCols = ($tip === 'tum' ? 10 : 9) + (can_edit() ? 1 : 0);
+                                $preCols = ($tip === 'tum' ? 11 : 10) + (can_edit() ? 1 : 0);   // +1: Evrak (Miktar'dan önce)
                                 ?>
                                 <td colspan="<?= $preCols ?>" class="text-end">TOPLAM</td>
                                 <td class="text-end"><?= format_number($toplamM3, 2) ?> m³</td>
-                                <td colspan="<?= can_edit() ? 3 : 2 ?>"></td><!-- Evrak + Açıklama + İşlem -->
+                                <td colspan="<?= can_edit() ? 2 : 1 ?>"></td><!-- Açıklama + İşlem -->
                             </tr>
                         <?php else: ?>
                             <?php
@@ -725,6 +738,35 @@ require_once __DIR__ . '/includes/header.php';
         </div>
     </div>
 </form>
+
+<?php if ($sonSayfa > 1): ?>
+<nav class="mt-3">
+    <?php
+    // Mevcut filtre + sıralamayı koruyarak sayfa linki üret
+    $sq = function (int $n) { return '?' . http_build_query(array_merge($_GET, ['s' => $n])); };
+    $b1 = max(1, $sayfaNo - 3); $s1 = min($sonSayfa, $sayfaNo + 3);
+    ?>
+    <ul class="pagination pagination-sm justify-content-center flex-wrap mb-1">
+        <?php if ($sayfaNo > 1): ?><li class="page-item"><a class="page-link" href="<?= h($sq($sayfaNo - 1)) ?>">&laquo;</a></li><?php endif; ?>
+        <?php if ($b1 > 1): ?>
+        <li class="page-item"><a class="page-link" href="<?= h($sq(1)) ?>">1</a></li>
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+        <?php endif; ?>
+        <?php for ($i = $b1; $i <= $s1; $i++): ?>
+        <li class="page-item <?= $i === $sayfaNo ? 'active' : '' ?>"><a class="page-link" href="<?= h($sq($i)) ?>"><?= $i ?></a></li>
+        <?php endfor; ?>
+        <?php if ($s1 < $sonSayfa): ?>
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+        <li class="page-item"><a class="page-link" href="<?= h($sq($sonSayfa)) ?>"><?= $sonSayfa ?></a></li>
+        <?php endif; ?>
+        <?php if ($sayfaNo < $sonSayfa): ?><li class="page-item"><a class="page-link" href="<?= h($sq($sayfaNo + 1)) ?>">&raquo;</a></li><?php endif; ?>
+    </ul>
+    <div class="text-center text-muted small">
+        <?= number_format($toplamKayit, 0, ',', '.') ?> kayıt · sayfa <?= $sayfaNo ?>/<?= $sonSayfa ?> ·
+        satır <?= number_format(($sayfaNo - 1) * $sayfaAdet + 1, 0, ',', '.') ?>–<?= number_format(min($sayfaNo * $sayfaAdet, $toplamKayit), 0, ',', '.') ?>
+    </div>
+</nav>
+<?php endif; ?>
 
 <style>
 .btn-xs { padding:.15rem .4rem; font-size:.75rem; }
