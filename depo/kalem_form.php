@@ -22,6 +22,41 @@ if ($id) {
 }
 $elAleti = ($k === 'el_aleti');
 
+// ── Hurdaya ayırma: kalemden hurda çıkışı üret (hareket defteri + stok düşümü) ──
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'hurdaya_ayir' && $id && $row) {
+    dp_hareket_semasi_kur($pdoDepo);
+    $miktar = dp_sayi($_POST['h_miktar'] ?? '');
+    $sebep  = trim((string)($_POST['h_sebep'] ?? ''));
+    $stok   = (float)$row['sayim'] + (float)$row['gelen'] - (float)$row['giden'];
+    if ($miktar <= 0) { flash('error', 'Hurdaya ayrılacak miktar sıfırdan büyük olmalı.'); redirect("kalem_form.php?id=$id"); }
+    if ($sebep === '') { flash('error', 'Hurdaya ayrılma sebebi zorunludur.'); redirect("kalem_form.php?id=$id"); }
+    if ($miktar > $stok + 0.001) { flash('error', 'Miktar stoğu aşıyor (stok: ' . number_format($stok, 2, ',', '.') . ' ' . $row['birim'] . ').'); redirect("kalem_form.php?id=$id"); }
+    try {
+        $pdoDepo->beginTransaction();
+        $ins = $pdoDepo->prepare("INSERT INTO depo_hareketler
+            (tur,kaynak,tarih,malzeme,ozellik,birim,miktar,firma,teslim_alan,onay,lokasyon,aciklama,kalem_id,hurda,elle)
+            VALUES ('cikis','depo',?,?,?,?,?,NULL,?,?,?,?,?,1,1)");
+        $ins->execute([
+            preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['h_tarih'] ?? '') ? $_POST['h_tarih'] : date('Y-m-d'),
+            $row['ad'], $row['ozellik'], $row['birim'], $miktar,
+            trim((string)($_POST['h_teslim_alan'] ?? '')) ?: null,
+            trim((string)($_POST['h_onay'] ?? '')) ?: null,
+            $row['alan'] ?: null,
+            $sebep,
+            $id,
+        ]);
+        $hid = (int)$pdoDepo->lastInsertId();
+        dp_stok_islet($pdoDepo, $id, 'cikis', $miktar, 1);   // GİDEN artar → stok düşer
+        $pdoDepo->commit();
+        flash('success', number_format($miktar, 2, ',', '.') . ' ' . $row['birim'] . ' "' . $row['ad'] . '" hurdaya ayrıldı, stoktan düşüldü.');
+        redirect('hareketler.php?hurda=1&tutanak=' . $hid);
+    } catch (Throwable $e) {
+        if ($pdoDepo->inTransaction()) $pdoDepo->rollBack();
+        flash('error', 'Hurdaya ayırma hatası: ' . $e->getMessage());
+        redirect("kalem_form.php?id=$id");
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ad = trim($_POST['ad'] ?? '');
     if ($ad === '') { flash('error','Malzeme adı zorunludur.'); }
@@ -123,8 +158,48 @@ require_once __DIR__ . '/../includes/header.php';
     <?php endif; ?>
     <div class="col-12 d-flex gap-2">
         <button class="btn btn-primary"><i class="bi bi-check-lg me-1"></i><?= $id?'Güncelle':'Kaydet' ?></button>
+        <?php if ($id): $mevcutStok = (float)$row['sayim'] + (float)$row['gelen'] - (float)$row['giden']; ?>
+        <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#hurdaModal">
+            <i class="bi bi-trash3 me-1"></i>Hurdaya Ayır</button>
+        <?php endif; ?>
         <a href="kalemler.php?k=<?= $k ?>" class="btn btn-outline-secondary">İptal</a>
     </div>
 </form>
+
+<?php if ($id): ?>
+<!-- Hurdaya ayırma formu -->
+<div class="modal fade" id="hurdaModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+    <form method="post">
+        <input type="hidden" name="action" value="hurdaya_ayir">
+        <div class="modal-header bg-warning-subtle">
+            <h6 class="modal-title"><i class="bi bi-trash3 me-1"></i>Hurdaya Ayırma — <?= h($row['ad']) ?></h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body row g-3">
+            <div class="col-12">
+                <div class="alert alert-warning py-2 small mb-0">
+                    Mevcut stok: <strong><?= number_format($mevcutStok, 2, ',', '.') ?> <?= h($row['birim']) ?></strong>.
+                    Kayıt hurda çıkışı olarak hareket defterine yazılır, stoktan düşer ve
+                    <strong>HURDAYA AYIRMA TUTANAĞI</strong> yazdırılır.
+                </div>
+            </div>
+            <div class="col-6"><label class="form-label">Tarih</label>
+                <input type="date" name="h_tarih" class="form-control" value="<?= date('Y-m-d') ?>"></div>
+            <div class="col-6"><label class="form-label">Miktar (<?= h($row['birim']) ?>) <span class="text-danger">*</span></label>
+                <input type="text" name="h_miktar" class="form-control" value="<?= $mevcutStok == (int)$mevcutStok ? (int)$mevcutStok : number_format($mevcutStok,2,'.','') ?>" required inputmode="decimal"></div>
+            <div class="col-12"><label class="form-label">Hurdaya Ayrılma Sebebi <span class="text-danger">*</span></label>
+                <textarea name="h_sebep" class="form-control" rows="2" required
+                          placeholder="Arızalı / tamiri ekonomik değil / kırık / ömrünü doldurdu…"></textarea></div>
+            <div class="col-6"><label class="form-label">Teslim Alan <span class="text-muted small">(hurda sahası/kişi)</span></label>
+                <input type="text" name="h_teslim_alan" class="form-control"></div>
+            <div class="col-6"><label class="form-label">Onaylayan</label>
+                <input type="text" name="h_onay" class="form-control"></div>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Vazgeç</button>
+            <button class="btn btn-warning btn-sm"><i class="bi bi-trash3 me-1"></i>Hurdaya Ayır</button>
+        </div>
+    </form>
+</div></div></div>
+<?php endif; ?>
 </div></div>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

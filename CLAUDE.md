@@ -25,10 +25,10 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   `demirbas`/`sarf`/`el_aleti`). **Stok = SAYIM + GELEN − GİDEN** (kalem defteri modeli; ayrı log yok).
   `includes/db_depo.php` → `$pdoDepo`. **Hareket defteri** `depo_hareketler` (tur giris/cikis × kaynak depo/taseron;
   tarih, belge_tarihi, belge_no [irsaliye no / fiş no], malzeme, ozellik, birim, miktar, firma [gönderen/çıkış
-  yapılan/taşeron], teslim_alan, onay, lokasyon, aciklama, elle [günlük kayıt], kalem_id [stok bağı], hurda [hurdaya ayırma çıkışı — Hurdalar filtresi/rozeti/KPI]) — `depo_kalemler` stoğun FOTOĞRAFI, `depo_hareketler`
+  yapılan/taşeron], teslim_alan, onay, lokasyon, aciklama, elle [günlük kayıt], kalem_id [stok bağı], hurda [hurdaya ayırma çıkışı — Hurdalar filtresi/rozeti/KPI; hurda satırında **imzalı evrak yükleme** `evrak_url` → `uploads/depo_hareket/{id}/`]) — `depo_kalemler` stoğun FOTOĞRAFI, `depo_hareketler`
   o stoğu oluşturan TEK TEK HAREKETLER. Sayfalar: index(dashboard: kategori kartları + mali değer KPI +
   tükenen liste + **hareket özeti/son hareketler/en çok hareket gören firmalar**) · kalemler(kategori bazlı liste,
-  ?k=demirbas|sarf|el_aleti, arama, stok/tutar) · kalem_form(ekle/düzenle) · **hareketler**(giriş/çıkış defteri:
+  ?k=demirbas|sarf|el_aleti, arama, stok/tutar) · kalem_form(ekle/düzenle; düzenlemede **Hurdaya Ayır** butonu → sebep/miktar/teslim alan formu → hurda çıkışı + stok düşümü + HURDAYA AYIRMA TUTANAĞI) · **hareketler**(giriş/çıkış defteri:
   tür/kaynak/firma/tarih aralığı/serbest metin filtreleri + KPI + sayfalama + Excel; elle kayıtlarda düzenle/sil) · **hareket_form**(günlük elle giriş/çıkış: `elle=1` işaretli — Excel tam yenilemesinde KORUNUR [import `elle=0` siler]; opsiyonel "stok kalemine işle" `kalem_id` → depo_kalemler GELEN/GİDEN güncellenir, silme/düzenlemede `dp_stok_islet()` geri alır; malzeme datalist'ten seçilince kalem otomatik eşleşir) · **hareket_tutanak**(hareket başına A4 tutanak: giriş=TESLİM ALMA, çıkış=TESLİM, hurda=HURDAYA AYIRMA; **ERN Taahhüt** logolu, kayıt sonrası bannerdan ve listeden yazdırılır) · import(7 sayfa: DEMİRBAŞLAR/
   SARF MALZEME/EL ALETLERİ → stok, MALZEME GİRİŞ-ÇIKIŞ + TAŞERON MALZEME GİRİŞ-TESLİMAT → hareket; her biri kendi
   türünde tam yenileme, dosyada olmayan sayfaya dokunulmaz) · raporlar (Chart.js + Excel: kategori/disiplin mali değer, en değerli kalemler) · kurulum_depo. El aletleri: fiyat/disiplin yok, **Seri No + Zimmetli Kişi** var. Demirbaş/

@@ -91,7 +91,8 @@ $baslik = !empty($hr['hurda']) ? 'MALZEME HURDAYA AYIRMA TUTANAĞI'
     <tr><td class="k">Teslim Alan</td><td><?= h($hr['teslim_alan'] ?: '—') ?></td>
         <td class="k">Onaylayan</td><td><?= h($hr['onay'] ?: '—') ?></td></tr>
     <tr><td class="k">Lokasyon</td><td><?= h($hr['lokasyon'] ?: '—') ?></td>
-        <td class="k">Açıklama</td><td><?= h($hr['aciklama'] ?: '—') ?></td></tr>
+        <td class="k"><?= !empty($hr['hurda']) ? 'Hurdaya Ayrılma Sebebi' : 'Açıklama' ?></td>
+        <td><?= h($hr['aciklama'] ?: '—') ?></td></tr>
   </table>
 
   <table class="items">

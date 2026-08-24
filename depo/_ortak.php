@@ -104,6 +104,7 @@ function dp_hareket_semasi_kur(PDO $pdo): void
     $ekle = [];
     if (!isset($kolon['elle']))     $ekle[] = "ADD COLUMN elle TINYINT(1) NOT NULL DEFAULT 0";
     if (!isset($kolon['kalem_id'])) $ekle[] = "ADD COLUMN kalem_id INT NULL, ADD KEY idx_kalem (kalem_id)";
+    if (!isset($kolon['evrak_url'])) $ekle[] = "ADD COLUMN evrak_url VARCHAR(500) NULL COMMENT 'imzalı tutanak taraması'";
     if (!isset($kolon['hurda']))    $ekle[] = "ADD COLUMN hurda TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'hurdaya ayırma çıkışı'";
     if ($ekle) $pdo->exec("ALTER TABLE depo_hareketler " . implode(', ', $ekle));
 }
