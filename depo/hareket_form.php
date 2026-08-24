@@ -80,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdoDepo->commit();
             flash('success', ($tur === 'giris' ? 'Giriş' : 'Çıkış') . ' kaydedildi'
                            . ($kalemId ? ' ve stok kalemine işlendi.' : '.'));
-            redirect('hareketler.php');
+            redirect('hareketler.php?tutanak=' . $id);
         } catch (Throwable $e) {
             if ($pdoDepo->inTransaction()) $pdoDepo->rollBack();
             flash('error', 'Kayıt hatası: ' . $e->getMessage());

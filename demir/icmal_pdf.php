@@ -67,7 +67,7 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
 </style></head><body>
 <div class="toolbar"><button class="btn-print" onclick="window.print()">🖨 Yazdır / PDF Kaydet</button><a class="btn-back" href="icmal.php">← Geri</a></div>
 <div class="sheet">
-  <div class="top"><div class="logo">ERN HOLDİNG<small>DEMİR TAKİP</small></div>
+  <div class="top"><div><img src="../uploads/logo/ERN%20Taahhut_Logo_Renkli.png" alt="ERN Taahhüt" style="height:46px" onerror="this.outerHTML='<div class=\\'logo\\'>ERN TAAHHÜT</div>'"><div style="font-size:10px;font-weight:600;color:#555;letter-spacing:2px;margin-top:3px">DEMİR TAKİP</div></div>
     <div style="text-align:right;font-size:11px;color:#555">Yazdırma: <strong><?= date('d.m.Y H:i') ?></strong></div></div>
   <div class="doc-title">DEMİR İCMAL — GELEN DEMİR MUTABAKATI</div>
   <div class="meta">Proje: <strong><?= h($projeAd) ?></strong><?php if($tBas||$tBit): ?> &nbsp;|&nbsp; Tarih: <?= h($tBas?:'…') ?> – <?= h($tBit?:'…') ?><?php endif; ?></div>
@@ -96,5 +96,5 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
       </tbody></table>
     </div>
   </div>
-  <div class="foot">ERN Holding Demir Takip Sistemi</div>
+  <div class="foot">ERN Taahhüt Demir Takip Sistemi</div>
 </div></body></html>

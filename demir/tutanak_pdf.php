@@ -78,7 +78,7 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
 
 <div class="sheet">
   <div class="top">
-    <div class="logo">ERN HOLDİNG<small>DEMİR TAKİP</small></div>
+    <div><img src="../uploads/logo/ERN%20Taahhut_Logo_Renkli.png" alt="ERN Taahhüt" style="height:46px" onerror="this.outerHTML='<div class=\\'logo\\'>ERN TAAHHÜT</div>'"><div style="font-size:10px;font-weight:600;color:#555;letter-spacing:2px;margin-top:3px">DEMİR TAKİP</div></div>
     <div style="text-align:right;font-size:11px;color:#555">
       Tarih: <strong><?= format_date($tu['tutanak_tarih']) ?></strong><br>
       <?php if($tu['proje_kod']): ?>Proje: <strong><?= h($tu['proje_kod']) ?></strong><?php endif; ?>
@@ -121,11 +121,11 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
   </div>
 
   <div class="signs">
-    <div class="sign"><div class="line">Teslim Eden</div><div class="sub">ERN Holding</div></div>
+    <div class="sign"><div class="line">Teslim Eden</div><div class="sub">ERN Taahhüt</div></div>
     <div class="sign"><div class="line">Teslim Alan</div><div class="sub"><?= h($tu['taseron_adi'] ?: '') ?></div></div>
   </div>
 
-  <div class="foot">ERN Holding Demir Takip Sistemi — <?= date('d.m.Y H:i') ?></div>
+  <div class="foot">ERN Taahhüt Demir Takip Sistemi — <?= date('d.m.Y H:i') ?></div>
 </div>
 
 <script>window.addEventListener('load',function(){ /* Otomatik yazdırma isteğe bağlı: window.print(); */ });</script>

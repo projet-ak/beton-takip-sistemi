@@ -131,7 +131,10 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 </div>
 
-<?php foreach(['success','error','warning'] as $t): if($m=get_flash($t)): ?><div class="alert alert-<?= $t==='error'?'danger':$t ?>"><?= h($m) ?></div><?php endif; endforeach; ?>
+<?php foreach(['success','error','warning'] as $t): if($m=get_flash($t)): ?><div class="alert alert-<?= $t==='error'?'danger':$t ?>"><?= h($m) ?>
+<?php if ($t==='success' && isset($_GET['tutanak']) && ctype_digit($_GET['tutanak'])): ?>
+ <a href="hareket_tutanak.php?id=<?= (int)$_GET['tutanak'] ?>" target="_blank" class="alert-link"><i class="bi bi-printer me-1"></i>Tutanak yazdır</a>
+<?php endif; ?></div><?php endif; endforeach; ?>
 
 <?php if (!$toplamSatir && !$where): ?>
 <div class="alert alert-info">
@@ -219,6 +222,7 @@ require_once __DIR__ . '/../includes/header.php';
             <td class="small text-muted"><?= h((string)$r['onay']) ?></td>
             <td class="small text-muted"><?= h(trim(($r['lokasyon'] ?: '') . ' ' . ($r['aciklama'] ?: ''))) ?></td>
             <td class="text-end text-nowrap">
+                <a href="hareket_tutanak.php?id=<?= (int)$r['id'] ?>" class="btn btn-sm btn-outline-primary py-0" title="Tutanak yazdır" target="_blank"><i class="bi bi-printer"></i></a>
                 <?php if (!empty($r['elle'])): ?>
                 <a href="hareket_form.php?id=<?= (int)$r['id'] ?>" class="btn btn-sm btn-outline-secondary py-0" title="Düzenle"><i class="bi bi-pencil"></i></a>
                 <a href="?sil=<?= (int)$r['id'] ?>" class="btn btn-sm btn-outline-danger py-0" title="Sil"
