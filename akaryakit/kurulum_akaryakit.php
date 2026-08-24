@@ -59,6 +59,24 @@ $tablolar = [
         INDEX (donem_sira), INDEX (arac_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
+    'akaryakit_cikislar' => "CREATE TABLE IF NOT EXISTS akaryakit_cikislar (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        tarih DATE NOT NULL,
+        arac_id INT NULL,
+        sofor VARCHAR(120) NULL,
+        cinsi VARCHAR(120) NULL,
+        firma VARCHAR(120) NULL,
+        plaka VARCHAR(40) NULL,
+        miktar_lt DECIMAL(10,2) NOT NULL DEFAULT 0,
+        sayac VARCHAR(40) NULL,
+        teslim_eden VARCHAR(120) NULL,
+        teslim_alan VARCHAR(120) NULL,
+        aciklama VARCHAR(255) NULL,
+        created_by INT NULL,
+        created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY (tarih), KEY (arac_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
+
     'akaryakit_tutanak' => "CREATE TABLE IF NOT EXISTS akaryakit_tutanak (
         id INT AUTO_INCREMENT PRIMARY KEY,
         donem VARCHAR(40) NOT NULL,

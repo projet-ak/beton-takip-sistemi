@@ -402,6 +402,9 @@ if ($__user) {
         <a class="sidebar-nav-link <?= __isActive('stok.php') ?>" href="<?= $__rootPath ?>akaryakit/stok.php" data-label="Stok Hareketi"><i class="bi bi-fuel-pump"></i><span>Stok Hareketi</span></a>
       </li>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('cikislar.php') ?>" href="<?= $__rootPath ?>akaryakit/cikislar.php" data-label="Mazot Çıkışları"><i class="bi bi-droplet-half"></i><span>Mazot Çıkışları</span></a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('araclar.php').__isActive('arac_form.php') ?>" href="<?= $__rootPath ?>akaryakit/araclar.php" data-label="Araçlar"><i class="bi bi-truck"></i><span>Araçlar / Makineler</span></a>
       </li>
       <li class="sidebar-nav-item">
