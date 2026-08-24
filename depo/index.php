@@ -29,6 +29,7 @@ $hToplam = 0;
 foreach ($hOzet as $ho) $hToplam += (int)$ho['adet'];
 
 $sonHareket = $hToplam ? $pdoDepo->query("SELECT * FROM depo_hareketler ORDER BY tarih DESC, id DESC LIMIT 12")->fetchAll() : [];
+$hurdaOzet = $hToplam ? $pdoDepo->query("SELECT COUNT(*) adet, COALESCE(SUM(miktar),0) miktar FROM depo_hareketler WHERE hurda=1")->fetch() : ['adet'=>0,'miktar'=>0];
 $enCokFirma = $hToplam ? $pdoDepo->query("SELECT firma, tur, COUNT(*) adet FROM depo_hareketler
                                           WHERE firma IS NOT NULL AND firma <> ''
                                           GROUP BY firma, tur ORDER BY adet DESC LIMIT 8")->fetchAll() : [];
@@ -117,7 +118,13 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="card border-0 shadow-sm h-100">
             <div class="card-header bg-white border-0 pt-3 d-flex justify-content-between align-items-center">
                 <h6 class="mb-0"><i class="bi bi-arrow-left-right text-primary me-2"></i>Hareket Defteri</h6>
-                <a href="hareketler.php" class="btn btn-outline-primary btn-sm">Tümü <i class="bi bi-arrow-right"></i></a>
+                <div class="d-flex gap-2">
+                    <?php if ((int)$hurdaOzet['adet'] > 0): ?>
+                    <a href="hareketler.php?hurda=1" class="btn btn-outline-warning btn-sm" title="Hurdaya ayrılan malzemeler">
+                        <i class="bi bi-trash3 me-1"></i><?= (int)$hurdaOzet['adet'] ?> hurda · <?= number_format((float)$hurdaOzet['miktar'],0,',','.') ?></a>
+                    <?php endif; ?>
+                    <a href="hareketler.php" class="btn btn-outline-primary btn-sm">Tümü <i class="bi bi-arrow-right"></i></a>
+                </div>
             </div>
             <div class="card-body">
                 <div class="row g-2 mb-3">

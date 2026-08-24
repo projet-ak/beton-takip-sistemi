@@ -382,6 +382,9 @@ if ($__user) {
         <a class="sidebar-nav-link <?= __isActive('hareketler.php') ?>" href="<?= $__rootPath ?>depo/hareketler.php" data-label="Hareketler"><i class="bi bi-arrow-left-right"></i><span>Hareketler</span></a>
       </li>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link" href="<?= $__rootPath ?>depo/hareketler.php?hurda=1" data-label="Hurdalar"><i class="bi bi-trash3"></i><span>Hurdalar</span></a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('raporlar.php') ?>" href="<?= $__rootPath ?>depo/raporlar.php" data-label="Raporlar"><i class="bi bi-bar-chart-line"></i><span>Raporlar</span></a>
       </li>
       <li class="sidebar-nav-item">
