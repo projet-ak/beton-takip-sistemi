@@ -25,7 +25,7 @@ $ozet = dp_ozet($pdoDepo);
 $topDeger=0; $topKalem=0; $topTukenen=0;
 foreach ($ozet as $o) { $topDeger+=(float)$o['deger']; $topKalem+=(int)$o['adet']; $topTukenen+=(int)$o['tukenen']; }
 
-$disiplin = $pdoDepo->query("SELECT COALESCE(NULLIF(disiplin,''),'—') disiplin,
+$disiplin = $pdoDepo->query("SELECT COALESCE(NULLIF(disiplin,''),'Disiplin girilmemiş') disiplin,
     SUM((sayim+gelen-giden)*COALESCE(birim_fiyat,0)) deger, COUNT(*) adet
     FROM depo_kalemler WHERE aktif=1 AND kategori<>'el_aleti'
     GROUP BY disiplin HAVING deger>0 ORDER BY deger DESC")->fetchAll();
@@ -157,8 +157,16 @@ require_once __DIR__ . '/../includes/header.php';
 <!-- Mali değer grafikleri -->
 <div class="row g-3 mb-4">
     <div class="col-lg-4"><div class="card border-0 shadow-sm h-100"><div class="card-body">
-        <h6 class="mb-3"><i class="bi bi-pie-chart text-primary me-2"></i>Kategori Bazlı Mali Değer</h6>
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-1">
+            <h6 class="mb-0"><i class="bi bi-pie-chart text-primary me-2"></i>Kategori Dağılımı</h6>
+            <div class="btn-group btn-group-sm" role="group">
+                <button type="button" class="btn btn-outline-primary active" id="kBtnDeger" onclick="katMod('deger')">Mali Değer</button>
+                <button type="button" class="btn btn-outline-primary" id="kBtnAdet" onclick="katMod('adet')">Kalem</button>
+                <button type="button" class="btn btn-outline-primary" id="kBtnStok" onclick="katMod('stok')">Stok</button>
+            </div>
+        </div>
         <canvas id="chKat" height="180"></canvas>
+        <div class="small text-muted mt-2" id="katNot"></div>
     </div></div></div>
     <div class="col-lg-8"><div class="card border-0 shadow-sm h-100"><div class="card-body">
         <h6 class="mb-3"><i class="bi bi-bar-chart text-primary me-2"></i>Disiplin Bazlı Mali Değer</h6>
@@ -312,12 +320,28 @@ function dpPdf(){
 
 (function(){
     const palette=['#00584E','#00C9B1','#C9A84C','#007A6A','#6f42c1','#0d6efd','#fd7e14','#20c997','#d63384','#198754'];
-    new Chart(document.getElementById('chKat'),{
+    const KAT = {
+        labels: <?= json_encode(array_map(fn($k)=>dp_katAd($k),array_keys($ozet)),JSON_UNESCAPED_UNICODE) ?>,
+        deger:  <?= json_encode(array_map(fn($o)=>round((float)$o['deger'],2),array_values($ozet))) ?>,
+        adet:   <?= json_encode(array_map(fn($o)=>(int)$o['adet'],array_values($ozet))) ?>,
+        stok:   <?= json_encode(array_map(fn($o)=>round((float)$o['stok'],2),array_values($ozet))) ?>
+    };
+    const katChart = new Chart(document.getElementById('chKat'),{
         type:'doughnut',
-        data:{labels:<?= json_encode(array_map(fn($k)=>dp_katAd($k),array_keys($ozet)),JSON_UNESCAPED_UNICODE) ?>,
-            datasets:[{data:<?= json_encode(array_map(fn($o)=>round((float)$o['deger'],2),array_values($ozet))) ?>,backgroundColor:palette,borderWidth:0}]},
+        data:{labels:KAT.labels, datasets:[{data:KAT.deger, backgroundColor:palette, borderWidth:0}]},
         options:{plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}}},cutout:'60%'}
     });
+    window.katMod = function(m){
+        katChart.data.datasets[0].data = KAT[m];
+        katChart.update();
+        ['Deger','Adet','Stok'].forEach(x=>document.getElementById('kBtn'+x).classList.remove('active'));
+        document.getElementById('kBtn'+(m==='deger'?'Deger':m==='adet'?'Adet':'Stok')).classList.add('active');
+        const sifir = KAT.labels.filter((_,i)=>!KAT[m][i]);
+        document.getElementById('katNot').textContent = (m==='deger' && sifir.length)
+            ? 'Mali değerde görünmeyenler: ' + sifir.join(', ') + ' — birim fiyat girilmemiş (el aletleri fiyat tutmaz).'
+            : '';
+    };
+    katMod('deger');
     new Chart(document.getElementById('chDis'),{
         type:'bar',
         data:{labels:<?= json_encode(array_column($disiplin,'disiplin'),JSON_UNESCAPED_UNICODE) ?>,
