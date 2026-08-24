@@ -36,6 +36,11 @@ $pdoAkaryakit->exec("CREATE TABLE IF NOT EXISTS akaryakit_cikislar (
     created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     KEY (tarih), KEY (arac_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+try {
+    if (!$pdoAkaryakit->query("SHOW COLUMNS FROM akaryakit_cikislar LIKE 'evrak_url'")->fetch()) {
+        $pdoAkaryakit->exec("ALTER TABLE akaryakit_cikislar ADD COLUMN evrak_url VARCHAR(500) NULL COMMENT 'imzalı tutanak taraması'");
+    }
+} catch (Throwable $e) {}
 
 // ── Kaydet / güncelle ────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'kaydet') {
@@ -78,6 +83,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'kayde
     }
     redirect('cikislar.php');
 }
+// ── İmzalı evrak yükle (tutanağın ıslak imzalı taraması/fotoğrafı) ──────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'evrak_yukle') {
+    $id = (int)($_POST['id'] ?? 0);
+    $v = $pdoAkaryakit->prepare("SELECT id, evrak_url FROM akaryakit_cikislar WHERE id=?");
+    $v->execute([$id]);
+    $kayit = $v->fetch();
+    if (!$kayit) { flash('error', 'Kayıt bulunamadı.'); redirect('cikislar.php'); }
+    if (empty($_FILES['evrak']['tmp_name']) || !is_uploaded_file($_FILES['evrak']['tmp_name'])) {
+        flash('error', 'Dosya seçilmedi.');
+    } else {
+        $ad   = (string)$_FILES['evrak']['name'];
+        $mime = guess_mime($_FILES['evrak']['tmp_name'], $ad);
+        if (!in_array($mime, ['application/pdf','image/jpeg','image/png','image/webp'], true)) {
+            flash('error', 'Desteklenmeyen tür (PDF, JPG, PNG, WEBP): ' . $mime);
+        } elseif ((int)$_FILES['evrak']['size'] > 10*1024*1024) {
+            flash('error', 'Dosya 10 MB sınırını aşıyor.');
+        } else {
+            $dir = __DIR__ . '/../uploads/akaryakit_cikis/' . $id;
+            if (!is_dir($dir)) @mkdir($dir, 0755, true);
+            $ext = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'pdf';
+            $yeni = 'evrak_' . date('Ymd_His') . '.' . $ext;
+            if (@move_uploaded_file($_FILES['evrak']['tmp_name'], $dir . '/' . $yeni)) {
+                if ($kayit['evrak_url']) @unlink(__DIR__ . '/../' . $kayit['evrak_url']);   // eskisini değiştir
+                $pdoAkaryakit->prepare("UPDATE akaryakit_cikislar SET evrak_url=? WHERE id=?")
+                    ->execute(['uploads/akaryakit_cikis/' . $id . '/' . $yeni, $id]);
+                flash('success', 'İmzalı evrak yüklendi.');
+            } else flash('error', 'Dosya diske yazılamadı.');
+        }
+    }
+    redirect('cikislar.php?ay=' . urlencode($_POST['ay'] ?? date('Y-m')));
+}
+if (isset($_GET['evrak_sil']) && ctype_digit($_GET['evrak_sil']) && has_role('admin','teknik_ofis_admin')) {
+    $v = $pdoAkaryakit->prepare("SELECT evrak_url FROM akaryakit_cikislar WHERE id=?");
+    $v->execute([(int)$_GET['evrak_sil']]);
+    if ($u = $v->fetchColumn()) {
+        @unlink(__DIR__ . '/../' . $u);
+        $pdoAkaryakit->prepare("UPDATE akaryakit_cikislar SET evrak_url=NULL WHERE id=?")->execute([(int)$_GET['evrak_sil']]);
+        flash('success', 'İmzalı evrak silindi.');
+    }
+    redirect('cikislar.php');
+}
+
 if (isset($_GET['sil']) && ctype_digit($_GET['sil']) && has_role('admin','teknik_ofis_admin')) {
     $pdoAkaryakit->prepare("DELETE FROM akaryakit_cikislar WHERE id=?")->execute([(int)$_GET['sil']]);
     flash('success', 'Çıkış kaydı silindi.');
@@ -130,7 +177,7 @@ require_once __DIR__ . '/../includes/header.php';
 <table class="table table-sm table-hover align-middle mb-0" style="font-size:.84rem">
     <thead class="table-light"><tr>
         <th>Tarih</th><th>Şoför</th><th>Cinsi</th><th>Firma</th><th>Plaka</th>
-        <th class="text-end">Miktar (Lt)</th><th>Sayaç</th><th>Teslim Alan</th><th></th>
+        <th class="text-end">Miktar (Lt)</th><th>Sayaç</th><th>Teslim Alan</th><th>Evrak</th><th></th>
     </tr></thead>
     <tbody>
     <?php foreach ($liste as $r): ?>
@@ -143,6 +190,18 @@ require_once __DIR__ . '/../includes/header.php';
             <td class="text-end fw-bold text-danger"><?= $fmt0($r['miktar_lt']) ?></td>
             <td class="small text-muted"><?= h($r['sayac'] ?: '—') ?></td>
             <td class="small"><?= h($r['teslim_alan'] ?: '—') ?></td>
+            <td class="text-nowrap">
+                <?php if (!empty($r['evrak_url'])): ?>
+                <a href="../<?= h($r['evrak_url']) ?>" target="_blank" class="btn btn-sm btn-success py-0" title="İmzalı evrakı aç"><i class="bi bi-file-earmark-check"></i></a>
+                <?php if (has_role('admin','teknik_ofis_admin')): ?>
+                <a href="?evrak_sil=<?= (int)$r['id'] ?>" class="btn btn-sm btn-outline-danger py-0" title="Evrakı sil"
+                   onclick="return confirm('İmzalı evrak silinsin mi?')"><i class="bi bi-x"></i></a>
+                <?php endif; ?>
+                <?php else: ?>
+                <button class="btn btn-sm btn-outline-secondary py-0" data-bs-toggle="modal" data-bs-target="#evrakModal"
+                        onclick="evrakAc(<?= (int)$r['id'] ?>)" title="İmzalı evrak yükle"><i class="bi bi-upload"></i> imza</button>
+                <?php endif; ?>
+            </td>
             <td class="text-end text-nowrap">
                 <a href="cikis_tutanak.php?id=<?= (int)$r['id'] ?>" target="_blank" class="btn btn-sm btn-outline-primary py-0" title="Teslim tutanağı"><i class="bi bi-printer"></i></a>
                 <button class="btn btn-sm btn-outline-secondary py-0" data-bs-toggle="modal" data-bs-target="#cikisModal" title="Düzenle"
@@ -153,11 +212,11 @@ require_once __DIR__ . '/../includes/header.php';
             </td>
         </tr>
     <?php endforeach; ?>
-    <?php if (!$liste): ?><tr><td colspan="9" class="text-center text-muted py-4">Bu ayda çıkış kaydı yok — "Yeni Çıkış" ile ekleyin.</td></tr><?php endif; ?>
+    <?php if (!$liste): ?><tr><td colspan="10" class="text-center text-muted py-4">Bu ayda çıkış kaydı yok — "Yeni Çıkış" ile ekleyin.</td></tr><?php endif; ?>
     </tbody>
     <?php if ($liste): ?>
     <tfoot class="table-light fw-bold"><tr>
-        <td colspan="5" class="text-end">TOPLAM</td><td class="text-end text-danger"><?= $fmt0($oz['lt']) ?></td><td colspan="3"></td>
+        <td colspan="5" class="text-end">TOPLAM</td><td class="text-end text-danger"><?= $fmt0($oz['lt']) ?></td><td colspan="4"></td>
     </tr></tfoot>
     <?php endif; ?>
 </table>
@@ -203,7 +262,27 @@ require_once __DIR__ . '/../includes/header.php';
     </form>
 </div></div></div>
 
+<!-- İmzalı evrak yükleme modalı -->
+<div class="modal fade" id="evrakModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+    <form method="post" enctype="multipart/form-data">
+        <input type="hidden" name="action" value="evrak_yukle">
+        <input type="hidden" name="id" id="eId" value="0">
+        <input type="hidden" name="ay" value="<?= h($fAy) ?>">
+        <div class="modal-header"><h6 class="modal-title"><i class="bi bi-file-earmark-check me-1"></i>İmzalı Evrak Yükle</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+            <label class="form-label small">Islak imzalı tutanağın taraması / fotoğrafı <span class="text-muted">(PDF, JPG, PNG — maks 10 MB)</span></label>
+            <input type="file" name="evrak" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.webp" required>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Vazgeç</button>
+            <button class="btn btn-primary btn-sm"><i class="bi bi-upload me-1"></i>Yükle</button>
+        </div>
+    </form>
+</div></div></div>
+
 <script>
+function evrakAc(id){ document.getElementById('eId').value = id; }
 function aracSecildi(){
     var o = document.getElementById('cArac').selectedOptions[0];
     if (!o || o.value === '0') return;

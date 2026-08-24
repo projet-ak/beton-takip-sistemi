@@ -43,7 +43,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   Sayfalar: index(dashboard: stok KPI + aylık tüketim/kalan grafik + firma doughnut + en çok tüketen) ·
   aylik(dönem seçmeli araç tüketim tablosu + günlük detay modal) · stok(dönem zinciri, uyuşmayan geçiş
   kırmızı, elle düzelt) · **cikislar**(günlük mazot çıkışı: araç seçimi otomatik doldurur, ay filtresi + KPI;
-  tablo `akaryakit_cikislar` runtime+kurulum; stok zincirine KARIŞMAZ — Excel esastır, ay sonunda Excel'e işlenir) ·
+  tablo `akaryakit_cikislar` runtime+kurulum, **imzalı evrak yükleme** `evrak_url` → `uploads/akaryakit_cikis/{id}/`; stok zincirine KARIŞMAZ — Excel esastır, ay sonunda Excel'e işlenir) ·
   **cikis_tutanak**(AKY-C-00001 no'lu A4 mazot teslim tutanağı, ERN Taahhüt logolu, kayıt sonrası bannerdan yazdırılır) ·
   araclar/arac_form(CRUD) · tutanaklar + tutanak_pdf(A4) · raporlar (Chart.js + Excel: aylık tüketim, firma/araç bazlı) · import · kurulum_akaryakit.
   Import: aylık sayfalar (OCAK 2026…) + TUTANAK sayfaları **dönem bazlı tam yenileme**; sayfa altındaki **imza bloğu** (DEPO ŞEFİ…/MALİ İŞLER ŞEFİ:/İMZA:/TARİH:) `ak_imza_satiri()` ile atlanır — aksi halde 'İMZA:' adlı araçlar oluşuyordu; `ak_imza_temizle()` eski çöp araç/tüketim/tutanak kayıtlarını import sonunda siler; **Excel'in
