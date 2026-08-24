@@ -141,15 +141,29 @@ if (($_POST['action'] ?? '') === 'eksik_tara' && ctype_digit((string)($_POST['fa
     }
     $veri = fat_metinden_cikar($metin);
     $esl  = fat_eslestir($pdo, $veri['irsaliyeler']);
-    $u = $pdo->prepare("UPDATE faturalar SET eksik_adet = ?, eksik_liste = ? WHERE id = ?");
-    $u->execute([count($esl['eksik']),
-                 json_encode(array_values($esl['eksik']), JSON_UNESCAPED_UNICODE), $fid]);
+
+    // Eksik listesi + karekod-yalnız işlenmiş faturalarda BOŞ kalan alanlar
+    // (m³ karekodda yoktur, yalnız metinden okunur) yeniden taramayla doldurulur.
+    // Dolu alanların üzerine YAZILMAZ.
+    $set = ['eksik_adet = ?', 'eksik_liste = ?'];
+    $par = [count($esl['eksik']), json_encode(array_values($esl['eksik']), JSON_UNESCAPED_UNICODE)];
+    $dolan = [];
+    foreach ([['miktar_m3', $veri['miktar'], 'm³'], ['tutar', $veri['tutar'], 'tutar'],
+              ['tarih', $veri['tarih'], 'tarih'], ['ettn', $veri['ettn'], 'ETTN']] as [$kol, $deger, $ad2]) {
+        if ($deger !== null && $deger !== '' && ($f[$kol] === null || $f[$kol] === '')) {
+            $set[] = "$kol = ?"; $par[] = $deger; $dolan[] = $ad2;
+        }
+    }
+    $par[] = $fid;
+    $pdo->prepare("UPDATE faturalar SET " . implode(', ', $set) . " WHERE id = ?")->execute($par);
     audit_log($pdo, 'faturalar', $fid, 'UPDATE', null,
-              ['eksik_tara' => true, 'eksik' => $esl['eksik']], current_user_id());
-    flash($esl['eksik'] ? 'warning' : 'success',
-          $esl['eksik'] ? 'Fatura yeniden tarandı — eksik irsaliyeler: ' . implode(', ', $esl['eksik'])
-                        : 'Fatura yeniden tarandı — faturadaki tüm irsaliyeler artık sistemde var, eksik kalmadı.');
-    redirect('fatura_eslestir.php?eksik=1');
+              ['eksik_tara' => true, 'eksik' => $esl['eksik'], 'dolan' => $dolan], current_user_id());
+
+    $mesaj = $esl['eksik'] ? 'Fatura yeniden tarandı — eksik irsaliyeler: ' . implode(', ', $esl['eksik'])
+                           : 'Fatura yeniden tarandı — faturadaki tüm irsaliyeler sistemde var, eksik yok.';
+    if ($dolan) $mesaj .= ' Boş alanlar dolduruldu: ' . implode(', ', $dolan) . '.';
+    flash($esl['eksik'] ? 'warning' : 'success', $mesaj);
+    redirect(($_POST['geri'] ?? '') === 'liste' ? 'fatura_eslestir.php' : 'fatura_eslestir.php?eksik=1');
 }
 
 // ── 3) Fatura sil (bağları çöz) ─────────────────────────────────────────────
@@ -659,7 +673,18 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                     <td><?= h(format_date($f['tarih'])) ?></td>
                     <td><?= h((string)$f['tedarikci']) ?></td>
                     <td class="text-end"><?= $f['tutar']!==null?$fmt($f['tutar']).' ₺':'—' ?></td>
-                    <td class="text-end"><?= $f['miktar_m3']!==null?$fmt($f['miktar_m3']):'—' ?></td>
+                    <td class="text-end">
+                        <?php if ($f['miktar_m3'] !== null): ?><?= $fmt($f['miktar_m3']) ?>
+                        <?php elseif ($f['dosya_url']): ?>
+                        <form method="post" class="d-inline">
+                            <input type="hidden" name="action" value="eksik_tara">
+                            <input type="hidden" name="fatura_id" value="<?= (int)$f['id'] ?>">
+                            <input type="hidden" name="geri" value="liste">
+                            <button class="btn btn-sm btn-outline-secondary py-0" title="m³ faturada var ama kayıtta boş — PDF yeniden okunur, boş alanlar dolar">
+                                <i class="bi bi-arrow-clockwise"></i> tara</button>
+                        </form>
+                        <?php else: ?>—<?php endif; ?>
+                    </td>
                     <td class="text-end">
                         <?php if ($fIrs): ?>
                         <button class="btn btn-sm btn-link p-0 text-decoration-none" type="button"
