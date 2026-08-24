@@ -268,9 +268,20 @@ const R = {
 async function exportExcel(){
     const btn=document.getElementById('btnXls'); btn.disabled=true; const o=btn.innerHTML; btn.innerHTML='Hazırlanıyor...';
     try{
-        const wb=new ExcelJS.Workbook(); wb.creator='ERN Demir Takip';
+        const wb=new ExcelJS.Workbook(); wb.creator='ERN Taahhüt — Demir Takip'; wb.company='ERN Taahhüt';
+        // ERN Taahhüt logosu (renkli — beyaz zemin üstüne); yüklenemezse logosuz devam
+        let logoId; try {
+            const lb = await fetch('../uploads/logo/ern_taahhut_export.png').then(r=>r.blob());
+            const l64 = await new Promise(res=>{const f=new FileReader();f.onload=()=>res(f.result);f.readAsDataURL(lb);});
+            logoId = wb.addImage({ base64: l64, extension: 'png' });
+        } catch(e) {}
         const HDR={fill:{type:'pattern',pattern:'solid',fgColor:{argb:'FF00584E'}},font:{color:{argb:'FFFFFFFF'},bold:true},alignment:{vertical:'middle'}};
-        const title=(ws,t)=>{ ws.mergeCells('A1:E1'); const c=ws.getCell('A1'); c.value=t; c.font={bold:true,size:14,color:{argb:'FF00584E'}}; ws.getCell('A2').value='Dönem: '+R.donem; ws.addRow([]); };
+        const title=(ws,t)=>{
+            ws.mergeCells('A1:E1'); const c=ws.getCell('A1'); c.value='        ERN TAAHHÜT — '+t;
+            c.font={bold:true,size:14,color:{argb:'FF00584E'}}; ws.getRow(1).height=40;
+            if (logoId !== undefined) ws.addImage(logoId, { tl:{col:0.05,row:0.05}, ext:{width:76,height:47} });
+            ws.getCell('A2').value='Dönem: '+R.donem; ws.addRow([]);
+        };
         const styleHdr=(row)=>row.eachCell(c=>{c.fill=HDR.fill;c.font=HDR.font;c.alignment=HDR.alignment;});
 
         // Özet
@@ -327,7 +338,11 @@ async function exportExcel(){
 function exportPDF(){
     const f=n=>Number(n).toLocaleString('tr-TR',{minimumFractionDigits:3,maximumFractionDigits:3});
     const tbl=(head,rows)=>'<table><thead><tr>'+head.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map((c,i)=>'<td'+(i>0?' class="r"':'')+'>'+c+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
-    let html='<h1>DEMİR RAPORU</h1><div class="meta">Dönem: '+R.donem+' — Yazdırma: '+new Date().toLocaleString('tr-TR')+'</div>';
+    const logoUrl = new URL('../uploads/logo/ern_taahhut_export.png', location.href).href;
+    let html='<div style="display:flex;align-items:center;gap:12px;border-bottom:3px solid #00584E;padding-bottom:8px;margin-bottom:6px">'
+           +'<img src="'+logoUrl+'" style="height:44px" onerror="this.remove()">'
+           +'<h1 style="border:none">ERN TAAHHÜT — DEMİR RAPORU</h1></div>'
+           +'<div class="meta">Dönem: '+R.donem+' — Yazdırma: '+new Date().toLocaleString('tr-TR')+'</div>';
     html+='<div class="kpis"><div><b>'+R.kpi.sevkiyat+'</b>Sevkiyat</div><div><b>'+f(R.kpi.ton)+' t</b>Toplam Gelen</div><div><b>'+f(R.kpi.kantar)+' t</b>Kantar</div><div><b>'+(R.kpi.fark>0?'+':'')+f(R.kpi.fark)+' t</b>Fark</div></div>';
     html+='<h2>Çap Bazında</h2>'+tbl(['Çap','İrsaliye','Kantar','Fark'], R.cap.map(c=>[c.ad,f(c.irs),f(c.knt),(c.knt-c.irs>0?'+':'')+f(c.knt-c.irs)]));
     html+='<h2>Tedarikçi Özeti</h2>'+tbl(['Tedarikçi','Sevkiyat','İrsaliye','Fark'], R.ted.map(t=>[t.firma,t.adet,f(t.irs),(t.knt-t.irs>0?'+':'')+f(t.knt-t.irs)]));
@@ -339,7 +354,7 @@ function exportPDF(){
         +'table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px;} th,td{border:1px solid #bbb;padding:5px 8px;} th{background:#00584E;color:#fff;} td.r{text-align:right;}'
         +'.kpis{display:flex;gap:10px;margin:10px 0;} .kpis div{flex:1;border:1px solid #ddd;border-radius:8px;padding:8px;text-align:center;font-size:11px;color:#666;} .kpis b{display:block;font-size:17px;color:#111;}'
         +'@media print{body{padding:6mm;}}</style></head><body>'+html
-        +'<script>window.onload=function(){setTimeout(function(){window.print();},300);}<\/script></body></html>');
+        +'<script>window.onload=function(){setTimeout(function(){window.print();},450);}<\/script></body></html>');
     w.document.close();
 }
 </script>

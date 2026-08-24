@@ -25,10 +25,24 @@ class XlsxWriter
     private array  $colW    = [];
     private int    $numCols = 0;
     private string $sheetName;
+    private int    $brandRows = 0;      // logo için ayrılan üst satır sayısı
+    private ?string $logoPng  = null;   // gömülecek PNG içeriği
 
-    public function __construct(string $sheetName = 'Veriler')
+    /**
+     * $marka=true (varsayılan): sayfanın üstüne ERN Taahhüt logosu gömülür.
+     * Böylece XlsxWriter kullanan TÜM dışa aktarmalar tek yerden markalanır.
+     */
+    public function __construct(string $sheetName = 'Veriler', bool $marka = true)
     {
         $this->sheetName = $sheetName;
+        if ($marka) {
+            $logo = __DIR__ . '/../uploads/logo/ern_taahhut_export.png';
+            if (is_file($logo) && ($png = @file_get_contents($logo)) !== false) {
+                $this->logoPng   = $png;
+                $this->brandRows = 3;
+                for ($i = 0; $i < 3; $i++) $this->rows[] = ['cells' => []];
+            }
+        }
     }
 
     /** Başlık satırı */
@@ -163,6 +177,21 @@ class XlsxWriter
         $zip->addFromString('xl/sharedStrings.xml',       $this->buildSSXml());
         $zip->addFromString('xl/worksheets/sheet1.xml',   $sheetXml);
 
+        if ($this->logoPng !== null) {
+            $zip->addFromString('xl/media/image1.png', $this->logoPng);
+            $zip->addFromString('xl/drawings/drawing1.xml', $this->buildDrawing());
+            $zip->addFromString('xl/drawings/_rels/drawing1.xml.rels',
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/>'
+                . '</Relationships>');
+            $zip->addFromString('xl/worksheets/_rels/sheet1.xml.rels',
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                . '<Relationship Id="rIdDrw1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>'
+                . '</Relationships>');
+        }
+
         $zip->close();
         $data = file_get_contents($tmp);
         unlink($tmp);
@@ -185,8 +214,9 @@ class XlsxWriter
         $rowsXml = '';
         foreach ($this->rows as $ri => $row) {
             $rn       = $ri + 1;
-            $isHeader = ($ri === 0);
-            $ht       = $isHeader ? ' ht="20" customHeight="1"' : ' ht="15" customHeight="1"';
+            $isHeader = ($ri === $this->brandRows);
+            $ht       = $ri < $this->brandRows ? ' ht="30" customHeight="1"'
+                      : ($isHeader ? ' ht="20" customHeight="1"' : ' ht="15" customHeight="1"');
             $rowsXml .= '<row r="' . $rn . '"' . $ht . '>';
             foreach ($row['cells'] as $ci => $cell) {
                 $ref   = $this->colLetter($ci) . $rn;
@@ -207,10 +237,12 @@ class XlsxWriter
             $rowsXml .= '</row>';
         }
 
-        $pane      = '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>';
-        $autoFilter = count($this->rows) > 0
-            ? '<autoFilter ref="A1:' . $lastCol . '1"/>'
+        $hr        = $this->brandRows + 1;   // başlık satırının 1 tabanlı numarası
+        $pane      = '<pane ySplit="' . $hr . '" topLeftCell="A' . ($hr + 1) . '" activePane="bottomLeft" state="frozen"/>';
+        $autoFilter = count($this->rows) > $this->brandRows
+            ? '<autoFilter ref="A' . $hr . ':' . $lastCol . $hr . '"/>'
             : '';
+        $drawing = $this->logoPng !== null ? '<drawing r:id="rIdDrw1"/>' : '';
 
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
@@ -220,6 +252,7 @@ class XlsxWriter
             . '<cols>' . $colsXml . '</cols>'
             . '<sheetData>' . $rowsXml . '</sheetData>'
             . $autoFilter
+            . $drawing
             . '</worksheet>';
     }
 
@@ -343,6 +376,27 @@ class XlsxWriter
             . '</Relationships>';
     }
 
+    /** Logo çizimi: A1'e sabitlenmiş, 3 marka satırına sığan ERN Taahhüt logosu */
+    private function buildDrawing(): string
+    {
+        $boyut = @getimagesizefromstring($this->logoPng);
+        $w = (int)($boyut[0] ?? 194); $h = (int)($boyut[1] ?? 120);
+        $gorH = 84; $gorW = (int)round($w * $gorH / max(1, $h));   // ekranda ~84px yükseklik
+        $cx = $gorW * 9525; $cy = $gorH * 9525;                     // px → EMU
+        return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"'
+            . ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+            . ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            . '<xdr:oneCellAnchor>'
+            . '<xdr:from><xdr:col>0</xdr:col><xdr:colOff>47625</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>47625</xdr:rowOff></xdr:from>'
+            . '<xdr:ext cx="' . $cx . '" cy="' . $cy . '"/>'
+            . '<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="1" name="ERN Taahhüt"/><xdr:cNvPicPr/></xdr:nvPicPr>'
+            . '<xdr:blipFill><a:blip r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>'
+            . '<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' . $cx . '" cy="' . $cy . '"/></a:xfrm>'
+            . '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>'
+            . '</xdr:pic></xdr:oneCellAnchor></xdr:wsDr>';
+    }
+
     private function buildContentTypes(): string
     {
         $pfx = 'application/vnd.openxmlformats-officedocument.spreadsheetml.';
@@ -354,6 +408,10 @@ class XlsxWriter
             . '<Override PartName="/xl/worksheets/sheet1.xml"  ContentType="' . $pfx . 'worksheet+xml"/>'
             . '<Override PartName="/xl/styles.xml"             ContentType="' . $pfx . 'styles+xml"/>'
             . '<Override PartName="/xl/sharedStrings.xml"      ContentType="' . $pfx . 'sharedStrings+xml"/>'
+            . ($this->logoPng !== null
+                ? '<Default Extension="png" ContentType="image/png"/>'
+                . '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>'
+                : '')
             . '</Types>';
     }
 }

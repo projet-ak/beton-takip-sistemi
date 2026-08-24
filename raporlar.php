@@ -992,14 +992,30 @@ function xlAlign(h = 'left', v = 'middle', wrap = false) {
     return { horizontal: h, vertical: v, wrapText: wrap };
 }
 
+var ERN_LOGO_BEYAZ = new URL('uploads/logo/ern_taahhut_export_beyaz.png', location.href).href;
+// ERN Taahhüt logosu (beyaz, şeffaf zemin) — bir kez indirilir, data-URL önbelleğe alınır
+let __ernLogoB64 = null;
+async function ernLogoB64() {
+    if (__ernLogoB64) return __ernLogoB64;
+    const r = await fetch('uploads/logo/ern_taahhut_export_beyaz.png');
+    const b = await r.blob();
+    __ernLogoB64 = await new Promise(res => { const f = new FileReader(); f.onload = () => res(f.result); f.readAsDataURL(b); });
+    return __ernLogoB64;
+}
+function ernSheetLogo(wb, ws) {   // koyu başlık bandının sol köşesine
+    if (wb.__ernLogo !== undefined) ws.addImage(wb.__ernLogo, { tl: { col: 0.08, row: 0.08 }, ext: { width: 82, height: 51 } });
+}
+
 async function exportExcel() {
     const btn = document.querySelector('[onclick="exportExcel()"]');
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Oluşturuluyor...'; }
 
     try {
         const wb = new ExcelJS.Workbook();
-        wb.creator   = 'ERN Holding — Beton Takip Sistemi';
-        wb.company   = 'ERN Holding';
+        wb.creator   = 'ERN Taahhüt — Beton Takip Sistemi';
+        wb.company   = 'ERN Taahhüt';
+        // ERN Taahhüt logosu (beyaz — koyu başlık bandının üzerine): yüklenemezse logosuz devam
+        try { wb.__ernLogo = wb.addImage({ base64: await ernLogoB64(), extension: 'png' }); } catch (e) {}
         wb.created   = new Date();
         wb.modified  = new Date();
 
@@ -1062,7 +1078,8 @@ async function buildDetaySheet(wb) {
     const r1 = ws.getRow(1);
     r1.height = 36;
     const c1 = ws.getCell('A1');
-    c1.value     = 'ERN HOLDİNG  —  BETON TAKİP SİSTEMİ';
+    c1.value     = 'ERN TAAHHÜT  —  BETON TAKİP SİSTEMİ';
+    ernSheetLogo(wb, ws);
     c1.font      = xlFont({ bold: true, size: 16, color: { argb: XL.white } });
     c1.fill      = xlFill(XL.ernDark);
     c1.alignment = xlAlign('center');
@@ -1189,6 +1206,7 @@ async function buildAylikSheet(wb) {
     ws.mergeCells('A1:C1');
     const h = ws.getCell('A1');
     h.value     = 'AYLIK m3 TUKETIM OZETI';
+    ernSheetLogo(wb, ws);
     h.font      = xlFont({ bold: true, size: 13, color: { argb: XL.white } });
     h.fill      = xlFill(XL.ernDark);
     h.alignment = xlAlign('center');
@@ -1369,7 +1387,7 @@ function exportPDF() {
     var h = '<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8"><title>ERN Beton Raporu</title>'+css+'</head><body>'
         // Toolbar — yazdır/kaydet/kapat butonları
         +'<div class="toolbar">'
-        +'<div class="toolbar-title">ERN Holding — Beton Takip Raporu &nbsp;|&nbsp; '+escH(donem)+'</div>'
+        +'<div class="toolbar-title">ERN Taahhüt — Beton Takip Raporu &nbsp;|&nbsp; '+escH(donem)+'</div>'
         +'<button class="tbtn tbtn-print" onclick="window.print()">'
         +'<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5 1a2 2 0 0 0-2 2v1h10V3a2 2 0 0 0-2-2H5zm6 8H5a1 1 0 0 0-1 1v3a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1z"/><path d="M0 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-1v-2a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2H2a2 2 0 0 1-2-2V7zm2.5 1a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"/></svg>'
         +' Yazdır</button>'
@@ -1382,7 +1400,7 @@ function exportPDF() {
         +'</div>'
         // Sayfa 1
         +'<div class="page">'
-        +'<div class="hdr">ERN HOLDİNG — BETON TAKİP SİSTEMİ</div>'
+        +'<div class="hdr"><img src="'+ERN_LOGO_BEYAZ+'" style="height:24px;vertical-align:-6px;margin-right:10px">ERN TAAHHÜT — BETON TAKİP SİSTEMİ</div>'
         +'<div class="sub">Dönem: '+escH(donem)+'  |  Toplam: '+fmt(toplam)+' m³  |  '+RAPOR_DETAY.length+' İrsaliye  |  '+escH(tarih)+'</div>'
         +'<div class="sec">📋  Detay Rapor</div>'
         +'<table><thead><tr>'
@@ -1405,7 +1423,7 @@ function exportPDF() {
         +'<td colspan="4"></td></tr></tfoot></table></div>'
         // Sayfa 2
         +'<div class="page p2">'
-        +'<div class="hdr">ERN HOLDİNG — BETON TAKİP SİSTEMİ</div>'
+        +'<div class="hdr"><img src="'+ERN_LOGO_BEYAZ+'" style="height:24px;vertical-align:-6px;margin-right:10px">ERN TAAHHÜT — BETON TAKİP SİSTEMİ</div>'
         +'<div class="sub">Özet Rapor  |  Dönem: '+escH(donem)+'  |  '+escH(tarih)+'</div>'
         +'<div class="cols">'
         +'<div><div class="sec">📊 Aylık m³</div>'
@@ -1420,7 +1438,7 @@ function exportPDF() {
         +'<tbody>'+betonRows+'</tbody></table></div>'
         +'</div>'
         +'<div style="position:fixed;bottom:5mm;left:8mm;right:8mm;display:flex;justify-content:space-between;font-size:7pt;color:#4E7068;border-top:0.5px solid #C8DDD9;padding-top:2px">'
-        +'<span>ERN Holding — Beton Takip Sistemi</span><span>'+escH(tarih)+'</span><span>Geliştirici: Tayyar Akbulut</span>'
+        +'<span>ERN Taahhüt — Beton Takip Sistemi</span><span>'+escH(tarih)+'</span><span>Geliştirici: Tayyar Akbulut</span>'
         +'</div></div>'
         // html2canvas + jsPDF: direkt PDF kaydet (dialog yok)
         +'<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"><\/script>'
@@ -1430,6 +1448,7 @@ function exportPDF() {
         +'  var btn=document.getElementById("savePdfBtn");'
         +'  if(btn){btn.disabled=true;btn.textContent="Kaydediliyor...";}'
         +'  try{'
+        +'    await Promise.all(Array.from(document.images).map(function(im){return im.complete?0:new Promise(function(r){im.onload=im.onerror=r;});}));'
         +'    var jsPDF=window.jspdf.jsPDF;'
         +'    var doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});'
         +'    var pages=document.querySelectorAll(".page, .page2");'
@@ -1471,6 +1490,7 @@ function exportPDF() {
 
 async function buildOzetSheet(wb) {
     const ws = wb.addWorksheet('📈 Tedarikçi & Beton');
+    ernSheetLogo(wb, ws);
     ws.columns = [
         { key: 'a', width: 32 },
         { key: 'b', width: 16 },
