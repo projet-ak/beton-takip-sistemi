@@ -394,7 +394,7 @@ class XlsxWriter
             . '<xdr:blipFill><a:blip r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>'
             . '<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' . $cx . '" cy="' . $cy . '"/></a:xfrm>'
             . '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>'
-            . '</xdr:pic></xdr:oneCellAnchor></xdr:wsDr>';
+            . '</xdr:pic><xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>';
     }
 
     private function buildContentTypes(): string
