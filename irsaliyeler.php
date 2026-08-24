@@ -205,6 +205,37 @@ $liste = $stmt->fetchAll();
 
 $toplamM3 = array_sum(array_column($liste, 'miktar'));
 
+// ── Evrak kontrol: her irsaliyenin belgeleri (tür bazında ilk dosya) ─────────
+// fatura = bağlı fatura dosyası (fatura_id) VEYA tur='fatura' belge;
+// irsaliye görseli / kantar fişi / foto = irsaliye_fotolar.tur
+$evrak = [];        // irsaliye_id => [tur => dosya_yolu]
+$fatDosya = [];     // fatura_id   => dosya_url
+if ($liste) {
+    try {
+        $ids = implode(',', array_map(fn($r) => (int)$r['id'], $liste));
+        foreach ($pdo->query("SELECT irsaliye_id, COALESCE(tur,'foto') tur, MIN(dosya_yolu) yol
+                              FROM irsaliye_fotolar WHERE irsaliye_id IN ($ids)
+                              GROUP BY irsaliye_id, COALESCE(tur,'foto')") as $e) {
+            $evrak[(int)$e['irsaliye_id']][$e['tur']] = $e['yol'];
+        }
+        $fids = array_values(array_unique(array_filter(array_map(fn($r) => (int)($r['fatura_id'] ?? 0), $liste))));
+        if ($fids) {
+            foreach ($pdo->query("SELECT id, dosya_url FROM faturalar WHERE id IN (" . implode(',', $fids) . ")") as $f) {
+                $fatDosya[(int)$f['id']] = (string)$f['dosya_url'];
+            }
+        }
+    } catch (Throwable $e) { $evrak = []; }   // tur kolonu / faturalar tablosu henüz yoksa
+}
+/** Evrak ikonu: belge varsa renkli + tıklanınca açılır, yoksa soluk (eksik göstergesi). */
+function evrak_ikon(?string $yol, string $ikon, string $renk, string $adVar, string $adYok): string
+{
+    if ($yol !== null && $yol !== '') {
+        return '<a href="' . h($yol) . '" target="_blank" class="me-1" title="' . h($adVar) . ' — aç"
+                   style="color:' . $renk . ';font-size:1rem"><i class="bi ' . $ikon . '"></i></a>';
+    }
+    return '<span class="me-1" title="' . h($adYok) . '" style="color:#adb5bd;opacity:.45;font-size:1rem"><i class="bi ' . $ikon . '"></i></span>';
+}
+
 // ── Excel (.xlsx) dışa aktarma ───────────────────────────────────────────────
 if ($ihrac === 'xlsx') {
     require_once __DIR__ . '/includes/XlsxWriter.php';
@@ -579,6 +610,7 @@ require_once __DIR__ . '/includes/header.php';
                             <th class="tbl-hide-mobile"><?= sortBaslik('pompa', 'Pompa') ?></th>
                             <th class="tbl-hide-mobile"><?= sortBaslik('firma', 'Firma') ?></th>
                             <th class="text-end"><?= sortBaslik('miktar', 'Miktar') ?></th>
+                            <th class="text-center" title="Evrak kontrol: fatura · irsaliye görseli · kantar fişi (renkli = var, soluk = eksik)">Evrak</th>
                             <th class="tbl-hide-mobile">Açıklama</th>
                             <?php if (can_edit()): ?><th class="text-end">İşlem</th><?php endif; ?>
                         </tr>
@@ -616,6 +648,18 @@ require_once __DIR__ . '/includes/header.php';
                                 <td class="small tbl-hide-mobile"><?= h($r['firma_adi'] ?? '-') ?></td>
                                 <td class="text-end fw-semibold text-nowrap">
                                     <?= format_number($r['miktar'], 2) ?> <span class="text-muted small"><?= h($r['birim']) ?></span>
+                                </td>
+                                <td class="text-center text-nowrap">
+                                    <?php
+                                    $ev = $evrak[(int)$r['id']] ?? [];
+                                    // Fatura: önce bağlı faturanın PDF'i, yoksa 'fatura' türünde yüklenmiş belge
+                                    $fYol = !empty($r['fatura_id']) && !empty($fatDosya[(int)$r['fatura_id']])
+                                          ? $fatDosya[(int)$r['fatura_id']] : ($ev['fatura'] ?? null);
+                                    echo evrak_ikon($fYol, 'bi-receipt-cutoff', '#0d6efd', 'Fatura', 'Fatura yok');
+                                    echo evrak_ikon($ev['irsaliye'] ?? null, 'bi-file-earmark-image', '#198754', 'İrsaliye görseli', 'İrsaliye görseli yok');
+                                    echo evrak_ikon($ev['kantar'] ?? null, 'bi-truck', '#fd7e14', 'Kantar fişi', 'Kantar fişi yok');
+                                    if (!empty($ev['foto'])) echo evrak_ikon($ev['foto'], 'bi-camera', '#6c757d', 'Fotoğraf', '');
+                                    ?>
                                 </td>
                                 <td class="text-muted small tbl-hide-mobile" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                                     <?= h($r['aciklama'] ?: '') ?>
@@ -661,11 +705,11 @@ require_once __DIR__ . '/includes/header.php';
                                 ?>
                                 <td colspan="<?= $preCols ?>" class="text-end">TOPLAM</td>
                                 <td class="text-end"><?= format_number($toplamM3, 2) ?> m³</td>
-                                <td colspan="<?= can_edit() ? 2 : 1 ?>"></td>
+                                <td colspan="<?= can_edit() ? 3 : 2 ?>"></td><!-- Evrak + Açıklama + İşlem -->
                             </tr>
                         <?php else: ?>
                             <?php
-                            $baseCols = $tip === 'tum' ? 12 : 11;
+                            $baseCols = $tip === 'tum' ? 13 : 12;   // +1: Evrak kolonu
                             $colspan = $baseCols + (can_edit() ? 2 : 0);
                             ?>
                             <tr>
