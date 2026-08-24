@@ -221,7 +221,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['dosya']['tmp_name']
                 if (!isset($h['malzeme'])) { $atlanan[] = dp_turAd($tur).'/'.dp_kaynakAd($kaynak).': malzeme sütunu bulunamadı'; continue; }
 
                 $anahtar = $tur . '|' . $kaynak;
-                $pdoDepo->prepare("DELETE FROM depo_hareketler WHERE tur=? AND kaynak=?")->execute([$tur, $kaynak]);
+                // Elle girilen günlük kayıtlar tam yenilemede korunur (Excel'de zaten yoklar)
+                $pdoDepo->prepare("DELETE FROM depo_hareketler WHERE tur=? AND kaynak=? AND elle=0")->execute([$tur, $kaynak]);
                 for ($i = $hr + 1; $i < count($rows); $i++) {
                     $row = $rows[$i];
                     $mal = dpAl($row, $h, 'malzeme');
@@ -248,6 +249,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['dosya']['tmp_name']
 
             $pdoDepo->commit();
             $sonuc = $r;
+            $korunan = (int)$pdoDepo->query("SELECT COUNT(*) FROM depo_hareketler WHERE elle=1")->fetchColumn();
+            if ($korunan) $bulunan[] = "elle girilen $korunan günlük kayıt korundu";
             if (!$bulunan) { $hata = 'Bu dosyada tanınan sayfa bulunamadı.'; $sonuc = null; }
         } catch (Throwable $e) {
             if ($pdoDepo->inTransaction()) $pdoDepo->rollBack();

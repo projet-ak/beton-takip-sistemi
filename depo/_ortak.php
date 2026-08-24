@@ -96,6 +96,27 @@ function dp_hareket_semasi_kur(PDO $pdo): void
         KEY idx_firma (firma),
         KEY idx_malzeme (malzeme)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Elle (günlük) girilen hareketler: Excel tam yenilemesinde SİLİNMEZ.
+    // kalem_id doluysa hareket stok kalemine de işlenmiştir (gelen/giden artırıldı).
+    $kolon = [];
+    foreach ($pdo->query("SHOW COLUMNS FROM depo_hareketler")->fetchAll(PDO::FETCH_ASSOC) as $c) $kolon[$c['Field']] = true;
+    $ekle = [];
+    if (!isset($kolon['elle']))     $ekle[] = "ADD COLUMN elle TINYINT(1) NOT NULL DEFAULT 0";
+    if (!isset($kolon['kalem_id'])) $ekle[] = "ADD COLUMN kalem_id INT NULL, ADD KEY idx_kalem (kalem_id)";
+    if ($ekle) $pdo->exec("ALTER TABLE depo_hareketler " . implode(', ', $ekle));
+}
+
+/**
+ * Hareketin stok etkisini uygular/geri alır.
+ * Giriş → kalem.gelen, çıkış → kalem.giden; $yon=-1 geri alma (silme/düzenleme öncesi).
+ */
+function dp_stok_islet(PDO $pdo, ?int $kalemId, string $tur, float $miktar, int $yon = 1): void
+{
+    if (!$kalemId || $miktar == 0.0) return;
+    $alan = $tur === 'giris' ? 'gelen' : 'giden';
+    $pdo->prepare("UPDATE depo_kalemler SET $alan = $alan + ? WHERE id = ?")
+        ->execute([$yon * $miktar, $kalemId]);
 }
 
 /** Hareket özeti: tür×kaynak bazında satır sayısı, toplam miktar, tarih aralığı. */

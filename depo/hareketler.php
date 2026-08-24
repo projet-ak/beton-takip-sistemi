@@ -20,6 +20,22 @@ require_once __DIR__ . '/_ortak.php';
 dp_hareket_semasi_kur($pdoDepo);
 $pageTitle = 'Hareketler — Depo';
 
+// Elle kaydı sil (Excel kayıtları silinmez — Excel esastır); stok etkisi geri alınır
+if (isset($_GET['sil']) && ctype_digit($_GET['sil'])) {
+    $st = $pdoDepo->prepare("SELECT * FROM depo_hareketler WHERE id=? AND elle=1");
+    $st->execute([(int)$_GET['sil']]);
+    if ($hr = $st->fetch()) {
+        try {
+            $pdoDepo->beginTransaction();
+            dp_stok_islet($pdoDepo, $hr['kalem_id'] ? (int)$hr['kalem_id'] : null, $hr['tur'], (float)$hr['miktar'], -1);
+            $pdoDepo->prepare("DELETE FROM depo_hareketler WHERE id=?")->execute([(int)$hr['id']]);
+            $pdoDepo->commit();
+            flash('success', 'Kayıt silindi' . ($hr['kalem_id'] ? ', stok etkisi geri alındı.' : '.'));
+        } catch (Throwable $e) { if ($pdoDepo->inTransaction()) $pdoDepo->rollBack(); flash('error', 'Silme hatası: '.$e->getMessage()); }
+    } else flash('error', 'Yalnız elle girilen kayıtlar silinebilir (Excel kayıtları içe aktarmayla eşitlenir).');
+    redirect('hareketler.php');
+}
+
 // ── Filtreler (hepsi whitelist / prepared) ───────────────────────────────────
 $tur     = isset($GLOBALS['DP_HAREKET'][$_GET['tur'] ?? ''])  ? $_GET['tur']    : '';
 $kaynak  = isset($GLOBALS['DP_KAYNAK'][$_GET['kaynak'] ?? '']) ? $_GET['kaynak'] : '';
@@ -106,12 +122,16 @@ require_once __DIR__ . '/../includes/header.php';
         <h4 class="mb-0"><i class="bi bi-arrow-left-right text-primary me-2"></i>Depo Hareketleri</h4>
         <small class="text-muted">Giriş / çıkış defteri — hangi malzeme, kimden, kime, hangi belgeyle</small>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="hareket_form.php?tur=giris" class="btn btn-success btn-sm"><i class="bi bi-box-arrow-in-down me-1"></i>Yeni Giriş</a>
+        <a href="hareket_form.php?tur=cikis" class="btn btn-danger btn-sm"><i class="bi bi-box-arrow-up me-1"></i>Yeni Çıkış</a>
         <a href="<?= h($qs(['disaaktar'=>'xlsx'])) ?>" class="btn btn-outline-success btn-sm">
             <i class="bi bi-file-earmark-excel me-1"></i>Excel'e Aktar</a>
         <a href="import.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-cloud-arrow-up me-1"></i>İçe Aktar</a>
     </div>
 </div>
+
+<?php foreach(['success','error','warning'] as $t): if($m=get_flash($t)): ?><div class="alert alert-<?= $t==='error'?'danger':$t ?>"><?= h($m) ?></div><?php endif; endforeach; ?>
 
 <?php if (!$toplamSatir && !$where): ?>
 <div class="alert alert-info">
@@ -178,7 +198,7 @@ require_once __DIR__ . '/../includes/header.php';
     <thead class="table-light" style="position:sticky;top:0;z-index:1"><tr>
         <th>Tür</th><th>Tarih</th><th>Belge No</th><th>Malzeme</th><th>Özellik</th>
         <th class="text-end">Miktar</th><th>Birim</th><th>Firma / Taşeron</th>
-        <th>Teslim Alan</th><th>Onay</th><th>Lokasyon / Açıklama</th>
+        <th>Teslim Alan</th><th>Onay</th><th>Lokasyon / Açıklama</th><th></th>
     </tr></thead>
     <tbody>
     <?php foreach ($liste as $r): $g = $r['tur']==='giris'; ?>
@@ -186,6 +206,7 @@ require_once __DIR__ . '/../includes/header.php';
             <td class="text-nowrap">
                 <span class="badge bg-<?= $g?'success':'danger' ?>"><i class="bi <?= h($GLOBALS['DP_HAREKET'][$r['tur']]['ikon']) ?>"></i></span>
                 <?php if ($r['kaynak']==='taseron'): ?><span class="badge bg-secondary" title="Taşeron malzemesi">T</span><?php endif; ?>
+                <?php if (!empty($r['elle'])): ?><span class="badge bg-info text-dark" title="Elle girilen günlük kayıt — Excel eşitlemesinde korunur">elle</span><?php endif; ?>
             </td>
             <td class="text-nowrap"><?= h(format_date($r['tarih'])) ?></td>
             <td class="font-monospace small"><?= h($r['belge_no'] ?: '—') ?></td>
@@ -197,10 +218,17 @@ require_once __DIR__ . '/../includes/header.php';
             <td class="small"><?= h((string)$r['teslim_alan']) ?></td>
             <td class="small text-muted"><?= h((string)$r['onay']) ?></td>
             <td class="small text-muted"><?= h(trim(($r['lokasyon'] ?: '') . ' ' . ($r['aciklama'] ?: ''))) ?></td>
+            <td class="text-end text-nowrap">
+                <?php if (!empty($r['elle'])): ?>
+                <a href="hareket_form.php?id=<?= (int)$r['id'] ?>" class="btn btn-sm btn-outline-secondary py-0" title="Düzenle"><i class="bi bi-pencil"></i></a>
+                <a href="?sil=<?= (int)$r['id'] ?>" class="btn btn-sm btn-outline-danger py-0" title="Sil"
+                   onclick="return confirm('Kayıt silinsin mi?<?= $r['kalem_id'] ? ' Stok etkisi geri alınacak.' : '' ?>')"><i class="bi bi-trash"></i></a>
+                <?php endif; ?>
+            </td>
         </tr>
     <?php endforeach; ?>
     <?php if (!$liste): ?>
-        <tr><td colspan="11" class="text-center text-muted py-4">Filtreye uyan hareket yok.</td></tr>
+        <tr><td colspan="12" class="text-center text-muted py-4">Filtreye uyan hareket yok.</td></tr>
     <?php endif; ?>
     </tbody>
 </table>
