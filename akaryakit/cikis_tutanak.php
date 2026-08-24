@@ -1,7 +1,11 @@
 <?php
 /**
- * cikis_tutanak.php — Mazot teslim tutanağı (A4, ERN Taahhüt logolu)
- * Bir çıkış kaydının imzalı evrakı: kim, hangi araca, kaç litre, kim teslim etti/aldı.
+ * cikis_tutanak.php — AKARYAKIT ÇIKIŞ FİŞİ (A4, ERN Taahhüt logolu)
+ *
+ * Düzen, sahada kullanılan basılı fişin (EYS.ABR.01.FR.05) birebir kopyasıdır:
+ * Projesi satırı · Tarih/Ambar No/Fiş No · makina adı/plaka/yakıt cinsi/verilen
+ * miktar · şirket-kiralık-taşeron kutucukları · kilometre-ç.saati-firma adı ·
+ * Teslim Eden / Teslim Alan imza blokları · 2 nüsha dipnotu.
  */
 $rootPath = '../';
 require_once __DIR__ . '/../includes/functions.php';
@@ -17,38 +21,46 @@ $st->execute([$id]);
 $c = $st->fetch();
 if (!$c) { flash('error', 'Çıkış kaydı bulunamadı.'); redirect('cikislar.php'); }
 
-$no = 'AKY-C-' . str_pad((string)$c['id'], 5, '0', STR_PAD_LEFT);
+$no   = 'AKY-C-' . str_pad((string)$c['id'], 5, '0', STR_PAD_LEFT);
 $fmt0 = fn($n) => number_format((float)$n, 0, ',', '.');
 $teslimAlan = $c['teslim_alan'] ?: $c['sofor'];
+$tipi = $c['arac_tipi'] ?? null;
+// Sayaç: plakalı araçta KİLOMETRE, plakasız makinede Ç.SAATİ satırına yazılır
+$km = ''; $csaat = '';
+if (trim((string)$c['sayac']) !== '') {
+    if (trim((string)$c['plaka']) !== '') $km = $c['sayac']; else $csaat = $c['sayac'];
+}
+$kutu = fn(bool $isaretli) => '<span class="kutu">' . ($isaretli ? '✕' : '&nbsp;') . '</span>';
 ?>
 <!DOCTYPE html>
 <html lang="tr"><head>
 <meta charset="UTF-8">
-<title>Tutanak <?= h($no) ?></title>
+<title>Akaryakıt Çıkış Fişi <?= h($no) ?></title>
 <style>
   * { box-sizing:border-box; }
   body { font-family:'Segoe UI', Arial, sans-serif; color:#111; margin:0; background:#f0f0f0; }
-  .sheet { width:210mm; min-height:297mm; margin:10px auto; background:#fff; padding:18mm 16mm; box-shadow:0 0 8px rgba(0,0,0,.15); }
-  .top { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #00584E; padding-bottom:10px; }
-  .logo { font-size:22px; font-weight:800; color:#00584E; }
-  .doc-title { text-align:center; margin:18px 0 6px; font-size:18px; font-weight:800; letter-spacing:1px; }
-  .doc-no { text-align:center; font-size:13px; color:#00584E; font-weight:700; margin-bottom:16px; }
-  .info { width:100%; border-collapse:collapse; margin-bottom:14px; font-size:12.5px; }
-  .info td { border:1px solid #cfcfcf; padding:6px 9px; }
-  .info td.k { background:#f5f7f7; font-weight:600; width:26%; }
-  .miktar-kutu { text-align:center; border:2px solid #00584E; border-radius:8px; padding:14px; margin:18px auto; width:60%; }
-  .miktar-kutu .deger { font-size:30px; font-weight:800; color:#00584E; }
-  .miktar-kutu .etiket { font-size:11px; color:#555; letter-spacing:2px; }
-  .note { font-size:11px; color:#444; margin:14px 0; line-height:1.5; }
-  .signs { display:flex; justify-content:space-between; margin-top:44px; }
-  .sign { width:45%; text-align:center; }
-  .sign .line { border-top:1px solid #333; margin-top:52px; padding-top:6px; font-size:12px; font-weight:600; }
-  .sign .sub { font-size:11px; color:#666; }
-  .foot { margin-top:24px; text-align:center; font-size:10px; color:#999; border-top:1px solid #eee; padding-top:8px; }
+  .sheet { width:210mm; margin:10px auto; background:#fff; padding:14mm 14mm 10mm; box-shadow:0 0 8px rgba(0,0,0,.15); }
+  .logo-satir { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .fis { border:2px solid #333; }
+  .fis table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  .fis td { border:1px solid #555; padding:7px 9px; vertical-align:middle; }
+  .fis td.k { font-weight:700; width:34%; background:#fafafa; }
+  .fis td.deger { font-size:14px; font-weight:600; }
+  .baslik { text-align:center; font-weight:800; font-size:15px; letter-spacing:.5px; padding:9px !important; }
+  .ust-blok td { border:none; padding:5px 9px; }
+  .proje-satir { border-bottom:1px dotted #555; min-width:230px; display:inline-block; font-weight:600; }
+  .sag-etiket { font-size:11.5px; white-space:nowrap; }
+  .sag-etiket strong { font-weight:700; }
+  .kutu { display:inline-block; width:18px; height:18px; border:1.5px solid #333; text-align:center;
+          line-height:16px; font-weight:800; font-size:14px; vertical-align:middle; }
+  .imza-alan { height:74px; vertical-align:bottom !important; }
+  .imza-baslik { font-weight:700; text-align:center; }
+  .imza-alt { font-size:10.5px; color:#555; text-align:center; }
+  .dipnot { font-size:10px; color:#444; padding:6px 9px !important; border-top:2px solid #333 !important; }
   .toolbar { text-align:center; padding:10px; }
   .toolbar button, .toolbar a { font:inherit; padding:8px 18px; border-radius:8px; border:none; cursor:pointer; text-decoration:none; margin:0 4px; }
   .btn-print { background:#00584E; color:#fff; } .btn-back { background:#e0e0e0; color:#333; }
-  @media print { body { background:#fff; } .sheet { margin:0; box-shadow:none; width:auto; padding:12mm; } .toolbar { display:none; } }
+  @media print { body { background:#fff; } .sheet { margin:0; box-shadow:none; width:auto; padding:10mm; } .toolbar { display:none; } }
 </style>
 </head>
 <body>
@@ -58,47 +70,74 @@ $teslimAlan = $c['teslim_alan'] ?: $c['sofor'];
 </div>
 
 <div class="sheet">
-  <div class="top">
+  <div class="logo-satir">
     <div>
-      <img src="../uploads/logo/ERN%20Taahhut_Logo_Renkli.png" alt="ERN Taahhüt" style="height:46px"
-           onerror="this.outerHTML='<div class=\'logo\'>ERN TAAHHÜT</div>'">
-      <div style="font-size:10px;font-weight:600;color:#555;letter-spacing:2px;margin-top:3px">AKARYAKIT TAKİP</div>
+      <img src="../uploads/logo/ERN%20Taahhut_Logo_Renkli.png" alt="ERN Taahhüt" style="height:42px"
+           onerror="this.outerHTML='<b style=\'color:#00584E;font-size:20px\'>ERN TAAHHÜT</b>'">
     </div>
-    <div style="text-align:right;font-size:11px;color:#555">
-      Tarih: <strong><?= format_date($c['tarih']) ?></strong>
-    </div>
+    <div style="font-size:10px;color:#777">Fiş No: <strong style="color:#00584E"><?= h($no) ?></strong></div>
   </div>
 
-  <div class="doc-title">AKARYAKIT (MAZOT) TESLİM TUTANAĞI</div>
-  <div class="doc-no">Tutanak No: <?= h($no) ?></div>
+  <div class="fis">
+    <table>
+      <!-- Başlık -->
+      <tr><td colspan="4" class="baslik">AKARYAKIT ÇIKIŞ FİŞİ</td></tr>
 
-  <table class="info">
-    <tr><td class="k">Şoför / Operatör</td><td><?= h($c['sofor'] ?: '—') ?></td>
-        <td class="k">Araç / Makine Cinsi</td><td><?= h($c['cinsi'] ?: '—') ?></td></tr>
-    <tr><td class="k">Firma</td><td><?= h($c['firma'] ?: '—') ?></td>
-        <td class="k">Plaka / Mak. No</td><td><?= h($c['plaka'] ?: '—') ?></td></tr>
-    <tr><td class="k">Sayaç (km / mak. saati)</td><td><?= h($c['sayac'] ?: '—') ?></td>
-        <td class="k">Açıklama</td><td><?= h($c['aciklama'] ?: '—') ?></td></tr>
-  </table>
+      <!-- Projesi + Tarih/Ambar/Fiş No -->
+      <tr>
+        <td colspan="2" style="border-right:none">
+          <span class="proje-satir"><?= h($c['aciklama'] ?: '') ?>&nbsp;</span>
+          <span style="font-size:11px;color:#555">&nbsp;Projesi</span>
+        </td>
+        <td colspan="2" style="border-left:none;text-align:right">
+          <div class="sag-etiket">Tarih : <strong><?= format_date($c['tarih']) ?></strong></div>
+          <div class="sag-etiket">Ambar No : ..............</div>
+          <div class="sag-etiket">Fiş No : <strong><?= h($no) ?></strong></div>
+        </td>
+      </tr>
 
-  <div class="miktar-kutu">
-    <div class="etiket">TESLİM EDİLEN MAZOT</div>
-    <div class="deger"><?= $fmt0($c['miktar_lt']) ?> Lt</div>
+      <!-- Araç bilgileri -->
+      <tr><td class="k">MAKİNA / ARACIN ADI</td><td colspan="3" class="deger"><?= h($c['cinsi'] ?: '') ?><?= $c['sofor'] ? ' <span style="font-weight:400;font-size:11.5px;color:#555">(Şoför/Operatör: '.h($c['sofor']).')</span>' : '' ?></td></tr>
+      <tr><td class="k">MAKİNA / ARACIN PLAKASI/SERİ NO</td><td colspan="3" class="deger"><?= h($c['plaka'] ?: '') ?></td></tr>
+      <tr><td class="k">YAKIT CİNSİ</td><td colspan="3" class="deger">MAZOT (MOTORİN)</td></tr>
+      <tr><td class="k">VERİLEN MİKTAR (LT/KG)</td><td colspan="3" class="deger" style="font-size:17px;font-weight:800"><?= $fmt0($c['miktar_lt']) ?> Lt</td></tr>
+
+      <!-- Kutucuklar + kilometre/saat/firma -->
+      <tr>
+        <td class="k">ŞİRKET MAKİNA/ARACI</td><td style="text-align:center;width:12%"><?= $kutu($tipi==='sirket') ?></td>
+        <td class="k" style="width:20%">KİLOMETRE</td><td class="deger"><?= h($km) ?></td>
+      </tr>
+      <tr>
+        <td class="k">KİRALIK MAKİNA/ARAÇ</td><td style="text-align:center"><?= $kutu($tipi==='kiralik') ?></td>
+        <td class="k">Ç.SAATİ</td><td class="deger"><?= h($csaat) ?></td>
+      </tr>
+      <tr>
+        <td class="k">TAŞERON MAKİNA/ARAÇ</td><td style="text-align:center"><?= $kutu($tipi==='taseron') ?></td>
+        <td class="k">FİRMA ADI</td><td class="deger"><?= h($c['firma'] ?: '') ?></td>
+      </tr>
+
+      <!-- İmzalar -->
+      <tr>
+        <td colspan="2" class="imza-alan">
+          <div class="imza-baslik">Teslim Eden</div>
+          <div class="imza-alt">Ad-Soyad-İmza</div>
+          <div style="text-align:center;margin-top:26px;font-weight:600"><?= h($c['teslim_eden'] ?: '') ?></div>
+        </td>
+        <td colspan="2" class="imza-alan">
+          <div class="imza-baslik">Teslim Alan</div>
+          <div class="imza-alt">Ad-Soyad-İmza</div>
+          <div style="text-align:center;margin-top:26px;font-weight:600"><?= h($teslimAlan ?: '') ?></div>
+        </td>
+      </tr>
+
+      <!-- Dipnot -->
+      <tr><td colspan="4" class="dipnot">*Bu form 2 nüsha hazırlanır, biri depo sorumlusunda kalır, biri muhasebeye teslim edilir. (EYS.ABR.01.FR.05)</td></tr>
+    </table>
   </div>
 
-  <div class="note">
-    Yukarıda belirtilen miktardaki motorin (mazot), belirtilen araca/makineye ikmal edilmek üzere eksiksiz olarak
-    teslim edilmiştir. İşbu tutanak iki nüsha düzenlenmiş olup taraflarca imza altına alınmıştır.
+  <div style="margin-top:8px;text-align:center;font-size:10px;color:#999">
+    ERN Taahhüt Akaryakıt Takip Sistemi — <?= date('d.m.Y H:i') ?>
   </div>
-
-  <div class="signs">
-    <div class="sign"><div class="line">Teslim Eden</div>
-        <div class="sub"><?= h($c['teslim_eden'] ?: 'ERN Taahhüt (Akaryakıt Depo)') ?></div></div>
-    <div class="sign"><div class="line">Teslim Alan</div>
-        <div class="sub"><?= h($teslimAlan ?: '') ?><?= $c['firma'] ? ' — ' . h($c['firma']) : '' ?></div></div>
-  </div>
-
-  <div class="foot">ERN Taahhüt Akaryakıt Takip Sistemi — <?= date('d.m.Y H:i') ?></div>
 </div>
 </body>
 </html>

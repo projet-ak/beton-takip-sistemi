@@ -40,6 +40,9 @@ try {
     if (!$pdoAkaryakit->query("SHOW COLUMNS FROM akaryakit_cikislar LIKE 'evrak_url'")->fetch()) {
         $pdoAkaryakit->exec("ALTER TABLE akaryakit_cikislar ADD COLUMN evrak_url VARCHAR(500) NULL COMMENT 'imzalı tutanak taraması'");
     }
+    if (!$pdoAkaryakit->query("SHOW COLUMNS FROM akaryakit_cikislar LIKE 'arac_tipi'")->fetch()) {
+        $pdoAkaryakit->exec("ALTER TABLE akaryakit_cikislar ADD COLUMN arac_tipi ENUM('sirket','kiralik','taseron') NULL COMMENT 'fişteki kutucuk'");
+    }
 } catch (Throwable $e) {}
 
 // ── Kaydet / güncelle ────────────────────────────────────────────────────────
@@ -61,20 +64,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'kayde
                 foreach (['cinsi','firma','plaka'] as $k) if (trim((string)($_POST[$k] ?? '')) === '') $_POST[$k] = $ar[$k];
             } else $aracId = null;
         }
+        $aracTipi = in_array($_POST['arac_tipi'] ?? '', ['sirket','kiralik','taseron'], true) ? $_POST['arac_tipi'] : null;
         $alan = [$tarih, $aracId, $sofor ?: null,
                  trim((string)($_POST['cinsi'] ?? '')) ?: null, trim((string)($_POST['firma'] ?? '')) ?: null,
                  trim((string)($_POST['plaka'] ?? '')) ?: null, $miktar,
                  trim((string)($_POST['sayac'] ?? '')) ?: null,
                  trim((string)($_POST['teslim_eden'] ?? '')) ?: null, trim((string)($_POST['teslim_alan'] ?? '')) ?: null,
-                 trim((string)($_POST['aciklama'] ?? '')) ?: null];
+                 trim((string)($_POST['aciklama'] ?? '')) ?: null, $aracTipi];
         if ($id) {
             $st = $pdoAkaryakit->prepare("UPDATE akaryakit_cikislar SET tarih=?, arac_id=?, sofor=?, cinsi=?, firma=?,
-                plaka=?, miktar_lt=?, sayac=?, teslim_eden=?, teslim_alan=?, aciklama=? WHERE id=?");
+                plaka=?, miktar_lt=?, sayac=?, teslim_eden=?, teslim_alan=?, aciklama=?, arac_tipi=? WHERE id=?");
             $st->execute(array_merge($alan, [$id]));
         } else {
             $st = $pdoAkaryakit->prepare("INSERT INTO akaryakit_cikislar
-                (tarih,arac_id,sofor,cinsi,firma,plaka,miktar_lt,sayac,teslim_eden,teslim_alan,aciklama,created_by)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+                (tarih,arac_id,sofor,cinsi,firma,plaka,miktar_lt,sayac,teslim_eden,teslim_alan,aciklama,arac_tipi,created_by)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
             $st->execute(array_merge($alan, [current_user_id()]));
             $id = (int)$pdoAkaryakit->lastInsertId();
         }
@@ -205,7 +209,7 @@ require_once __DIR__ . '/../includes/header.php';
             <td class="text-end text-nowrap">
                 <a href="cikis_tutanak.php?id=<?= (int)$r['id'] ?>" target="_blank" class="btn btn-sm btn-outline-primary py-0" title="Teslim tutanağı"><i class="bi bi-printer"></i></a>
                 <button class="btn btn-sm btn-outline-secondary py-0" data-bs-toggle="modal" data-bs-target="#cikisModal" title="Düzenle"
-                        onclick='cikisAc(<?= json_encode(['id'=>(int)$r['id'],'tarih'=>$r['tarih'],'arac_id'=>(int)($r['arac_id']??0),'sofor'=>(string)$r['sofor'],'cinsi'=>(string)$r['cinsi'],'firma'=>(string)$r['firma'],'plaka'=>(string)$r['plaka'],'miktar'=>(float)$r['miktar_lt'],'sayac'=>(string)$r['sayac'],'teslim_eden'=>(string)$r['teslim_eden'],'teslim_alan'=>(string)$r['teslim_alan'],'aciklama'=>(string)$r['aciklama']], JSON_HEX_APOS|JSON_UNESCAPED_UNICODE) ?>)'><i class="bi bi-pencil"></i></button>
+                        onclick='cikisAc(<?= json_encode(['id'=>(int)$r['id'],'tarih'=>$r['tarih'],'arac_id'=>(int)($r['arac_id']??0),'sofor'=>(string)$r['sofor'],'cinsi'=>(string)$r['cinsi'],'firma'=>(string)$r['firma'],'plaka'=>(string)$r['plaka'],'miktar'=>(float)$r['miktar_lt'],'sayac'=>(string)$r['sayac'],'teslim_eden'=>(string)$r['teslim_eden'],'teslim_alan'=>(string)$r['teslim_alan'],'aciklama'=>(string)$r['aciklama'],'arac_tipi'=>(string)($r['arac_tipi']??'')], JSON_HEX_APOS|JSON_UNESCAPED_UNICODE) ?>)'><i class="bi bi-pencil"></i></button>
                 <?php if (has_role('admin','teknik_ofis_admin')): ?>
                 <a href="?sil=<?= (int)$r['id'] ?>&ay=<?= h($fAy) ?>" class="btn btn-sm btn-outline-danger py-0" onclick="return confirm('Çıkış kaydı silinsin mi?')"><i class="bi bi-trash"></i></a>
                 <?php endif; ?>
@@ -253,7 +257,14 @@ require_once __DIR__ . '/../includes/header.php';
                 <input type="text" name="sayac" id="cSayac" class="form-control"></div>
             <div class="col-md-4"><label class="form-label">Teslim Eden</label><input type="text" name="teslim_eden" id="cTeslimEden" class="form-control" placeholder="Depo görevlisi"></div>
             <div class="col-md-4"><label class="form-label">Teslim Alan</label><input type="text" name="teslim_alan" id="cTeslimAlan" class="form-control" placeholder="boşsa şoför"></div>
-            <div class="col-md-4"><label class="form-label">Açıklama</label><input type="text" name="aciklama" id="cAciklama" class="form-control"></div>
+            <div class="col-md-4"><label class="form-label">Araç Tipi <span class="text-muted small">(fişteki kutucuk)</span></label>
+                <select name="arac_tipi" id="cAracTipi" class="form-select">
+                    <option value="">—</option>
+                    <option value="sirket">Şirket makina/aracı</option>
+                    <option value="kiralik">Kiralık makina/araç</option>
+                    <option value="taseron">Taşeron makina/araç</option>
+                </select></div>
+            <div class="col-md-8"><label class="form-label">Açıklama / Proje</label><input type="text" name="aciklama" id="cAciklama" class="form-control" placeholder="fişin üstündeki proje/not satırına yazılır"></div>
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Vazgeç</button>
@@ -305,6 +316,7 @@ function cikisAc(v){
     document.getElementById('cTeslimEden').value = v.teslim_eden;
     document.getElementById('cTeslimAlan').value = v.teslim_alan;
     document.getElementById('cAciklama').value = v.aciklama;
+    document.getElementById('cAracTipi').value = v.arac_tipi || '';
 }
 </script>
 
