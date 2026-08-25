@@ -225,8 +225,24 @@ if (($_POST['action'] ?? '') === 'eksik_tara' && ctype_digit((string)($_POST['fa
     $mesaj = $esl['eksik'] ? 'Fatura yeniden tarandı — eksik irsaliyeler: ' . implode(', ', $esl['eksik'])
                            : 'Fatura yeniden tarandı — faturadaki tüm irsaliyeler sistemde var, eksik yok.';
     if ($dolan) $mesaj .= ' Boş alanlar dolduruldu: ' . implode(', ', $dolan) . '.';
-    flash($esl['eksik'] ? 'warning' : 'success', $mesaj);
+    $m3Yok = ($f['miktar_m3'] === null || $f['miktar_m3'] === '') && ($veri['miktar'] === null || $veri['miktar'] === '');
+    if ($m3Yok) $mesaj .= ' ⚠ m³ değeri metinden OKUNAMADI (PDF görüntü tabanlı olabilir) — listedeki m³ sütunundaki kutuya elle girebilirsiniz.';
+    flash(($esl['eksik'] || $m3Yok) ? 'warning' : 'success', $mesaj);
     redirect(($_POST['geri'] ?? '') === 'liste' ? 'fatura_eslestir.php' : 'fatura_eslestir.php?eksik=1');
+}
+
+// ── 2c) m³ elle düzeltme (Kayıtlı Faturalar listesinden) ────────────────────
+if (($_POST['action'] ?? '') === 'm3_duzelt' && ctype_digit((string)($_POST['fatura_id'] ?? ''))) {
+    $fid = (int)$_POST['fatura_id'];
+    $m3  = fat_sayi((string)($_POST['m3'] ?? ''));
+    if ($m3 === null || $m3 < 0) {
+        flash('error', 'Geçerli bir m³ değeri girin (örn. 250 veya 250,00).');
+    } else {
+        $pdo->prepare("UPDATE faturalar SET miktar_m3 = ? WHERE id = ?")->execute([$m3, $fid]);
+        audit_log($pdo, 'faturalar', $fid, 'UPDATE', null, ['m3_elle' => $m3], current_user_id());
+        flash('success', 'Fatura m³ değeri elle kaydedildi: ' . number_format($m3, 2, ',', '.') . ' m³.');
+    }
+    redirect('fatura_eslestir.php');
 }
 
 // ── 3) Fatura sil (bağları çöz) ─────────────────────────────────────────────
@@ -768,15 +784,26 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                     <td class="text-end"><?= $f['tutar']!==null?$fmt($f['tutar']).' ₺':'—' ?></td>
                     <td class="text-end">
                         <?php if ($f['miktar_m3'] !== null): ?><?= $fmt($f['miktar_m3']) ?>
-                        <?php elseif ($f['dosya_url']): ?>
-                        <form method="post" class="d-inline">
-                            <input type="hidden" name="action" value="eksik_tara">
-                            <input type="hidden" name="fatura_id" value="<?= (int)$f['id'] ?>">
-                            <input type="hidden" name="geri" value="liste">
-                            <button class="btn btn-sm btn-outline-secondary py-0" title="m³ faturada var ama kayıtta boş — PDF yeniden okunur, boş alanlar dolar">
-                                <i class="bi bi-arrow-clockwise"></i> tara</button>
-                        </form>
-                        <?php else: ?>—<?php endif; ?>
+                        <?php else: ?>
+                        <div class="d-inline-flex align-items-center gap-1">
+                            <?php if ($f['dosya_url']): ?>
+                            <form method="post" class="d-inline">
+                                <input type="hidden" name="action" value="eksik_tara">
+                                <input type="hidden" name="fatura_id" value="<?= (int)$f['id'] ?>">
+                                <input type="hidden" name="geri" value="liste">
+                                <button class="btn btn-sm btn-outline-secondary py-0" title="m³ faturada var ama kayıtta boş — PDF yeniden okunur, boş alanlar dolar">
+                                    <i class="bi bi-arrow-clockwise"></i> tara</button>
+                            </form>
+                            <?php endif; ?>
+                            <form method="post" class="d-inline-flex align-items-center gap-1" title="Faturadaki m³ değerini elle girin">
+                                <input type="hidden" name="action" value="m3_duzelt">
+                                <input type="hidden" name="fatura_id" value="<?= (int)$f['id'] ?>">
+                                <input type="text" name="m3" class="form-control form-control-sm py-0 px-1 text-end"
+                                       style="width:64px" placeholder="m³" inputmode="decimal">
+                                <button class="btn btn-sm btn-outline-success py-0"><i class="bi bi-check-lg"></i></button>
+                            </form>
+                        </div>
+                        <?php endif; ?>
                     </td>
                     <td class="text-end">
                         <?php if ($fIrs): ?>

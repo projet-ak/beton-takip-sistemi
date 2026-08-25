@@ -451,7 +451,8 @@ function fat_ai_oku(string $path, string $mime): ?string
     $sistem = 'Sen bir e-Fatura okuyucusun. Verilen faturadaki METNİ olduğu gibi düz metin olarak '
             . 'yaz. Hiçbir şey uydurma, yorum ekleme, özetleme. Özellikle şu alanların satırlarını '
             . 'MUTLAKA aynen aktar: Fatura No, Fatura Tarihi, ETTN, Vergiler Dahil Toplam Tutar, '
-            . 'Ödenecek Tutar ve kalem tablosundaki TÜM "İrsaliye No / İrsaliye Tarihi" değerleri. '
+            . 'Ödenecek Tutar, kalem tablosundaki Miktar değerleri BİRİMİYLE aynen (örn. "250 M3" — '
+            . 'birimi asla atlama) ve TÜM "İrsaliye No / İrsaliye Tarihi" değerleri. '
             . 'İrsaliye numaralarını tek tek, her biri ayrı satırda listele.';
 
     $r = ai_call($sistem, [$parca, ['type' => 'text', 'text' => 'Faturanın metnini çıkar.']], 8000);
