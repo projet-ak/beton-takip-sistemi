@@ -649,6 +649,8 @@ body {
     <div class="login-footer">
         ERN Holding &copy; <?= date('Y') ?> &nbsp;&mdash;&nbsp; Şantiye İş Takip Sistemi
         <br>
+        <a href="tanitim.php" style="font-size:.75rem;color:var(--ern);text-decoration:none;font-weight:600"><i class="bi bi-stars"></i> Sistemi Tanıyın</a>
+        <br>
         <span style="font-size:.7rem;opacity:.6">Geliştirici: <strong style="color:var(--ern);opacity:1">Tayyar Akbulut</strong></span>
     </div>
 </div>
