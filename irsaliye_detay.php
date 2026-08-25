@@ -182,12 +182,23 @@ require_once __DIR__ . '/includes/header.php';
             <span class="badge bg-secondary ms-1"><?= h($row['irsaliye_no']) ?></span>
         <?php endif; ?>
     </h4>
+    <?php if (irs_taslak_mi($row)): ?>
+    <span class="badge bg-warning text-dark">TASLAK</span>
+    <?php endif; ?>
     <?php if (can_edit()): ?>
     <a href="irsaliye_form.php?id=<?= $id ?>&tip=<?= h($row['tip']) ?>" class="btn btn-outline-warning btn-sm ms-auto">
         <i class="bi bi-pencil me-1"></i> Düzenle
     </a>
     <?php endif; ?>
 </div>
+
+<?php if (irs_taslak_mi($row)): ?>
+<div class="alert alert-warning">
+    <i class="bi bi-receipt-cutoff me-2"></i><strong>FATURADAN AÇILMIŞ TASLAK:</strong>
+    Bu irsaliye, faturada bulunup sistemde olmadığı için fatura eşleştirmeden otomatik oluşturuldu (0 m³).
+    Excel aktarımı aynı numarayı getirdiğinde gerçek verilerle kendiliğinden dolar — <strong>o zamana kadar onaylanamaz</strong>.
+</div>
+<?php endif; ?>
 
 <div class="row g-4">
     <div class="col-lg-8">

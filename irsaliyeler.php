@@ -43,31 +43,35 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['toplu_islem']
         flash('success', count($ids) . ' irsaliye silindi.');
 
     } elseif ($topluIslem === 'saha_onayla' && can_approve_saha()) {
-        // Sadece beklemede olanları, projesi dolu olanları onayla
-        $rows = $pdo->prepare("SELECT id, proje_id FROM irsaliyeler WHERE id IN ($ph) AND durum='beklemede'");
+        // Sadece beklemede olanları, projesi dolu olanları onayla — [FATURADAN] taslakları asla
+        $rows = $pdo->prepare("SELECT id, proje_id, aciklama FROM irsaliyeler WHERE id IN ($ph) AND durum='beklemede'");
         $rows->execute($ids);
-        $onaylandi = 0; $projeSiz = 0;
+        $onaylandi = 0; $projeSiz = 0; $taslak = 0;
         foreach ($rows->fetchAll() as $r) {
+            if (irs_taslak_mi($r)) { $taslak++; continue; }
             if (empty($r['proje_id'])) { $projeSiz++; continue; }
             $pdo->prepare("UPDATE irsaliyeler SET durum='saha_onaylandi', saha_onaylayan_id=?, saha_onay_tarih=NOW() WHERE id=?")->execute([$uid, $r['id']]);
             $onaylandi++;
         }
         $msg = $onaylandi . ' irsaliye saha onayı verildi.';
         if ($projeSiz) $msg .= " {$projeSiz} irsaliye atlandı (proje seçilmemiş).";
+        if ($taslak)   $msg .= " {$taslak} irsaliye atlandı (faturadan açılmış TASLAK — Excel aktarımıyla gerçek veriler gelmeden onaylanamaz).";
         flash($onaylandi ? 'success' : 'warning', $msg);
 
     } elseif ($topluIslem === 'teknik_onayla' && can_approve_teknik()) {
-        // beklemede veya saha_onaylandi olanları, projesi dolu olanları onayla
-        $rows = $pdo->prepare("SELECT id, proje_id FROM irsaliyeler WHERE id IN ($ph) AND durum IN ('beklemede','saha_onaylandi')");
+        // beklemede veya saha_onaylandi olanları, projesi dolu olanları onayla — [FATURADAN] taslakları asla
+        $rows = $pdo->prepare("SELECT id, proje_id, aciklama FROM irsaliyeler WHERE id IN ($ph) AND durum IN ('beklemede','saha_onaylandi')");
         $rows->execute($ids);
-        $onaylandi = 0; $projeSiz = 0;
+        $onaylandi = 0; $projeSiz = 0; $taslak = 0;
         foreach ($rows->fetchAll() as $r) {
+            if (irs_taslak_mi($r)) { $taslak++; continue; }
             if (empty($r['proje_id'])) { $projeSiz++; continue; }
             $pdo->prepare("UPDATE irsaliyeler SET durum='onaylandi', teknik_onaylayan_id=?, teknik_onay_tarih=NOW() WHERE id=?")->execute([$uid, $r['id']]);
             $onaylandi++;
         }
         $msg = $onaylandi . ' irsaliye teknik onay verildi.';
         if ($projeSiz) $msg .= " {$projeSiz} irsaliye atlandı (proje seçilmemiş).";
+        if ($taslak)   $msg .= " {$taslak} irsaliye atlandı (faturadan açılmış TASLAK — Excel aktarımıyla gerçek veriler gelmeden onaylanamaz).";
         flash($onaylandi ? 'success' : 'warning', $msg);
 
     } elseif ($topluIslem === 'guncelle' && can_edit()) {
@@ -648,6 +652,9 @@ require_once __DIR__ . '/includes/header.php';
                                     <a href="irsaliye_detay.php?id=<?= (int)$r['id'] ?>" class="text-decoration-none fw-semibold">
                                         <?= h($r['irsaliye_no'] ?: '#'.$r['id']) ?>
                                     </a>
+                                    <?php if (irs_taslak_mi($r)): ?>
+                                    <span class="badge bg-warning text-dark" title="Faturadan otomatik açılmış TASLAK (0 m³) — Excel aktarımıyla gerçek veriler gelmeden onaylanamaz">TASLAK</span>
+                                    <?php endif; ?>
                                 </td>
                                 <td class="text-center text-nowrap">
                                     <?php

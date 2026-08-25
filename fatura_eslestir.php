@@ -814,8 +814,11 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                         <?php else: ?><?= (int)$f['bagli'] ?><?php endif; ?>
                     </td>
                     <td class="text-end <?= (int)$f['eksik_adet']?'text-danger fw-bold':'' ?>">
+                        <?php $fTaslak = count(array_filter($fIrs, 'irs_taslak_mi')); ?>
                         <?php if ((int)$f['eksik_adet'] > 0): $fel = json_decode((string)($f['eksik_liste'] ?? ''), true); ?>
                         <a href="?eksik=1" class="text-danger text-decoration-none" title="<?= h(is_array($fel) ? implode(', ', $fel) : 'numara listesi için tıklayın') ?>"><?= (int)$f['eksik_adet'] ?> <i class="bi bi-box-arrow-up-right small"></i></a>
+                        <?php elseif ($fTaslak): ?>
+                        <span class="badge bg-warning text-dark" title="Faturadan otomatik açılmış taslak irsaliyeler — Excel aktarımıyla gerçek veriler gelmeden EKSİK sayılır, onaylanamaz"><?= $fTaslak ?> taslak</span>
                         <?php else: ?>0<?php endif; ?>
                     </td>
                     <td><?php if ($f['dosya_url']): ?><a href="<?= h($f['dosya_url']) ?>" target="_blank"><i class="bi bi-file-earmark-pdf"></i></a><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
@@ -839,7 +842,8 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                             <tbody>
                             <?php $ft = 0.0; foreach ($fIrs as $fi): $ft += (float)$fi['miktar']; ?>
                                 <tr>
-                                    <td><a href="irsaliye_detay.php?id=<?= (int)$fi['id'] ?>" target="_blank"><code><?= h($fi['irsaliye_no']) ?></code></a></td>
+                                    <td><a href="irsaliye_detay.php?id=<?= (int)$fi['id'] ?>" target="_blank"><code><?= h($fi['irsaliye_no']) ?></code></a>
+                                        <?php if (irs_taslak_mi($fi)): ?><span class="badge bg-warning text-dark" title="Faturadan otomatik açıldı — Excel aktarımıyla dolana kadar onaylanamaz">TASLAK</span><?php endif; ?></td>
                                     <td><?= h(format_date($fi['tarih'])) ?></td>
                                     <td><?= h((string)$fi['arac_plaka']) ?></td>
                                     <td><?= h((string)$fi['beton_sinifi']) ?></td>

@@ -361,7 +361,7 @@ function fat_bagli_irsaliyeler(PDO $pdo, array $faturaIds): array
     $faturaIds = array_values(array_unique(array_filter(array_map('intval', $faturaIds))));
     if (!$faturaIds) return [];
     $yer = implode(',', array_fill(0, count($faturaIds), '?'));
-    $st = $pdo->prepare("SELECT i.id, i.fatura_id, i.irsaliye_no, i.tarih, i.miktar, i.arac_plaka, i.durum,
+    $st = $pdo->prepare("SELECT i.id, i.fatura_id, i.irsaliye_no, i.tarih, i.miktar, i.arac_plaka, i.durum, i.aciklama,
                                 t.ad AS tedarikci, bs.ad AS beton_sinifi
                          FROM irsaliyeler i
                          LEFT JOIN tedarikciler t ON t.id = i.tedarikci_id

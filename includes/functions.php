@@ -138,6 +138,18 @@ function guess_mime(string $path, string $filename = ''): string
 }
 
 /**
+ * Faturadan otomatik açılmış TASLAK irsaliye mi?
+ * (fatura_eslestir.php eksik numaralardan taslak açarken açıklamaya [FATURADAN]
+ * etiketi yazar; Excel aktarımı gerçek verileri getirince etiket kalkar.)
+ * Taslaklar onaylanmaz — 0 m³ ile onaylanmış kayıt oluşmasın.
+ */
+function irs_taslak_mi($rowOrAciklama): bool
+{
+    $a = is_array($rowOrAciklama) ? ($rowOrAciklama['aciklama'] ?? '') : $rowOrAciklama;
+    return str_contains((string)$a, '[FATURADAN]');
+}
+
+/**
  * Audit log kaydı yaz
  *
  * @param PDO    $pdo

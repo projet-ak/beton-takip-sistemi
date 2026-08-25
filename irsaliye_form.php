@@ -146,7 +146,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // ── Onayla işlemi: form kaydedildikten sonra uygula ─────────
                 if ($editId && in_array($onayAksiyonu, ['saha_onayla','teknik_onayla'])) {
                     // Proje kontrolü: az önce kaydedilen proje_id üzerinden
-                    if (empty($projeId) && !has_role('depo')) {
+                    if (irs_taslak_mi($aciklama)) {
+                        $error = 'Bu irsaliye faturadan otomatik açılmış TASLAKTIR (0 m³) — Excel aktarımıyla gerçek veriler '
+                               . 'gelmeden onaylanamaz. Verileri gerçekten elle tamamladıysanız açıklamadaki [FATURADAN] '
+                               . 'etiketini silip yeniden onaylayın.';
+                    } elseif (empty($projeId) && !has_role('depo')) {
                         $error = 'Onay verebilmek için proje seçimi zorunludur.';
                     } else {
                         switch ($onayAksiyonu) {
@@ -252,6 +256,15 @@ require_once __DIR__ . '/includes/header.php';
 
 <?php if ($error): ?>
     <div class="alert alert-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i><?= h($error) ?></div>
+<?php endif; ?>
+
+<?php if ($editId && isset($row['aciklama']) && irs_taslak_mi($row)): ?>
+    <div class="alert alert-warning">
+        <i class="bi bi-receipt-cutoff me-2"></i><strong>FATURADAN AÇILMIŞ TASLAK:</strong>
+        Bu irsaliye, faturada bulunup sistemde olmadığı için fatura eşleştirmeden otomatik oluşturuldu (0 m³).
+        Excel aktarımı aynı numarayı getirdiğinde gerçek verilerle kendiliğinden dolar — <strong>o zamana kadar onaylanamaz</strong>.
+        Verileri elle tamamlayacaksanız açıklamadaki <code>[FATURADAN]</code> etiketini silin.
+    </div>
 <?php endif; ?>
 
 <?php
