@@ -116,19 +116,10 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h4 class="mb-0"><i class="bi bi-bar-chart-line text-primary me-2"></i>Depo Raporları</h4>
     <div class="d-flex gap-2">
-        <div class="dropdown">
-            <button class="btn btn-outline-success btn-sm dropdown-toggle" data-bs-toggle="dropdown">
-                <i class="bi bi-file-earmark-excel me-1"></i>Excel'e Aktar</button>
-            <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="?disaaktar=xlsx&rapor=ozet"><i class="bi bi-boxes me-2"></i>Stok Özeti</a></li>
-                <li><a class="dropdown-item" href="?disaaktar=xlsx&rapor=degerli"><i class="bi bi-trophy me-2"></i>En Değerli Kalemler</a></li>
-                <li><a class="dropdown-item" href="?disaaktar=xlsx&rapor=cikis"><i class="bi bi-box-arrow-up me-2"></i>En Çok Çıkan Malzemeler</a></li>
-                <li><a class="dropdown-item" href="?disaaktar=xlsx&rapor=tukenen"><i class="bi bi-exclamation-triangle me-2"></i>Tükenen Kalemler</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="hareketler.php?disaaktar=xlsx"><i class="bi bi-arrow-left-right me-2"></i>Tüm Hareketler</a></li>
-            </ul>
-        </div>
-        <button type="button" onclick="dpPdf()" class="btn btn-outline-danger btn-sm"><i class="bi bi-file-earmark-pdf me-1"></i>PDF / Yazdır</button>
+        <button type="button" onclick="dpExcel()" class="btn btn-success btn-sm" id="btnXls"><i class="bi bi-file-earmark-excel me-1"></i>Excel'e Aktar</button>
+        <button type="button" onclick="dpPdf('pdf')" class="btn btn-outline-danger btn-sm"><i class="bi bi-file-earmark-pdf me-1"></i>PDF İndir</button>
+        <button type="button" onclick="dpPdf('print')" class="btn btn-outline-dark btn-sm"><i class="bi bi-printer me-1"></i>Yazdır</button>
+        <a href="hareketler.php?disaaktar=xlsx" class="btn btn-outline-secondary btn-sm" title="Hareket defterinin tamamı"><i class="bi bi-arrow-left-right me-1"></i>Hareketler Excel</a>
     </div>
 </div>
 
@@ -271,6 +262,9 @@ require_once __DIR__ . '/../includes/header.php';
     </div></div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script>window.ERN_ROOT = '../';</script>
+<script src="../assets/js/ern_rapor.js"></script>
 <script>
 // ── PDF / Yazdır: ERN Taahhüt logolu A4 penceresi ───────────────────────────
 const DP_PDF = {
@@ -283,17 +277,10 @@ const DP_PDF = {
     zimmet: <?= json_encode(array_map(fn($z)=>['kisi'=>$z['kisi'],'adet'=>(int)$z['adet'],'stok'=>round((float)$z['stok'])], $zimmet), JSON_UNESCAPED_UNICODE) ?>,
     tukenen: <?= json_encode(array_map(fn($r)=>['kat'=>dp_katAd($r['kategori']),'ad'=>$r['ad']], array_slice($tukenenler,0,120)), JSON_UNESCAPED_UNICODE) ?>
 };
-function dpPdf(){
+function dpPdf(mode){
     const f0 = n => Number(n).toLocaleString('tr-TR');
-    const esc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
-    const tbl = (hdr, rows) => '<table><thead><tr>'+hdr.map(x=>'<th>'+x+'</th>').join('')+'</tr></thead><tbody>'
-        + rows.map(r=>'<tr>'+r.map((x,i)=>'<td'+(i>0?' class="r"':'')+'>'+esc(x)+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
-    const logoUrl = new URL('../uploads/logo/ern_taahhut_export.png', location.href).href;
-    let html = '<div style="display:flex;align-items:center;gap:12px;border-bottom:3px solid #00584E;padding-bottom:8px;margin-bottom:6px">'
-        + '<img src="'+logoUrl+'" style="height:44px" onerror="this.remove()">'
-        + '<h1 style="border:none">ERN TAAHHÜT — DEPO RAPORU</h1></div>'
-        + '<div class="meta">Yazdırma: '+new Date().toLocaleString('tr-TR')+'</div>'
-        + '<div class="kpis"><div><b>'+f0(DP_PDF.kpi.kalem)+'</b>Kalem</div><div><b>'+f0(DP_PDF.kpi.deger)+' TL</b>Mali Değer</div>'
+    const tbl = ERN_RAPOR.tbl;
+    let html = '<div class="kpis"><div><b>'+f0(DP_PDF.kpi.kalem)+'</b>Kalem</div><div><b>'+f0(DP_PDF.kpi.deger)+' TL</b>Mali Değer</div>'
         + '<div><b>'+f0(DP_PDF.kpi.tukenen)+'</b>Tükenen</div><div><b>'+f0(DP_PDF.kpi.hurda)+'</b>Hurda Kaydı</div></div>'
         + '<h2>Kategori Özeti</h2>' + tbl(['Kategori','Kalem','Stok','Mali Değer (TL)'],
             DP_PDF.kat.map(k=>[k.ad, f0(k.adet), f0(k.stok), f0(k.deger)]))
@@ -307,15 +294,57 @@ function dpPdf(){
             DP_PDF.zimmet.map(z=>[z.kisi, f0(z.adet), f0(z.stok)]))
         + (DP_PDF.tukenen.length ? '<h2>Tükenen Kalemler</h2>' + tbl(['Kategori','Malzeme'],
             DP_PDF.tukenen.map(r=>[r.kat, r.ad])) : '');
-    const w = window.open('', '_blank');
-    if (!w) { alert('Pop-up engellendi.'); return; }
-    w.document.write('<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8"><title>Depo Raporu</title><style>'
-        + 'body{font-family:Segoe UI,Arial,sans-serif;color:#111;padding:24px;} h1{color:#00584E;font-size:20px;margin:0;} h2{color:#00584E;font-size:14px;border-bottom:1px solid #ddd;padding-bottom:4px;margin:18px 0 6px;} .meta{color:#666;font-size:12px;margin-bottom:12px;}'
-        + 'table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;} th,td{border:1px solid #bbb;padding:4px 7px;} th{background:#00584E;color:#fff;} td.r{text-align:right;}'
-        + '.kpis{display:flex;gap:10px;margin:10px 0;} .kpis div{flex:1;border:1px solid #ddd;border-radius:8px;padding:8px;text-align:center;font-size:11px;color:#666;} .kpis b{display:block;font-size:16px;color:#111;}'
-        + '@media print{body{padding:6mm;}}</style></head><body>'+html
-        + '<script>window.onload=function(){setTimeout(function(){window.print();},450);}<\\/script></body></html>');
-    w.document.close();
+    ERN_RAPOR.popup({title:'DEPO RAPORU', body:html, mode:mode, filename:'ERN_Depo_Rapor'});
+}
+
+// ── Excel'e Aktar: tek çalışma kitabı, çok sayfalı, ERN Taahhüt logolu ──────
+async function dpExcel(){
+    const btn = document.getElementById('btnXls');
+    btn.disabled = true; const o = btn.innerHTML; btn.innerHTML = 'Hazırlanıyor...';
+    try {
+        const wb = await ERN_RAPOR.wb();
+
+        let ws = wb.addWorksheet('Özet');
+        ERN_RAPOR.title(wb, ws, 'DEPO RAPORU — ÖZET', 4);
+        ws.addRow(['Toplam Kalem', DP_PDF.kpi.kalem]);
+        ws.addRow(['Toplam Mali Değer (TL)', DP_PDF.kpi.deger]);
+        ws.addRow(['Tükenen Kalem', DP_PDF.kpi.tukenen]);
+        ws.addRow(['Hurda Kaydı', DP_PDF.kpi.hurda, DP_PDF.kpi.hurdaMiktar + ' adet/miktar']);
+        ws.addRow([]);
+        let h = ws.addRow(['Kategori','Kalem','Stok','Mali Değer (TL)']); ERN_RAPOR.hdr(h);
+        DP_PDF.kat.forEach(k => ws.addRow([k.ad, k.adet, k.stok, k.deger]));
+        ws.addRow([]);
+        h = ws.addRow(['Disiplin','Kalem','Mali Değer (TL)']); ERN_RAPOR.hdr(h);
+        DP_PDF.disiplin.forEach(d => ws.addRow([d.ad, d.adet, d.deger]));
+        ws.columns.forEach(c => c.width = 18); ws.getColumn(1).width = 28;
+
+        ws = wb.addWorksheet('En Değerli');
+        ERN_RAPOR.title(wb, ws, 'EN DEĞERLİ KALEMLER', 4);
+        h = ws.addRow(['Malzeme','Kategori','Stok','Mali Değer (TL)']); ERN_RAPOR.hdr(h);
+        DP_PDF.degerli.forEach(r => ws.addRow([r.ad, r.kat, r.stok, r.deger]));
+        ws.columns.forEach(c => c.width = 16); ws.getColumn(1).width = 40;
+
+        ws = wb.addWorksheet('En Çok Çıkan');
+        ERN_RAPOR.title(wb, ws, 'EN ÇOK ÇIKIŞ YAPILAN MALZEMELER', 4);
+        h = ws.addRow(['Malzeme','Birim','Hareket','Toplam Miktar']); ERN_RAPOR.hdr(h);
+        DP_PDF.cokCikan.forEach(r => ws.addRow([r.ad, r.birim, r.hareket, r.miktar]));
+        ws.columns.forEach(c => c.width = 14); ws.getColumn(1).width = 40;
+
+        ws = wb.addWorksheet('Zimmet');
+        ERN_RAPOR.title(wb, ws, 'EL ALETLERİ ZİMMET DAĞILIMI', 3);
+        h = ws.addRow(['Zimmetli Kişi','Kalem','Adet']); ERN_RAPOR.hdr(h);
+        DP_PDF.zimmet.forEach(z => ws.addRow([z.kisi, z.adet, z.stok]));
+        ws.columns.forEach(c => c.width = 16); ws.getColumn(1).width = 30;
+
+        ws = wb.addWorksheet('Tükenenler');
+        ERN_RAPOR.title(wb, ws, 'TÜKENEN KALEMLER', 2);
+        h = ws.addRow(['Kategori','Malzeme']); ERN_RAPOR.hdr(h);
+        DP_PDF.tukenen.forEach(r => ws.addRow([r.kat, r.ad]));
+        ws.getColumn(1).width = 16; ws.getColumn(2).width = 50;
+
+        await ERN_RAPOR.save(wb, 'ERN_Depo_Rapor_' + new Date().toISOString().slice(0,10) + '.xlsx');
+    } catch (e) { alert('Excel oluşturulamadı: ' + e.message); }
+    btn.disabled = false; btn.innerHTML = o;
 }
 
 (function(){

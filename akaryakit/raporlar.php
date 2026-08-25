@@ -45,7 +45,11 @@ require_once __DIR__ . '/../includes/header.php';
 ?>
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h4 class="mb-0"><i class="bi bi-bar-chart-line text-primary me-2"></i>Akaryakıt Raporları</h4>
-    <a href="raporlar.php?disaaktar=xlsx" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Excel'e Aktar</a>
+    <div class="d-flex gap-2">
+        <button type="button" onclick="akExcel()" class="btn btn-success btn-sm" id="btnXls"><i class="bi bi-file-earmark-excel me-1"></i>Excel'e Aktar</button>
+        <button type="button" onclick="akPdf('pdf')" class="btn btn-outline-danger btn-sm"><i class="bi bi-file-earmark-pdf me-1"></i>PDF İndir</button>
+        <button type="button" onclick="akPdf('print')" class="btn btn-outline-dark btn-sm"><i class="bi bi-printer me-1"></i>Yazdır</button>
+    </div>
 </div>
 
 <div class="row g-3 mb-4">
@@ -102,6 +106,68 @@ require_once __DIR__ . '/../includes/header.php';
     </div></div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script>window.ERN_ROOT = '../';</script>
+<script src="../assets/js/ern_rapor.js"></script>
+<script>
+// ── Rapor verisi (Excel + PDF ortak) ─────────────────────────────────────────
+const AK_R = {
+    kpi: { stok: <?= json_encode((float)($guncel['kalan'] ?? 0)) ?>, donem: <?= json_encode((string)($guncel['donem'] ?? '')) ?>,
+           gelen: <?= json_encode(round($topGelen)) ?>, kullanilan: <?= json_encode(round($topKull)) ?>, arac: <?= (int)$aracSay ?> },
+    donemler: <?= json_encode(array_map(fn($d)=>['donem'=>$d['donem'],'devir'=>round((float)$d['devir']),'gelen'=>round((float)$d['gelen']),
+        'kullanilan'=>round((float)$d['kullanilan']),'kalan'=>round((float)$d['kalan'])], $seri), JSON_UNESCAPED_UNICODE) ?>,
+    firma: <?= json_encode(array_map(fn($f)=>['firma'=>$f['firma'],'top'=>round((float)$f['top'])], $firma), JSON_UNESCAPED_UNICODE) ?>,
+    araclar: <?= json_encode(array_map(fn($a)=>['sofor'=>$a['sofor'],'cinsi'=>$a['cinsi'],'firma'=>(string)$a['firma'],
+        'donem'=>(int)$a['donem'],'top'=>round((float)$a['top'])], $araclar), JSON_UNESCAPED_UNICODE) ?>
+};
+
+function akPdf(mode){
+    const f0 = n => Number(n).toLocaleString('tr-TR');
+    const tbl = ERN_RAPOR.tbl;
+    let html = '<div class="kpis"><div><b>'+f0(AK_R.kpi.stok)+' Lt</b>Güncel Stok ('+ERN_RAPOR.esc(AK_R.kpi.donem)+')</div>'
+        + '<div><b>'+f0(AK_R.kpi.gelen)+' Lt</b>Toplam Gelen</div><div><b>'+f0(AK_R.kpi.kullanilan)+' Lt</b>Toplam Tüketim</div>'
+        + '<div><b>'+AK_R.kpi.arac+'</b>Araç / Makine</div></div>'
+        + '<h2>Dönem Zinciri (Devir + Gelen − Kullanılan = Kalan)</h2>'
+        + tbl(['Dönem','Devir','Gelen','Kullanılan','Kalan'],
+            AK_R.donemler.map(d=>[d.donem, f0(d.devir), f0(d.gelen), f0(d.kullanilan), f0(d.kalan)]))
+        + '<h2>Firma Bazlı Toplam Tüketim</h2>'
+        + tbl(['Firma','Tüketim (Lt)'], AK_R.firma.map(x=>[x.firma, f0(x.top)]))
+        + '<h2>Araç / Makine Bazlı Toplam Tüketim</h2>'
+        + tbl(['Şoför','Cinsi','Firma','Dönem','Tüketim (Lt)'],
+            AK_R.araclar.map(a=>[a.sofor, a.cinsi, a.firma||'—', a.donem, f0(a.top)]));
+    ERN_RAPOR.popup({title:'AKARYAKIT RAPORU', body:html, mode:mode, filename:'ERN_Akaryakit_Rapor'});
+}
+
+async function akExcel(){
+    const btn = document.getElementById('btnXls');
+    btn.disabled = true; const o = btn.innerHTML; btn.innerHTML = 'Hazırlanıyor...';
+    try {
+        const wb = await ERN_RAPOR.wb();
+
+        let ws = wb.addWorksheet('Stok Zinciri');
+        ERN_RAPOR.title(wb, ws, 'AKARYAKIT RAPORU — STOK ZİNCİRİ', 5,
+            'Güncel stok: ' + AK_R.kpi.stok + ' Lt (' + AK_R.kpi.donem + ')');
+        let h = ws.addRow(['Dönem','Devir (Lt)','Gelen (Lt)','Kullanılan (Lt)','Kalan (Lt)']); ERN_RAPOR.hdr(h);
+        AK_R.donemler.forEach(d => ws.addRow([d.donem, d.devir, d.gelen, d.kullanilan, d.kalan]));
+        ws.columns.forEach(c => c.width = 16); ws.getColumn(1).width = 20;
+
+        ws = wb.addWorksheet('Firma');
+        ERN_RAPOR.title(wb, ws, 'FİRMA BAZLI TÜKETİM', 2);
+        h = ws.addRow(['Firma','Tüketim (Lt)']); ERN_RAPOR.hdr(h);
+        AK_R.firma.forEach(x => ws.addRow([x.firma, x.top]));
+        ws.getColumn(1).width = 28; ws.getColumn(2).width = 16;
+
+        ws = wb.addWorksheet('Araçlar');
+        ERN_RAPOR.title(wb, ws, 'ARAÇ / MAKİNE BAZLI TÜKETİM', 5);
+        h = ws.addRow(['Şoför','Cinsi','Firma','Dönem Sayısı','Toplam Tüketim (Lt)']); ERN_RAPOR.hdr(h);
+        AK_R.araclar.forEach(a => ws.addRow([a.sofor, a.cinsi, a.firma||'—', a.donem, a.top]));
+        ws.columns.forEach(c => c.width = 18); ws.getColumn(2).width = 26;
+
+        await ERN_RAPOR.save(wb, 'ERN_Akaryakit_Rapor_' + new Date().toISOString().slice(0,10) + '.xlsx');
+    } catch (e) { alert('Excel oluşturulamadı: ' + e.message); }
+    btn.disabled = false; btn.innerHTML = o;
+}
+</script>
 <script>
 (function(){
     const palette=['#00584E','#00C9B1','#C9A84C','#007A6A','#6f42c1','#0d6efd','#fd7e14','#20c997','#d63384','#6610f2','#198754','#adb5bd'];

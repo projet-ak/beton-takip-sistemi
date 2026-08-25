@@ -54,8 +54,9 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <h4 class="mb-0"><i class="bi bi-bar-chart-line text-primary me-2"></i>Seramik Raporları</h4>
     <div class="d-flex gap-2">
-        <a href="raporlar.php?disaaktar=xlsx" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Excel'e Aktar</a>
-        <button type="button" onclick="srPdf()" class="btn btn-outline-danger btn-sm"><i class="bi bi-file-earmark-pdf me-1"></i>PDF / Yazdır</button>
+        <button type="button" onclick="srExcel()" class="btn btn-success btn-sm" id="btnXls"><i class="bi bi-file-earmark-excel me-1"></i>Excel'e Aktar</button>
+        <button type="button" onclick="srPdf('pdf')" class="btn btn-outline-danger btn-sm"><i class="bi bi-file-earmark-pdf me-1"></i>PDF İndir</button>
+        <button type="button" onclick="srPdf('print')" class="btn btn-outline-dark btn-sm"><i class="bi bi-printer me-1"></i>Yazdır</button>
     </div>
 </div>
 
@@ -95,6 +96,9 @@ require_once __DIR__ . '/../includes/header.php';
     </div></div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script>window.ERN_ROOT = '../';</script>
+<script src="../assets/js/ern_rapor.js"></script>
 <script>
 // ── PDF / Yazdır: ERN Taahhüt logolu A4 penceresi ────────────────────────────
 const SR_PDF = {
@@ -104,17 +108,10 @@ const SR_PDF = {
     aylik: <?= json_encode(array_map(fn($ay,$v)=>['ay'=>$ay,'g'=>round($v['g']??0,2),'c'=>round($v['c']??0,2)], array_keys($aylik), $aylik), JSON_UNESCAPED_UNICODE) ?>,
     stokListe: <?= json_encode(array_map(fn($x)=>['ad'=>$x['ad'],'tur'=>$x['tur']?:'—','giren'=>round((float)$x['giren'],2),'cikan'=>round((float)$x['cikan'],2),'stok'=>round((float)$x['stok'],2)], array_slice($stok,0,400)), JSON_UNESCAPED_UNICODE) ?>
 };
-function srPdf(){
+function srPdf(mode){
     const f = n => Number(n).toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2});
-    const esc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
-    const tbl = (hdr, rows) => '<table><thead><tr>'+hdr.map(x=>'<th>'+x+'</th>').join('')+'</tr></thead><tbody>'
-        + rows.map(r=>'<tr>'+r.map((x,i)=>'<td'+(i>0?' class="r"':'')+'>'+esc(x)+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
-    const logoUrl = new URL('../uploads/logo/ern_taahhut_export.png', location.href).href;
-    let html = '<div style="display:flex;align-items:center;gap:12px;border-bottom:3px solid #00584E;padding-bottom:8px;margin-bottom:6px">'
-        + '<img src="'+logoUrl+'" style="height:44px" onerror="this.remove()">'
-        + '<h1 style="border:none">ERN TAAHHÜT — SERAMİK RAPORU</h1></div>'
-        + '<div class="meta">Yazdırma: '+new Date().toLocaleString('tr-TR')+'</div>'
-        + '<div class="kpis"><div><b>'+SR_PDF.kpi.cesit+'</b>Malzeme Çeşidi</div><div><b>'+f(SR_PDF.kpi.stok)+' m²</b>Toplam Stok</div>'
+    const tbl = ERN_RAPOR.tbl;
+    let html = '<div class="kpis"><div><b>'+SR_PDF.kpi.cesit+'</b>Malzeme Çeşidi</div><div><b>'+f(SR_PDF.kpi.stok)+' m²</b>Toplam Stok</div>'
         + '<div><b>'+f(SR_PDF.kpi.giren)+'</b>Toplam Giren</div><div><b>'+f(SR_PDF.kpi.cikan)+'</b>Toplam Çıkan</div></div>'
         + '<h2>Tür Bazlı Özet</h2>' + tbl(['Tür','Çeşit','Giren','Çıkan','Stok (m²)'],
             SR_PDF.tur.map(t=>[t.tur, t.adet, f(t.giren), f(t.cikan), f(t.stok)]))
@@ -122,15 +119,42 @@ function srPdf(){
             SR_PDF.aylik.map(a=>[a.ay, f(a.g), f(a.c)]))
         + '<h2>Malzeme Bazlı Stok</h2>' + tbl(['Malzeme','Tür','Giren','Çıkan','Stok'],
             SR_PDF.stokListe.map(x=>[x.ad, x.tur, f(x.giren), f(x.cikan), f(x.stok)]));
-    const w = window.open('', '_blank');
-    if (!w) { alert('Pop-up engellendi.'); return; }
-    w.document.write('<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8"><title>Seramik Raporu</title><style>'
-        + 'body{font-family:Segoe UI,Arial,sans-serif;color:#111;padding:24px;} h1{color:#00584E;font-size:20px;margin:0;} h2{color:#00584E;font-size:14px;border-bottom:1px solid #ddd;padding-bottom:4px;margin:20px 0 6px;} .meta{color:#666;font-size:12px;margin-bottom:14px;}'
-        + 'table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:8px;} th,td{border:1px solid #bbb;padding:4px 7px;} th{background:#00584E;color:#fff;} td.r{text-align:right;}'
-        + '.kpis{display:flex;gap:10px;margin:10px 0;} .kpis div{flex:1;border:1px solid #ddd;border-radius:8px;padding:8px;text-align:center;font-size:11px;color:#666;} .kpis b{display:block;font-size:17px;color:#111;}'
-        + '@media print{body{padding:6mm;}}</style></head><body>'+html
-        + '<script>window.onload=function(){setTimeout(function(){window.print();},450);}<\/script></body></html>');
-    w.document.close();
+    ERN_RAPOR.popup({title:'SERAMİK RAPORU', body:html, mode:mode, filename:'ERN_Seramik_Rapor'});
+}
+
+// ── Excel'e Aktar: ExcelJS, çok sayfalı, ERN Taahhüt logolu (beton deseni) ───
+async function srExcel(){
+    const btn = document.getElementById('btnXls');
+    btn.disabled = true; const o = btn.innerHTML; btn.innerHTML = 'Hazırlanıyor...';
+    try {
+        const wb = await ERN_RAPOR.wb();
+
+        let ws = wb.addWorksheet('Özet');
+        ERN_RAPOR.title(wb, ws, 'SERAMİK RAPORU — ÖZET', 5);
+        ws.addRow(['Malzeme Çeşidi', SR_PDF.kpi.cesit]);
+        ws.addRow(['Toplam Stok (m²)', SR_PDF.kpi.stok]);
+        ws.addRow(['Toplam Giren (m²)', SR_PDF.kpi.giren]);
+        ws.addRow(['Toplam Çıkan (m²)', SR_PDF.kpi.cikan]);
+        ws.addRow([]);
+        let h = ws.addRow(['Tür','Çeşit','Giren','Çıkan','Stok (m²)']); ERN_RAPOR.hdr(h);
+        SR_PDF.tur.forEach(t => ws.addRow([t.tur, t.adet, t.giren, t.cikan, t.stok]));
+        ws.columns.forEach(c => c.width = 16); ws.getColumn(1).width = 26;
+
+        ws = wb.addWorksheet('Aylık');
+        ERN_RAPOR.title(wb, ws, 'AYLIK GİRİŞ / ÇIKIŞ (m²)', 3);
+        h = ws.addRow(['Ay','Giriş','Çıkış']); ERN_RAPOR.hdr(h);
+        SR_PDF.aylik.forEach(a => ws.addRow([a.ay, a.g, a.c]));
+        ws.columns.forEach(c => c.width = 16);
+
+        ws = wb.addWorksheet('Malzeme Stok');
+        ERN_RAPOR.title(wb, ws, 'MALZEME BAZLI STOK', 5);
+        h = ws.addRow(['Malzeme','Tür','Giren','Çıkan','Stok (m²)']); ERN_RAPOR.hdr(h);
+        SR_PDF.stokListe.forEach(x => ws.addRow([x.ad, x.tur, x.giren, x.cikan, x.stok]));
+        ws.columns.forEach(c => c.width = 14); ws.getColumn(1).width = 44;
+
+        await ERN_RAPOR.save(wb, 'ERN_Seramik_Rapor_' + new Date().toISOString().slice(0,10) + '.xlsx');
+    } catch (e) { alert('Excel oluşturulamadı: ' + e.message); }
+    btn.disabled = false; btn.innerHTML = o;
 }
 
 (function(){

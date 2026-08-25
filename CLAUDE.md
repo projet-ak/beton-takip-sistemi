@@ -63,7 +63,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 ### Teknoloji
 - Backend: PHP (framework yok), PDO/MySQL 8, prepared statements her yerde.
 - Frontend: Bootstrap 5.3.3 + Bootstrap Icons, Chart.js 4.4.4, Google Fonts (Outfit), sunucu-tarafı render + PWA (`manifest.json`, `sw.js`).
-- Excel: `Shuchkin\SimpleXLSX` (composer, okuma) + `includes/XlsxWriter.php` (yazma; **varsayılan ERN Taahhüt logolu** — kurucu 2. parametre false ile kapatılır, başlık 4. satıra kayar) + client-side **ExcelJS** (formatlı rapor).
+- Excel: `Shuchkin\SimpleXLSX` (composer, okuma) + `includes/XlsxWriter.php` (yazma; **varsayılan ERN Taahhüt logolu** — kurucu 2. parametre false ile kapatılır, başlık 4. satıra kayar) + client-side **ExcelJS** (formatlı rapor). **Rapor dışa aktarma ortak katmanı `assets/js/ern_rapor.js`**: ERN_RAPOR.wb/title/hdr/save (logolu çok sayfalı ExcelJS) + ERN_RAPOR.popup({mode:'pdf'|'print'}) (logolu A4 penceresi, jsPDF doğrudan kaydet + yazdır). TÜM modül raporları (beton hariç kendi eski deseninde) bu katmanı kullanır: Excel'e Aktar + PDF İndir + Yazdır üçlüsü. Sayfa script'ten önce `window.ERN_ROOT` tanımlar ('' veya '../').
 - AI: Claude (Haiku 4.5) / Gemini / OpenRouter — `AI_PROVIDER` ile seçilir (`includes/ai_call.php`).
 
 ---

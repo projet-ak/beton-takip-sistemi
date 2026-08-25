@@ -117,8 +117,9 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
     <h4 class="mb-0"><i class="bi bi-bar-chart-line text-dark me-2"></i>Demir Raporları</h4>
     <div class="d-flex gap-2">
-        <button onclick="exportExcel()" class="btn btn-sm btn-success" id="btnXls"><i class="bi bi-file-earmark-excel me-1"></i> Excel</button>
-        <button onclick="exportPDF()" class="btn btn-sm btn-outline-dark"><i class="bi bi-printer me-1"></i> PDF</button>
+        <button onclick="exportExcel()" class="btn btn-sm btn-success" id="btnXls"><i class="bi bi-file-earmark-excel me-1"></i> Excel'e Aktar</button>
+        <button onclick="exportPDF('pdf')" class="btn btn-sm btn-outline-danger"><i class="bi bi-file-earmark-pdf me-1"></i> PDF İndir</button>
+        <button onclick="exportPDF('print')" class="btn btn-sm btn-outline-dark"><i class="bi bi-printer me-1"></i> Yazdır</button>
     </div>
 </div>
 
@@ -232,6 +233,8 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
 
 <!-- ExcelJS: formatlı xlsx (beton raporlarındaki gibi) -->
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script>window.ERN_ROOT = '../';</script>
+<script src="../assets/js/ern_rapor.js"></script>
 <script>
 const R = {
     donem: <?= json_encode($donem, JSON_UNESCAPED_UNICODE) ?>,
@@ -334,28 +337,16 @@ async function exportExcel(){
     btn.disabled=false; btn.innerHTML=o;
 }
 
-// ── PDF (yazdırma penceresi) ──────────────────────────────────────────────────
-function exportPDF(){
+// ── PDF İndir / Yazdır (ortak ERN_RAPOR katmanı) ─────────────────────────────
+function exportPDF(mode){
     const f=n=>Number(n).toLocaleString('tr-TR',{minimumFractionDigits:3,maximumFractionDigits:3});
-    const tbl=(head,rows)=>'<table><thead><tr>'+head.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map((c,i)=>'<td'+(i>0?' class="r"':'')+'>'+c+'</td>').join('')+'</tr>').join('')+'</tbody></table>';
-    const logoUrl = new URL('../uploads/logo/ern_taahhut_export.png', location.href).href;
-    let html='<div style="display:flex;align-items:center;gap:12px;border-bottom:3px solid #00584E;padding-bottom:8px;margin-bottom:6px">'
-           +'<img src="'+logoUrl+'" style="height:44px" onerror="this.remove()">'
-           +'<h1 style="border:none">ERN TAAHHÜT — DEMİR RAPORU</h1></div>'
-           +'<div class="meta">Dönem: '+R.donem+' — Yazdırma: '+new Date().toLocaleString('tr-TR')+'</div>';
-    html+='<div class="kpis"><div><b>'+R.kpi.sevkiyat+'</b>Sevkiyat</div><div><b>'+f(R.kpi.ton)+' t</b>Toplam Gelen</div><div><b>'+f(R.kpi.kantar)+' t</b>Kantar</div><div><b>'+(R.kpi.fark>0?'+':'')+f(R.kpi.fark)+' t</b>Fark</div></div>';
+    const tbl=ERN_RAPOR.tbl;
+    let html='<div class="kpis"><div><b>'+R.kpi.sevkiyat+'</b>Sevkiyat</div><div><b>'+f(R.kpi.ton)+' t</b>Toplam Gelen</div><div><b>'+f(R.kpi.kantar)+' t</b>Kantar</div><div><b>'+(R.kpi.fark>0?'+':'')+f(R.kpi.fark)+' t</b>Fark</div></div>';
     html+='<h2>Çap Bazında</h2>'+tbl(['Çap','İrsaliye','Kantar','Fark'], R.cap.map(c=>[c.ad,f(c.irs),f(c.knt),(c.knt-c.irs>0?'+':'')+f(c.knt-c.irs)]));
     html+='<h2>Tedarikçi Özeti</h2>'+tbl(['Tedarikçi','Sevkiyat','İrsaliye','Fark'], R.ted.map(t=>[t.firma,t.adet,f(t.irs),(t.knt-t.irs>0?'+':'')+f(t.knt-t.irs)]));
     html+='<h2>Proje Özeti</h2>'+tbl(['Proje','Sevkiyat','Gelen'], R.proje.map(p=>[p.kod,p.adet,f(p.ton)]));
     if(R.firmaTeslim.length) html+='<h2>Firma Bazlı Teslim (Proje × Çap — net)</h2>'+tbl(['Firma','Proje','Çap','Ton'], R.firmaTeslim.map(x=>[x.firma,x.proje,x.cap,f(x.ton)]));
-    const w=window.open('','_blank');
-    w.document.write('<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8"><title>Demir Raporu</title><style>'
-        +'body{font-family:Segoe UI,Arial,sans-serif;color:#111;padding:24px;} h1{color:#00584E;font-size:20px;margin:0;} h2{color:#00584E;font-size:14px;border-bottom:1px solid #ddd;padding-bottom:4px;margin:20px 0 6px;} .meta{color:#666;font-size:12px;margin-bottom:14px;}'
-        +'table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px;} th,td{border:1px solid #bbb;padding:5px 8px;} th{background:#00584E;color:#fff;} td.r{text-align:right;}'
-        +'.kpis{display:flex;gap:10px;margin:10px 0;} .kpis div{flex:1;border:1px solid #ddd;border-radius:8px;padding:8px;text-align:center;font-size:11px;color:#666;} .kpis b{display:block;font-size:17px;color:#111;}'
-        +'@media print{body{padding:6mm;}}</style></head><body>'+html
-        +'<script>window.onload=function(){setTimeout(function(){window.print();},450);}<\/script></body></html>');
-    w.document.close();
+    ERN_RAPOR.popup({title:'DEMİR RAPORU', meta:'Dönem: '+R.donem, body:html, mode:mode, filename:'ERN_Demir_Rapor'});
 }
 </script>
 
