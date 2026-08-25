@@ -108,7 +108,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script>window.ERN_ROOT = '../';</script>
-<script src="../assets/js/ern_rapor.js"></script>
+<script src="../assets/js/ern_rapor.js?v=<?= @filemtime(__DIR__ . '/../assets/js/ern_rapor.js') ?>"></script>
 <script>
 // ── Rapor verisi (Excel + PDF ortak) ─────────────────────────────────────────
 const AK_R = {

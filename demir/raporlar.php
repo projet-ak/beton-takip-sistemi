@@ -234,7 +234,7 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
 <!-- ExcelJS: formatlı xlsx (beton raporlarındaki gibi) -->
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script>window.ERN_ROOT = '../';</script>
-<script src="../assets/js/ern_rapor.js"></script>
+<script src="../assets/js/ern_rapor.js?v=<?= @filemtime(__DIR__ . '/../assets/js/ern_rapor.js') ?>"></script>
 <script>
 const R = {
     donem: <?= json_encode($donem, JSON_UNESCAPED_UNICODE) ?>,
@@ -280,13 +280,13 @@ async function exportExcel(){
         } catch(e) {}
         const HDR={fill:{type:'pattern',pattern:'solid',fgColor:{argb:'FF00584E'}},font:{color:{argb:'FFFFFFFF'},bold:true},alignment:{vertical:'middle'}};
         const title=(ws,t)=>{
-            // A1:B2 logo alanı, C1:E2 başlık — logo metinle çakışmaz, alt satıra taşmaz
-            ws.mergeCells('A1:B2'); ws.mergeCells('C1:E2');
-            const c=ws.getCell('C1'); c.value='ERN TAAHHÜT — '+t;
+            // 1-2. satırlar yalnız logo (metin yok), başlık 3. satırda — çakışma imkânsız
+            ws.getRow(1).height=24; ws.getRow(2).height=24;
+            if (logoId !== undefined) ws.addImage(logoId, { tl:{col:0.1,row:0.1}, ext:{width:71,height:44} });
+            ws.mergeCells('A3:E3'); const c=ws.getCell('A3'); c.value='ERN TAAHHÜT — '+t;
             c.font={bold:true,size:14,color:{argb:'FF00584E'}}; c.alignment={vertical:'middle'};
-            ws.getRow(1).height=26; ws.getRow(2).height=26;
-            if (logoId !== undefined) ws.addImage(logoId, { tl:{col:0.12,row:0.12}, ext:{width:73,height:45} });
-            ws.mergeCells('A3:E3'); const a=ws.getCell('A3');
+            ws.getRow(3).height=24;
+            ws.mergeCells('A4:E4'); const a=ws.getCell('A4');
             a.value='Dönem: '+R.donem; a.font={size:10,color:{argb:'FF777777'}};
             ws.addRow([]);
         };

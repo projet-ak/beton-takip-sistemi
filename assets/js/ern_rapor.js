@@ -33,20 +33,21 @@ window.ERN_RAPOR = (function () {
     }
 
     function title(w, ws, text, span, altText) {
-        // Düzen: A1:B2 = logo alanı (metinle ÇAKIŞMAZ), C1'den itibaren başlık (2 satır yüksek).
-        span = Math.max(span || 6, 4);
+        // Düzen: 1-2. satırlar tamamen LOGOYA ayrılır (metin yok → çakışma imkânsız),
+        // başlık 3. satırda, alt bilgi 4. satırda. Kolon genişliklerinden bağımsızdır.
+        span = Math.max(span || 6, 2);
         const end = String.fromCharCode(64 + Math.min(span, 26));
-        ws.mergeCells('A1:B2');
-        ws.mergeCells('C1:' + end + '2');
-        const c = ws.getCell('C1');
+        ws.getRow(1).height = 24; ws.getRow(2).height = 24;          // 48px logo alanı
+        if (w.__logo !== undefined) ws.addImage(w.__logo, { tl: { col: 0.1, row: 0.1 }, ext: { width: 71, height: 44 } });
+        ws.mergeCells('A3:' + end + '3');
+        const c = ws.getCell('A3');
         c.value = 'ERN TAAHHÜT — ' + text;
         c.font = { bold: true, size: 14, color: { argb: 'FF00584E' } };
         c.alignment = { vertical: 'middle' };
-        ws.getRow(1).height = 26; ws.getRow(2).height = 26;   // logo 45px bu 52px'e sığar, taşmaz
-        if (w.__logo !== undefined) ws.addImage(w.__logo, { tl: { col: 0.12, row: 0.12 }, ext: { width: 73, height: 45 } });
+        ws.getRow(3).height = 24;
         if (altText) {
-            ws.mergeCells('A3:' + end + '3');
-            const a = ws.getCell('A3');
+            ws.mergeCells('A4:' + end + '4');
+            const a = ws.getCell('A4');
             a.value = altText;
             a.font = { size: 10, color: { argb: 'FF777777' } };
         }
