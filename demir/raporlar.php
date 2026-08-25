@@ -280,10 +280,15 @@ async function exportExcel(){
         } catch(e) {}
         const HDR={fill:{type:'pattern',pattern:'solid',fgColor:{argb:'FF00584E'}},font:{color:{argb:'FFFFFFFF'},bold:true},alignment:{vertical:'middle'}};
         const title=(ws,t)=>{
-            ws.mergeCells('A1:E1'); const c=ws.getCell('A1'); c.value='        ERN TAAHHÜT — '+t;
-            c.font={bold:true,size:14,color:{argb:'FF00584E'}}; ws.getRow(1).height=40;
-            if (logoId !== undefined) ws.addImage(logoId, { tl:{col:0.05,row:0.05}, ext:{width:76,height:47} });
-            ws.getCell('A2').value='Dönem: '+R.donem; ws.addRow([]);
+            // A1:B2 logo alanı, C1:E2 başlık — logo metinle çakışmaz, alt satıra taşmaz
+            ws.mergeCells('A1:B2'); ws.mergeCells('C1:E2');
+            const c=ws.getCell('C1'); c.value='ERN TAAHHÜT — '+t;
+            c.font={bold:true,size:14,color:{argb:'FF00584E'}}; c.alignment={vertical:'middle'};
+            ws.getRow(1).height=26; ws.getRow(2).height=26;
+            if (logoId !== undefined) ws.addImage(logoId, { tl:{col:0.12,row:0.12}, ext:{width:73,height:45} });
+            ws.mergeCells('A3:E3'); const a=ws.getCell('A3');
+            a.value='Dönem: '+R.donem; a.font={size:10,color:{argb:'FF777777'}};
+            ws.addRow([]);
         };
         const styleHdr=(row)=>row.eachCell(c=>{c.fill=HDR.fill;c.font=HDR.font;c.alignment=HDR.alignment;});
 
