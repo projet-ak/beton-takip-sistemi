@@ -59,7 +59,8 @@ function fat_tarih_norm(?string $s): ?string
  */
 function fat_metinden_cikar(string $metin): array
 {
-    $d = ['fatura_no'=>null,'tarih'=>null,'tutar'=>null,'brut_tutar'=>null,'miktar'=>null,'ettn'=>null,'irsaliyeler'=>[]];
+    $d = ['fatura_no'=>null,'tarih'=>null,'tutar'=>null,'brut_tutar'=>null,'miktar'=>null,'ettn'=>null,
+          'satici_vkn'=>null,'satici_unvan'=>null,'irsaliyeler'=>[]];
     $t = preg_replace('/[ \t]+/', ' ', $metin);
 
     if (preg_match('/Fatura\s*No[:\s]*([A-Z]{2,5}\d{8,20})/iu', $t, $m))  $d['fatura_no'] = strtoupper($m[1]);
@@ -91,6 +92,29 @@ function fat_metinden_cikar(string $metin): array
         }
     }
     $d['irsaliyeler'] = array_values($bulunan);
+
+    // Satıcı VKN + unvan (metinden): faturada iki VKN vardır — "SAYIN" bloğundaki
+    // ALICI'nındır (bize kesilen fatura), diğeri SATICI'nındır. Karekod varsa
+    // satıcı VKN'si zaten oradan gelir (fat_qr_birlestir ezer).
+    $saticiOff = null;
+    if (preg_match_all('/VKN[:\s]*([0-9]{10,11})/iu', $t, $vm, PREG_OFFSET_CAPTURE)) {
+        $sayinOff = stripos($t, 'SAYIN');
+        $aliciVkn = null;
+        if ($sayinOff !== false) {
+            foreach ($vm[1] as [$vkn0, $off0]) if ($off0 > $sayinOff) { $aliciVkn = $vkn0; break; }
+        }
+        foreach ($vm[1] as [$vkn0, $off0]) {
+            if ($vkn0 !== $aliciVkn) { $d['satici_vkn'] = $vkn0; $saticiOff = $off0; break; }
+        }
+        if ($d['satici_vkn'] === null && $vm[1]) { $d['satici_vkn'] = $vm[1][0][0]; $saticiOff = $vm[1][0][1]; }
+    }
+    if ($saticiOff !== null) {
+        // Unvan: satıcı VKN'sinden geriye doğru en yakın "…ŞİRKETİ / A.Ş. / LTD.ŞTİ." satırı
+        $pencere = substr($t, max(0, $saticiOff - 900), min(900, $saticiOff));
+        if (preg_match_all('/^[^\n]{3,100}?(?:ANON[İI]M\s+[ŞS][İI]RKET[İI]|L[İI]M[İI]TED\s+[ŞS][İI]RKET[İI]|A\.\s*[ŞS]\.?|LTD\.?\s*[ŞS]T[İI]\.?)[^\n]{0,10}$/miu', $pencere, $um)) {
+            $d['satici_unvan'] = trim((string)end($um[0]));
+        }
+    }
 
     // Metne karekot içeriği de yapıştırılmış olabilir — varsa o esas alınır
     return fat_qr_birlestir($d, fat_qr_coz($metin));
@@ -184,7 +208,30 @@ function fat_qr_birlestir(array $veri, ?array $qr): array
     if (($veri['brut_tutar'] ?? null) === null && ($qr['vergidahil'] ?? null) !== null) {
         $veri['brut_tutar'] = $qr['vergidahil'];
     }
+    // Satıcı VKN'sinde karekod kesindir (metin çıkarımı sezgiseldir)
+    if (($qr['vkn'] ?? null) !== null && $qr['vkn'] !== '') $veri['satici_vkn'] = $qr['vkn'];
     return $veri;
+}
+
+/** Şirket unvanını karşılaştırılabilir çekirdeğe indirger ("SAFİ BETON ÜRETİM VE TİCARET A.Ş." → "SAFI BETON"). */
+function fat_unvan_norm(?string $s): string
+{
+    $s = mb_strtoupper(trim((string)$s), 'UTF-8');
+    $s = str_replace(['İ','Ş','Ğ','Ü','Ö','Ç','.'], ['I','S','G','U','O','C',''], $s);
+    $s = preg_replace('/\b(ANONIM|LIMITED|SIRKETI|STI|AS|LTD|TIC|TICARET|SAN|SANAYI|VE|URETIM|INSAAT|PAZARLAMA|NAKLIYAT|MADENCILIK)\b/', ' ', $s);
+    return trim(preg_replace('/\s+/', ' ', (string)$s));
+}
+
+/** Fatura metnindeki satıcı unvanından tedarikçiyi bulur (normalize ad karşılaştırması). */
+function fat_tedarikci_bul_ad(PDO $pdo, ?string $unvan): ?array
+{
+    $u = fat_unvan_norm($unvan);
+    if ($u === '' || mb_strlen($u) < 4) return null;
+    foreach ($pdo->query("SELECT id, ad, vkn FROM tedarikciler") as $r) {
+        $a = fat_unvan_norm($r['ad']);
+        if ($a !== '' && mb_strlen($a) >= 4 && (str_contains($u, $a) || str_contains($a, $u))) return $r;
+    }
+    return null;
 }
 
 /** Karekottaki satıcı VKN'sinden tedarikçiyi bulur. */

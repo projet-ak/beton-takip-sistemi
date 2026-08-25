@@ -85,6 +85,28 @@ if (($_POST['action'] ?? '') === 'coz') {
 if (($_POST['action'] ?? '') === 'kaydet') {
     $ids = array_values(array_filter(array_map('intval', (array)($_POST['irs_id'] ?? []))));
 
+    // Tedarikçi seçilmemişse ve faturadan satıcı bilgisi çıkarıldıysa (isteğe bağlı kutu):
+    // önce VKN, sonra normalize unvan ile mevcut tedarikçi aranır; yoksa OLUŞTURULUR.
+    if (!(int)($_POST['tedarikci_id'] ?? 0) && !empty($_POST['tedarikci_olustur'])) {
+        $sUnvan = trim((string)($_POST['satici_unvan'] ?? ''));
+        $sVkn   = preg_replace('/\D/', '', (string)($_POST['satici_vkn'] ?? ''));
+        try {
+            $mevTed = fat_tedarikci_bul($pdo, $sVkn) ?: fat_tedarikci_bul_ad($pdo, $sUnvan);
+            if ($mevTed) {
+                $_POST['tedarikci_id'] = (int)$mevTed['id'];
+                if ($sVkn !== '' && trim((string)$mevTed['vkn']) === '') {   // VKN'yi tamamla — bir daha sorulmasın
+                    $pdo->prepare("UPDATE tedarikciler SET vkn = ? WHERE id = ?")->execute([$sVkn, (int)$mevTed['id']]);
+                }
+            } elseif ($sUnvan !== '') {
+                $pdo->prepare("INSERT INTO tedarikciler (ad, vkn) VALUES (?, ?)")->execute([$sUnvan, $sVkn ?: null]);
+                $_POST['tedarikci_id'] = (int)$pdo->lastInsertId();
+                audit_log($pdo, 'tedarikciler', (int)$_POST['tedarikci_id'], 'INSERT', null,
+                          ['fatura_otomatik' => true, 'ad' => $sUnvan, 'vkn' => $sVkn], current_user_id());
+                flash('info', 'Yeni tedarikçi oluşturuldu: ' . $sUnvan . ($sVkn !== '' ? " (VKN $sVkn)" : ''));
+            }
+        } catch (Throwable $eT) { /* tedarikçi çözülemedi — aşağıdaki uyarı akışı devreye girer */ }
+    }
+
     // İsteğe bağlı: faturada olup sistemde bulunmayan irsaliyeleri TASLAK olarak oluştur.
     // Taslak; fatura tarihi/tedarikçisiyle, 0 m³ ve [FATURADAN] etiketiyle açılır.
     // Excel aktarımı aynı numarayı getirdiğinde taslak SİLİNMEZ — gerçek verilerle
@@ -571,8 +593,8 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
         <?php if (!$qrTed && !empty($qr['vkn'])): ?>
         <div class="alert alert-warning py-2 small mt-3 mb-0">
             <i class="bi bi-exclamation-triangle-fill me-1"></i>
-            <strong><?= h($qr['vkn']) ?></strong> VKN'si hiçbir tedarikçide kayıtlı değil — tedarikçiyi aşağıdan elle seçin veya
-            <a href="tedarikciler.php">Tedarikçiler</a> ekranından VKN'yi girin ki bir daha sorulmasın.
+            <strong><?= h($qr['vkn']) ?></strong> VKN'si hiçbir tedarikçide kayıtlı değil — aşağıdaki
+            <strong>"otomatik oluştur"</strong> kutusunu işaretli bırakın (kaydetmede VKN'siyle açılır) ya da tedarikçiyi elle seçin.
         </div>
         <?php endif; ?>
     </div>
@@ -594,16 +616,21 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
         <div class="col-md-2"><label class="form-label">Tarih</label>
             <input type="date" name="tarih" class="form-control" value="<?= h((string)$v['tarih']) ?>"></div>
         <div class="col-md-3"><label class="form-label">Tedarikçi</label>
+            <?php
+            // Öncelik: karekot/metin VKN (kesin) → satıcı unvanı (normalize ad) → eşleşen irsaliyelerin tedarikçisi
+            $saticiVkn   = preg_replace('/\D/', '', (string)($v['satici_vkn'] ?? ''));
+            $saticiUnvan = trim((string)($v['satici_unvan'] ?? ''));
+            $onerTed = $qrTed ?: ($saticiVkn !== '' ? fat_tedarikci_bul($pdo, $saticiVkn) : null);
+            if (!$onerTed && $saticiUnvan !== '') $onerTed = fat_tedarikci_bul_ad($pdo, $saticiUnvan);
+            $onerId = $onerTed ? (int)$onerTed['id'] : 0;
+            if (!$onerId && $e['eslesen']) {
+                $ilk = $e['eslesen'][0];
+                foreach ($tedarikciler as $td) if ($td['ad'] === $ilk['tedarikci']) $onerId = (int)$td['id'];
+            }
+            ?>
             <select name="tedarikci_id" class="form-select">
                 <option value="">— seçiniz —</option>
-                <?php
-                // Öncelik: karekottaki VKN (kesin) → eşleşen irsaliyelerin tedarikçisi (tahmin)
-                $onerId = $qrTed ? (int)$qrTed['id'] : 0;
-                if (!$onerId && $e['eslesen']) {
-                    $ilk = $e['eslesen'][0];
-                    foreach ($tedarikciler as $td) if ($td['ad'] === $ilk['tedarikci']) $onerId = (int)$td['id'];
-                }
-                foreach ($tedarikciler as $td): ?>
+                <?php foreach ($tedarikciler as $td): ?>
                     <option value="<?= (int)$td['id'] ?>" <?= $onerId===(int)$td['id']?'selected':'' ?>><?= h($td['ad']) ?></option>
                 <?php endforeach; ?>
             </select></div>
@@ -615,6 +642,19 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
             <input type="text" name="ettn" class="form-control" value="<?= h((string)$v['ettn']) ?>"></div>
         <div class="col-md-6"><label class="form-label">Not</label>
             <input type="text" name="notlar" class="form-control" placeholder="opsiyonel"></div>
+        <?php if (!$onerId && ($saticiUnvan !== '' || $saticiVkn !== '')): ?>
+        <input type="hidden" name="satici_unvan" value="<?= h($saticiUnvan) ?>">
+        <input type="hidden" name="satici_vkn" value="<?= h($saticiVkn) ?>">
+        <div class="col-12"><div class="form-check p-3 pt-2 ps-5 bg-info-subtle border border-info rounded mb-0">
+            <input class="form-check-input" type="checkbox" name="tedarikci_olustur" value="1" id="tedOlustur" checked>
+            <label class="form-check-label" for="tedOlustur">
+                <strong>Tedarikçi kayıtlı değil — faturadan otomatik oluştur:</strong>
+                <?= $saticiUnvan !== '' ? h($saticiUnvan) : '<em>unvan okunamadı</em>' ?><?= $saticiVkn !== '' ? ' (VKN '.h($saticiVkn).')' : '' ?>
+                <div class="small text-muted mt-1">Kaydettiğinizde bu satıcı tedarikçi olarak açılır (VKN'siyle — bir daha sorulmaz)
+                    ve fatura ona bağlanır. Yukarıdan elle tedarikçi seçerseniz bu kutu yok sayılır.</div>
+            </label>
+        </div></div>
+        <?php endif; ?>
         <?php if ($v['brut_tutar'] !== null && $v['tutar'] !== null && abs($v['brut_tutar']-$v['tutar'])>0.01): ?>
         <div class="col-12"><div class="alert alert-secondary py-2 small mb-0">
             Tevkifatlı fatura: Vergiler Dahil Toplam <strong><?= $fmt($v['brut_tutar']) ?> ₺</strong>,
