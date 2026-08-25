@@ -144,6 +144,9 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 - **`login.php`** — **Şantiye İş Takip Sistemi / Batı Yakası Projesi** markası; iki beyaz ERN logolu koyu yeşil panel + Batı Yakası proje rozeti (dış SVG, onerror fallback) + 5 modül tanıtım pill'i (beton/demir/seramik/depo/akaryakıt) + dalga animasyonu + geliştirici kredisi + **"Sistemi Tanıyın" → tanitim.php** bağlantısı.
 - **`tanitim.php`** — **halka açık tanıtım/show sayfası** (auth YOK): login ile aynı marka dili (--ern yeşil paleti, Outfit, dalga SVG). Hero'da ERN Holding + ERN Taahhüt beyaz logoları, Batı Yakası rozeti, CTA→login.php. **Canlı yuvarlanmış sayaçlar** (irsaliye/m³/demir ton/belge/modül; DB'ler try/catch korumalı — `config.php` yoksa `file_exists` guard'ı ile atlanır çünkü db.php redirect+exit yapar, try yakalayamaz; sayılar 100'e yuvarlanır "1.200+" hissi için). 6 modül kartı + 8 özellik kartı (QR/AI/fatura mutabakatı/zayiat/evrak arşivi/rapor/PWA) + 3 adımlı akış + IntersectionObserver count-up animasyonu + çift logolu footer.
   QR/AI beton = GİB e-İrsaliye QR (JSON) + KGS/THBB DataMatrix (E1) + tesseract + AI.
+- **`site-kok/index.html`** — tanitim.php'nin **bağımsız statik kopyası**, `ernsaha.com.tr` KÖK dizini için
+  (kullanıcı aaPanel'den elle yükler; deploy2 kapsamı dışında). PHP/DB yok: sayaçlar sabit, logo/giriş
+  bağlantıları `/beton/...` mutlak yollu. tanitim.php güncellenirse bu kopya da elle eşitlenmeli.
 - **Tanım sayfaları** (`can_manage_definitions()`): beton_siniflari, katki_listesi, pompa_turleri,
   kivam_siniflari, parseller→bloklar→kotlar, imalat_gruplari→ana_is_kalemleri, firmalar, tedarikciler.
   **Parsel→Proje bağı**: `parseller.proje_id` (runtime ALTER + kurulum) — parsele proje (U030/U031…) atanır;
