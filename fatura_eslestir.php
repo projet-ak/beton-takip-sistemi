@@ -84,6 +84,45 @@ if (($_POST['action'] ?? '') === 'coz') {
 // ── 2) Kaydet: eşleşen irsaliyeleri faturaya bağla ──────────────────────────
 if (($_POST['action'] ?? '') === 'kaydet') {
     $ids = array_values(array_filter(array_map('intval', (array)($_POST['irs_id'] ?? []))));
+
+    // İsteğe bağlı: faturada olup sistemde bulunmayan irsaliyeleri TASLAK olarak oluştur.
+    // Taslak; fatura tarihi/tedarikçisiyle, 0 m³ ve [FATURADAN] etiketiyle açılır.
+    // Excel aktarımı aynı numarayı getirdiğinde taslak SİLİNMEZ — gerçek verilerle
+    // güncellenir (import.php normalize eşleşme), fatura bağı ve ekli belgeler korunur.
+    $taslakOlusan = 0; $taslakUyari = '';
+    if (!empty($_POST['eksik_olustur'])) {
+        $eksikler = is_array($el0 = json_decode((string)($_POST['eksik_liste'] ?? ''), true))
+                    ? array_slice(array_map('strval', $el0), 0, 500) : [];
+        $tedId = (int)($_POST['tedarikci_id'] ?? 0);
+        if (!$tedId) {
+            $taslakUyari = 'Eksik irsaliyeler için taslak OLUŞTURULMADI: tedarikçi seçilmedi '
+                         . '(irsaliye tedarikçisiz kaydedilemez). Tedarikçiyi seçip faturayı yeniden çözümleyin.';
+        } elseif ($eksikler) {
+            try {
+                $esl0 = fat_eslestir($pdo, $eksikler);   // çözümlemeden beri girilmiş olabilir — yeniden kontrol
+                foreach ($esl0['eslesen'] as $r0) $ids[] = (int)$r0['id'];
+                $tarih0 = fat_tarih_norm($_POST['tarih'] ?? '') ?: date('Y-m-d');
+                $ins0 = $pdo->prepare("INSERT INTO irsaliyeler
+                    (tip, durum, irsaliye_no, fatura_no, tedarikci_id, tarih, miktar, birim, aciklama, created_by)
+                    VALUES ('alis', 'beklemede', ?, ?, ?, ?, 0, 'M3', ?, ?)");
+                foreach ($esl0['eksik'] as $no0) {
+                    $ins0->execute([$no0, trim((string)($_POST['fatura_no'] ?? '')) ?: null, $tedId, $tarih0,
+                                    '[FATURADAN] Fatura eşleştirmeden otomatik oluşturuldu — Excel aktarımında gerçek verilerle güncellenir.',
+                                    current_user_id()]);
+                    $yeniId0 = (int)$pdo->lastInsertId();
+                    $ids[] = $yeniId0;
+                    audit_log($pdo, 'irsaliyeler', $yeniId0, 'INSERT', null,
+                              ['fatura_taslak' => true, 'irsaliye_no' => $no0], current_user_id());
+                    $taslakOlusan++;
+                }
+                $_POST['eksik_adet'] = 0; $_POST['eksik_liste'] = '[]';   // artık eksik değiller
+            } catch (Throwable $e0) {
+                $taslakUyari = 'Taslak irsaliye oluşturulamadı: ' . $e0->getMessage();
+            }
+        }
+        $ids = array_values(array_unique($ids));
+    }
+
     try {
         $r = fat_kaydet($pdo, [
             'fatura_no'    => trim((string)($_POST['fatura_no'] ?? '')),
@@ -113,8 +152,10 @@ if (($_POST['action'] ?? '') === 'kaydet') {
             }
         }
         flash('success', "Fatura kaydedildi: {$r['baglanan']} irsaliye faturaya bağlandı"
+                       . ($taslakOlusan ? ", {$taslakOlusan} eksik irsaliye TASLAK olarak oluşturuldu (Excel aktarımında gerçek verilerle güncellenir)" : "")
                        . ($eklenen ? ", fatura {$eklenen} irsaliyenin belgelerine eklendi" : "")
                        . ($zaten   ? ", {$zaten} irsaliyede zaten ekliydi (mükerrer eklenmedi)" : "") . ".");
+        if ($taslakUyari) flash('warning', $taslakUyari);
     } catch (Throwable $e) {
         flash('error', 'Kayıt hatası: '.$e->getMessage());
     }
@@ -640,12 +681,24 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
         <div class="d-flex flex-wrap gap-1">
             <?php foreach ($e['eksik'] as $n): ?><span class="badge bg-danger-subtle text-danger border border-danger-subtle"><?= h($n) ?></span><?php endforeach; ?>
         </div>
+        <div class="form-check mt-3 p-3 pt-2 ps-5 bg-warning-subtle border border-warning rounded">
+            <input class="form-check-input" type="checkbox" name="eksik_olustur" value="1" id="eksikOlustur">
+            <label class="form-check-label" for="eksikOlustur">
+                <strong>Bu <?= $eksikAdet ?> irsaliyeyi taslak olarak oluştur ve faturaya bağla</strong> <span class="text-muted">(isteğe bağlı)</span>
+                <div class="small text-muted mt-1">
+                    Taslaklar fatura tarihi ve tedarikçisiyle, <strong>0 m³</strong> ve
+                    <span class="badge bg-secondary">[FATURADAN]</span> notuyla açılır; fatura dosyası belge olarak eklenir.
+                    Excel aktarımı aynı numarayı getirdiğinde taslak <strong>silinmez, gerçek verilerle güncellenir</strong> —
+                    fatura bağı ve ekli belgeler korunur. Bunun için <strong>tedarikçi seçili olmalıdır</strong>.
+                </div>
+            </label>
+        </div>
     </div>
 </div>
 <?php endif; ?>
 
 <div class="mb-4">
-    <button class="btn btn-<?= $baskasi ? 'warning' : 'success' ?>" <?= $eslesenAdet?'':'disabled' ?>
+    <button class="btn btn-<?= $baskasi ? 'warning' : 'success' ?>" <?= ($eslesenAdet || $eksikAdet) ? '' : 'disabled' ?>
             <?= $baskasi ? 'onclick="return confirm(\'İşaretli irsaliyelerden bazıları başka bir faturaya bağlı. Bu faturaya taşınsın mı?\')"' : '' ?>>
         <i class="bi bi-save me-1"></i><?= $mevcut ? 'Mevcut Faturayı Güncelle' : 'Faturayı Kaydet' ?> ve İrsaliyeleri Bağla
     </button>

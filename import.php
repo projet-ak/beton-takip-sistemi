@@ -4,6 +4,7 @@ require_once __DIR__ . '/includes/auth.php';
 if (!file_exists(__DIR__ . '/config.php')) { redirect('install.php'); }
 require_auth(['admin', 'teknik_ofis_admin']);
 require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/fatura.php';   // fat_irs_norm: ANM2026-4710 ↔ ANM2026000004710 aynı belgedir
 require_once __DIR__ . '/vendor/autoload.php';
 
 use Shuchkin\SimpleXLSX;
@@ -384,25 +385,51 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                     $secimler[(int)$m[1]][] = (int)$m[2];
                 }
                 $rowsCache = [];
-                $added = 0; $skipped = 0; $errors = []; $silinenTum = 0;
+                $added = 0; $skipped = 0; $guncellenen = 0; $errors = []; $silinenTum = 0;
                 $fotoSnapshot = []; $fotoReattach = 0; $fotoOrphan = 0;
+                $fatSnapshot = []; $fatReattach = 0; $fatOrphan = 0;
                 $atlananlar = []; // atlanan satırların nedenleriyle raporu
                 $resetAll = isset($_POST['reset_all']) && is_admin();
 
                 $pdo->beginTransaction();
                 try {
                     if ($resetAll) {
-                        // Fotoğrafları koru: silmeden önce irsaliye_no ile snapshot al
+                        // Fotoğraf/belgeleri koru: silmeden önce irsaliye_no ile snapshot al
                         // (CASCADE ile DB kaydı silinir; dosyalar diskte kalır → import sonrası
                         //  aynı irsaliye_no'ya sahip yeni kayda yeniden bağlanır).
-                        $fotoSnapshot = $pdo->query("
-                            SELECT i.irsaliye_no, f.dosya_adi, f.dosya_yolu, f.created_by
-                            FROM irsaliye_fotolar f JOIN irsaliyeler i ON i.id = f.irsaliye_id
-                            WHERE i.irsaliye_no IS NOT NULL AND TRIM(i.irsaliye_no) <> ''")->fetchAll();
+                        try {   // tur/okunan runtime kolonları (blg_semasi_kur) — yoksa sade sürüm
+                            $fotoSnapshot = $pdo->query("
+                                SELECT i.irsaliye_no, f.dosya_adi, f.dosya_yolu, f.created_by, f.tur, f.okunan
+                                FROM irsaliye_fotolar f JOIN irsaliyeler i ON i.id = f.irsaliye_id
+                                WHERE i.irsaliye_no IS NOT NULL AND TRIM(i.irsaliye_no) <> ''")->fetchAll();
+                        } catch (Throwable $eSnap) {
+                            $fotoSnapshot = $pdo->query("
+                                SELECT i.irsaliye_no, f.dosya_adi, f.dosya_yolu, f.created_by
+                                FROM irsaliye_fotolar f JOIN irsaliyeler i ON i.id = f.irsaliye_id
+                                WHERE i.irsaliye_no IS NOT NULL AND TRIM(i.irsaliye_no) <> ''")->fetchAll();
+                        }
+                        // Fatura bağlarını koru (irsaliyeler.fatura_id runtime kolonu — yoksa atla)
+                        try {
+                            $fatSnapshot = $pdo->query("
+                                SELECT irsaliye_no, fatura_id FROM irsaliyeler
+                                WHERE fatura_id IS NOT NULL AND irsaliye_no IS NOT NULL AND TRIM(irsaliye_no) <> ''")->fetchAll();
+                        } catch (Throwable $eSnap) { $fatSnapshot = []; }
                         // TAM YENİLEME: tüm mevcut irsaliyeler silinir
                         $silinenTum = (int)$pdo->query("SELECT COUNT(*) FROM irsaliyeler")->fetchColumn();
                         $pdo->exec("DELETE FROM irsaliyeler");
                         audit_log($pdo, 'irsaliyeler', 0, 'DELETE', null, ['tam_yenileme'=>true, 'silinen'=>$silinenTum]);
+                    }
+
+                    // Mevcut numaraları NORMALİZE indeksle: biçim farkı (tire/sıfır dolgu) mükerrer
+                    // kontrolünü atlatamaz. Fatura eşleştirmeden açılan [FATURADAN] taslakları
+                    // Excel satırı SİLMEDEN GÜNCELLER — fatura bağı ve ekli belgeler korunur.
+                    $mevcutNo = [];   // norm no => ['id'=>int, 'taslak'=>bool]
+                    foreach ($pdo->query("SELECT id, irsaliye_no, aciklama FROM irsaliyeler
+                                          WHERE irsaliye_no IS NOT NULL AND TRIM(irsaliye_no) <> ''") as $mr) {
+                        $mk = fat_irs_norm((string)$mr['irsaliye_no']);
+                        if ($mk !== '' && !isset($mevcutNo[$mk]))
+                            $mevcutNo[$mk] = ['id' => (int)$mr['id'],
+                                              'taslak' => str_contains((string)$mr['aciklama'], '[FATURADAN]')];
                     }
                     foreach ($secimler as $sheetIdx => $idxler) {
                     if (!isset($sheets[$sheetIdx])) continue;
@@ -456,11 +483,14 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                         
                         $irsaliyeNo = $val('irsaliye_no');
 
-                        // İrsaliye no ile mükerrer kontrolü
-                        if ($irsaliyeNo) {
-                            $dup = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler WHERE UPPER(TRIM(irsaliye_no)) = UPPER(TRIM(?))");
-                            $dup->execute([$irsaliyeNo]);
-                            if ($dup->fetchColumn() > 0) {
+                        // İrsaliye no ile mükerrer kontrolü (normalize: SKB2026-12047 ↔ SKB2026000012047).
+                        // [FATURADAN] taslağıysa atlamak yerine GÜNCELLENİR (bağlar korunur).
+                        $irsNorm  = $irsaliyeNo ? fat_irs_norm((string)$irsaliyeNo) : '';
+                        $taslakId = null;
+                        if ($irsNorm !== '' && isset($mevcutNo[$irsNorm])) {
+                            if ($mevcutNo[$irsNorm]['taslak']) {
+                                $taslakId = $mevcutNo[$irsNorm]['id'];
+                            } else {
                                 $skipped++;
                                 $atlananlar[] = "Satır ".($idx+1)." (".h($irsaliyeNo).", ".h($val('miktar','0'))." m³): mükerrer — bu irsaliye no zaten kayıtlı";
                                 continue;
@@ -479,19 +509,7 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                         
                         $miktarVal = parseMiktar($val('miktar', 0));
 
-                        $stmt = $pdo->prepare("INSERT INTO irsaliyeler
-                            (tip, sira_no, fatura_no, arac_plaka, kivam_sinifi_id, irsaliye_no,
-                             proje_no, proje_id,
-                             tedarikci_id, tarih,
-                             mikser_cikis_saati, kantar_giris_saati, kantar_cikis_saati,
-                             kantar_net_yildizlar, kantar_net_tedarikci, kantar_farki,
-                             beton_sinifi_id, miktar, birim, pompa_id,
-                             katki1_id, katki2_id, firma_id,
-                             imalat_grup_id, ana_is_kalemi_id,
-                             parsel_id, blok_id, kot_id, aciklama, created_by)
-                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
-
-                        $stmt->execute([
+                        $ortak = [
                             $rowTip,
                             $val('sira_no'), $val('fatura_no'), $val('arac_plaka'),
                             $kivamId, $irsaliyeNo,
@@ -504,32 +522,88 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                             $betonId, $miktarVal, $val('birim', 'M3'), $pompaId,
                             $katki1Id, $katki2Id, $firmaId,
                             $imalatGrupId, $anaKalemId,
-                            $parselId, $blokId, $kotId, $val('aciklama'), current_user()['id']
-                        ]);
-                        $added++;
+                            $parselId, $blokId, $kotId, $val('aciklama'),
+                        ];
+
+                        if ($taslakId !== null) {
+                            // [FATURADAN] taslağı Excel verisiyle güncelle: id sabit kalır,
+                            // fatura_id bağı ve irsaliye_fotolar ekleri olduğu gibi korunur.
+                            // Excel'de fatura no boşsa taslağın fatura no'su ezilmez.
+                            $stmt = $pdo->prepare("UPDATE irsaliyeler SET
+                                tip=?, sira_no=?, fatura_no=COALESCE(?, fatura_no), arac_plaka=?, kivam_sinifi_id=?, irsaliye_no=?,
+                                proje_no=?, proje_id=?,
+                                tedarikci_id=?, tarih=?,
+                                mikser_cikis_saati=?, kantar_giris_saati=?, kantar_cikis_saati=?,
+                                kantar_net_yildizlar=?, kantar_net_tedarikci=?, kantar_farki=?,
+                                beton_sinifi_id=?, miktar=?, birim=?, pompa_id=?,
+                                katki1_id=?, katki2_id=?, firma_id=?,
+                                imalat_grup_id=?, ana_is_kalemi_id=?,
+                                parsel_id=?, blok_id=?, kot_id=?, aciklama=?, updated_by=?
+                                WHERE id = ?");
+                            $stmt->execute([...$ortak, current_user()['id'], $taslakId]);
+                            $mevcutNo[$irsNorm]['taslak'] = false;   // artık gerçek kayıt
+                            $guncellenen++;
+                        } else {
+                            $stmt = $pdo->prepare("INSERT INTO irsaliyeler
+                                (tip, sira_no, fatura_no, arac_plaka, kivam_sinifi_id, irsaliye_no,
+                                 proje_no, proje_id,
+                                 tedarikci_id, tarih,
+                                 mikser_cikis_saati, kantar_giris_saati, kantar_cikis_saati,
+                                 kantar_net_yildizlar, kantar_net_tedarikci, kantar_farki,
+                                 beton_sinifi_id, miktar, birim, pompa_id,
+                                 katki1_id, katki2_id, firma_id,
+                                 imalat_grup_id, ana_is_kalemi_id,
+                                 parsel_id, blok_id, kot_id, aciklama, created_by)
+                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                            $stmt->execute([...$ortak, current_user()['id']]);
+                            if ($irsNorm !== '')
+                                $mevcutNo[$irsNorm] = ['id' => (int)$pdo->lastInsertId(), 'taslak' => false];
+                            $added++;
+                        }
                     }
                     } // sayfa döngüsü sonu
 
-                    // Fotoğrafları yeniden bağla: snapshot'taki her fotoyu, aynı irsaliye_no'ya
-                    // sahip yeni irsaliye kaydına ekle (eşleşmeyen = o irsaliye artık Excel'de yok).
-                    if ($resetAll && $fotoSnapshot) {
+                    // Fotoğraf/belge ve fatura bağlarını yeniden bağla: snapshot'takiler, aynı
+                    // (NORMALİZE) irsaliye no'ya sahip yeni kayda eklenir — biçim farkı
+                    // (SKB2026-12047 ↔ SKB2026000012047) bağın kopmasına yol açmaz.
+                    if ($resetAll && ($fotoSnapshot || $fatSnapshot)) {
                         $noMap = [];
                         foreach ($pdo->query("SELECT id, irsaliye_no FROM irsaliyeler WHERE irsaliye_no IS NOT NULL AND TRIM(irsaliye_no)<>''") as $ir) {
-                            $key = mb_strtoupper(trim((string)$ir['irsaliye_no']), 'UTF-8');
-                            if (!isset($noMap[$key])) $noMap[$key] = (int)$ir['id']; // ilk eşleşme
+                            $key = fat_irs_norm((string)$ir['irsaliye_no']);
+                            if ($key !== '' && !isset($noMap[$key])) $noMap[$key] = (int)$ir['id']; // ilk eşleşme
                         }
-                        $insFoto = $pdo->prepare("INSERT INTO irsaliye_fotolar (irsaliye_id, dosya_adi, dosya_yolu, created_by) VALUES (?,?,?,?)");
-                        foreach ($fotoSnapshot as $f) {
-                            $key = mb_strtoupper(trim((string)$f['irsaliye_no']), 'UTF-8');
-                            if (isset($noMap[$key])) { $insFoto->execute([$noMap[$key], $f['dosya_adi'], $f['dosya_yolu'], $f['created_by']]); $fotoReattach++; }
-                            else $fotoOrphan++;
+                        if ($fotoSnapshot) {
+                            $blgVar  = array_key_exists('tur', $fotoSnapshot[0] ?? []);   // tur/okunan kolonları var mı
+                            $insFoto = $blgVar
+                                ? $pdo->prepare("INSERT INTO irsaliye_fotolar (irsaliye_id, dosya_adi, dosya_yolu, created_by, tur, okunan) VALUES (?,?,?,?,?,?)")
+                                : $pdo->prepare("INSERT INTO irsaliye_fotolar (irsaliye_id, dosya_adi, dosya_yolu, created_by) VALUES (?,?,?,?)");
+                            foreach ($fotoSnapshot as $f) {
+                                $key = fat_irs_norm((string)$f['irsaliye_no']);
+                                if (isset($noMap[$key])) {
+                                    $insFoto->execute($blgVar
+                                        ? [$noMap[$key], $f['dosya_adi'], $f['dosya_yolu'], $f['created_by'], $f['tur'], $f['okunan']]
+                                        : [$noMap[$key], $f['dosya_adi'], $f['dosya_yolu'], $f['created_by']]);
+                                    $fotoReattach++;
+                                } else $fotoOrphan++;
+                            }
+                        }
+                        if ($fatSnapshot) {
+                            $updFat = $pdo->prepare("UPDATE irsaliyeler SET fatura_id = ? WHERE id = ?");
+                            foreach ($fatSnapshot as $f) {
+                                $key = fat_irs_norm((string)$f['irsaliye_no']);
+                                if (isset($noMap[$key])) { $updFat->execute([(int)$f['fatura_id'], $noMap[$key]]); $fatReattach++; }
+                                else $fatOrphan++;
+                            }
                         }
                     }
 
                     $pdo->commit();
                     $success = ($resetAll ? "TAM YENİLEME: önce {$silinenTum} mevcut kayıt silindi. " : '')
-                             . "Aktarım işlemi tamamlandı! $added kayıt eklendi, $skipped mükerrer veya geçersiz kayıt atlandı."
-                             . (($resetAll && ($fotoReattach || $fotoOrphan)) ? " {$fotoReattach} fotoğraf yeniden bağlandı" . ($fotoOrphan ? ", {$fotoOrphan} fotoğraf eşleşmedi (irsaliye artık Excel'de yok)" : '') . "." : '');
+                             . "Aktarım işlemi tamamlandı! $added kayıt eklendi"
+                             . ($guncellenen ? ", $guncellenen faturadan açılmış taslak gerçek verilerle güncellendi (bağlar korundu)" : '')
+                             . ", $skipped mükerrer veya geçersiz kayıt atlandı."
+                             . (($resetAll && ($fotoReattach || $fotoOrphan)) ? " {$fotoReattach} fotoğraf/belge yeniden bağlandı" . ($fotoOrphan ? ", {$fotoOrphan} eşleşmedi (irsaliye artık Excel'de yok)" : '') . "." : '')
+                             . (($resetAll && ($fatReattach || $fatOrphan)) ? " {$fatReattach} fatura bağı korundu" . ($fatOrphan ? ", {$fatOrphan} fatura bağı eşleşmedi" : '') . "." : '');
 
                     // Oturum dosyalarını temizle
                     @unlink($tempPath);
