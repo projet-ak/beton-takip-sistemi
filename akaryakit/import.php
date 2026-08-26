@@ -28,6 +28,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && !empty($_FILES['dosya']['tmp_name']))
     if (!($x = SimpleXLSX::parse($_FILES['dosya']['tmp_name']))) { $hata='Excel okunamadı: '.SimpleXLSX::parseError(); }
     else {
         $st = ['ay'=>0,'arac'=>0,'tuketim'=>0,'tutanak'=>0,'donem'=>[]];
+        // Günlük stok akışı kolonu (ALTER örtük commit yapar — transaction'dan ÖNCE)
+        try { $pdoAkaryakit->exec("ALTER TABLE akaryakit_donemler ADD COLUMN gunluk LONGTEXT NULL"); } catch (Throwable $e) {}
         try {
             $pdoAkaryakit->beginTransaction();
 
@@ -67,24 +69,34 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && !empty($_FILES['dosya']['tmp_name']))
                 $donem = ak_donemAd($sheetName);
                 $dsira = ak_donemSira($donem);
 
-                // Stok özeti: col7 etiketleri
-                $devir=0; $gelen=0; $kullanilan=0;
+                // Stok özeti: col7 etiketleri + GÜNLÜK seriler (üst blok, gün d → col 7+2d)
+                //   YENİ GELEN satırının gün hücreleri = mazotun HANGİ GÜN geldiği
+                //   KULLANILAN satırının gün hücreleri = o günün toplam tüketimi
+                $devir=0; $gelen=0; $kullanilan=0; $gGelen=[]; $gKull=[];
                 foreach ($rows as $row) {
                     $lbl = mb_strtoupper(trim((string)($row[7]??'')),'UTF-8');
                     $val = ak_sayi($row[8]??'');
                     if ($lbl==='DEVİR' || $lbl==='DEVIR') $devir=$val;
-                    elseif ($lbl==='YENİ GELEN' || $lbl==='YENI GELEN') $gelen=$val;
-                    elseif ($lbl==='KULLANILAN') $kullanilan=$val;
+                    elseif ($lbl==='YENİ GELEN' || $lbl==='YENI GELEN') {
+                        $gelen=$val;
+                        for ($d=1;$d<=31;$d++) { $g=ak_sayi($row[7+2*$d]??''); if ($g!=0.0) $gGelen[(string)$d]=$g; }
+                    }
+                    elseif ($lbl==='KULLANILAN') {
+                        $kullanilan=$val;
+                        for ($d=1;$d<=31;$d++) { $g=ak_sayi($row[7+2*$d]??''); if ($g!=0.0) $gKull[(string)$d]=$g; }
+                    }
                 }
                 $toplam = $devir + $gelen;
                 $kalan  = $toplam - $kullanilan;
+                $gunlukJson = ($gGelen || $gKull)
+                    ? json_encode(['gelen'=>$gGelen,'kullanilan'=>$gKull], JSON_UNESCAPED_UNICODE) : null;
 
                 // Dönem stok kaydı (upsert)
                 $pdoAkaryakit->prepare("INSERT INTO akaryakit_donemler
-                    (donem,donem_sira,devir,gelen,toplam,kullanilan,kalan) VALUES (?,?,?,?,?,?,?)
+                    (donem,donem_sira,devir,gelen,toplam,kullanilan,kalan,gunluk) VALUES (?,?,?,?,?,?,?,?)
                     ON DUPLICATE KEY UPDATE donem_sira=VALUES(donem_sira),devir=VALUES(devir),gelen=VALUES(gelen),
-                    toplam=VALUES(toplam),kullanilan=VALUES(kullanilan),kalan=VALUES(kalan)")
-                    ->execute([$donem,$dsira,$devir,$gelen,$toplam,$kullanilan,$kalan]);
+                    toplam=VALUES(toplam),kullanilan=VALUES(kullanilan),kalan=VALUES(kalan),gunluk=VALUES(gunluk)")
+                    ->execute([$donem,$dsira,$devir,$gelen,$toplam,$kullanilan,$kalan,$gunlukJson]);
                 $st['ay']++;
 
                 // Araç tüketim satırları — tam yenileme (bu dönem)

@@ -35,6 +35,7 @@ $tablolar = [
         toplam DECIMAL(14,2) NOT NULL DEFAULT 0,
         kullanilan DECIMAL(14,2) NOT NULL DEFAULT 0,
         kalan DECIMAL(14,2) NOT NULL DEFAULT 0,
+        gunluk LONGTEXT NULL,
         created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uq_donem (donem),
         INDEX (donem_sira)

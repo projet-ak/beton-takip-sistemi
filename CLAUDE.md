@@ -38,7 +38,11 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   `includes/db_akaryakit.php` → `$pdoAkaryakit`. Tablolar: `akaryakit_araclar` (araç/makine kaydı,
   anahtar = **Şoför + Cinsi** normalize, get-or-create), `akaryakit_donemler` (ay bazlı stok:
   **Devir + Gelen = Toplam; Toplam − Kullanılan = Kalan**; her ayın Kalan'ı sonraki ayın Devir'i =
-  zincir), `akaryakit_tuketim` (dönem×araç: aylık tüketim/çalışma/ortalama/okumalar + **günlük 31
+  zincir; + `gunluk` JSON: üst bloktan günlük seriler `{gelen:{gün:Lt}, kullanilan:{gün:Lt}}` —
+  YENİ GELEN satırının gün hücreleri mazotun geldiği günü, KULLANILAN satırınınki o günün toplam
+  tüketimini verir [gün d → col 7+2d 0-based]; stok.php'de **Günlük Akış** modali gün gün
+  gelen/kullanılan/kalan gösterir, günlük gelen toplamı aylıktan farklıysa uyarır — Excel'de geliş
+  günleri çoğu ay girilmemiş), `akaryakit_tuketim` (dönem×araç: aylık tüketim/çalışma/ortalama/okumalar + **günlük 31
   günün Mazot/Km detayı JSON** `gunluk`), `akaryakit_tutanak` (aylık imzalı tüketim raporu satırları).
   Sayfalar: index(dashboard: stok KPI + aylık tüketim/kalan grafik + firma doughnut + en çok tüketen) ·
   aylik(dönem seçmeli araç tüketim tablosu + günlük detay modal) · stok(dönem zinciri, uyuşmayan geçiş
