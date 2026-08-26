@@ -49,7 +49,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   kırmızı, elle düzelt) · **cikislar**(günlük mazot çıkışı: araç seçimi otomatik doldurur, ay filtresi + KPI;
   tablo `akaryakit_cikislar` runtime+kurulum, **imzalı evrak yükleme** `evrak_url` → `uploads/akaryakit_cikis/{id}/`; stok zincirine KARIŞMAZ — Excel esastır, ay sonunda Excel'e işlenir) ·
   **cikis_tutanak**(sahadaki basılı AKARYAKIT ÇIKIŞ FİŞİ'nin [EYS.ABR.01.FR.05] birebir kopyası: Projesi satırı=açıklama, şirket/kiralık/taşeron kutucukları=arac_tipi, sayaç plakalıysa KİLOMETRE değilse Ç.SAATİ satırına; ERN Taahhüt logolu, AKY-C-00001 no) ·
-  araclar/arac_form(CRUD) · tutanaklar + tutanak_pdf(A4) · raporlar (Chart.js + Excel: aylık tüketim, firma/araç bazlı) · import · kurulum_akaryakit.
+  araclar/arac_form(CRUD; listede Toplam Tüketim'e tıklayınca **Yakıt Geçmişi modali** — AJAX `?gecmis=arac_id`, dönem dönem + gün gün "kim ne zaman ne kadar aldı" tarihli döküm, günlük detay girilmemiş aylar not düşülür) · tutanaklar + tutanak_pdf(A4) · raporlar (Chart.js + Excel: aylık tüketim, firma/araç bazlı) · import · kurulum_akaryakit.
   Import: aylık sayfalar (OCAK 2026…) + TUTANAK sayfaları **dönem bazlı tam yenileme**; sayfa altındaki **imza bloğu** (DEPO ŞEFİ…/MALİ İŞLER ŞEFİ:/İMZA:/TARİH:) `ak_imza_satiri()` ile atlanır — aksi halde 'İMZA:' adlı araçlar oluşuyordu; `ak_imza_temizle()` eski çöp araç/tüketim/tutanak kayıtlarını import sonunda siler; **Excel'in
   TOPLAM hücreleri bayat olduğundan stok hesaplanır** (devir+gelen, −kullanılan). Gün d → Mazot col
   `7+2d`, Km col `8+2d` (gün 1=col9…31=col69); özet col 71 aylık/72 çalışma/73 ortalama/74-76 okuma.
