@@ -64,7 +64,9 @@ curl_setopt_array($ch, [
     CURLOPT_FILE           => $fh,
     CURLOPT_FOLLOWLOCATION => true,
     CURLOPT_MAXREDIRS      => 5,
-    CURLOPT_TIMEOUT        => 120,
+    CURLOPT_TIMEOUT        => 600,           // büyük zip'te 120 sn yetmiyordu (indirme yarıda kesilip 502 oluyordu)
+    CURLOPT_LOW_SPEED_LIMIT=> 1024,          // 60 sn boyunca <1 KB/s akarsa gerçek takılma say, bekletme
+    CURLOPT_LOW_SPEED_TIME => 60,
     CURLOPT_SSL_VERIFYPEER => true,
     CURLOPT_HTTPHEADER     => $headers,
 ]);

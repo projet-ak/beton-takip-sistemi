@@ -374,3 +374,10 @@ uploads/scans/
 # Geçici çalışma dosyaları
 scratch/
 varlik-site/config.php
+
+# Kök dizine yanlışlıkla eklenen tarama/evrak dosyaları repoya girmesin
+# (GitHub zip'ini şişirir, deploy indirmesi zaman aşımına düşer).
+# Kayıtlı küçük örnek dosyalar (ANM..., Beton Takip Tablosu...) etkilenmez.
+/*.pdf
+/*.jpeg
+/*.jpg
