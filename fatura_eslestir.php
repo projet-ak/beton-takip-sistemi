@@ -764,7 +764,12 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
 <?php endif; ?>
 
 <div class="card">
-    <div class="card-header bg-white fw-semibold"><i class="bi bi-archive me-1"></i> Kayıtlı Faturalar</div>
+    <div class="card-header bg-white fw-semibold d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-archive me-1"></i> Kayıtlı Faturalar</span>
+        <span class="badge bg-primary" title="Toplam fatura sayısı"><?= count($kayitli) ?> fatura
+            · <?= $fmt(array_sum(array_map(fn($x)=>(float)$x['miktar_m3'], $kayitli))) ?> m³
+            · <?= $fmt(array_sum(array_map(fn($x)=>(float)$x['tutar'], $kayitli))) ?> ₺</span>
+    </div>
     <div class="card-body p-0">
     <?php if (!$kayitli): ?>
         <div class="p-3 text-muted">Henüz kayıtlı fatura yok.</div>
@@ -772,12 +777,14 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
         <div class="table-responsive">
         <table class="table table-sm table-hover mb-0 align-middle">
             <thead class="table-light"><tr>
+                <th class="text-center">#</th>
                 <th>Fatura No</th><th>Tarih</th><th>Tedarikçi</th><th class="text-end">Tutar</th>
                 <th class="text-end">m³</th><th class="text-end">Bağlı İrs.</th><th class="text-end">Eksik</th><th>Dosya</th><th></th>
             </tr></thead>
             <tbody>
-            <?php foreach ($kayitli as $f): $fIrs = $kayitliIrs[(int)$f['id']] ?? []; ?>
+            <?php $sira = count($kayitli); foreach ($kayitli as $f): $fIrs = $kayitliIrs[(int)$f['id']] ?? []; ?>
                 <tr>
+                    <td class="text-center text-muted"><?= $sira-- ?></td>
                     <td><code><?= h($f['fatura_no']) ?></code></td>
                     <td><?= h(format_date($f['tarih'])) ?></td>
                     <td><?= h((string)$f['tedarikci']) ?></td>
@@ -831,7 +838,7 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                 </tr>
                 <?php if ($fIrs): ?>
                 <tr class="collapse" id="fi<?= (int)$f['id'] ?>">
-                    <td colspan="9" class="bg-body-tertiary">
+                    <td colspan="10" class="bg-body-tertiary">
                         <div class="small fw-semibold mb-1">
                             <?= h($f['fatura_no']) ?> faturasına bağlı irsaliyeler (<?= count($fIrs) ?>)
                         </div>

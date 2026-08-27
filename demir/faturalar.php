@@ -41,6 +41,8 @@ function dfat_semasi_kur(PDO $pdo): void {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     try { $pdo->exec("ALTER TABLE demir_sevkiyatlar ADD COLUMN fatura_id INT NULL, ADD INDEX idx_fatura (fatura_id)"); }
     catch (Throwable $e) {}
+    try { $pdo->exec("ALTER TABLE demir_faturalar ADD COLUMN kalemler LONGTEXT NULL"); }
+    catch (Throwable $e) {}
 }
 dfat_semasi_kur($pdoDemir);
 
@@ -121,6 +123,39 @@ function dfat_cikar(string $metin): array {
         elseif (!isset($d['caplar']["Ø{$c}"])) $d['caplar']["Q{$c} (kangal)"] = true;   // aynı çap Ø olarak zaten varsa tekrar yazma
     }
     $d['caplar'] = array_keys($d['caplar']);
+
+    // KALEMLER: çap + kg (+ hangi irsaliyeye ait) — taslak sevkiyat kalemleri buradan kurulur.
+    // Kalem kg'ları ondalıklı yazılır ("26.360,00 kg"); ondalıksız özet tekrarları dışarıda kalır.
+    $d['kalemler'] = [];
+    $kgListe = [];
+    if (preg_match_all('/([\d.,]+,\d{2})\s*kg\b/iu', $t, $km)) foreach ($km[1] as $v) { $f = fat_sayi($v); if ($f !== null) $kgListe[] = $f; }
+    $capIrs = [];
+    if (preg_match_all('/Ø\s*(\d{1,2})\s*MM[^\[\n]{0,80}\n?\s*\[İRS\.?\s*NO[:\s]*(\d+)/iu', $t, $mm, PREG_SET_ORDER)) {
+        foreach ($mm as $g) $capIrs[] = ['cap' => (int)$g[1], 'irs' => strtoupper($g[2])];
+    }
+    if ($capIrs && count($capIrs) === count($kgListe)) {
+        // Ali Cangül düzeni: her kalemde Ø + [İRS.NO] + kg — birebir eşle
+        foreach ($capIrs as $i => $ci) $d['kalemler'][] = ['cap' => $ci['cap'], 'kg' => $kgListe[$i], 'irs' => $ci['irs']];
+    } elseif (preg_match_all('/(\d{1,2})\s*MM\s*NERV.{0,60}?([\d.,]+)\s*Kg\b/su', $t, $mm, PREG_SET_ORDER)) {
+        // Çakıroğlu düzeni: kalemde çap + kg (irsaliye tek olduğundan hepsi ona ait).
+        // "27.680" ondalıksız BİNLİK yazımdır (27.680 kg = 27680) — fat_sayi ondalık sanmasın.
+        foreach ($mm as $g) {
+            $ham = trim($g[2]);
+            $f = preg_match('/^\d{1,3}(\.\d{3})+$/', $ham) ? (float)str_replace('.', '', $ham) : fat_sayi($ham);
+            if ($f !== null) $d['kalemler'][] = ['cap' => (int)$g[1], 'kg' => $f, 'irs' => null];
+        }
+    } elseif ($kgListe && count($kgListe) === count($d['irsaliyeler'])) {
+        // Cangül düzeni: kalemlerde çap yok; kalem sırası dipnottaki e-irsaliye sırasıyla eşleşir
+        foreach ($kgListe as $i => $kg) $d['kalemler'][] = ['cap' => null, 'kg' => $kg, 'irs' => $d['irsaliyeler'][$i]];
+    }
+    // Sağlama: kalem toplamı fatura toplamının binde biriyse ölçek hatası var demektir — düzelt
+    if ($d['kalemler'] && $d['miktar_kg'] !== null) {
+        $ktop = array_sum(array_column($d['kalemler'], 'kg'));
+        if ($ktop > 0 && abs($ktop * 1000 - $d['miktar_kg']) < max(1.0, $d['miktar_kg'] * 0.001)) {
+            foreach ($d['kalemler'] as &$kl0) $kl0['kg'] *= 1000;
+            unset($kl0);
+        }
+    }
 
     // Satıcı VKN + unvan: SAYIN bloğundaki VKN alıcınındır, diğeri satıcının
     $saticiOff = null;
@@ -275,21 +310,42 @@ if (($_POST['action'] ?? '') === 'kaydet') {
         $mq->execute([$faturaNo, (string)$ettn, (string)$ettn]);
         $fid = (int)($mq->fetchColumn() ?: 0);
 
+        // Tedarikçi seçilmemişse faturadaki satıcı unvanıyla get-or-create (taslak için de gerekli)
+        if (!$tedId && $tedAd !== null && $tedAd !== '') {
+            $u = fat_unvan_norm($tedAd);
+            if ($u !== '' && mb_strlen($u) >= 4) {
+                foreach ($pdoDemir->query("SELECT id, ad FROM demir_tedarikciler") as $td0) {
+                    $a0 = fat_unvan_norm($td0['ad']);
+                    if ($a0 !== '' && mb_strlen($a0) >= 4 && (str_contains($u, $a0) || str_contains($a0, $u))) { $tedId = (int)$td0['id']; break; }
+                }
+                if (!$tedId) {
+                    $pdoDemir->prepare("INSERT INTO demir_tedarikciler (ad) VALUES (?)")->execute([$tedAd]);
+                    $tedId = (int)$pdoDemir->lastInsertId();
+                    flash('info', 'Yeni demir tedarikçisi oluşturuldu: ' . $tedAd);
+                }
+            }
+        }
+
+        $kalemler = json_decode((string)($_POST['kalemler'] ?? ''), true);
+        $kalemler = is_array($kalemler) ? array_slice($kalemler, 0, 200) : [];
+
         $par = [$ettn, fat_tarih_norm($_POST['tarih'] ?? '') ?: null, $tedAd, $tedId,
                 trim((string)($_POST['siparis_no'] ?? '')) ?: null,
                 $irsListe ? json_encode($irsListe, JSON_UNESCAPED_UNICODE) : null,
                 fat_sayi((string)($_POST['miktar_kg'] ?? '')), fat_sayi((string)($_POST['tutar'] ?? '')),
                 fat_sayi((string)($_POST['brut_tutar'] ?? '')),
                 trim((string)($_POST['dosya_url'] ?? '')) ?: null,
-                trim((string)($_POST['notlar'] ?? '')) ?: null];
+                trim((string)($_POST['notlar'] ?? '')) ?: null,
+                $kalemler ? json_encode($kalemler, JSON_UNESCAPED_UNICODE) : null];
         if ($fid) {
             $pdoDemir->prepare("UPDATE demir_faturalar SET ettn=?, tarih=?, tedarikci=?, tedarikci_id=?, siparis_no=?,
-                irsaliye_liste=?, miktar_kg=?, tutar=?, brut_tutar=?, dosya_url=COALESCE(?, dosya_url), notlar=? WHERE id=?")
+                irsaliye_liste=?, miktar_kg=?, tutar=?, brut_tutar=?, dosya_url=COALESCE(?, dosya_url), notlar=?,
+                kalemler=COALESCE(?, kalemler) WHERE id=?")
                 ->execute([...$par, $fid]);
         } else {
             $pdoDemir->prepare("INSERT INTO demir_faturalar (fatura_no, ettn, tarih, tedarikci, tedarikci_id, siparis_no,
-                irsaliye_liste, miktar_kg, tutar, brut_tutar, dosya_url, notlar, created_by)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+                irsaliye_liste, miktar_kg, tutar, brut_tutar, dosya_url, notlar, kalemler, created_by)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
                 ->execute([$faturaNo, ...$par, current_user_id()]);
             $fid = (int)$pdoDemir->lastInsertId();
         }
@@ -300,8 +356,73 @@ if (($_POST['action'] ?? '') === 'kaydet') {
             $upd = $pdoDemir->prepare("UPDATE demir_sevkiyatlar SET fatura_id = ? WHERE id = ?");
             foreach ($svkIds as $sid) { $upd->execute([$fid, $sid]); $bagli++; }
         }
-        flash('success', "Fatura {$faturaNo} kaydedildi" . ($bagli ? ", {$bagli} sevkiyata bağlandı" : "") . ".");
+
+        // İsteğe bağlı: sevkiyatlarda bulunamayan irsaliyelerden TASLAK SEVKİYAT oluştur
+        // ([FATURADAN] etiketi — Excel aktarımı aynı numarayı getirince taslak SİLİNMEZ, güncellenir).
+        $taslakOlusan = 0; $taslakUyari = '';
+        if (!empty($_POST['eksik_olustur'])) {
+            if (!$tedId) {
+                $taslakUyari = 'Taslak sevkiyat OLUŞTURULMADI: tedarikçi seçilmedi ve faturadan da çözülemedi.';
+            } else {
+                // Kaydetme anında yeniden doğrula — bu arada girilmiş sevkiyat varsa taslak AÇILMAZ (mükerrer imkânsız)
+                $tekrar = dfat_eslestir($pdoDemir, $irsListe, []);
+                foreach ($tekrar['eslesen'] as $r0) {
+                    $pdoDemir->prepare("UPDATE demir_sevkiyatlar SET fatura_id = ? WHERE id = ?")->execute([$fid, (int)$r0['id']]);
+                }
+                // Çap çözümü: demir_caplar'daki adlardan sayı çıkar (duz öncelikli)
+                $capMap = [];
+                foreach ($pdoDemir->query("SELECT id, ad, tip FROM demir_caplar") as $c0) {
+                    if (preg_match('/(\d+)/', (string)$c0['ad'], $cm)) {
+                        $n0 = (int)$cm[1];
+                        if (!isset($capMap[$n0]) || $c0['tip'] === 'duz') $capMap[$n0] = (int)$c0['id'];
+                    }
+                }
+                $tarih0 = fat_tarih_norm($_POST['tarih'] ?? '') ?: date('Y-m-d');
+                $insS = $pdoDemir->prepare("INSERT INTO demir_sevkiyatlar
+                    (irsaliye_no, irsaliye_tarih, gelis_tarih, tedarikci_id, aciklama, fatura_id, created_by)
+                    VALUES (?,?,?,?,?,?,?)");
+                $insK = $pdoDemir->prepare("INSERT INTO demir_sevkiyat_kalemleri (sevkiyat_id, cap_id, irsaliye_miktar) VALUES (?,?,?)");
+                foreach ($tekrar['eksik'] as $no0) {
+                    $insS->execute([$no0, $tarih0, $tarih0, $tedId,
+                        '[FATURADAN] ' . $faturaNo . ' faturasından otomatik oluşturuldu — Excel aktarımında gerçek verilerle güncellenir.',
+                        $fid, current_user_id()]);
+                    $sid0 = (int)$pdoDemir->lastInsertId();
+                    // Kalemler: bu irsaliyeye ait olanlar; irsaliye tekse tümü
+                    $n0k = fat_irs_norm($no0);
+                    foreach ($kalemler as $kl) {
+                        $ait = (isset($kl['irs']) && $kl['irs'] !== null && $kl['irs'] !== '')
+                             ? (fat_irs_norm((string)$kl['irs']) === $n0k)
+                             : (count($irsListe) === 1);
+                        if (!$ait || empty($kl['kg'])) continue;
+                        $capId0 = isset($kl['cap']) && $kl['cap'] !== null ? ($capMap[(int)$kl['cap']] ?? null) : null;
+                        if ($capId0 === null) continue;   // çapı bilinmeyen kalem yazılamaz (cap_id zorunlu)
+                        $insK->execute([$sid0, $capId0, round(((float)$kl['kg']) / 1000, 3)]);
+                    }
+                    $taslakOlusan++;
+                }
+            }
+        }
+
+        flash('success', "Fatura {$faturaNo} kaydedildi"
+            . ($bagli ? ", {$bagli} sevkiyata bağlandı" : "")
+            . ($taslakOlusan ? ", {$taslakOlusan} eksik irsaliye TASLAK sevkiyat olarak oluşturuldu (Excel aktarımında gerçek verilerle güncellenir)" : "") . ".");
+        if ($taslakUyari) flash('warning', $taslakUyari);
     } catch (Throwable $eK) { flash('error', 'Kayıt hatası: ' . $eK->getMessage()); }
+    redirect('faturalar.php');
+}
+
+// ── 2b) Eksik alanı elle düzelt (Kayıtlı Faturalar listesinden) ──────────────
+if (($_POST['action'] ?? '') === 'alan_duzelt' && ctype_digit((string)($_POST['fatura_id'] ?? ''))) {
+    $fid = (int)$_POST['fatura_id'];
+    $alan = (string)($_POST['alan'] ?? '');
+    if (!in_array($alan, ['miktar_kg', 'tutar'], true)) { flash('error', 'Geçersiz alan.'); redirect('faturalar.php'); }
+    $deger = fat_sayi((string)($_POST['deger'] ?? ''));
+    if ($deger === null || $deger < 0) {
+        flash('error', 'Geçerli bir değer girin (örn. 27680 veya 27.680).');
+    } else {
+        $pdoDemir->prepare("UPDATE demir_faturalar SET {$alan} = ? WHERE id = ?")->execute([$deger, $fid]);
+        flash('success', ($alan === 'miktar_kg' ? 'Miktar (kg)' : 'Tutar') . ' elle kaydedildi: ' . number_format($deger, 2, ',', '.'));
+    }
     redirect('faturalar.php');
 }
 
@@ -323,6 +444,29 @@ $kayitli = $pdoDemir->query("SELECT f.*,
             JOIN demir_sevkiyat_kalemleri k ON k.sevkiyat_id = s.id WHERE s.fatura_id = f.id) irs_ton
     FROM demir_faturalar f ORDER BY f.tarih DESC, f.id DESC")->fetchAll();
 $tedarikciler = $pdoDemir->query("SELECT id, ad FROM demir_tedarikciler ORDER BY ad")->fetchAll();
+
+// Bağlı sevkiyat detayları (açılır içerik) + çap kırılımı + IFS sipariş bağlantısı
+$bagliSvk = []; $svkKalem = []; $sipMap = [];
+try {
+    foreach ($pdoDemir->query("SELECT s.id, s.fatura_id, s.irsaliye_no, s.gelis_tarih, s.irsaliye_tarih, s.arac_plaka,
+                                      s.ifs_siparis_no, s.aciklama, p.kod AS proje, t.ad AS tedarikci
+                               FROM demir_sevkiyatlar s
+                               LEFT JOIN demir_projeler p ON p.id = s.proje_id
+                               LEFT JOIN demir_tedarikciler t ON t.id = s.tedarikci_id
+                               WHERE s.fatura_id IS NOT NULL") as $r) $bagliSvk[(int)$r['fatura_id']][] = $r;
+    foreach ($pdoDemir->query("SELECT k.sevkiyat_id, c.ad AS cap, k.irsaliye_miktar, k.kantar_miktar
+                               FROM demir_sevkiyat_kalemleri k JOIN demir_caplar c ON c.id = k.cap_id
+                               WHERE k.sevkiyat_id IN (SELECT id FROM demir_sevkiyatlar WHERE fatura_id IS NOT NULL)") as $r)
+        $svkKalem[(int)$r['sevkiyat_id']][] = $r;
+    foreach ($pdoDemir->query("SELECT id, ifs_siparis_no FROM demir_siparisler WHERE ifs_siparis_no IS NOT NULL AND ifs_siparis_no <> ''") as $r)
+        $sipMap[trim((string)$r['ifs_siparis_no'])] = (int)$r['id'];
+} catch (Throwable $e0) {}
+// İrsaliye no (normalize) → bağlı sevkiyat id (kayıtlı listede rozetleri tıklanır yapmak için)
+$irsSvkMap = [];
+foreach ($bagliSvk as $fidX => $liste) foreach ($liste as $r) {
+    $k = fat_irs_norm((string)$r['irsaliye_no']);
+    if ($k !== '') $irsSvkMap[$fidX . '|' . $k] = (int)$r['id'];
+}
 
 $pageTitle = 'Demir Fatura Takibi';
 require_once __DIR__ . '/../includes/header.php';
@@ -365,6 +509,7 @@ require_once __DIR__ . '/../includes/header.php';
 <input type="hidden" name="dosya_url" value="<?= h((string)$sonuc['dosya_url']) ?>">
 <input type="hidden" name="irsaliye_liste" value="<?= h(implode(',', $v['irsaliyeler'])) ?>">
 <input type="hidden" name="brut_tutar" value="<?= $v['brut_tutar'] !== null ? h((string)$v['brut_tutar']) : '' ?>">
+<input type="hidden" name="kalemler" value="<?= h(json_encode($v['kalemler'] ?? [], JSON_UNESCAPED_UNICODE)) ?>">
 
 <div class="card mb-3">
     <div class="card-header bg-white fw-semibold"><i class="bi bi-file-earmark-text me-1"></i> Fatura Bilgileri</div>
@@ -407,6 +552,22 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="col-md-4"><label class="form-label">Tedarikçi Sevkiyat No</label><div class="small text-muted">
             <?= h(implode(', ', $v['sevkiyat_nolar'])) ?>
         </div></div>
+        <?php endif; ?>
+        <?php if (!empty($v['kalemler'])): ?>
+        <div class="col-md-6"><label class="form-label">Fatura Kalemleri <span class="text-muted small">(çözülen — taslak sevkiyata işlenir)</span></label>
+            <table class="table table-sm table-bordered mb-0" style="max-width:420px">
+                <thead class="table-light"><tr><th>Çap</th><th class="text-end">Miktar (t)</th><th>İrsaliye</th></tr></thead>
+                <tbody>
+                <?php foreach ($v['kalemler'] as $kl): ?>
+                    <tr><td><?= $kl['cap'] !== null ? 'Ø'.(int)$kl['cap'] : '<span class="text-muted">?</span>' ?></td>
+                        <td class="text-end font-monospace"><?= $fmt(((float)$kl['kg'])/1000) ?></td>
+                        <td class="small"><code><?= h((string)($kl['irs'] ?? '')) ?></code></td></tr>
+                <?php endforeach; ?>
+                </tbody>
+                <tfoot class="table-light fw-bold"><tr><td>Toplam</td>
+                    <td class="text-end font-monospace"><?= $fmt(array_sum(array_column($v['kalemler'],'kg'))/1000) ?></td><td></td></tr></tfoot>
+            </table>
+        </div>
         <?php endif; ?>
         <?php if ($v['brut_tutar'] !== null && $v['tutar'] !== null && abs($v['brut_tutar']-$v['tutar'])>0.01): ?>
         <div class="col-12"><div class="alert alert-secondary py-2 small mb-0">
@@ -457,6 +618,18 @@ require_once __DIR__ . '/../includes/header.php';
             <div class="text-danger fw-semibold small mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>Sevkiyatlarda bulunamayan irsaliye numaraları:</div>
             <?php foreach ($e['eksik'] as $n): ?><span class="badge bg-danger-subtle text-danger border border-danger-subtle"><?= h($n) ?></span> <?php endforeach; ?>
             <div class="small text-muted mt-1">Sevkiyat henüz girilmemiş olabilir — girildikten sonra faturayı yeniden çözümleyin.</div>
+            <div class="form-check mt-3 p-3 pt-2 ps-5 bg-warning-subtle border border-warning rounded">
+                <input class="form-check-input" type="checkbox" name="eksik_olustur" value="1" id="eksikOlustur">
+                <label class="form-check-label" for="eksikOlustur">
+                    <strong>Bu <?= count($e['eksik']) ?> irsaliyeyi taslak sevkiyat olarak oluştur ve faturaya bağla</strong> <span class="text-muted">(isteğe bağlı)</span>
+                    <div class="small text-muted mt-1">
+                        Taslaklar fatura tarihi + tedarikçisiyle ve <span class="badge bg-secondary">[FATURADAN]</span> notuyla açılır;
+                        faturadan çözülen çap/kg kalemleri işlenir. Excel aktarımı aynı numarayı getirdiğinde taslak
+                        <strong>silinmez, gerçek verilerle güncellenir</strong> — mükerrer kayıt oluşmaz. Tedarikçi seçili değilse
+                        faturadaki satıcıyla otomatik oluşturulur.
+                    </div>
+                </label>
+            </div>
         </div>
     <?php endif; ?>
     </div>
@@ -470,30 +643,72 @@ require_once __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 
 <div class="card">
-    <div class="card-header bg-white fw-semibold"><i class="bi bi-archive me-1"></i> Kayıtlı Faturalar</div>
+    <div class="card-header bg-white fw-semibold d-flex align-items-center justify-content-between">
+        <span><i class="bi bi-archive me-1"></i> Kayıtlı Faturalar</span>
+        <span class="badge bg-primary" title="Toplam fatura sayısı"><?= count($kayitli) ?> fatura
+            <?php $topKg = array_sum(array_map(fn($x)=>(float)$x['miktar_kg'], $kayitli)); ?>
+            · <?= $fmt($topKg/1000) ?> t
+            · <?= $fmt(array_sum(array_map(fn($x)=>(float)$x['tutar'], $kayitli))) ?> ₺</span>
+    </div>
     <div class="card-body p-0">
     <?php if (!$kayitli): ?>
         <div class="p-3 text-muted">Henüz kayıtlı demir faturası yok.</div>
     <?php else: ?>
         <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
             <thead class="table-light"><tr>
+                <th class="text-center">#</th>
                 <th>Fatura No</th><th>Tarih</th><th>Tedarikçi</th><th>İrsaliye</th>
                 <th class="text-end">Tutar</th><th class="text-end">Fatura (t)</th><th class="text-end">Kantar (t)</th>
                 <th class="text-end">Fark</th><th class="text-center">Bağlı Svk.</th><th>Dosya</th><th></th>
             </tr></thead>
             <tbody>
-            <?php foreach ($kayitli as $f):
+            <?php $sira = count($kayitli); foreach ($kayitli as $f):
                 $fTon = $f['miktar_kg'] !== null ? (float)$f['miktar_kg']/1000 : null;
                 $kTon = (float)($f['kantar_ton'] ?: $f['irs_ton']);
                 $fark = ($fTon !== null && (int)$f['bagli'] > 0) ? $kTon - $fTon : null;
-                $irsL = json_decode((string)$f['irsaliye_liste'], true) ?: []; ?>
+                $irsL = json_decode((string)$f['irsaliye_liste'], true) ?: [];
+                $fKalem = json_decode((string)($f['kalemler'] ?? ''), true) ?: [];
+                $fSvk = $bagliSvk[(int)$f['id']] ?? []; ?>
                 <tr>
+                    <td class="text-center text-muted"><?= $sira-- ?></td>
                     <td><code><?= h($f['fatura_no']) ?></code></td>
                     <td class="text-nowrap"><?= h(format_date($f['tarih'])) ?></td>
                     <td class="small"><?= h((string)$f['tedarikci']) ?></td>
-                    <td class="small"><?php foreach ($irsL as $n): ?><code class="me-1"><?= h($n) ?></code><?php endforeach; ?></td>
-                    <td class="text-end font-monospace"><?= $f['tutar']!==null ? $fmt($f['tutar']).' ₺' : '—' ?></td>
-                    <td class="text-end font-monospace"><?= $fTon!==null ? $fmt($fTon) : '—' ?></td>
+                    <td class="small">
+                        <?php foreach ($irsL as $n): $svkId = $irsSvkMap[(int)$f['id'] . '|' . fat_irs_norm($n)] ?? 0; ?>
+                            <?php if ($svkId): ?>
+                            <a href="sevkiyat_form.php?id=<?= $svkId ?>" target="_blank" class="text-decoration-none" title="Sevkiyatı aç"><code class="me-1"><?= h($n) ?></code></a>
+                            <?php else: ?><code class="me-1 text-muted" title="Sevkiyat bağlı değil"><?= h($n) ?></code><?php endif; ?>
+                        <?php endforeach; ?>
+                        <?php if ($fSvk || $fKalem): ?>
+                        <button class="btn btn-sm btn-link p-0 text-decoration-none align-baseline" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#df<?= (int)$f['id'] ?>" title="Fatura içeriği + bağlı sevkiyatlar">
+                            <i class="bi bi-chevron-down small"></i> içerik
+                        </button>
+                        <?php endif; ?>
+                    </td>
+                    <td class="text-end font-monospace">
+                        <?php if ($f['tutar'] !== null): ?><?= $fmt($f['tutar']) ?> ₺
+                        <?php else: ?>
+                        <form method="post" class="d-inline-flex align-items-center gap-1" title="Ödenecek tutarı elle girin">
+                            <input type="hidden" name="action" value="alan_duzelt"><input type="hidden" name="alan" value="tutar">
+                            <input type="hidden" name="fatura_id" value="<?= (int)$f['id'] ?>">
+                            <input type="text" name="deger" class="form-control form-control-sm py-0 px-1 text-end" style="width:90px" placeholder="₺" inputmode="decimal">
+                            <button class="btn btn-sm btn-outline-success py-0"><i class="bi bi-check-lg"></i></button>
+                        </form>
+                        <?php endif; ?>
+                    </td>
+                    <td class="text-end font-monospace">
+                        <?php if ($fTon !== null): ?><?= $fmt($fTon) ?>
+                        <?php else: ?>
+                        <form method="post" class="d-inline-flex align-items-center gap-1" title="Fatura miktarını KG olarak elle girin">
+                            <input type="hidden" name="action" value="alan_duzelt"><input type="hidden" name="alan" value="miktar_kg">
+                            <input type="hidden" name="fatura_id" value="<?= (int)$f['id'] ?>">
+                            <input type="text" name="deger" class="form-control form-control-sm py-0 px-1 text-end" style="width:80px" placeholder="kg" inputmode="decimal">
+                            <button class="btn btn-sm btn-outline-success py-0"><i class="bi bi-check-lg"></i></button>
+                        </form>
+                        <?php endif; ?>
+                    </td>
                     <td class="text-end font-monospace"><?= (int)$f['bagli'] ? $fmt($kTon) : '—' ?></td>
                     <td class="text-end font-monospace <?= $fark===null ? 'text-muted' : (abs($fark)<=0.05 ? 'text-success' : 'text-danger fw-bold') ?>">
                         <?= $fark===null ? '—' : $fmt($fark) ?></td>
@@ -503,6 +718,60 @@ require_once __DIR__ . '/../includes/header.php';
                         <a class="btn btn-sm btn-outline-danger py-0" href="?sil=<?= (int)$f['id'] ?>" onclick="return confirm('Fatura kaydı silinsin, sevkiyat bağları çözülsün mü?')"><i class="bi bi-trash"></i></a>
                     <?php endif; ?></td>
                 </tr>
+                <?php if ($fSvk || $fKalem): ?>
+                <tr class="collapse" id="df<?= (int)$f['id'] ?>">
+                    <td colspan="12" class="bg-body-tertiary">
+                        <div class="row g-3 p-2">
+                            <?php if ($fKalem): ?>
+                            <div class="col-lg-4">
+                                <div class="small fw-semibold mb-1"><i class="bi bi-list-ul me-1"></i>Fatura kalemleri</div>
+                                <table class="table table-sm table-bordered bg-body mb-0">
+                                    <thead class="table-light"><tr><th>Çap</th><th class="text-end">Miktar (t)</th><th>İrsaliye</th></tr></thead>
+                                    <tbody>
+                                    <?php foreach ($fKalem as $kl): ?>
+                                        <tr><td><?= $kl['cap'] !== null ? 'Ø'.(int)$kl['cap'] : '<span class="text-muted">—</span>' ?></td>
+                                            <td class="text-end font-monospace"><?= $fmt(((float)($kl['kg'] ?? 0))/1000) ?></td>
+                                            <td class="small"><code><?= h((string)($kl['irs'] ?? '')) ?></code></td></tr>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <?php endif; ?>
+                            <?php if ($fSvk): ?>
+                            <div class="col-lg-8">
+                                <div class="small fw-semibold mb-1"><i class="bi bi-truck me-1"></i>Bağlı sevkiyatlar</div>
+                                <table class="table table-sm table-bordered bg-body mb-0">
+                                    <thead class="table-light"><tr>
+                                        <th>İrsaliye No</th><th>Geliş</th><th>Proje</th><th>IFS Sipariş</th><th>Çap kırılımı (irsaliye / kantar t)</th><th></th>
+                                    </tr></thead>
+                                    <tbody>
+                                    <?php foreach ($fSvk as $sv): $taslakMi = str_contains((string)$sv['aciklama'], '[FATURADAN]'); ?>
+                                        <tr>
+                                            <td><code><?= h($sv['irsaliye_no']) ?></code>
+                                                <?php if ($taslakMi): ?><span class="badge bg-warning text-dark" title="Faturadan açılmış taslak — Excel aktarımında gerçek verilerle güncellenir">TASLAK</span><?php endif; ?></td>
+                                            <td class="text-nowrap"><?= h(format_date($sv['gelis_tarih'] ?: $sv['irsaliye_tarih'])) ?></td>
+                                            <td><?= h((string)$sv['proje']) ?></td>
+                                            <td>
+                                                <?php $sipId = $sipMap[trim((string)$sv['ifs_siparis_no'])] ?? 0; ?>
+                                                <?php if ($sipId): ?><a href="siparis_detay.php?id=<?= $sipId ?>" target="_blank"><?= h($sv['ifs_siparis_no']) ?></a>
+                                                <?php else: ?><span class="text-muted"><?= h((string)$sv['ifs_siparis_no'] ?: '—') ?></span><?php endif; ?>
+                                            </td>
+                                            <td class="small">
+                                                <?php foreach ($svkKalem[(int)$sv['id']] ?? [] as $sk): ?>
+                                                    <span class="badge bg-secondary me-1"><?= h($sk['cap']) ?>: <?= $fmt($sk['irsaliye_miktar']) ?><?= $sk['kantar_miktar'] !== null ? ' / '.$fmt($sk['kantar_miktar']) : '' ?></span>
+                                                <?php endforeach; ?>
+                                            </td>
+                                            <td class="text-end"><a class="btn btn-sm btn-outline-secondary py-0" target="_blank" href="sevkiyat_form.php?id=<?= (int)$sv['id'] ?>"><i class="bi bi-box-arrow-up-right"></i> aç</a></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                    </td>
+                </tr>
+                <?php endif; ?>
             <?php endforeach; ?>
             </tbody>
         </table></div>

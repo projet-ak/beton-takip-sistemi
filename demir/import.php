@@ -10,6 +10,7 @@ require_once __DIR__ . '/../includes/auth.php';
 if (!file_exists(__DIR__ . '/../config.php')) { redirect('../install.php'); }
 require_auth(['admin','teknik_ofis_admin']);
 require_once __DIR__ . '/../includes/db_demir.php';
+require_once __DIR__ . '/../includes/fatura.php';   // fat_irs_norm: taslak sevkiyat eşleşmesi (biçim farkı mükerrer üretmesin)
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use Shuchkin\SimpleXLSX;
@@ -137,7 +138,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['dosya']['tmp_name']
                     return (int)$pdoDemir->lastInsertId();
                 };
 
-                $eklenen = 0; $atlanan = 0; $hataliSatir = []; $bosGecti = 0; $silinen = 0;
+                $eklenen = 0; $atlanan = 0; $guncellenen = 0; $hataliSatir = []; $bosGecti = 0; $silinen = 0;
+                $fatSnapshot = []; $fatReattach = 0;
                 $uid = current_user_id();
                 $reset = !empty($_POST['reset']); // "temizle ve yeniden yükle" seçilmişse
 
@@ -146,10 +148,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['dosya']['tmp_name']
                     if ($reset) {
                         // Excel ile birebir eşleşme için mevcut sevkiyatları sıfırla (kalemler + sevkiyatlar).
                         // Tutanaklar/siparişler ayrı tablolardır, etkilenmez.
-                        $silinen = (int)$pdoDemir->query("SELECT COUNT(*) FROM demir_sevkiyatlar")->fetchColumn();
-                        $pdoDemir->exec("DELETE FROM demir_sevkiyat_kalemleri");
-                        $pdoDemir->exec("DELETE FROM demir_sevkiyatlar");
+                        // [FATURADAN] TASLAKLARI SİLİNMEZ (fatura bağı kopmasın) — Excel'de karşılığı
+                        // gelirse aşağıda güncellenir. Diğer kayıtların fatura bağları da snapshot'lanıp
+                        // içe aktarma sonrası aynı (normalize) irsaliye no'lu yeni kayda geri bağlanır.
+                        try {
+                            $fatSnapshot = $pdoDemir->query("SELECT irsaliye_no, fatura_id FROM demir_sevkiyatlar
+                                WHERE fatura_id IS NOT NULL AND COALESCE(aciklama,'') NOT LIKE '%[FATURADAN]%'
+                                  AND irsaliye_no IS NOT NULL AND irsaliye_no <> ''")->fetchAll();
+                        } catch (Throwable $eS) { $fatSnapshot = []; }
+                        $silinen = (int)$pdoDemir->query("SELECT COUNT(*) FROM demir_sevkiyatlar
+                                                          WHERE COALESCE(aciklama,'') NOT LIKE '%[FATURADAN]%'")->fetchColumn();
+                        $pdoDemir->exec("DELETE k FROM demir_sevkiyat_kalemleri k
+                                         JOIN demir_sevkiyatlar s ON s.id = k.sevkiyat_id
+                                         WHERE COALESCE(s.aciklama,'') NOT LIKE '%[FATURADAN]%'");
+                        $pdoDemir->exec("DELETE FROM demir_sevkiyatlar WHERE COALESCE(aciklama,'') NOT LIKE '%[FATURADAN]%'");
                     }
+
+                    // Fatura ekranından açılmış TASLAK sevkiyatlar (normalize irsaliye no ile):
+                    // Excel satırı bunları SİLMEDEN GÜNCELLER — id sabit kalır, fatura bağı korunur.
+                    $taslakMap = [];
+                    try {
+                        foreach ($pdoDemir->query("SELECT id, irsaliye_no FROM demir_sevkiyatlar
+                                                   WHERE COALESCE(aciklama,'') LIKE '%[FATURADAN]%'") as $tr) {
+                            $tk = fat_irs_norm((string)$tr['irsaliye_no']);
+                            if ($tk !== '' && !isset($taslakMap[$tk])) $taslakMap[$tk] = (int)$tr['id'];
+                        }
+                    } catch (Throwable $eS) {}
                     $insSevk = $pdoDemir->prepare("INSERT INTO demir_sevkiyatlar
                         (kod, irsaliye_no, irsaliye_tarih, gelis_tarih, arac_plaka, dorse_plaka, kantar_fis_no,
                          tedarikci_id, ifs_siparis_no, getiren_firma, ifs_giris_durumu, tir_plaka, proje_id, taseron_id, created_by)
@@ -189,6 +213,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['dosya']['tmp_name']
                         $prjId = $col['site']>=0    ? $getPrj((string)($R[$col['site']] ?? '')) : null;
                         $tasId = $col['verilen']>=0 ? $getTas((string)($R[$col['verilen']] ?? '')) : null;
 
+                        // [FATURADAN] taslağıysa: yeni kayıt AÇMA, taslağı Excel verisiyle doldur
+                        // (fatura_id'ye dokunulmaz — bağ korunur; etiket kalkar, gerçek kayıt olur).
+                        $irsNorm = fat_irs_norm($irsNo);
+                        if ($irsNorm !== '' && isset($taslakMap[$irsNorm])) {
+                            $tid = $taslakMap[$irsNorm];
+                            $pdoDemir->prepare("UPDATE demir_sevkiyatlar SET
+                                    kod=?, irsaliye_no=?, irsaliye_tarih=?, gelis_tarih=?, arac_plaka=?, dorse_plaka=?,
+                                    kantar_fis_no=?, tedarikci_id=?, ifs_siparis_no=?, getiren_firma=?, ifs_giris_durumu=?,
+                                    tir_plaka=?, proje_id=?, taseron_id=?, aciklama=NULL WHERE id=?")
+                                ->execute([
+                                    $kod, $irsNo,
+                                    tarih_parse($R[$col['irs_tar']] ?? ''), tarih_parse($R[$col['gelis']] ?? ''),
+                                    strtoupper(trim((string)($R[$col['arac']] ?? ''))) ?: null,
+                                    strtoupper(trim((string)($R[$col['dorse']] ?? ''))) ?: null,
+                                    trim((string)($R[$col['kantar']] ?? '')) ?: null,
+                                    $tedId,
+                                    $col['ifs_sip']>=0 ? (trim((string)($R[$col['ifs_sip']] ?? '')) ?: null) : null,
+                                    $col['getiren']>=0 ? (trim((string)($R[$col['getiren']] ?? '')) ?: null) : null,
+                                    $col['ifs_dur']>=0 ? (trim((string)($R[$col['ifs_dur']] ?? '')) ?: null) : null,
+                                    $col['tir']>=0 ? (strtoupper(trim((string)($R[$col['tir']] ?? ''))) ?: null) : null,
+                                    $prjId, $tasId, $tid,
+                                ]);
+                            $pdoDemir->prepare("DELETE FROM demir_sevkiyat_kalemleri WHERE sevkiyat_id=?")->execute([$tid]);
+                            foreach ($kalemler as $kl) { $insKalem->execute([$tid, $kl[0], $kl[1], $kl[2]]); }
+                            unset($taslakMap[$irsNorm]);
+                            $guncellenen++;
+                            continue;
+                        }
+
                         $insSevk->execute([
                             $kod, $irsNo,
                             tarih_parse($R[$col['irs_tar']] ?? ''),
@@ -207,6 +260,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['dosya']['tmp_name']
                         foreach ($kalemler as $kl) { $insKalem->execute([$sevkId, $kl[0], $kl[1], $kl[2]]); }
                         $eklenen++;
                     }
+
+                    // Temizle-ve-yeniden-yükle: silinen kayıtların fatura bağlarını, aynı
+                    // (normalize) irsaliye no'lu YENİ kayıtlara geri bağla.
+                    if ($reset && $fatSnapshot) {
+                        $noMap = [];
+                        foreach ($pdoDemir->query("SELECT id, irsaliye_no FROM demir_sevkiyatlar
+                                                   WHERE irsaliye_no IS NOT NULL AND irsaliye_no <> '' AND fatura_id IS NULL") as $nr) {
+                            $nk = fat_irs_norm((string)$nr['irsaliye_no']);
+                            if ($nk !== '') $noMap[$nk][] = (int)$nr['id'];
+                        }
+                        $updF = $pdoDemir->prepare("UPDATE demir_sevkiyatlar SET fatura_id = ? WHERE id = ?");
+                        foreach ($fatSnapshot as $fs) {
+                            $fk = fat_irs_norm((string)$fs['irsaliye_no']);
+                            foreach ($noMap[$fk] ?? [] as $nid) { $updF->execute([(int)$fs['fatura_id'], $nid]); $fatReattach++; }
+                            unset($noMap[$fk]);
+                        }
+                    }
                     $pdoDemir->commit();
                 } catch (Throwable $e) {
                     $pdoDemir->rollBack();
@@ -215,9 +285,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['dosya']['tmp_name']
 
                 if (!$hata) {
                     $rapor = [
-                        'eklenen' => $eklenen, 'atlanan' => $atlanan,
+                        'eklenen' => $eklenen, 'atlanan' => $atlanan, 'guncellenen' => $guncellenen,
                         'hatali'  => $hataliSatir, 'olusturulan' => $olusturulan,
                         'cap_sayi'=> count($capKol), 'silinen' => $silinen, 'reset' => $reset,
+                        'fatura_bag' => $fatReattach,
                     ];
                 }
             }
@@ -240,6 +311,8 @@ require_once __DIR__ . '/../includes/header.php';
     <ul class="mb-0">
         <?php if ($rapor['reset']): ?><li class="text-danger"><strong><?= $rapor['silinen'] ?></strong> mevcut sevkiyat silindi (temizle ve yeniden yükle)</li><?php endif; ?>
         <li><strong><?= $rapor['eklenen'] ?></strong> sevkiyat eklendi (<?= $rapor['cap_sayi'] ?> çap kolonu okundu)</li>
+        <?php if (!empty($rapor['guncellenen'])): ?><li><strong><?= $rapor['guncellenen'] ?></strong> faturadan açılmış taslak sevkiyat gerçek verilerle güncellendi (fatura bağı korundu)</li><?php endif; ?>
+        <?php if (!empty($rapor['fatura_bag'])): ?><li><strong><?= $rapor['fatura_bag'] ?></strong> fatura bağı yeni kayıtlara geri bağlandı</li><?php endif; ?>
         <?php if ($rapor['atlanan']): ?><li><strong><?= $rapor['atlanan'] ?></strong> kayıt zaten vardı, atlandı (mükerrer irsaliye no)</li><?php endif; ?>
         <?php foreach (['tedarikci'=>'tedarikçi','taseron'=>'taşeron','proje'=>'proje'] as $k=>$lbl): if($rapor['olusturulan'][$k]): ?>
         <li><?= count($rapor['olusturulan'][$k]) ?> yeni <?= $lbl ?> oluşturuldu: <em><?= h(implode(', ', array_keys($rapor['olusturulan'][$k]))) ?></em></li>
