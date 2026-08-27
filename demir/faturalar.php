@@ -44,28 +44,65 @@ function dfat_semasi_kur(PDO $pdo): void {
 }
 dfat_semasi_kur($pdoDemir);
 
-// ── Demir faturası metin çözümleme (başlık alanları esas) ────────────────────
+// ── Demir faturası metin çözümleme ───────────────────────────────────────────
+// Tedarikçiden tedarikçiye 3 farklı irsaliye gösterimi görüldü (gerçek faturalardan):
+//   Çakıroğlu : başlıkta "İrsaliye No: CKI2026000003302" (etiketle değer ayrı satıra düşebilir)
+//   Ali Cangül: kalemde  "[İRS.NO:2124-08.05.2026]"  (DÜZ SAYI numara + tarih)
+//   Cangül    : kalemde  "[E-IRSALIYE NO TARIH:13.08.2026-CNG2026000020738]" + "[BELGE NO:21111]"
+// Gövdedeki rulo/bağ kodları (CA0217734...) BİLEREK taranmaz — yalnız etiketli alanlar okunur.
 function dfat_cikar(string $metin): array {
     $t = preg_replace('/[ \t]+/', ' ', $metin);
-    $d = ['fatura_no'=>null,'tarih'=>null,'ettn'=>null,'siparis_no'=>null,'irsaliyeler'=>[],
-          'miktar_kg'=>null,'tutar'=>null,'brut_tutar'=>null,'satici_vkn'=>null,'satici_unvan'=>null,'caplar'=>[]];
+    $d = ['fatura_no'=>null,'tarih'=>null,'ettn'=>null,'siparis_no'=>null,'irsaliyeler'=>[],'belge_nolar'=>[],
+          'sevkiyat_nolar'=>[],'miktar_kg'=>null,'tutar'=>null,'brut_tutar'=>null,'satici_vkn'=>null,'satici_unvan'=>null,'caplar'=>[]];
+    $ekle = function(string $no) use (&$d) {
+        $no = strtoupper(trim($no));
+        if ($no !== '' && !in_array($no, $d['irsaliyeler'], true)) $d['irsaliyeler'][] = $no;
+    };
 
-    if (preg_match('/Fatura\s*No[:\s]*([A-Z]{2,5}\d{8,20})/iu', $t, $m)) $d['fatura_no'] = strtoupper($m[1]);
+    // Fatura no: GİB biçimi = 3 alfanümerik önek + yıl + 9 hane (H012026000007732 gibi
+    // tek harfli önekler de geçerli — [A-Z]{2,5} deseni bunları KAÇIRIYORDU)
+    if (preg_match('/Fatura\s*No[:\s]*([A-Z][A-Z0-9]{2}\d{13})/iu', $t, $m)) $d['fatura_no'] = strtoupper($m[1]);
+    elseif (preg_match('/Fatura\s*No[:\s]*([A-Z]{2,5}\d{8,20})/iu', $t, $m)) $d['fatura_no'] = strtoupper($m[1]);
     if (preg_match('/Fatura\s*Tarihi[:\s]*([\d]{1,2}\s*[.\-\/]\s*[\d]{1,2}\s*[.\-\/]\s*[\d]{4})/iu', $t, $m)) $d['tarih'] = fat_tarih_norm($m[1]);
-    if (preg_match('/ETTN[:\s]*([A-F0-9\-]{30,40})/i', $t, $m)) $d['ettn'] = strtoupper($m[1]);
+    // ETTN satır sonunda bölünebiliyor ("...-8368-\nC0DB9BCF34E5") — boşlukları söküp doğrula
+    if (preg_match('/ETTN[:\s]*([A-F0-9][A-F0-9\-\s]{30,60})/i', $t, $m)) {
+        $ettn = strtoupper(preg_replace('/\s+/', '', $m[1]));
+        $ettn = substr($ettn, 0, 36);
+        if (preg_match('/^[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}$/', $ettn)) $d['ettn'] = $ettn;
+    }
     if (preg_match('/Sipariş\s*No[:\s]*([A-Z0-9][A-Z0-9\-\/]{3,29})/iu', $t, $m)) $d['siparis_no'] = strtoupper($m[1]);
 
-    // İrsaliye no(lar): YALNIZ başlıktaki etiketli alanlardan (rulo kodları karışmasın)
+    // 1) Başlık alanı: "İrsaliye No: CKI2026..." (değer alt satıra düşebilir, virgüllü liste olabilir)
     if (preg_match_all('/İrsaliye\s*No(?:su)?[:\s]*([A-Z]{2,6}\d{6,20}(?:\s*,\s*[A-Z]{2,6}\d{6,20})*)/iu', $t, $mm)) {
-        foreach ($mm[1] as $grup) foreach (preg_split('/\s*,\s*/', $grup) as $no) {
-            $no = strtoupper(trim($no));
-            if ($no !== '' && !in_array($no, $d['irsaliyeler'], true)) $d['irsaliyeler'][] = $no;
-        }
+        foreach ($mm[1] as $grup) foreach (preg_split('/\s*,\s*/', $grup) as $no) $ekle($no);
+    }
+    // 2) Kalem içi: "[İRS.NO:2124-08.05.2026]" — düz sayı numara
+    if (preg_match_all('/\[?İRS\.?\s*NO[:\s]*([0-9]{2,12})\s*-\s*[\d.\-\/]{8,10}\]?/iu', $t, $mm)) {
+        foreach ($mm[1] as $no) $ekle($no);
+    }
+    // 3) Dipnot: "[E-IRSALIYE NO TARIH:13.08.2026-CNG2026000020738]" (tire sonrası satır kırılabilir)
+    if (preg_match_all('/E-?[İI]RSAL[İI]YE\s*NO\s*TAR[İI]H[:\s]*[\d.\-\/]+\s*-\s*([A-Z]{2,6}\d{6,20})/iu', $t, $mm)) {
+        foreach ($mm[1] as $no) $ekle($no);
+    }
+    // "[BELGE NO:21111]" → kantar fişi/belge numaraları (sevkiyat eşleşmesinde 2. anahtar)
+    if (preg_match_all('/\[?BELGE\s*NO[:\s]*([0-9]{3,12})\]?/iu', $t, $mm)) {
+        foreach (array_unique($mm[1]) as $no) $d['belge_nolar'][] = $no;
+    }
+    // "SEVKIYATNO: SE-3069896" — bilgi amaçlı (tedarikçinin iç sevkiyat no'su)
+    if (preg_match_all('/SEVK[İI]YAT\s*NO[:\s]*((?:SE-)?[A-Z0-9\-]{5,20})/iu', $t, $mm)) {
+        foreach (array_unique($mm[1]) as $no) $d['sevkiyat_nolar'][] = strtoupper($no);
     }
 
-    // Miktar: "Toplam Miktar 27680" → kg; yoksa "27.680 Kg" satırlarının toplamı
-    if (preg_match('/Toplam\s*Miktar[:\s]*([\d.,]+)/iu', $t, $m)) $d['miktar_kg'] = fat_sayi($m[1]);
-    if ($d['miktar_kg'] === null && preg_match_all('/([\d.,]+)\s*Kg\.?\b/iu', $t, $mm)) {
+    // Miktar: "Toplam Miktar 27680" / "TOPLAM MİKTAR : 66420.000" → kg;
+    // yoksa kalem satırlarındaki ",00 kg" değerlerinin toplamı (ondalıksız özet
+    // satırındaki "26,550KG" tekrarları çift saymasın diye ondalık ŞART)
+    if (preg_match('/Toplam\s*M[İIiı]ktar[:\s]*([\d.,]+)/iu', $t, $m)) $d['miktar_kg'] = fat_sayi($m[1]);
+    if ($d['miktar_kg'] === null && preg_match_all('/([\d.,]+,\d{2})\s*kg\.?\b/iu', $t, $mm)) {
+        $top = 0.0; $var = false;
+        foreach ($mm[1] as $v) { $f = fat_sayi($v); if ($f !== null) { $top += $f; $var = true; } }
+        if ($var) $d['miktar_kg'] = $top;
+    }
+    if ($d['miktar_kg'] === null && preg_match_all('/([\d.,]+)\s*Kg\.?\b/u', $t, $mm)) {   // Çakıroğlu: "10.800\n Kg."
         $top = 0.0; $var = false;
         foreach ($mm[1] as $v) { $f = fat_sayi($v); if ($f !== null) { $top += $f; $var = true; } }
         if ($var) $d['miktar_kg'] = $top;
@@ -75,8 +112,8 @@ function dfat_cikar(string $metin): array {
     if (preg_match('/Ödenecek\s*Tutar[:\s]*([\d.,]+)/iu', $t, $m)) $d['tutar'] = fat_sayi($m[1]);
     if ($d['tutar'] === null) $d['tutar'] = $d['brut_tutar'];
 
-    // Çaplar (bilgi amaçlı): "10MM NERV..." → Ø10; Q100+ → hasır (Q188/Q257), Q100 altı → kangal (Q10/12/14)
-    if (preg_match_all('/(\d{1,2})\s*MM\s*NERV/iu', $t, $mm)) foreach ($mm[1] as $c) $d['caplar']["Ø{$c}"] = true;
+    // Çaplar (bilgi amaçlı): "12MM NERV" / "Ø 20 MM" / özet "10MM-26,550KG"; Q100+ hasır, altı kangal
+    if (preg_match_all('/(?:Ø\s*)?(\d{1,2})\s*MM\b/iu', $t, $mm)) foreach ($mm[1] as $c) if ((int)$c >= 6 && (int)$c <= 50) $d['caplar']["Ø{$c}"] = true;
     if (preg_match_all('/\bQ\s?(\d{2,3})\b/u', $t, $mm)) foreach ($mm[1] as $c) {
         if ((int)$c >= 100) $d['caplar']["Q{$c} (hasır)"] = true;
         elseif (!isset($d['caplar']["Ø{$c}"])) $d['caplar']["Q{$c} (kangal)"] = true;   // aynı çap Ø olarak zaten varsa tekrar yazma
@@ -91,12 +128,23 @@ function dfat_cikar(string $metin): array {
         foreach ($vm[1] as [$v0,$o0]) if ($v0 !== $aliciVkn) { $d['satici_vkn'] = $v0; $saticiOff = $o0; break; }
     }
     if ($saticiOff !== null) {
-        $pencere = substr($t, max(0, $saticiOff - 900), min(900, $saticiOff));
-        if (preg_match_all('/^[^\n]{3,120}?(?:ANON[İI]M\s+[ŞS][İI]RKET[İI]|L[İI]M[İI]TED\s+[ŞS][İI]RKET[İI]|A\.\s*[ŞS]\.?|LTD\.?\s*[ŞS]T[İI]\.?)[^\n]{0,10}$/miu', $pencere, $um)) {
-            $d['satici_unvan'] = trim((string)end($um[0]));
-        } elseif (preg_match('/^([^\n]{3,120})\n\s*(ANON[İI]M\s+[ŞS][İI]RKET[İI]|L[İI]M[İI]TED\s+[ŞS][İI]RKET[İI])\s*$/miu', $pencere, $um)) {
-            // Uzun unvan iki satıra bölünmüş: "ÇAKIROĞLU ... SANAYİ VE TİCARET\nANONİM ŞİRKETİ"
-            $d['satici_unvan'] = trim($um[1]) . ' ' . trim($um[2]);
+        // Fatura düzeni satıcı bloğunu SEVKIYATNO/adres satırlarıyla bölebilir — pencereyi geniş tut
+        $pencere = substr($t, max(0, $saticiOff - 1200), min(1200, $saticiOff));
+        if (preg_match_all('/^[^\n]{0,120}?(?:ANON[İI]M\s+[ŞS][İI]RKET[İI]|L[İI]M[İI]TED\s+[ŞS][İI]RKET[İI]|A\.\s*[ŞS]\.?|LTD\.?\s*[ŞS]T[İI]\.?)[^\n]{0,10}$/miu', $pencere, $umAll, PREG_OFFSET_CAPTURE)) {
+            $um = ['0' => end($umAll[0])];   // VKN'ye EN YAKIN unvan satırı (ilk satır alıcı olabilir)
+            $unvan = trim($um[0][0]);
+            // Uzun unvan iki satıra bölünmüş olabilir ("ÇAKIROĞLU ... SANAYİ VE\nTİCARET ANONİM ŞİRKETİ",
+            // "CANGÜL ... NAKLİYAT\nTURİZM SANAYİ VE TİCARET A.Ş."): üstteki satır da tamamen
+            // BÜYÜK HARFLİ unvan parçası görünüyorsa başa eklenir.
+            $oncesi = substr($pencere, 0, (int)$um[0][1]);
+            $satirlar = array_values(array_filter(array_map('trim', explode("\n", $oncesi)), fn($s) => $s !== ''));
+            $ust = $satirlar ? end($satirlar) : '';
+            if ($ust !== '' && mb_strlen($ust) <= 60
+                && preg_match('/^[A-ZÇĞİÖŞÜ0-9 .&\-]+$/u', $ust)
+                && !preg_match('/SAYIN|VKN|ETTN|TEL|FAX|MAH|CAD|SOKAK|NO:|E-FATURA|SEVK/iu', $ust)) {
+                $unvan = $ust . ' ' . $unvan;
+            }
+            $d['satici_unvan'] = $unvan;
         }
     }
 
@@ -110,31 +158,46 @@ function dfat_cikar(string $metin): array {
     return $d;
 }
 
-/** İrsaliye numaralarını demir sevkiyatlarıyla normalize eşleştirir. */
-function dfat_eslestir(PDO $pdo, array $numaralar): array {
+/**
+ * Faturadaki numaraları demir sevkiyatlarıyla normalize eşleştirir.
+ * İki anahtar denenir: sevkiyat İRSALİYE NO'su ve KANTAR FİŞ NO'su
+ * (Cangül faturasındaki [BELGE NO:21111] kantar fişine karşılık gelir).
+ * Düz sayılı numaralar da (Ali Cangül "2124") desteklenir.
+ */
+function dfat_eslestir(PDO $pdo, array $numaralar, array $belgeNolar = []): array {
     $hedef = [];
-    foreach ($numaralar as $n) { $k = fat_irs_norm($n); if ($k !== '') $hedef[$k] = $n; }
+    foreach ($numaralar as $n) { $k = fat_irs_norm($n); if ($k !== '') $hedef[$k] = ['ham'=>$n, 'tur'=>'irsaliye']; }
+    foreach ($belgeNolar as $n) { $k = fat_irs_norm($n); if ($k !== '' && !isset($hedef[$k])) $hedef[$k] = ['ham'=>$n, 'tur'=>'belge']; }
     if (!$hedef) return ['eslesen'=>[], 'eksik'=>[]];
-    $onek = [];
-    foreach (array_keys($hedef) as $k) if (preg_match('/^([A-Z]+\d{4})/', $k, $m)) $onek[$m[1].'%'] = true;
-    $sql = "SELECT s.id, s.irsaliye_no, s.gelis_tarih, s.irsaliye_tarih, s.arac_plaka, s.fatura_id,
+
+    $sql = "SELECT s.id, s.irsaliye_no, s.kantar_fis_no, s.gelis_tarih, s.irsaliye_tarih, s.arac_plaka, s.fatura_id,
                    t.ad AS tedarikci, p.kod AS proje,
                    COALESCE(SUM(k.irsaliye_miktar),0) irs_ton, COALESCE(SUM(k.kantar_miktar),0) kantar_ton
             FROM demir_sevkiyatlar s
             LEFT JOIN demir_tedarikciler t ON t.id = s.tedarikci_id
             LEFT JOIN demir_projeler p ON p.id = s.proje_id
             LEFT JOIN demir_sevkiyat_kalemleri k ON k.sevkiyat_id = s.id
-            WHERE s.irsaliye_no IS NOT NULL AND s.irsaliye_no <> ''";
-    $par = [];
-    if ($onek) { $sql .= ' AND (' . implode(' OR ', array_fill(0, count($onek), 's.irsaliye_no LIKE ?')) . ')'; $par = array_keys($onek); }
-    $sql .= ' GROUP BY s.id';
-    $st = $pdo->prepare($sql); $st->execute($par);
-    $idx = [];
-    foreach ($st->fetchAll() as $r) { $k = fat_irs_norm($r['irsaliye_no']); if ($k !== '' && !isset($idx[$k])) $idx[$k] = $r; }
-    $eslesen = []; $eksik = [];
-    foreach ($hedef as $k => $ham) {
-        if (isset($idx[$k])) { $r = $idx[$k]; $r['fatura_gosterim'] = $ham; $eslesen[] = $r; }
-        else $eksik[] = $ham;
+            WHERE (s.irsaliye_no IS NOT NULL AND s.irsaliye_no <> '')
+               OR (s.kantar_fis_no IS NOT NULL AND s.kantar_fis_no <> '')
+            GROUP BY s.id";
+    $idx = [];   // norm anahtar → [sevkiyat, anahtar türü]
+    foreach ($pdo->query($sql)->fetchAll() as $r) {
+        $ki = fat_irs_norm((string)$r['irsaliye_no']);
+        $kk = fat_irs_norm((string)$r['kantar_fis_no']);
+        if ($ki !== '' && !isset($idx[$ki])) $idx[$ki] = [$r, 'irsaliye no'];
+        if ($kk !== '' && !isset($idx[$kk])) $idx[$kk] = [$r, 'kantar fişi'];
+    }
+    $eslesen = []; $eksik = []; $gorulen = [];
+    foreach ($hedef as $k => $h) {
+        if (isset($idx[$k])) {
+            [$r, $anahtar] = $idx[$k];
+            if (isset($gorulen[(int)$r['id']])) continue;   // aynı sevkiyat iki anahtardan gelmesin
+            $gorulen[(int)$r['id']] = true;
+            $r['fatura_gosterim'] = $h['ham']; $r['eslesme_anahtari'] = $anahtar;
+            $eslesen[] = $r;
+        } elseif ($h['tur'] === 'irsaliye') {
+            $eksik[] = $h['ham'];   // belge no bulunamaması "eksik" sayılmaz (yedek anahtardır)
+        }
     }
     return ['eslesen'=>$eslesen, 'eksik'=>$eksik];
 }
@@ -159,7 +222,15 @@ if (($_POST['action'] ?? '') === 'cozumle') {
             $hedefAd = date('Ymd_His') . '_' . substr(md5($ad.microtime(true)), 0, 8) . '.' . $ext;
             $tam = $tmp;
             if (@move_uploaded_file($tmp, $dir.'/'.$hedefAd)) { $dosyaUrl = 'uploads/demir_fatura/'.date('Y/m').'/'.$hedefAd; $tam = $dir.'/'.$hedefAd; }
-            $okunan = fat_dosyadan_metin($tam, $mime);
+            // AI okumada demire özgü talimat: irsaliye/belge etiketleri tedarikçiye göre değişir
+            $aiSistem = 'Sen bir e-Fatura okuyucusun. Verilen DEMİR faturasındaki METNİ olduğu gibi düz metin '
+                      . 'olarak yaz. Hiçbir şey uydurma, yorum ekleme, özetleme. Şu satırları MUTLAKA aynen aktar: '
+                      . 'Fatura No, Fatura Tarihi, ETTN, Sipariş No, başlıktaki "İrsaliye No" alanı, kalemlerdeki '
+                      . '"[İRS.NO:...]" ve "[E-IRSALIYE NO TARIH:...]" ve "[BELGE NO:...]" köşeli parantezli etiketlerin '
+                      . 'TAMAMI, kalem tablosundaki malzeme adları ve Miktar değerleri BİRİMİYLE (örn. "27.680 Kg"), '
+                      . '"Toplam Miktar", "Vergiler Dahil Toplam Tutar" ve "Ödenecek Tutar" satırları, satıcı ve alıcı '
+                      . 'VKN satırları. Rulo/bağ kodu listelerini (CA02..., FD03... gibi) aktarmana gerek YOK.';
+            $okunan = fat_dosyadan_metin($tam, $mime, $kaynakOkuma, $aiSistem);
             if ($okunan !== null && $okunan !== '') $metin = $okunan;
             elseif ($metin === '') $hata = 'Dosyadan metin okunamadı — fatura metnini kopyalayıp kutuya yapıştırın.';
         }
@@ -168,7 +239,7 @@ if (($_POST['action'] ?? '') === 'cozumle') {
         if ($metin === '') $hata = 'Fatura dosyası yükleyin veya metnini yapıştırın.';
         else {
             $v = dfat_cikar($metin);
-            $e = dfat_eslestir($pdoDemir, $v['irsaliyeler']);
+            $e = dfat_eslestir($pdoDemir, $v['irsaliyeler'], $v['belge_nolar']);
             $mevcut = null;
             $mq = $pdoDemir->prepare("SELECT * FROM demir_faturalar WHERE fatura_no = ? OR (ettn IS NOT NULL AND ettn <> '' AND ettn = ?) LIMIT 1");
             $mq->execute([(string)$v['fatura_no'], (string)$v['ettn']]);
@@ -321,8 +392,18 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="col-md-6"><label class="form-label">Not</label>
             <input name="notlar" class="form-control" placeholder="opsiyonel"></div>
         <?php if ($v['caplar']): ?>
-        <div class="col-md-6"><label class="form-label">Faturadaki Çaplar</label><div>
+        <div class="col-md-4"><label class="form-label">Faturadaki Çaplar</label><div>
             <?php foreach ($v['caplar'] as $c): ?><span class="badge bg-secondary me-1"><?= h($c) ?></span><?php endforeach; ?>
+        </div></div>
+        <?php endif; ?>
+        <?php if ($v['belge_nolar']): ?>
+        <div class="col-md-4"><label class="form-label">Belge / Kantar Fiş No</label><div>
+            <?php foreach ($v['belge_nolar'] as $c): ?><span class="badge bg-info-subtle text-info-emphasis border me-1"><?= h($c) ?></span><?php endforeach; ?>
+        </div></div>
+        <?php endif; ?>
+        <?php if ($v['sevkiyat_nolar']): ?>
+        <div class="col-md-4"><label class="form-label">Tedarikçi Sevkiyat No</label><div class="small text-muted">
+            <?= h(implode(', ', $v['sevkiyat_nolar'])) ?>
         </div></div>
         <?php endif; ?>
         <?php if ($v['brut_tutar'] !== null && $v['tutar'] !== null && abs($v['brut_tutar']-$v['tutar'])>0.01): ?>
@@ -352,7 +433,8 @@ require_once __DIR__ . '/../includes/header.php';
                 $fark = ($ton !== null && count($e['eslesen']) === 1) ? $svkTon - $ton : null; ?>
                 <tr class="<?= !empty($r['fatura_id']) ? 'table-warning' : '' ?>">
                     <td><input type="checkbox" name="svk_id[]" value="<?= (int)$r['id'] ?>" checked class="form-check-input"></td>
-                    <td><code><?= h($r['irsaliye_no']) ?></code>
+                    <td><code><?= h($r['irsaliye_no'] ?: $r['kantar_fis_no']) ?></code>
+                        <?php if (($r['eslesme_anahtari'] ?? '') === 'kantar fişi'): ?><span class="badge bg-info text-dark" title="Faturadaki [BELGE NO] sevkiyatın kantar fiş numarasıyla eşleşti">kantar fişi</span><?php endif; ?>
                         <?php if (!empty($r['fatura_id'])): ?><span class="badge bg-warning text-dark" title="Bu sevkiyat zaten bir faturaya bağlı — kaydederseniz bu faturaya taşınır">bağlı</span><?php endif; ?></td>
                     <td><?= h(format_date($r['gelis_tarih'] ?: $r['irsaliye_tarih'])) ?></td>
                     <td><?= h((string)$r['tedarikci']) ?></td>

@@ -413,7 +413,7 @@ function fat_semasi_kur(PDO $pdo): void
  * Sıra: yerel pdftotext (varsa) → AI (Claude/Gemini belge okuma) → null.
  * Sunucuda pdftotext yoksa AI yolu kullanılır; ikisi de yoksa kullanıcı metni yapıştırır.
  */
-function fat_dosyadan_metin(string $path, string $mime, ?string &$kaynak = null): ?string
+function fat_dosyadan_metin(string $path, string $mime, ?string &$kaynak = null, ?string $aiSistem = null): ?string
 {
     // 1) pdftotext (hızlı ve ücretsiz — genelde VPS'te kurulu değil)
     if ($mime === 'application/pdf' && function_exists('exec')) {
@@ -424,8 +424,8 @@ function fat_dosyadan_metin(string $path, string $mime, ?string &$kaynak = null)
             if (mb_strlen(trim($t)) > 100) { $kaynak = 'pdftotext'; return $t; }
         }
     }
-    // 2) AI belge okuma
-    $ai = fat_ai_oku($path, $mime);
+    // 2) AI belge okuma ($aiSistem ile modüle özgü talimat verilebilir — demir vb.)
+    $ai = fat_ai_oku($path, $mime, $aiSistem);
     if ($ai !== null) { $kaynak = 'ai'; return $ai; }
     return null;
 }
@@ -434,7 +434,7 @@ function fat_dosyadan_metin(string $path, string $mime, ?string &$kaynak = null)
  * AI'ya faturayı okutup DÜZ METİN olarak geri alır (ayrıştırma yine fat_metinden_cikar ile
  * yapılır; böylece AI'nın "uydurma" alan üretme riski en aza iner).
  */
-function fat_ai_oku(string $path, string $mime): ?string
+function fat_ai_oku(string $path, string $mime, ?string $sistemOverride = null): ?string
 {
     if (!function_exists('ai_call')) {
         $f = __DIR__ . '/ai_call.php';
@@ -448,7 +448,7 @@ function fat_ai_oku(string $path, string $mime): ?string
         ? ['type' => 'document', 'data' => base64_encode($ham)]
         : ['type' => 'image', 'mime' => $mime, 'data' => base64_encode($ham)];
 
-    $sistem = 'Sen bir e-Fatura okuyucusun. Verilen faturadaki METNİ olduğu gibi düz metin olarak '
+    $sistem = $sistemOverride ?? 'Sen bir e-Fatura okuyucusun. Verilen faturadaki METNİ olduğu gibi düz metin olarak '
             . 'yaz. Hiçbir şey uydurma, yorum ekleme, özetleme. Özellikle şu alanların satırlarını '
             . 'MUTLAKA aynen aktar: Fatura No, Fatura Tarihi, ETTN, Vergiler Dahil Toplam Tutar, '
             . 'Ödenecek Tutar, kalem tablosundaki Miktar değerleri BİRİMİYLE aynen (örn. "250 M3" — '
