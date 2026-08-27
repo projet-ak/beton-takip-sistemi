@@ -107,6 +107,10 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 - **`db.php`** → `$pdo` (beton DB). config.php yoksa install.php'ye yönlendirir.
 - **`db_demir.php`** → `$pdoDemir` (demir DB). `DEMIR_DB_NAME` config'de tanımlıysa **ayrı MySQL DB**,
   değilse ana DB (`demir_` önekli tablolar çakışmaz). Opsiyonel `DEMIR_DB_USER`/`DEMIR_DB_PASS`.
+- **Giriş deneme sınırı (login.php)**: 15 dk içinde **3 hatalı deneme → 15 dk kilit** (IP VEYA
+  kullanıcı adı bazlı; tablo `giris_denemeleri` runtime CREATE, 1 günden eski kayıtlar silinir).
+  Kilitliyken denemeler sayaca yazılmaz (süre uzamaz); başarılı giriş sayacı sıfırlar; hatalı
+  denemede kalan hak gösterilir. Config ile ayar: `LOGIN_DENEME_LIMIT`, `LOGIN_KILIT_DK`.
 - **`auth.php`** — kimlik/yetki + **oturum idle timeout**:
   - `SESSION_LIFETIME` (varsayılan **3600 sn**), config'de override. `gc_maxlifetime` = +300.
   - Her istekte `last_activity` yenilenir; aşılırsa oturum temizlenir + login'e yönlendirir.

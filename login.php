@@ -39,6 +39,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]
             );
 
+            // ── Giriş deneme sınırı: LIMIT hatalı denemeden sonra KILIT_DK dakika bekletilir ──
+            // IP VEYA kullanıcı adı bazlı sayılır (çerez/oturum temizlemekle aşılamaz).
+            // Kilitliyken yapılan denemeler sayaca YAZILMAZ — süre son hatalı denemeden itibaren işler.
+            $denemeLimit = defined('LOGIN_DENEME_LIMIT') ? (int)LOGIN_DENEME_LIMIT : 3;
+            $kilitDk     = defined('LOGIN_KILIT_DK')     ? (int)LOGIN_KILIT_DK     : 15;
+            $ip          = substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
+            $denemeAdi   = mb_substr(mb_strtolower($username, 'UTF-8'), 0, 100);
+            try {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS giris_denemeleri (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    kullanici_adi VARCHAR(100) NOT NULL,
+                    ip VARCHAR(45) NOT NULL,
+                    deneme_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_ip (ip, deneme_at), INDEX idx_ad (kullanici_adi, deneme_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                $pdo->exec("DELETE FROM giris_denemeleri WHERE deneme_at < NOW() - INTERVAL 1 DAY");
+                $dc = $pdo->prepare("SELECT COUNT(*) c, MAX(deneme_at) son FROM giris_denemeleri
+                                     WHERE (ip = ? OR kullanici_adi = ?) AND deneme_at > NOW() - INTERVAL ? MINUTE");
+                $dc->execute([$ip, $denemeAdi, $kilitDk]);
+                $d = $dc->fetch();
+                if ((int)$d['c'] >= $denemeLimit) {
+                    $kalanDk = max(1, $kilitDk - (int)floor((time() - strtotime((string)$d['son'])) / 60));
+                    $error = "Çok fazla hatalı giriş denemesi. Güvenlik için lütfen {$kalanDk} dakika sonra tekrar deneyin.";
+                }
+            } catch (Throwable $eDeneme) { /* sınır tablosu kurulamadıysa girişi engelleme */ }
+
+            if ($error !== '') { $user = null; $stmt = null; }
+            else {
             $stmt = $pdo->prepare(
                 "SELECT id, username, password_hash, full_name, role, aktif
                  FROM users
@@ -47,8 +75,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             );
             $stmt->execute([$username]);
             $user = $stmt->fetch();
+            }
 
-            if ($user && $user['aktif'] == 1 && password_verify($password, $user['password_hash'])) {
+            if ($error !== '') {
+                // kilitli — hiçbir doğrulama yapılmadı
+            } elseif ($user && $user['aktif'] == 1 && password_verify($password, $user['password_hash'])) {
+                // Başarılı giriş: bu IP + kullanıcı adının deneme sayacı sıfırlanır
+                try { $pdo->prepare("DELETE FROM giris_denemeleri WHERE ip = ? OR kullanici_adi = ?")
+                          ->execute([$ip, $denemeAdi]); } catch (Throwable $eDeneme) {}
                 // Session fixation koruması
                 session_regenerate_id(true);
                 $_SESSION['user'] = [
@@ -71,7 +105,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($user && $user['aktif'] == 0) {
                 $error = 'Hesabınız devre dışı bırakılmış. Lütfen yönetici ile iletişime geçin.';
             } else {
+                // Başarısız deneme: sayaca yaz, kalan hakkı söyle
+                $kalanHak = $denemeLimit;
+                try {
+                    $pdo->prepare("INSERT INTO giris_denemeleri (kullanici_adi, ip) VALUES (?, ?)")
+                        ->execute([$denemeAdi, $ip]);
+                    $dc->execute([$ip, $denemeAdi, $kilitDk]);
+                    $kalanHak = max(0, $denemeLimit - (int)$dc->fetch()['c']);
+                } catch (Throwable $eDeneme) {}
                 $error = 'Kullanıcı adı veya şifre hatalı.';
+                $error .= $kalanHak > 0
+                    ? " Kalan deneme hakkı: {$kalanHak}."
+                    : " {$denemeLimit} hatalı deneme yapıldı — güvenlik için {$kilitDk} dakika beklemeniz gerekiyor.";
             }
         } catch (PDOException $e) {
             $error = 'Veritabanı bağlantı hatası. Lütfen yönetici ile iletişime geçin.';
