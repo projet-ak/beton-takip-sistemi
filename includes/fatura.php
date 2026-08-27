@@ -61,6 +61,8 @@ function fat_metinden_cikar(string $metin): array
 {
     $d = ['fatura_no'=>null,'tarih'=>null,'tutar'=>null,'brut_tutar'=>null,'miktar'=>null,'ettn'=>null,
           'satici_vkn'=>null,'satici_unvan'=>null,'irsaliyeler'=>[]];
+    // AI okuması bazen markdown süsler ("**Fatura No:** ...") — etiket desenleri şaşmasın
+    $metin = str_replace(['**', '__', '##', '`'], '', $metin);
     $t = preg_replace('/[ \t]+/', ' ', $metin);
 
     if (preg_match('/Fatura\s*No[:\s]*([A-Z]{2,5}\d{8,20})/iu', $t, $m))  $d['fatura_no'] = strtoupper($m[1]);
@@ -457,12 +459,14 @@ function fat_ai_oku(string $path, string $mime, ?string $sistemOverride = null):
         ? ['type' => 'document', 'data' => base64_encode($ham)]
         : ['type' => 'image', 'mime' => $mime, 'data' => base64_encode($ham)];
 
-    $sistem = $sistemOverride ?? 'Sen bir e-Fatura okuyucusun. Verilen faturadaki METNİ olduğu gibi düz metin olarak '
+    $duzMetinKurali = ' ÇIKTIN DÜZ METİN OLMALI: markdown biçimlendirme (yıldız, başlık işareti, tablo çizgisi) KULLANMA, '
+                    . 'etiketleri belgede yazdığı gibi "Etiket: değer" biçiminde bırak.';
+    $sistem = ($sistemOverride ?? 'Sen bir e-Fatura okuyucusun. Verilen faturadaki METNİ olduğu gibi düz metin olarak '
             . 'yaz. Hiçbir şey uydurma, yorum ekleme, özetleme. Özellikle şu alanların satırlarını '
             . 'MUTLAKA aynen aktar: Fatura No, Fatura Tarihi, ETTN, Vergiler Dahil Toplam Tutar, '
             . 'Ödenecek Tutar, kalem tablosundaki Miktar değerleri BİRİMİYLE aynen (örn. "250 M3" — '
             . 'birimi asla atlama) ve TÜM "İrsaliye No / İrsaliye Tarihi" değerleri. '
-            . 'İrsaliye numaralarını tek tek, her biri ayrı satırda listele.';
+            . 'İrsaliye numaralarını tek tek, her biri ayrı satırda listele.') . $duzMetinKurali;
 
     $r = ai_call($sistem, [$parca, ['type' => 'text', 'text' => 'Faturanın metnini çıkar.']], 8000);
     if (!($r['ok'] ?? false)) return null;

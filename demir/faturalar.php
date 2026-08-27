@@ -53,6 +53,8 @@ dfat_semasi_kur($pdoDemir);
 //   Cangül    : kalemde  "[E-IRSALIYE NO TARIH:13.08.2026-CNG2026000020738]" + "[BELGE NO:21111]"
 // Gövdedeki rulo/bağ kodları (CA0217734...) BİLEREK taranmaz — yalnız etiketli alanlar okunur.
 function dfat_cikar(string $metin): array {
+    // AI okuması bazen markdown süsler ("**Fatura No:** CKE...") — etiket desenleri şaşmasın
+    $metin = str_replace(['**', '__', '##', '`'], '', $metin);
     $t = preg_replace('/[ \t]+/', ' ', $metin);
     $d = ['fatura_no'=>null,'tarih'=>null,'ettn'=>null,'siparis_no'=>null,'irsaliyeler'=>[],'belge_nolar'=>[],
           'sevkiyat_nolar'=>[],'miktar_kg'=>null,'tutar'=>null,'brut_tutar'=>null,'satici_vkn'=>null,'satici_unvan'=>null,'caplar'=>[]];
@@ -276,6 +278,11 @@ if (($_POST['action'] ?? '') === 'cozumle') {
         if ($metin === '') $hata = 'Fatura dosyası yükleyin veya metnini yapıştırın.';
         else {
             $v = dfat_cikar($metin);
+            // Metinden okunamayan başlık alanları için DOSYA ADI yedeği
+            // (kullanıcı dosyayı çoğu zaman fatura numarasıyla kaydediyor: CKE2026000003934.pdf)
+            if ($v['fatura_no'] === null && !empty($ad) && preg_match('/([A-Z][A-Z0-9]{2}\d{13})/i', (string)$ad, $fm)) {
+                $v['fatura_no'] = strtoupper($fm[1]);
+            }
             $e = dfat_eslestir($pdoDemir, $v['irsaliyeler'], $v['belge_nolar']);
             $mevcut = null;
             $mq = $pdoDemir->prepare("SELECT * FROM demir_faturalar WHERE fatura_no = ? OR (ettn IS NOT NULL AND ettn <> '' AND ettn = ?) LIMIT 1");
@@ -290,7 +297,8 @@ if (($_POST['action'] ?? '') === 'cozumle') {
                     if ($a !== '' && mb_strlen($a) >= 4 && (str_contains($u, $a) || str_contains($a, $u))) { $onerTedId = (int)$td['id']; break; }
                 }
             }
-            $sonuc = ['v'=>$v, 'e'=>$e, 'dosya_url'=>$dosyaUrl, 'mevcut'=>$mevcut, 'oner_ted'=>$onerTedId];
+            $sonuc = ['v'=>$v, 'e'=>$e, 'dosya_url'=>$dosyaUrl, 'mevcut'=>$mevcut, 'oner_ted'=>$onerTedId,
+                      'metin'=>$metin, 'kaynak'=>$kaynakOkuma ?? null];
         }
     }
 }
@@ -496,6 +504,21 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 
 <?php if ($sonuc): $v = $sonuc['v']; $e = $sonuc['e']; $ton = $v['miktar_kg'] !== null ? $v['miktar_kg']/1000 : null; ?>
+
+<?php $bosAlan = array_keys(array_filter(['Fatura No'=>$v['fatura_no']===null, 'Tarih'=>$v['tarih']===null,
+      'ETTN'=>$v['ettn']===null, 'Tutar'=>$v['tutar']===null, 'Miktar'=>$v['miktar_kg']===null, 'İrsaliye'=>!$v['irsaliyeler']])); ?>
+<?php if ($bosAlan): ?>
+<div class="alert alert-warning py-2 small">
+    <i class="bi bi-exclamation-triangle-fill me-1"></i>
+    Şu alanlar metinden okunamadı: <strong><?= h(implode(', ', $bosAlan)) ?></strong>
+    <?= ($sonuc['kaynak'] ?? '') === 'ai' ? ' (belge AI ile okundu — aşağıdaki "okunan ham metin"e bakıp eksikleri elle tamamlayın)' : '' ?>.
+</div>
+<?php endif; ?>
+<details class="mb-3">
+    <summary class="small text-muted"><i class="bi bi-bug me-1"></i>Okunan ham metin
+        (<?= ($sonuc['kaynak'] ?? null) === 'ai' ? 'AI ile okundu' : (($sonuc['kaynak'] ?? null) === 'pdftotext' ? 'pdftotext' : 'yapıştırılan metin') ?>) — sorun ayıklama</summary>
+    <pre class="small bg-body-tertiary p-2 border rounded mt-1" style="max-height:280px;overflow:auto;white-space:pre-wrap"><?= h(mb_substr((string)$sonuc['metin'], 0, 8000)) ?></pre>
+</details>
 
 <?php if ($sonuc['mevcut']): ?>
 <div class="alert alert-warning"><i class="bi bi-files me-1"></i>
