@@ -426,18 +426,52 @@ function fat_semasi_kur(PDO $pdo): void
  */
 function fat_dosyadan_metin(string $path, string $mime, ?string &$kaynak = null, ?string $aiSistem = null): ?string
 {
-    // 1) pdftotext (hızlı ve ücretsiz — genelde VPS'te kurulu değil)
-    if ($mime === 'application/pdf' && function_exists('exec')) {
-        $out = []; $rc = 1;
-        @exec('pdftotext -layout ' . escapeshellarg($path) . ' - 2>/dev/null', $out, $rc);
-        if ($rc === 0) {
-            $t = implode("\n", $out);
-            if (mb_strlen(trim($t)) > 100) { $kaynak = 'pdftotext'; return $t; }
-        }
+    // 1) pdftotext (hızlı, ücretsiz ve birebir — kuruluysa AI'ya hiç gidilmez)
+    if ($mime === 'application/pdf') {
+        $t = fat_pdftotext($path);
+        if ($t !== null && mb_strlen(trim($t)) > 100) { $kaynak = 'pdftotext'; return $t; }
     }
     // 2) AI belge okuma ($aiSistem ile modüle özgü talimat verilebilir — demir vb.)
     $ai = fat_ai_oku($path, $mime, $aiSistem);
     if ($ai !== null) { $kaynak = 'ai'; return $ai; }
+    return null;
+}
+
+/**
+ * PDF'ten metin çıkarır (poppler-utils / pdftotext).
+ *
+ * ⚠ aaPanel gibi paneller PHP'nin exec/shell_exec'ini güvenlik için
+ * disable_functions'a ekler; bu yüzden TEK bir çağrıya güvenilmez —
+ * exec → shell_exec → proc_open sırayla denenir. Hepsi kapalıysa null
+ * döner ve okuma AI'ya düşer (davranış bozulmaz).
+ */
+function fat_pdftotext(string $path): ?string
+{
+    if (!is_file($path)) return null;
+    $kapali = array_map('trim', explode(',', (string)ini_get('disable_functions')));
+    $acikMi = fn(string $f) => function_exists($f) && !in_array($f, $kapali, true);
+    $cmd = 'pdftotext -layout ' . escapeshellarg($path) . ' - 2>/dev/null';
+
+    if ($acikMi('exec')) {
+        $out = []; $rc = 1;
+        @exec($cmd, $out, $rc);
+        if ($rc === 0 && $out) return implode("\n", $out);
+    }
+    if ($acikMi('shell_exec')) {
+        $t = @shell_exec($cmd);
+        if (is_string($t) && trim($t) !== '') return $t;
+    }
+    if ($acikMi('proc_open')) {
+        $bors = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+        $pipes = [];
+        $ph = @proc_open($cmd, $bors, $pipes);
+        if (is_resource($ph)) {
+            $t = stream_get_contents($pipes[1]);
+            foreach ($pipes as $pp) { if (is_resource($pp)) fclose($pp); }
+            proc_close($ph);
+            if (is_string($t) && trim($t) !== '') return $t;
+        }
+    }
     return null;
 }
 
