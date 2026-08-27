@@ -80,8 +80,10 @@ function dfat_cikar(string $metin): array {
     if (preg_match_all('/\[?İRS\.?\s*NO[:\s]*([0-9]{2,12})\s*-\s*[\d.\-\/]{8,10}\]?/iu', $t, $mm)) {
         foreach ($mm[1] as $no) $ekle($no);
     }
-    // 3) Dipnot: "[E-IRSALIYE NO TARIH:13.08.2026-CNG2026000020738]" (tire sonrası satır kırılabilir)
-    if (preg_match_all('/E-?[İI]RSAL[İI]YE\s*NO\s*TAR[İI]H[:\s]*[\d.\-\/]+\s*-\s*([A-Z]{2,6}\d{6,20})/iu', $t, $mm)) {
+    // 3) Dipnot: "[E-IRSALIYE NO TARIH:13.08.2026-CNG2026000020738]".
+    //    Satır kırıldığında ARADAKİ TİRE KAYBOLABİLİYOR ("...TARIH:13.08.2026\nCNG2026000020745")
+    //    — bu yüzden tarih açıkça eşlenir, tire/boşluk ayracı OPSİYONELDİR.
+    if (preg_match_all('/E-?[İI]RSAL[İI]YE\s*NO\s*TAR[İI]H[:\s]*\d{1,2}[.\-\/]\d{1,2}[.\-\/]\d{4}[\s-]*([A-Z]{2,6}\d{6,20})/iu', $t, $mm)) {
         foreach ($mm[1] as $no) $ekle($no);
     }
     // "[BELGE NO:21111]" → kantar fişi/belge numaraları (sevkiyat eşleşmesinde 2. anahtar)

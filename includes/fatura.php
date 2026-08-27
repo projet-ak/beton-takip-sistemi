@@ -145,8 +145,17 @@ function fat_qr_coz(?string $s): ?array
 {
     $s = trim((string)$s);
     if ($s === '') return null;
-    if (preg_match('/\{.*\}/s', $s, $m)) $s = $m[0];      // metin içine gömülü JSON
-    $j = json_decode($s, true);
+    $j = null;
+    if (preg_match('/\{.*\}/s', $s, $m)) $j = json_decode($m[0], true);   // metin içine gömülü JSON
+    if (!is_array($j)) {
+        // Bazı karekod okuyucular içeriği "anahtar : değer" satırları olarak verir
+        // ("vkntckn : 2000034421" / "odenecek : 4196488.450") — bunu da tanı.
+        $kv = [];
+        if (preg_match_all('/^\s*([a-zçğıöşü0-9()_-]{2,30})\s*:\s*(\S[^\n]*)$/miu', $s, $mm, PREG_SET_ORDER)) {
+            foreach ($mm as $g) $kv[trim($g[1])] = trim($g[2]);
+        }
+        if (isset($kv['no']) || isset($kv['ettn'])) $j = $kv;
+    }
     if (!is_array($j)) return null;
 
     // Anahtarları küçült/boşluk temizle (bazı entegratörler farklı yazıyor)
