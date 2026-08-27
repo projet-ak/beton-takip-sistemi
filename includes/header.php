@@ -256,6 +256,11 @@ if ($__user) {
         </a>
       </li>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('faturalar.php') ?>" href="<?= $__rootPath ?>demir/faturalar.php" data-label="Fatura Takibi">
+          <i class="bi bi-receipt-cutoff"></i><span>Fatura Takibi</span>
+        </a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('tutanaklar.php') ?>" href="<?= $__rootPath ?>demir/tutanaklar.php" data-label="Tutanaklar">
           <i class="bi bi-file-earmark-check"></i><span>Tutanaklar</span>
         </a>
