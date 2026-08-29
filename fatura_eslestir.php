@@ -272,12 +272,35 @@ if (isset($_GET['eksik'])) {
 }
 
 $tedarikciler = $pdo->query("SELECT id, ad, vkn FROM tedarikciler ORDER BY ad")->fetchAll();
+$fatAra = trim((string)($_GET['fatura_ara'] ?? ''));
 $kayitli = $pdo->query("SELECT f.*, t.ad AS tedarikci,
                                (SELECT COUNT(*) FROM irsaliyeler i WHERE i.fatura_id = f.id) AS bagli
                         FROM faturalar f LEFT JOIN tedarikciler t ON t.id = f.tedarikci_id
-                        ORDER BY f.tarih DESC, f.id DESC LIMIT 100")->fetchAll();
+                        ORDER BY f.tarih DESC, f.id DESC" . ($fatAra === '' ? " LIMIT 100" : ""))->fetchAll();
 // Her faturanın bağlı irsaliyeleri — listede satır açılınca gösterilir
 $kayitliIrs = $kayitli ? fat_bagli_irsaliyeler($pdo, array_column($kayitli, 'id')) : [];
+
+// ── Fatura arama: no / ETTN / tedarikçi / bağlı-eksik irsaliye no (NORMALİZE — "12047"
+//    yazınca SKB2026000012047'yi de bulur; biçim farkı aramayı kaçırmaz) ────────────────
+if ($fatAra !== '') {
+    $araU = mb_strtoupper($fatAra, 'UTF-8');
+    $araN = fat_irs_norm($fatAra);                 // ANM2026-4710 ↔ ANM2026000004710
+    $araS = preg_replace('/\D/', '', $fatAra);     // yalnız rakam: numaranın içinde geçsin yeter
+    $kayitli = array_values(array_filter($kayitli, function ($f) use ($kayitliIrs, $araU, $araN, $araS) {
+        foreach ([$f['fatura_no'], $f['ettn'], $f['tedarikci']] as $alan) {
+            if ($alan !== null && mb_stripos((string)$alan, $araU) !== false) return true;
+        }
+        if ($araN !== '' && fat_irs_norm((string)$f['fatura_no']) === $araN) return true;
+        $adaylar = array_map(fn($r) => (string)$r['irsaliye_no'], $kayitliIrs[(int)$f['id']] ?? []);
+        foreach ((array)(json_decode((string)($f['eksik_liste'] ?? ''), true) ?: []) as $e) $adaylar[] = (string)$e;
+        foreach ($adaylar as $no) {
+            if (mb_stripos($no, $araU) !== false) return true;
+            if ($araN !== '' && fat_irs_norm($no) === $araN) return true;
+            if ($araS !== '' && strlen($araS) >= 3 && str_contains(preg_replace('/\D/', '', $no), $araS)) return true;
+        }
+        return false;
+    }));
+}
 
 require_once __DIR__ . '/includes/header.php';
 $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
@@ -764,15 +787,21 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
 <?php endif; ?>
 
 <div class="card">
-    <div class="card-header bg-white fw-semibold d-flex align-items-center justify-content-between">
+    <div class="card-header bg-white fw-semibold d-flex align-items-center justify-content-between flex-wrap gap-2">
         <span><i class="bi bi-archive me-1"></i> Kayıtlı Faturalar</span>
-        <span class="badge bg-primary" title="Toplam fatura sayısı"><?= count($kayitli) ?> fatura
+        <form method="get" class="d-flex align-items-center gap-1">
+            <input type="text" name="fatura_ara" value="<?= h($fatAra) ?>" class="form-control form-control-sm" style="width:230px"
+                   placeholder="Fatura no / irsaliye no / tedarikçi">
+            <button class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i></button>
+            <?php if ($fatAra !== ''): ?><a href="fatura_eslestir.php" class="btn btn-sm btn-outline-secondary" title="Aramayı temizle"><i class="bi bi-x-lg"></i></a><?php endif; ?>
+        </form>
+        <span class="badge bg-primary" title="<?= $fatAra !== '' ? 'Arama sonucu' : 'Toplam fatura sayısı' ?>"><?= count($kayitli) ?> fatura
             · <?= $fmt(array_sum(array_map(fn($x)=>(float)$x['miktar_m3'], $kayitli))) ?> m³
             · <?= $fmt(array_sum(array_map(fn($x)=>(float)$x['tutar'], $kayitli))) ?> ₺</span>
     </div>
     <div class="card-body p-0">
     <?php if (!$kayitli): ?>
-        <div class="p-3 text-muted">Henüz kayıtlı fatura yok.</div>
+        <div class="p-3 text-muted"><?= $fatAra !== '' ? '"' . h($fatAra) . '" ile eşleşen fatura bulunamadı.' : 'Henüz kayıtlı fatura yok.' ?></div>
     <?php else: ?>
         <div class="table-responsive">
         <table class="table table-sm table-hover mb-0 align-middle">

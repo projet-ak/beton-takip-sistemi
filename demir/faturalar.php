@@ -476,6 +476,30 @@ foreach ($bagliSvk as $fidX => $liste) foreach ($liste as $r) {
     if ($k !== '') $irsSvkMap[$fidX . '|' . $k] = (int)$r['id'];
 }
 
+// ── Fatura arama: no / ETTN / tedarikçi / sipariş no / irsaliye no (NORMALİZE —
+//    "3302" ya da "CKI2026-3302" yazınca CKI2026000003302'li faturayı da bulur) ─────────
+$fatAra = trim((string)($_GET['fatura_ara'] ?? ''));
+if ($fatAra !== '') {
+    $araU = mb_strtoupper($fatAra, 'UTF-8');
+    $araN = fat_irs_norm($fatAra);
+    $araS = preg_replace('/\D/', '', $fatAra);
+    $kayitli = array_values(array_filter($kayitli, function ($f) use ($bagliSvk, $araU, $araN, $araS) {
+        foreach ([$f['fatura_no'], $f['ettn'], $f['tedarikci'], $f['siparis_no']] as $alan) {
+            if ($alan !== null && mb_stripos((string)$alan, $araU) !== false) return true;
+        }
+        if ($araN !== '' && fat_irs_norm((string)$f['fatura_no']) === $araN) return true;
+        $adaylar = (array)(json_decode((string)($f['irsaliye_liste'] ?? ''), true) ?: []);
+        foreach ($bagliSvk[(int)$f['id']] ?? [] as $sv) $adaylar[] = (string)$sv['irsaliye_no'];
+        foreach ($adaylar as $no) {
+            $no = (string)$no;
+            if (mb_stripos($no, $araU) !== false) return true;
+            if ($araN !== '' && fat_irs_norm($no) === $araN) return true;
+            if ($araS !== '' && strlen($araS) >= 3 && str_contains(preg_replace('/\D/', '', $no), $araS)) return true;
+        }
+        return false;
+    }));
+}
+
 $pageTitle = 'Demir Fatura Takibi';
 require_once __DIR__ . '/../includes/header.php';
 ?>
@@ -666,16 +690,22 @@ require_once __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 
 <div class="card">
-    <div class="card-header bg-white fw-semibold d-flex align-items-center justify-content-between">
+    <div class="card-header bg-white fw-semibold d-flex align-items-center justify-content-between flex-wrap gap-2">
         <span><i class="bi bi-archive me-1"></i> Kayıtlı Faturalar</span>
-        <span class="badge bg-primary" title="Toplam fatura sayısı"><?= count($kayitli) ?> fatura
+        <form method="get" class="d-flex align-items-center gap-1">
+            <input type="text" name="fatura_ara" value="<?= h($fatAra) ?>" class="form-control form-control-sm" style="width:230px"
+                   placeholder="Fatura no / irsaliye no / tedarikçi">
+            <button class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i></button>
+            <?php if ($fatAra !== ''): ?><a href="faturalar.php" class="btn btn-sm btn-outline-secondary" title="Aramayı temizle"><i class="bi bi-x-lg"></i></a><?php endif; ?>
+        </form>
+        <span class="badge bg-primary" title="<?= $fatAra !== '' ? 'Arama sonucu' : 'Toplam fatura sayısı' ?>"><?= count($kayitli) ?> fatura
             <?php $topKg = array_sum(array_map(fn($x)=>(float)$x['miktar_kg'], $kayitli)); ?>
             · <?= $fmt($topKg/1000) ?> t
             · <?= $fmt(array_sum(array_map(fn($x)=>(float)$x['tutar'], $kayitli))) ?> ₺</span>
     </div>
     <div class="card-body p-0">
     <?php if (!$kayitli): ?>
-        <div class="p-3 text-muted">Henüz kayıtlı demir faturası yok.</div>
+        <div class="p-3 text-muted"><?= $fatAra !== '' ? '"' . h($fatAra) . '" ile eşleşen fatura bulunamadı.' : 'Henüz kayıtlı demir faturası yok.' ?></div>
     <?php else: ?>
         <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
             <thead class="table-light"><tr>
