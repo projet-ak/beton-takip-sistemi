@@ -387,6 +387,15 @@ if ($__user) {
         <a class="sidebar-nav-link <?= __isActive('hareketler.php') ?>" href="<?= $__rootPath ?>depo/hareketler.php" data-label="Hareketler"><i class="bi bi-arrow-left-right"></i><span>Hareketler</span></a>
       </li>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('malzeme_ekstre.php') ?>" href="<?= $__rootPath ?>depo/malzeme_ekstre.php" data-label="Malzeme Ekstresi"><i class="bi bi-journal-text"></i><span>Malzeme Ekstresi</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('lokasyonlar.php') ?>" href="<?= $__rootPath ?>depo/lokasyonlar.php" data-label="Lokasyonlar"><i class="bi bi-geo-alt"></i><span>Lokasyonlar</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('firma_ekstre.php') ?>" href="<?= $__rootPath ?>depo/firma_ekstre.php" data-label="Firma Ekstresi"><i class="bi bi-people"></i><span>Firma Ekstresi</span></a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link" href="<?= $__rootPath ?>depo/hareketler.php?hurda=1" data-label="Hurdalar"><i class="bi bi-trash3"></i><span>Hurdalar</span></a>
       </li>
       <li class="sidebar-nav-item">

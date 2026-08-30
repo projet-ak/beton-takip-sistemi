@@ -29,7 +29,13 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   o stoğu oluşturan TEK TEK HAREKETLER. Sayfalar: index(dashboard: kategori kartları + mali değer KPI +
   tükenen liste + **hareket özeti/son hareketler/en çok hareket gören firmalar**) · kalemler(kategori bazlı liste,
   ?k=demirbas|sarf|el_aleti, arama, stok/tutar) · kalem_form(ekle/düzenle; düzenlemede **Hurdaya Ayır** butonu → sebep/miktar/teslim alan formu → hurda çıkışı + stok düşümü + HURDAYA AYIRMA TUTANAĞI) · **hareketler**(giriş/çıkış defteri:
-  tür/kaynak/firma/tarih aralığı/serbest metin filtreleri + KPI + sayfalama + Excel; elle kayıtlarda düzenle/sil) · **hareket_form**(günlük elle giriş/çıkış: `elle=1` işaretli — Excel tam yenilemesinde KORUNUR [import `elle=0` siler]; opsiyonel "stok kalemine işle" `kalem_id` → depo_kalemler GELEN/GİDEN güncellenir, silme/düzenlemede `dp_stok_islet()` geri alır; malzeme datalist'ten seçilince kalem otomatik eşleşir) · **hareket_tutanak**(hareket başına A4 tutanak: giriş=TESLİM ALMA, çıkış=TESLİM, hurda=HURDAYA AYIRMA; **ERN Taahhüt** logolu, kayıt sonrası bannerdan ve listeden yazdırılır) · import(7 sayfa: DEMİRBAŞLAR/
+  tür/kaynak/firma/tarih aralığı/serbest metin filtreleri + KPI + sayfalama + Excel; elle kayıtlarda düzenle/sil;
+  **her harekete belge ekleme** [girişte irsaliye/fatura, çıkışta imzalı fiş — evrak_url artık hurdaya özel değil];
+  malzeme adı tıklanır → malzeme_ekstre) · **malzeme_ekstre**(malzeme kartı/İZAH: sayım bazı + tarih sıralı hareketler
+  + yürüyen bakiye; bakiye eksiye düşerse kırmızı satır + "sayım öncesi stok VEYA giriş kaydı eksik" açıklama bandı —
+  "olmayan ürünü nereden verdiniz?" sorusunun cevabı; stok kartı eşleşmesi dp_mal_norm ile, benzer ad önerileri) ·
+  **lokasyonlar**(alan/raf bazlı stok akordeonu [kalem+stok+mali değer] + sahaya çıkışların lokasyon özeti) ·
+  **firma_ekstre**(firma/taşeron seç → firmadan gelen / firmaya verilen; malzeme bazlı net + tarihli döküm) · **hareket_form**(günlük elle giriş/çıkış: `elle=1` işaretli — Excel tam yenilemesinde KORUNUR [import `elle=0` siler]; opsiyonel "stok kalemine işle" `kalem_id` → depo_kalemler GELEN/GİDEN güncellenir, silme/düzenlemede `dp_stok_islet()` geri alır; malzeme datalist'ten seçilince kalem otomatik eşleşir) · **hareket_tutanak**(hareket başına A4 tutanak: giriş=TESLİM ALMA, çıkış=TESLİM, hurda=HURDAYA AYIRMA; **ERN Taahhüt** logolu, kayıt sonrası bannerdan ve listeden yazdırılır) · import(7 sayfa: DEMİRBAŞLAR/
   SARF MALZEME/EL ALETLERİ → stok, MALZEME GİRİŞ-ÇIKIŞ + TAŞERON MALZEME GİRİŞ-TESLİMAT → hareket; her biri kendi
   türünde tam yenileme, dosyada olmayan sayfaya dokunulmaz — takip 2026-08'den beri **4 AYRI dosya** geliyor
   [Demirbaş Takip / Sarf Malzeme Stok (sarf+el aletleri) / Malzeme Takip (giriş+çıkış) / Sarf Taşeron Teslimat],

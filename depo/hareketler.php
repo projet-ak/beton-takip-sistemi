@@ -247,6 +247,12 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="col-6 col-md-2"><a href="hareketler.php" class="btn btn-outline-secondary btn-sm w-100">Temizle</a></div>
 </form>
 
+<div class="alert alert-light border small py-2">
+    <i class="bi bi-info-circle me-1 text-primary"></i>
+    <strong>Eksi (−) değerler çıkıştır</strong> — depodan/sahaya verilen malzeme. Bir ürünün nereden gelip kime gittiğini,
+    elde ne kaldığını görmek için <strong>malzeme adına tıklayın</strong>: ekstre sayfası sayım + girişler − çıkışlar
+    dengesini tarih tarih gösterir; çıkışı girişini aşan (izahsız) ürünleri kırmızı işaretler.
+</div>
 <div class="card border-0 shadow-sm"><div class="card-body p-0">
 <div class="table-responsive" style="max-height:68vh">
 <table class="table table-sm table-hover align-middle mb-0" style="font-size:.82rem">
@@ -266,7 +272,8 @@ require_once __DIR__ . '/../includes/header.php';
             </td>
             <td class="text-nowrap"><?= h(format_date($r['tarih'])) ?></td>
             <td class="font-monospace small"><?= h($r['belge_no'] ?: '—') ?></td>
-            <td><?= h($r['malzeme']) ?></td>
+            <td><a href="malzeme_ekstre.php?m=<?= urlencode($r['malzeme']) ?>" class="text-decoration-none text-reset"
+                   title="Malzeme ekstresi: bu ürün nereden geldi, kime verildi, bakiyesi ne?"><?= h($r['malzeme']) ?> <i class="bi bi-journal-text small text-muted"></i></a></td>
             <td class="text-muted small"><?= h((string)$r['ozellik']) ?></td>
             <td class="text-end fw-semibold <?= $g?'text-success':'text-danger' ?>"><?= $g?'+':'−' ?><?= $fmt($r['miktar']) ?></td>
             <td class="small"><?= h((string)$r['birim']) ?></td>
@@ -276,17 +283,16 @@ require_once __DIR__ . '/../includes/header.php';
             <td class="small text-muted"><?= h(trim(($r['lokasyon'] ?: '') . ' ' . ($r['aciklama'] ?: ''))) ?></td>
             <td class="text-end text-nowrap">
                 <a href="hareket_tutanak.php?id=<?= (int)$r['id'] ?>" class="btn btn-sm btn-outline-primary py-0" title="Tutanak yazdır" target="_blank"><i class="bi bi-printer"></i></a>
-                <?php if (!empty($r['hurda'])): ?>
-                    <?php if (!empty($r['evrak_url'])): ?>
-                    <a href="../<?= h($r['evrak_url']) ?>" target="_blank" class="btn btn-sm btn-success py-0" title="İmzalı evrakı aç"><i class="bi bi-file-earmark-check"></i></a>
-                    <?php if (has_role('admin','teknik_ofis_admin')): ?>
-                    <a href="?evrak_sil=<?= (int)$r['id'] ?>" class="btn btn-sm btn-outline-danger py-0" title="Evrakı sil"
-                       onclick="return confirm('İmzalı evrak silinsin mi?')"><i class="bi bi-x"></i></a>
-                    <?php endif; ?>
-                    <?php else: ?>
-                    <button class="btn btn-sm btn-outline-warning py-0" data-bs-toggle="modal" data-bs-target="#evrakModal"
-                            onclick="evrakAc(<?= (int)$r['id'] ?>)" title="İmzalı evrak yükle"><i class="bi bi-upload"></i> imza</button>
-                    <?php endif; ?>
+                <?php if (!empty($r['evrak_url'])): ?>
+                <a href="../<?= h($r['evrak_url']) ?>" target="_blank" class="btn btn-sm btn-success py-0" title="Ekli belgeyi aç (irsaliye/fatura/imzalı tutanak)"><i class="bi bi-file-earmark-check"></i></a>
+                <?php if (has_role('admin','teknik_ofis_admin')): ?>
+                <a href="?evrak_sil=<?= (int)$r['id'] ?>" class="btn btn-sm btn-outline-danger py-0" title="Belgeyi sil"
+                   onclick="return confirm('Ekli belge silinsin mi?')"><i class="bi bi-x"></i></a>
+                <?php endif; ?>
+                <?php else: ?>
+                <button class="btn btn-sm btn-outline-<?= !empty($r['hurda']) ? 'warning' : ($g ? 'success' : 'secondary') ?> py-0" data-bs-toggle="modal" data-bs-target="#evrakModal"
+                        onclick="evrakAc(<?= (int)$r['id'] ?>)"
+                        title="<?= !empty($r['hurda']) ? 'İmzalı hurda tutanağı yükle' : ($g ? 'İrsaliye / fatura taraması ekle' : 'İmzalı çıkış fişi / tutanak ekle') ?>"><i class="bi bi-paperclip"></i></button>
                 <?php endif; ?>
                 <?php if (!empty($r['elle'])): ?>
                 <a href="hareket_form.php?id=<?= (int)$r['id'] ?>" class="btn btn-sm btn-outline-secondary py-0" title="Düzenle"><i class="bi bi-pencil"></i></a>
@@ -322,16 +328,16 @@ require_once __DIR__ . '/../includes/header.php';
 </nav>
 <?php endif; ?>
 
-<!-- İmzalı evrak yükleme modalı (hurda tutanakları) -->
+<!-- Belge yükleme modalı: girişte irsaliye/fatura, çıkışta imzalı fiş, hurdada tutanak -->
 <div class="modal fade" id="evrakModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
     <form method="post" enctype="multipart/form-data">
         <input type="hidden" name="action" value="evrak_yukle">
         <input type="hidden" name="id" id="evId" value="0">
         <input type="hidden" name="geri_hurda" value="<?= $hurdaF ? 1 : 0 ?>">
-        <div class="modal-header"><h6 class="modal-title"><i class="bi bi-file-earmark-check me-1"></i>İmzalı Evrak Yükle</h6>
+        <div class="modal-header"><h6 class="modal-title"><i class="bi bi-paperclip me-1"></i>Belge Ekle</h6>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
-            <label class="form-label small">Islak imzalı tutanağın taraması / fotoğrafı <span class="text-muted">(PDF, JPG, PNG — maks 10 MB)</span></label>
+            <label class="form-label small">İrsaliye / fatura / imzalı tutanak taraması veya fotoğrafı <span class="text-muted">(PDF, JPG, PNG — maks 10 MB)</span></label>
             <input type="file" name="evrak" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.webp" required>
         </div>
         <div class="modal-footer">

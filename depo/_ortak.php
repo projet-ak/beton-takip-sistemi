@@ -132,3 +132,11 @@ function dp_hareket_ozet(PDO $pdo): array
     foreach ($rows as $r) $o[$r['tur'].'|'.$r['kaynak']] = $r;
     return $o;
 }
+
+/** Malzeme adını karşılaştırılabilir biçime indirger (ekstre eşleşmesi için). */
+function dp_mal_norm(string $s): string {
+    $s = str_replace(['İ','I','ı','i','Ş','ş','Ğ','ğ','Ü','ü','Ö','ö','Ç','ç'],
+                     ['I','I','I','I','S','S','G','G','U','U','O','O','C','C'], $s);
+    $s = mb_strtoupper(trim($s), 'UTF-8');
+    return preg_replace('/\s+/', ' ', $s);
+}
