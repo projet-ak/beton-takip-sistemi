@@ -217,6 +217,9 @@ try {
             proje VARCHAR(60) NULL,
             parsel VARCHAR(30) NULL,
             statu VARCHAR(40) NULL,
+            excel_siparis_kg DECIMAL(14,1) NULL COMMENT 'Excel özet satırı: Sipariş (sağlama)',
+            excel_teslim_kg DECIMAL(14,1) NULL COMMENT 'Excel özet satırı: Teslim alınan (sağlama)',
+            excel_fark_kg DECIMAL(14,1) NULL COMMENT 'Excel özet satırı: Fark',
             created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE KEY uq_talep (talep_no)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
@@ -231,6 +234,8 @@ try {
             firma VARCHAR(120) NULL COMMENT 'kalem düzeyinde: bir talepte birden çok firma olabilir',
             siparis_kg DECIMAL(14,1) NOT NULL DEFAULT 0,
             teslim_kg  DECIMAL(14,1) NOT NULL DEFAULT 0,
+            kalan_kg DECIMAL(14,1) NULL COMMENT 'Excel Kalan kolonu',
+            notlar VARCHAR(300) NULL COMMENT 'Parsel sonrası serbest hücreler (devir notları)',
             KEY (talep_id), KEY (cap_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
     ];

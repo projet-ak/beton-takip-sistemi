@@ -50,6 +50,17 @@ $pdoDemir->exec("CREATE TABLE IF NOT EXISTS demir_talep_kalemleri (
     KEY (talep_id), KEY (cap_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+// Sonradan eklenen kolonlar (mevcut kurulumlarda runtime ALTER):
+//   Talepte Excel'in KENDİ özet satırı (Sipariş/Teslim alınan/Fark) → içe aktarım sağlaması.
+//   Kalemde Excel'in Kalan kolonu + Parsel'den sonraki serbest notlar ("25460 OSMAN CAMCI VERİLDİ").
+foreach (["ALTER TABLE demir_talepler ADD COLUMN excel_siparis_kg DECIMAL(14,1) NULL,
+                                     ADD COLUMN excel_teslim_kg DECIMAL(14,1) NULL,
+                                     ADD COLUMN excel_fark_kg DECIMAL(14,1) NULL",
+          "ALTER TABLE demir_talep_kalemleri ADD COLUMN kalan_kg DECIMAL(14,1) NULL,
+                                             ADD COLUMN notlar VARCHAR(300) NULL"] as $q0) {
+    try { $pdoDemir->exec($q0); } catch (Throwable $e0) {}
+}
+
 // ── Yardımcılar ──────────────────────────────────────────────────────────────
 /** Türkçe harfleri ASCII'ye katlayan normalizasyon (başlık eşleme için). */
 function tlpNorm(string $s): string {
@@ -111,8 +122,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['dosya']['tmp_name']
             $pdoDemir->beginTransaction();
             $pdoDemir->exec("DELETE FROM demir_talep_kalemleri");
             $pdoDemir->exec("DELETE FROM demir_talepler");
-            $insT = $pdoDemir->prepare("INSERT INTO demir_talepler (talep_no,tarih,sayfa_adi,firma,proje,parsel,statu) VALUES (?,?,?,?,?,?,?)");
-            $insK = $pdoDemir->prepare("INSERT INTO demir_talep_kalemleri (talep_id,kod,aciklama,cap_id,cap_label,firma,siparis_kg,teslim_kg) VALUES (?,?,?,?,?,?,?,?)");
+            $insT = $pdoDemir->prepare("INSERT INTO demir_talepler (talep_no,tarih,sayfa_adi,firma,proje,parsel,statu,excel_siparis_kg,excel_teslim_kg,excel_fark_kg) VALUES (?,?,?,?,?,?,?,?,?,?)");
+            $insK = $pdoDemir->prepare("INSERT INTO demir_talep_kalemleri (talep_id,kod,aciklama,cap_id,cap_label,firma,siparis_kg,teslim_kg,kalan_kg,notlar) VALUES (?,?,?,?,?,?,?,?,?,?)");
             $talepAdet = 0; $kalemAdet = 0; $atlanan = [];
 
             foreach ($x->sheetNames() as $si => $sayfaAdi) {
@@ -135,6 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['dosya']['tmp_name']
                 $iTes = tlpKol($hdr, ['TESLIM ALINAN', 'TESLIM']);
                 $iFir = tlpKol($hdr, ['FIRMA']);
                 $iPar = tlpKol($hdr, ['PARSEL']);
+                $iKal = tlpKol($hdr, ['KALAN']);
                 if ($iTal === null || $iKod === null || $iMik === null) { $atlanan[] = $sayfaAdi; continue; }
 
                 // Sayfa adından tarih: "PRP iNŞAAT 24.06.2026-D"
@@ -146,16 +158,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['dosya']['tmp_name']
 
                 $al = fn(array $r, ?int $i) => $i !== null ? trim((string)($r[$i] ?? '')) : '';
                 $kalemler = []; $talepNo = ''; $firmalar = []; $projeler = []; $parseller = []; $statu = '';
+                $exSip = null; $exTes = null; $exFark = null;   // Excel'in kendi özet satırı (sağlama)
+                // Not kolonları: bilinen son kolondan (Parsel/Firma) SONRAKİ dolu hücreler
+                $notBas = max(array_filter([$iPar, $iFir, $iKal, $iTes, $iMik], fn($x) => $x !== null)) + 1;
                 for ($ri = $hr + 1; $ri < count($rows); $ri++) {
                     $r = $rows[$ri];
                     $tn = $al($r, $iTal); $kod = $al($r, $iKod);
-                    if ($tn === '' || $kod === '' || !preg_match('/^[\d\-\s]+$/', $tn)) continue;
+                    if ($tn === '' || $kod === '' || !preg_match('/^[\d\-\s]+$/', $tn)) {
+                        // Kalem değil — Excel'in özet satırı olabilir: "Sipariş 182000 Teslim alınan 186800" / "Fark 4800".
+                        // Etiketin SAĞINDAKİ ilk dolu hücre değeridir. Kutsal kitap sağlaması burada saklanır.
+                        foreach ($r as $ci => $c) {
+                            $cn = tlpNorm((string)$c);
+                            if (!in_array($cn, ['SIPARIS', 'TESLIM ALINAN', 'FARK'], true)) continue;
+                            for ($cj = $ci + 1; $cj < count($r); $cj++) {
+                                $vv = trim((string)($r[$cj] ?? ''));
+                                if ($vv === '') continue;
+                                $num = tlpSayi($vv);
+                                if ($cn === 'SIPARIS') $exSip = $num;
+                                elseif ($cn === 'TESLIM ALINAN') $exTes = $num;
+                                else $exFark = $num;
+                                break;
+                            }
+                        }
+                        continue;
+                    }
                     if ($talepNo === '') $talepNo = preg_replace('/\s+/', '', $tn);
                     $ack = $al($r, $iAck);
                     [$capId, $capLabel] = tlpCap($caplar, $ack);
                     $fir = $al($r, $iFir);
+                    // Parsel'den sonraki serbest hücreler = kalem notu ("25460 OSMAN CAMCI VERİLDİ" gibi devirler)
+                    $notlar = [];
+                    for ($ci = $notBas; $ci < count($r); $ci++) {
+                        $vv = trim((string)($r[$ci] ?? ''));
+                        if ($vv !== '') $notlar[] = $vv;
+                    }
                     $kalemler[] = [$kod, mb_substr($ack, 0, 200), $capId, $capLabel, mb_substr($fir, 0, 120) ?: null,
-                                   tlpSayi($al($r, $iMik)), tlpSayi($al($r, $iTes))];
+                                   tlpSayi($al($r, $iMik)), tlpSayi($al($r, $iTes)),
+                                   $iKal !== null && $al($r, $iKal) !== '' ? tlpSayi($al($r, $iKal)) : null,
+                                   $notlar ? mb_substr(implode(' · ', $notlar), 0, 300) : null];
                     if ($fir !== '') $firmalar[trim($fir)] = true;
                     if (($p = $al($r, $iSit)) !== '') $projeler[$p] = true;
                     if (($p = $al($r, $iPar)) !== '') $parseller[$p] = true;
@@ -167,7 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['dosya']['tmp_name']
                                 implode(', ', array_keys($firmalar)) ?: null,
                                 implode(', ', array_keys($projeler)) ?: null,
                                 implode(', ', array_keys($parseller)) ?: null,
-                                $statu ?: null]);
+                                $statu ?: null, $exSip, $exTes, $exFark]);
                 $tid = (int)$pdoDemir->lastInsertId();
                 foreach ($kalemler as $k) { $insK->execute(array_merge([$tid], $k)); $kalemAdet++; }
                 $talepAdet++;
@@ -319,8 +359,21 @@ require_once __DIR__ . '/../includes/header.php';
     </tr></thead>
     <tbody>
     <?php foreach ($talepler as $t): $kal = (float)$t['sip'] - (float)$t['tes']; ?>
+        <?php
+            // Excel'in kendi özet satırıyla sağlama: kalem toplamı ≠ özet ise Excel'de formül bozukluğu var demektir
+            $exS = $t['excel_siparis_kg'] ?? null; $exT = $t['excel_teslim_kg'] ?? null;
+            $sagla = ($exS === null && $exT === null) ? null
+                   : (abs((float)$t['sip'] - (float)($exS ?? $t['sip'])) <= 1 && abs((float)$t['tes'] - (float)($exT ?? $t['tes'])) <= 1);
+            $notVar = false;
+            foreach ($kalemMap[(int)$t['id']] ?? [] as $k0) if (!empty($k0['notlar'])) { $notVar = true; break; }
+        ?>
         <tr data-bs-toggle="collapse" data-bs-target="#tk<?= (int)$t['id'] ?>" style="cursor:pointer">
-            <td class="font-monospace fw-semibold"><?= h($t['talep_no']) ?></td>
+            <td class="font-monospace fw-semibold"><?= h($t['talep_no']) ?>
+                <?php if ($sagla === true): ?><i class="bi bi-patch-check-fill text-success" title="Excel'in kendi özet satırıyla (Sipariş <?= $ton($exS) ?> t / Teslim <?= $ton($exT) ?> t) birebir doğrulandı"></i>
+                <?php elseif ($sagla === false): ?><span class="badge bg-warning text-dark" title="Excel özet satırı (Sipariş <?= $ton($exS) ?> t / Teslim <?= $ton($exT) ?> t) kalem toplamlarıyla uyuşmuyor — Excel'de formül bozuk olabilir">özet farklı</span>
+                <?php endif; ?>
+                <?php if ($notVar): ?><i class="bi bi-sticky-fill text-warning" title="Bu talepte not var — açınca kalemlerde görünür"></i><?php endif; ?>
+            </td>
             <td><?= h(format_date($t['tarih'])) ?></td>
             <td class="small"><?= h((string)$t['firma']) ?></td>
             <td><?= h((string)$t['proje']) ?></td>
@@ -335,7 +388,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <table class="table table-sm table-bordered bg-body mb-0" style="max-width:760px;font-size:.8rem">
                     <thead class="table-light"><tr>
                         <th>Çap</th><th>Malzeme Kodu</th><th>Firma</th>
-                        <th class="text-end">Sipariş (kg)</th><th class="text-end">Teslim (kg)</th><th class="text-end">Kalan (kg)</th>
+                        <th class="text-end">Sipariş (kg)</th><th class="text-end">Teslim (kg)</th><th class="text-end">Kalan (kg)</th><th>Not</th>
                     </tr></thead>
                     <tbody>
                     <?php foreach ($kalemMap[(int)$t['id']] ?? [] as $k): $kk = (float)$k['siparis_kg'] - (float)$k['teslim_kg']; ?>
@@ -346,6 +399,7 @@ require_once __DIR__ . '/../includes/header.php';
                             <td class="text-end"><?= $fmt($k['siparis_kg'], 0) ?></td>
                             <td class="text-end text-success"><?= $fmt($k['teslim_kg'], 0) ?></td>
                             <td class="text-end <?= $kk > 0 ? 'text-danger' : ($kk < 0 ? 'text-primary' : 'text-muted') ?>"><?= $fmt($kk, 0) ?></td>
+                            <td class="small"><?= !empty($k['notlar']) ? '<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">' . h($k['notlar']) . '</span>' : '<span class="text-muted">—</span>' ?></td>
                         </tr>
                     <?php endforeach; ?>
                     </tbody>
