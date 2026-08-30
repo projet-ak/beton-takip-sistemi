@@ -146,6 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['dosya']['tmp_name']
         $r = ['demirbas'=>0,'sarf'=>0,'el_aleti'=>0,
               'giris|depo'=>0,'cikis|depo'=>0,'giris|taseron'=>0,'cikis|taseron'=>0];
         $bulunan = [];
+        $saglamalar = [];        // Excel'in kendi özet hücreleriyle karşılaştırma
         $kullanilanSayfa = [];   // bir sayfa yalnız bir türe aktarılır
 
         // kategori => [sayfa adı parçaları]
@@ -180,12 +181,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['dosya']['tmp_name']
                 if (isset($h['birim'], $h['birim_fiyat']) && $h['birim'] === $h['birim_fiyat']) unset($h['birim']);
                 if (!isset($h['ad'])) { $atlanan[] = dp_katAd($kat) . ': "MALZEME ADI" sütunu bulunamadı'; continue; }
 
+                // Excel'in başlık ÜSTÜNDEKİ kendi özet hücreleri ("STOK MALİ DEĞERİ:" / "KALEM SAYISI:")
+                // — kutsal kitap sağlaması: içe aktarım bittiğinde hesapla karşılaştırılır.
+                $exMali = null; $exKalem = null;
+                foreach (array_slice($rows, 0, $hr) as $oRow) {
+                    foreach ($oRow as $ci => $c) {
+                        $u = dpNorm((string)$c);
+                        if ($u === '') continue;
+                        $hedef = str_contains($u, 'MALI DEGERI') ? 'mali' : (str_contains($u, 'KALEM SAYISI') ? 'kalem' : null);
+                        if ($hedef === null) continue;
+                        for ($cj = $ci + 1; $cj < count($oRow); $cj++) {
+                            $vv = trim((string)($oRow[$cj] ?? ''));
+                            if ($vv === '') continue;
+                            if ($hedef === 'mali') $exMali = dp_sayi($vv); else $exKalem = dp_sayi($vv);
+                            break;
+                        }
+                    }
+                }
+                $tutarHesap = 0.0;
+
                 $pdoDepo->prepare("DELETE FROM depo_kalemler WHERE kategori=?")->execute([$kat]);
                 $varsayilanBirim = $GLOBALS['DP_KATEGORI'][$kat]['birim'] ?? 'Ad';
                 for ($i = $hr + 1; $i < count($rows); $i++) {
                     $row = $rows[$i];
                     $ad  = dpAl($row, $h, 'ad');
                     if ($ad === '') continue;
+                    $tutarHesap += (dp_sayi(dpAl($row,$h,'sayim')) + dp_sayi(dpAl($row,$h,'gelen')) - dp_sayi(dpAl($row,$h,'giden')))
+                                 * dp_sayi(dpAl($row,$h,'birim_fiyat'));
                     $ins->execute([
                         $kat,
                         (int)dpAl($row,$h,'sira') ?: null,
@@ -204,6 +226,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['dosya']['tmp_name']
                     $r[$kat]++;
                 }
                 $bulunan[] = dp_katAd($kat) . ' (' . $r[$kat] . ')';
+                // Sağlama: Excel'in yazdığı özetle hesap birebir mi?
+                if ($exKalem !== null && $exKalem > 0) {
+                    $saglamalar[] = abs($exKalem - $r[$kat]) < 0.5
+                        ? ['ok', dp_katAd($kat) . ': kalem sayısı Excel özetiyle birebir (' . $r[$kat] . ')']
+                        : ['fark', dp_katAd($kat) . ': Excel "KALEM SAYISI" ' . dp_sayi((string)$exKalem) . ' yazıyor, aktarılan ' . $r[$kat] . ' — Excel özet hücresi bayat olabilir'];
+                }
+                if ($exMali !== null && $exMali > 0) {
+                    $saglamalar[] = abs($exMali - $tutarHesap) <= max(1.0, $exMali * 0.001)
+                        ? ['ok', dp_katAd($kat) . ': mali değer Excel özetiyle birebir (' . number_format($tutarHesap, 2, ',', '.') . ' TL)']
+                        : ['fark', dp_katAd($kat) . ': Excel "STOK MALİ DEĞERİ" ' . number_format($exMali, 2, ',', '.') . ' TL yazıyor, hesaplanan ' . number_format($tutarHesap, 2, ',', '.') . ' TL — birim fiyat/formül kontrol edilmeli'];
+                }
             }
 
             // ── HAREKET ─────────────────────────────────────────────────────
@@ -279,6 +312,13 @@ $fmt0 = fn($n) => number_format((float)$n, 0, ',', '.');
             <div>Taşeron: <?= $fmt0($sonuc['giris|taseron']) ?> giriş · <?= $fmt0($sonuc['cikis|taseron']) ?> teslimat</div>
         </div>
     </div>
+    <?php if (!empty($saglamalar)): ?>
+    <div class="small mt-2 border-top pt-2">
+        <?php foreach ($saglamalar as [$sd, $sm]): ?>
+            <div><?= $sd === 'ok' ? '<i class="bi bi-patch-check-fill text-success"></i>' : '<i class="bi bi-exclamation-triangle-fill text-warning"></i>' ?> <?= h($sm) ?></div>
+        <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
     <div class="small mt-2">
         <a href="index.php" class="alert-link">Dashboard</a> ·
         <a href="kalemler.php?k=demirbas" class="alert-link">Demirbaşlar</a> ·
@@ -321,8 +361,16 @@ $fmt0 = fn($n) => number_format((float)$n, 0, ',', '.');
     <div class="text-muted">
         Sayfa adı <strong>içerir</strong> mantığıyla eşleşir — "KARTAL-BATIYAKASI SARF MALZEME" de bulunur.
         Sütunlar başlık metninden okunur, sabit sıra beklenmez.
-        Dosyada bulunmayan sayfalar <strong>silinmez</strong>, dokunulmadan bırakılır;
-        böylece stok ve hareket dosyalarını ayrı ayrı yükleyebilirsiniz.
+        Dosyada bulunmayan sayfalar <strong>silinmez</strong>, dokunulmadan bırakılır.
+    </div>
+    <div class="alert alert-info small mt-2 mb-0">
+        <i class="bi bi-collection me-1"></i><strong>Takip artık 4 ayrı dosyada mı geliyor?</strong> Sorun değil —
+        her dosyayı buradan <strong>sırayla, tek tek</strong> yükleyin; her biri yalnız kendi sayfalarını tam yeniler,
+        diğer bölümlere dokunmaz:
+        <em>Demirbaş Takip</em> → demirbaşlar · <em>Sarf Malzeme Stok</em> → sarf + el aletleri ·
+        <em>Malzeme Takip</em> → depo giriş/çıkış hareketleri · <em>Sarf Taşeron Malzeme Teslimat</em> → taşeron giriş/teslimat.
+        Yükleme sırası fark etmez. Demirbaş/sarf dosyalarındaki "STOK MALİ DEĞERİ" ve "KALEM SAYISI" özet hücreleri
+        aktarım sonunda hesapla otomatik sağlanır.
     </div>
 </div></div>
 
