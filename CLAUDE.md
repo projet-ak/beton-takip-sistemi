@@ -148,6 +148,11 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 - **`irsaliyeler.php`** — Alış/İade/Tüm liste. Filtreler, toplu saha/teknik onay, **toplu güncelleme** (`toplu_islem=guncelle`: Proje→Parsel→Blok→Kot kademeli modal + Açıklama; yalnız doldurulan alanlar değişir, `can_edit()`), **whitelist sıralama**
   (sütun başlığına tıkla), CSV/XLSX export.
 - **`irsaliye_form.php` / `irsaliye_detay.php`** — ekle/düzenle (durum bazlı yetki) / detay + **belge yükleme**: tür seçimli (Fotoğraf/Kantar Fişi/Fatura/İrsaliye/Diğer); kantar/fatura/irsaliye seçilirse **AI okur**, okunan alanlar belge kartında gösterilir (düşük güvende uyarı) ve "İrsaliyeye yaz" ile boş kantar alanlarına aktarılır. Bağlı fatura kartı (`irsaliyeler.fatura_id`) + "Aynı Faturadakiler" bağlantısı. Aynı dosya birden çok irsaliyeye bağlıysa diskten yalnız son bağ koptuğunda silinir.
+- **`toplu_irsaliye.php`** — **toplu irsaliye girişi** (`can_edit()`): ortak bilgiler (tarih/tedarikçi/beton/pompa/kıvam/
+  Proje→Parsel→Blok→Kot kademeli/imalat/firma/açıklama) bir kez seçilir, altta dinamik satırlarla İrsaliye No + m³ +
+  plaka + kantar; Enter yeni satır açar, canlı satır/m³ özeti. Mükerrer fat_irs_norm ile atlanır; `[FATURADAN]` taslağına
+  denk gelen satır taslağı GÜNCELLER (fatura bağı korunur). Durum: admin/teknik_ofis_admin → onaylandi, diğerleri beklemede.
+  Menü: İrsaliyeler → Toplu Giriş.
 - **`hizli_tarama.php`** (~2900 satır) — **QR+DataMatrix+OCR+AI tarama motoru** (§7). Toplu irsaliye tarama.
 - **`raporlar.php`** — Chart.js + ExcelJS (formatlı xlsx) + jsPDF/AutoTable (PDF). `can_view_reports()`.
   **Proje bazlı özet** (U030/U031/U039): etkin proje = `COALESCE(i.proje_id, par.proje_id)` (parsel→proje bağı ile geçmiş kayıtları da kapsar); doughnut grafik + tablo + Excel "Tedarikçi & Beton" sayfasında PROJE bölümü.

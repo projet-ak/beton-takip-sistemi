@@ -94,7 +94,7 @@ if ($__user) {
         </a>
       </li>
 
-      <?php $__irsA = in_array($__page,['irsaliyeler.php','irsaliye_form.php','irsaliye_detay.php'],true); ?>
+      <?php $__irsA = in_array($__page,['irsaliyeler.php','irsaliye_form.php','irsaliye_detay.php','toplu_irsaliye.php'],true); ?>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= $__irsA?'active':'' ?>" href="#subIrs" data-bs-toggle="collapse" role="button" aria-expanded="<?= $__irsA?'true':'false' ?>" data-label="İrsaliyeler">
           <i class="bi bi-file-earmark-text"></i><span>İrsaliyeler</span><i class="bi bi-chevron-right chev"></i>
@@ -103,7 +103,8 @@ if ($__user) {
           <ul class="list-unstyled sidebar-sub">
             <li><a class="sidebar-sub-link <?= (__isActive('irsaliyeler.php')&&(($_GET['tip']??'')==='alis'))?'active':'' ?>" href="<?= $__rootPath ?>irsaliyeler.php?tip=alis">Alış İrsaliyeleri</a></li>
             <li><a class="sidebar-sub-link <?= (__isActive('irsaliyeler.php')&&(($_GET['tip']??'')==='iade'))?'active':'' ?>" href="<?= $__rootPath ?>irsaliyeler.php?tip=iade">İade İrsaliyeleri</a></li>
-            <?php if(can_edit()): ?><li><a class="sidebar-sub-link <?= __isActive('irsaliye_form.php') ?>" href="<?= $__rootPath ?>irsaliye_form.php">Yeni İrsaliye Ekle</a></li><?php endif; ?>
+            <?php if(can_edit()): ?><li><a class="sidebar-sub-link <?= __isActive('irsaliye_form.php') ?>" href="<?= $__rootPath ?>irsaliye_form.php">Yeni İrsaliye Ekle</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('toplu_irsaliye.php') ?>" href="<?= $__rootPath ?>toplu_irsaliye.php">Toplu Giriş</a></li><?php endif; ?>
           </ul>
         </div>
       </li>
