@@ -22,9 +22,20 @@ $sonuclar = [];   // ekranda gösterilecek rapor satırları
 
 // ── Yükle + oku + dağıt ──────────────────────────────────────────────────────
 if (($_POST['action'] ?? '') === 'dagit' && !empty($_FILES['belge']['tmp_name'])) {
+    @set_time_limit(600);   // AI okuma dosya başına saniyeler sürebilir
     $tur     = isset($_POST['tur']) && isset(BLG_TURLER[$_POST['tur']]) ? $_POST['tur'] : 'kantar';
     $uygula  = !empty($_POST['kantar_uygula']);
     $allowed = ['image/jpeg','image/png','image/webp','image/gif','application/pdf'];
+
+    // PHP tek istekte en fazla max_file_uploads (çoğu sunucuda 20) dosya kabul eder;
+    // fazlası SESSİZCE atılır. Büyük seçimler artık tarayıcıda partilere bölünür (aşağıdaki JS),
+    // yine de sınıra takılan olursa açıkça söyle.
+    $maxUp = (int)ini_get('max_file_uploads');
+    if ($maxUp > 0 && count($_FILES['belge']['tmp_name']) >= $maxUp && ($_POST['ajax'] ?? '') !== '1') {
+        $sonuclar[] = ['ad' => '⚠ SINIR', 'durum' => 'hata',
+            'mesaj' => "Sunucu tek istekte en fazla {$maxUp} dosya kabul ediyor — seçimin {$maxUp} üzerindeki kısmı İŞLENMEDİ. "
+                     . "Sayfayı yenileyip (Ctrl+F5) tekrar deneyin: büyük seçimler artık otomatik partilenerek gönderilir."];
+    }
 
     foreach ($_FILES['belge']['tmp_name'] as $i => $tmp) {
         $hata = (int)$_FILES['belge']['error'][$i];
@@ -78,6 +89,27 @@ if (($_POST['action'] ?? '') === 'dagit' && !empty($_FILES['belge']['tmp_name'])
                        'yontem'=>$bul['yontem'],'yazilan'=>$yazilan];
     }
     if (!$sonuclar) flash('error', 'Dosya seçilmedi.');
+
+    // Parti (AJAX) modu: sonuçları oturumda biriktir, özeti JSON dön —
+    // son partiden sonra sayfa ?rapor=1 ile açılır ve TÜM sonuçlar tek raporda gösterilir.
+    if (($_POST['ajax'] ?? '') === '1') {
+        $_SESSION['blg_sonuclar'] = array_merge($_SESSION['blg_sonuclar'] ?? [], $sonuclar);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'islenen'  => count($sonuclar),
+            'eslesti'  => count(array_filter($sonuclar, fn($r) => $r['durum'] === 'eslesti')),
+            'mukerrer' => count(array_filter($sonuclar, fn($r) => $r['durum'] === 'mukerrer')),
+            'bekleyen' => count(array_filter($sonuclar, fn($r) => in_array($r['durum'], ['eslesmedi','okunamadi'], true))),
+            'hata'     => count(array_filter($sonuclar, fn($r) => $r['durum'] === 'hata')),
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
+
+// Parti yüklemesi bitince: biriken tüm sonuçları tek raporda göster
+if (isset($_GET['rapor']) && !empty($_SESSION['blg_sonuclar'])) {
+    $sonuclar = $_SESSION['blg_sonuclar'];
+    unset($_SESSION['blg_sonuclar']);
 }
 
 // ── Bekleyen bir belgeyi elle irsaliyeye bağla ───────────────────────────────
@@ -173,7 +205,7 @@ $YONTEM = ['irsaliye_no'=>'irsaliye no ile', 'plaka_tarih'=>'plaka + tarih ile',
 
 <div class="card mb-4">
     <div class="card-body">
-        <form method="post" enctype="multipart/form-data" class="row g-3">
+        <form method="post" enctype="multipart/form-data" class="row g-3" id="dagitForm">
             <input type="hidden" name="action" value="dagit">
             <div class="col-md-3">
                 <label class="form-label">Belge Türü</label>
@@ -185,7 +217,7 @@ $YONTEM = ['irsaliye_no'=>'irsaliye no ile', 'plaka_tarih'=>'plaka + tarih ile',
                 </select>
             </div>
             <div class="col-md-6">
-                <label class="form-label">Belgeler <span class="text-muted small">(çoklu seçim — JPG, PNG, PDF, maks 10 MB)</span></label>
+                <label class="form-label">Belgeler <span class="text-muted small">(çoklu seçim — JPG, PNG, PDF, maks 10 MB/dosya; 100+ dosya seçebilirsiniz, otomatik partilenir)</span></label>
                 <input type="file" name="belge[]" class="form-control" multiple accept="image/*,application/pdf" required>
             </div>
             <div class="col-md-3 d-flex align-items-end">
@@ -195,10 +227,54 @@ $YONTEM = ['irsaliye_no'=>'irsaliye no ile', 'plaka_tarih'=>'plaka + tarih ile',
                 </div>
             </div>
             <div class="col-12">
-                <button class="btn btn-primary"><i class="bi bi-cpu me-1"></i>Oku ve Dağıt</button>
+                <button class="btn btn-primary" id="dagitBtn"><i class="bi bi-cpu me-1"></i>Oku ve Dağıt</button>
                 <span class="text-muted small ms-2">Eşleşme sırası: belgedeki <strong>irsaliye no</strong> → <strong>plaka + tarih</strong> → plaka</span>
             </div>
+            <div class="col-12 d-none" id="partiKutu">
+                <div class="progress" style="height:22px"><div class="progress-bar progress-bar-striped progress-bar-animated" id="partiBar" style="width:0%">0%</div></div>
+                <div class="small text-muted mt-1" id="partiDurum">Hazırlanıyor…</div>
+                <div class="small text-danger mt-1"><i class="bi bi-exclamation-circle me-1"></i>İşlem bitene kadar sayfayı kapatmayın.</div>
+            </div>
         </form>
+<script>
+// 100 dosyalık seçim tek istekte gönderilirse PHP max_file_uploads (çoğunlukla 20) fazlasını
+// sessizce atar; AI okuma da tek istekte zaman aşımına düşer. Bu yüzden büyük seçimler
+// tarayıcıda 6'şarlı partilere bölünüp sırayla gönderilir; sonuçlar sunucuda biriktirilip
+// son partiden sonra ?rapor=1 ile TEK rapor olarak gösterilir.
+document.getElementById('dagitForm').addEventListener('submit', async function (e) {
+    var form = this;
+    var files = Array.from(form.querySelector('input[type=file]').files || []);
+    if (files.length <= 12) return;                    // küçük seçim: normal gönderim yeterli
+    e.preventDefault();
+    var BATCH = 6;
+    var btn = document.getElementById('dagitBtn'); btn.disabled = true;
+    document.getElementById('partiKutu').classList.remove('d-none');
+    var bar = document.getElementById('partiBar'), durum = document.getElementById('partiDurum');
+    var toplam = files.length, islenen = 0, oz = {eslesti:0, mukerrer:0, bekleyen:0, hata:0};
+    for (var i = 0; i < toplam; i += BATCH) {
+        var fd = new FormData();
+        fd.append('action', 'dagit'); fd.append('ajax', '1');
+        fd.append('tur', form.querySelector('[name=tur]').value);
+        if (form.querySelector('[name=kantar_uygula]') && form.querySelector('[name=kantar_uygula]').checked) fd.append('kantar_uygula', '1');
+        var csrf = form.querySelector('input[name=csrf]'); if (csrf) fd.append('csrf', csrf.value);
+        files.slice(i, i + BATCH).forEach(function (f) { fd.append('belge[]', f); });
+        try {
+            var r = await fetch('belge_dagit.php', { method: 'POST', body: fd });
+            var j = await r.json();
+            islenen += j.islenen || 0;
+            oz.eslesti += j.eslesti || 0; oz.mukerrer += j.mukerrer || 0; oz.bekleyen += j.bekleyen || 0; oz.hata += j.hata || 0;
+        } catch (err) {
+            islenen += Math.min(BATCH, toplam - i); oz.hata += Math.min(BATCH, toplam - i);
+        }
+        var yuzde = Math.round(100 * Math.min(i + BATCH, toplam) / toplam);
+        bar.style.width = yuzde + '%'; bar.textContent = yuzde + '%';
+        durum.textContent = islenen + '/' + toplam + ' belge işlendi — eşleşen ' + oz.eslesti
+                          + ', mükerrer ' + oz.mukerrer + ', bekleyen ' + oz.bekleyen + (oz.hata ? ', hata ' + oz.hata : '');
+    }
+    durum.textContent = 'Tamamlandı — rapor açılıyor…';
+    location.href = 'belge_dagit.php?rapor=1';
+});
+</script>
     </div>
 </div>
 
