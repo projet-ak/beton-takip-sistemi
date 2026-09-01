@@ -238,6 +238,13 @@ if (($_POST['action'] ?? '') === 'eksik_tara' && ctype_digit((string)($_POST['fa
 // Büyük seçimler tarayıcıda partilenir (belge_dagit ile aynı desen).
 if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar']['tmp_name'])) {
     @set_time_limit(300);
+    // İşlenmemiş çıkan dosyalar bekleme klasöründe tutulur ki rapordaki
+    // "işlenmemişleri çözümle ve kaydet" butonu yeniden yükletmeden işleyebilsin.
+    $KONT_BEKLEME = __DIR__ . '/uploads/fatura_kontrol_bekleyen';
+    if (!is_dir($KONT_BEKLEME)) @mkdir($KONT_BEKLEME, 0755, true);
+    foreach ((array)@glob($KONT_BEKLEME . '/fk_*') as $eskiF) {          // 2 günden eski artıklar temizlenir
+        if (@filemtime($eskiF) < time() - 2*86400) @unlink($eskiF);
+    }
     $noIdx = []; $ettnIdx = [];
     foreach ($pdo->query("SELECT f.id, f.fatura_no, f.ettn, f.tarih, f.eksik_adet,
                                  (SELECT COUNT(*) FROM irsaliyeler i WHERE i.fatura_id = f.id) bagli
@@ -265,7 +272,15 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
         if (!$fr && $ettn !== null) $fr = $ettnIdx[$ettn] ?? null;
         if ($fr) $kSonuc[] = ['ad'=>$ad, 'no'=>$no ?: $fr['fatura_no'], 'durum'=>'islenmis', 'kaynak'=>$kaynak,
                               'tarih'=>$fr['tarih'], 'bagli'=>(int)$fr['bagli'], 'eksik'=>(int)$fr['eksik_adet']];
-        else     $kSonuc[] = ['ad'=>$ad, 'no'=>$no, 'durum'=>'islenmemis', 'kaynak'=>$kaynak];
+        else {
+            $satir = ['ad'=>$ad, 'no'=>$no, 'durum'=>'islenmemis', 'kaynak'=>$kaynak];
+            $ext = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'pdf';
+            if (preg_match('/^[a-z0-9]{1,6}$/', $ext)) {
+                $pid = uniqid('fk_', true) . '.' . $ext;
+                if (@move_uploaded_file($tmp, $KONT_BEKLEME . '/' . $pid)) $satir['dosya'] = $pid;
+            }
+            $kSonuc[] = $satir;
+        }
     }
     $_SESSION['fat_kontrol'] = array_merge($_SESSION['fat_kontrol'] ?? [], $kSonuc);
     if (($_POST['ajax'] ?? '') === '1') {
@@ -284,6 +299,92 @@ $kontrolSonuc = null;
 if (isset($_GET['kontrol']) && !empty($_SESSION['fat_kontrol'])) {
     $kontrolSonuc = $_SESSION['fat_kontrol'];
     unset($_SESSION['fat_kontrol']);
+}
+
+// ── 2e) İŞLENMEMİŞLERİ ÇÖZÜMLE ve KAYDET (kontrol raporundan, parti AJAX) ────
+// Tam otomatik hat: metin çıkar (pdftotext→AI) → tedarikçiyi VKN/unvandan bul,
+// yoksa OLUŞTUR → irsaliyeleri normalize eşleştir → fat_kaydet (bağlama + eksik
+// listesi) → fatura dosyasını arşive taşı + eşleşen irsaliyelere belge olarak ekle.
+// Taslak irsaliye AÇILMAZ (o karar tekil ekranda bilinçli verilir); eksikler raporlanır.
+if (($_POST['action'] ?? '') === 'fatura_isle' && !empty($_POST['dosya'])) {
+    @set_time_limit(600);
+    $KONT_BEKLEME = __DIR__ . '/uploads/fatura_kontrol_bekleyen';
+    $iSonuc = [];
+    foreach ((array)$_POST['dosya'] as $pid) {
+        $pid = basename((string)$pid);
+        if (!preg_match('/^fk_[\w.]+$/', $pid)) continue;
+        $tam = $KONT_BEKLEME . '/' . $pid;
+        $ad  = $pid;
+        if (!is_file($tam)) { $iSonuc[] = ['ad'=>$pid, 'durum'=>'hata', 'mesaj'=>'dosya bulunamadı (süresi dolmuş olabilir — kontrolü yeniden çalıştırın)']; continue; }
+        try {
+            $mime  = guess_mime($tam, $ad);
+            $metin = fat_dosyadan_metin($tam, $mime);
+            $veri  = ($metin !== null && $metin !== '') ? fat_metinden_cikar($metin) : null;
+            if (!$veri || !$veri['fatura_no']) {
+                $iSonuc[] = ['ad'=>$pid, 'durum'=>'hata', 'mesaj'=>'fatura no çözülemedi — tekil "Fatura Yükle" ile elle işleyin']; continue;
+            }
+            // Mükerrer (bu arada işlenmiş olabilir)
+            if (fat_mevcut($pdo, $veri['fatura_no'], $veri['ettn'])) {
+                @unlink($tam);
+                $iSonuc[] = ['ad'=>$pid, 'no'=>$veri['fatura_no'], 'durum'=>'zaten', 'mesaj'=>'zaten işlenmiş']; continue;
+            }
+            // Tedarikçi: VKN → normalize unvan → oluştur
+            $ted = fat_tedarikci_bul($pdo, $veri['satici_vkn'] ?? null)
+                ?: fat_tedarikci_bul_ad($pdo, $veri['satici_unvan'] ?? null);
+            $tedYeni = false;
+            if (!$ted && !empty($veri['satici_unvan'])) {
+                $pdo->prepare("INSERT INTO tedarikciler (ad, vkn) VALUES (?, ?)")
+                    ->execute([$veri['satici_unvan'], preg_replace('/\D/', '', (string)($veri['satici_vkn'] ?? '')) ?: null]);
+                $ted = ['id' => (int)$pdo->lastInsertId(), 'ad' => $veri['satici_unvan']];
+                $tedYeni = true;
+            }
+            // Eşleştir + arşive taşı + kaydet
+            $esl = fat_eslestir($pdo, $veri['irsaliyeler']);
+            $ids = array_map(fn($r) => (int)$r['id'], $esl['eslesen']);
+            $dir = __DIR__ . '/uploads/faturalar/' . date('Y/m');
+            if (!is_dir($dir)) @mkdir($dir, 0755, true);
+            $hedefAd  = date('Ymd_His') . '_' . substr(md5($pid . microtime(true)), 0, 8) . '.' . (pathinfo($pid, PATHINFO_EXTENSION) ?: 'pdf');
+            $dosyaUrl = null;
+            if (@rename($tam, $dir . '/' . $hedefAd)) $dosyaUrl = 'uploads/faturalar/' . date('Y/m') . '/' . $hedefAd;
+            fat_kaydet($pdo, [
+                'fatura_no'   => $veri['fatura_no'], 'tarih' => $veri['tarih'],
+                'tedarikci_id'=> (int)($ted['id'] ?? 0) ?: null,
+                'tutar'       => $veri['tutar'], 'miktar' => $veri['miktar'], 'ettn' => $veri['ettn'],
+                'eksik_adet'  => count($esl['eksik']), 'eksik_liste' => $esl['eksik'],
+                'notlar'      => 'Toplu kontrolden otomatik işlendi',
+            ], $ids, current_user_id(), $dosyaUrl);
+            // Fatura dosyasını eşleşen irsaliyelerin belgelerine de ekle (tekil akışla aynı)
+            $belgeEk = 0;
+            if ($dosyaUrl && $ids) {
+                $kimlik = ['fatura_no' => $veri['fatura_no']];
+                foreach ($ids as $iid) {
+                    if (blg_mukerrer($pdo, (int)$iid, 'fatura', $kimlik)) continue;
+                    blg_ekle($pdo, (int)$iid, 'Fatura ' . $veri['fatura_no'], $dosyaUrl, 'fatura', $kimlik, current_user_id());
+                    $belgeEk++;
+                }
+            }
+            $iSonuc[] = ['ad'=>$pid, 'no'=>$veri['fatura_no'], 'durum'=>'kaydedildi',
+                         'bagli'=>count($ids), 'eksik'=>count($esl['eksik']), 'belge'=>$belgeEk,
+                         'ted'=>($ted['ad'] ?? null), 'ted_yeni'=>$tedYeni,
+                         'm3'=>$veri['miktar'], 'tutar'=>$veri['tutar']];
+        } catch (Throwable $eI) {
+            $iSonuc[] = ['ad'=>$pid, 'durum'=>'hata', 'mesaj'=>$eI->getMessage()];
+        }
+    }
+    $_SESSION['fat_islem'] = array_merge($_SESSION['fat_islem'] ?? [], $iSonuc);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'islenen'    => count($iSonuc),
+        'kaydedilen' => count(array_filter($iSonuc, fn($r) => $r['durum'] === 'kaydedildi')),
+        'zaten'      => count(array_filter($iSonuc, fn($r) => $r['durum'] === 'zaten')),
+        'hata'       => count(array_filter($iSonuc, fn($r) => $r['durum'] === 'hata')),
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+$islemSonuc = null;
+if (isset($_GET['islem']) && !empty($_SESSION['fat_islem'])) {
+    $islemSonuc = $_SESSION['fat_islem'];
+    unset($_SESSION['fat_islem']);
 }
 
 // ── 2c) m³ elle düzeltme (Kayıtlı Faturalar listesinden) ────────────────────
@@ -493,9 +594,104 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
         </table>
     </div></div>
     <?php if ($kIslenmemis): ?>
+    <?php $islenebilir = array_values(array_filter($kIslenmemis, fn($r) => !empty($r['dosya']))); ?>
     <div class="card-footer bg-white small">
         <strong class="text-danger">İşlenmemiş numaralar (kopyalanabilir):</strong>
         <code><?= h(implode(', ', array_map(fn($r) => (string)($r['no'] ?? $r['ad']), $kIslenmemis))) ?></code>
+        <?php if ($islenebilir): ?>
+        <div class="mt-2 pt-2 border-top">
+            <button type="button" class="btn btn-success btn-sm" id="isleBtn"
+                    data-dosyalar="<?= h(json_encode(array_map(fn($r) => $r['dosya'], $islenebilir))) ?>">
+                <i class="bi bi-cpu me-1"></i>İşlenmemiş <?= count($islenebilir) ?> faturayı ÇÖZÜMLE ve KAYDET
+            </button>
+            <span class="text-muted ms-2">Her fatura otomatik okunur, tedarikçisi bulunur/oluşturulur, irsaliyeleri bağlanır. Taslak irsaliye açılmaz — eksikler raporlanır.</span>
+            <div class="d-none mt-2" id="isleKutu">
+                <div class="progress" style="height:20px"><div class="progress-bar bg-success progress-bar-striped progress-bar-animated" id="isleBar" style="width:0%">0%</div></div>
+                <div class="small text-muted mt-1" id="isleDurum"></div>
+                <div class="small text-danger mt-1"><i class="bi bi-exclamation-circle me-1"></i>AI okuma fatura başına birkaç saniye sürer — sayfayı kapatmayın.</div>
+            </div>
+        </div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+</div>
+<script>
+// İşlenmemişleri otomatik işle: dosyalar sunucuda bekliyor, 2'şerli partilerle çözümlenir (AI ağır iş)
+(function () {
+    var btn = document.getElementById('isleBtn');
+    if (!btn) return;
+    btn.addEventListener('click', async function () {
+        var dosyalar = JSON.parse(btn.dataset.dosyalar || '[]');
+        if (!dosyalar.length) return;
+        if (!confirm(dosyalar.length + ' fatura otomatik çözümlenip KAYDEDİLECEK. Devam edilsin mi?')) return;
+        btn.disabled = true;
+        document.getElementById('isleKutu').classList.remove('d-none');
+        var bar = document.getElementById('isleBar'), durum = document.getElementById('isleDurum');
+        var BATCH = 2, oz = {kaydedilen:0, zaten:0, hata:0};
+        var csrfEl = document.querySelector('input[name=csrf]');
+        for (var i = 0; i < dosyalar.length; i += BATCH) {
+            var fd = new FormData();
+            fd.append('action', 'fatura_isle');
+            if (csrfEl) fd.append('csrf', csrfEl.value);
+            dosyalar.slice(i, i + BATCH).forEach(function (d) { fd.append('dosya[]', d); });
+            try {
+                var j = await (await fetch('fatura_eslestir.php', { method: 'POST', body: fd })).json();
+                oz.kaydedilen += j.kaydedilen || 0; oz.zaten += j.zaten || 0; oz.hata += j.hata || 0;
+            } catch (err) { oz.hata += Math.min(BATCH, dosyalar.length - i); }
+            var y = Math.round(100 * Math.min(i + BATCH, dosyalar.length) / dosyalar.length);
+            bar.style.width = y + '%'; bar.textContent = y + '%';
+            durum.textContent = Math.min(i + BATCH, dosyalar.length) + '/' + dosyalar.length + ' fatura işlendi — kaydedilen '
+                              + oz.kaydedilen + (oz.zaten ? ', zaten işlenmiş ' + oz.zaten : '') + (oz.hata ? ', hata ' + oz.hata : '');
+        }
+        durum.textContent = 'Tamamlandı — işlem raporu açılıyor…';
+        location.href = 'fatura_eslestir.php?islem=1';
+    });
+})();
+</script>
+<?php endif; ?>
+
+<?php if ($islemSonuc !== null):
+    $iKay = array_filter($islemSonuc, fn($r) => $r['durum'] === 'kaydedildi');
+    $iZat = array_filter($islemSonuc, fn($r) => $r['durum'] === 'zaten');
+    $iHat = array_filter($islemSonuc, fn($r) => $r['durum'] === 'hata');
+    $iEksikli = array_filter($iKay, fn($r) => (int)($r['eksik'] ?? 0) > 0); ?>
+<div class="card mb-4 border-success">
+    <div class="card-header bg-white fw-semibold"><i class="bi bi-cpu me-1 text-success"></i> Otomatik İşleme Raporu
+        <span class="badge bg-success"><?= count($iKay) ?> kaydedildi</span>
+        <?php if ($iZat): ?><span class="badge bg-secondary"><?= count($iZat) ?> zaten işlenmişti</span><?php endif; ?>
+        <?php if ($iHat): ?><span class="badge bg-danger"><?= count($iHat) ?> işlenemedi</span><?php endif; ?></div>
+    <div class="card-body p-0"><div class="table-responsive" style="max-height:60vh">
+        <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
+            <thead class="table-light" style="position:sticky;top:0"><tr>
+                <th>Fatura No</th><th>Durum</th><th>Tedarikçi</th><th class="text-end">m³</th><th class="text-end">Tutar</th>
+                <th class="text-end">Bağlanan İrs.</th><th class="text-end">Eksik</th><th></th>
+            </tr></thead>
+            <tbody>
+            <?php foreach ($islemSonuc as $r): ?>
+                <tr class="<?= $r['durum'] === 'hata' ? 'table-danger' : ($r['durum'] === 'zaten' ? 'table-secondary' : '') ?>">
+                    <td class="font-monospace small"><?= h((string)($r['no'] ?? $r['ad'])) ?></td>
+                    <td>
+                        <?php if ($r['durum'] === 'kaydedildi'): ?><span class="badge bg-success">✓ kaydedildi</span>
+                        <?php elseif ($r['durum'] === 'zaten'): ?><span class="badge bg-secondary">zaten işlenmiş</span>
+                        <?php else: ?><span class="badge bg-danger" title="<?= h((string)($r['mesaj'] ?? '')) ?>">✗ işlenemedi</span> <span class="small text-danger"><?= h((string)($r['mesaj'] ?? '')) ?></span><?php endif; ?>
+                    </td>
+                    <td class="small"><?= h((string)($r['ted'] ?? '')) ?><?= !empty($r['ted_yeni']) ? ' <span class="badge bg-info text-dark">yeni oluşturuldu</span>' : '' ?></td>
+                    <td class="text-end font-monospace"><?= isset($r['m3']) && $r['m3'] !== null ? $fmt($r['m3']) : '—' ?></td>
+                    <td class="text-end font-monospace"><?= isset($r['tutar']) && $r['tutar'] !== null ? $fmt($r['tutar']) . ' ₺' : '—' ?></td>
+                    <td class="text-end"><?= isset($r['bagli']) ? (int)$r['bagli'] : '—' ?><?= isset($r['belge']) && $r['belge'] ? ' <i class="bi bi-paperclip small text-muted" title="fatura ' . (int)$r['belge'] . ' irsaliyenin belgelerine eklendi"></i>' : '' ?></td>
+                    <td class="text-end <?= (int)($r['eksik'] ?? 0) > 0 ? 'text-danger fw-bold' : '' ?>"><?= isset($r['eksik']) ? (int)$r['eksik'] : '—' ?></td>
+                    <td><?php if (!empty($r['no'])): ?><a href="fatura_eslestir.php?fatura_ara=<?= urlencode((string)$r['no']) ?>" class="small">kaydı aç</a><?php endif; ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div></div>
+    <?php if ($iEksikli): ?>
+    <div class="card-footer bg-white small">
+        <i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>
+        <strong><?= count($iEksikli) ?> faturanın</strong> bazı irsaliyeleri sistemde bulunamadı (eksik) — bu numaralar
+        <a href="fatura_eslestir.php?eksik=1">Eksik İrsaliyeler panelinde</a> listelenir; irsaliyeler girildikten sonra
+        "yeniden tara" ile bağ kurulur, ya da faturayı tekil ekranda açıp taslak oluşturma kutusunu kullanın.
     </div>
     <?php endif; ?>
 </div>
