@@ -20,6 +20,42 @@ try { blg_semasi_kur($pdo); } catch (Throwable $e) { flash('error', 'Şema hatas
 $BEKLEME = __DIR__ . '/uploads/belge_bekleyen';
 $sonuclar = [];   // ekranda gösterilecek rapor satırları
 
+/**
+ * Bekleme klasörüne alınmış TEK belgeyi uçtan uca işler:
+ * AI okuma → irsaliye bulma → mükerrer denetimi → irsaliye klasörüne taşıma →
+ * kayıt (+ istenirse kantar değerlerini boş alanlara yazma). Rapor satırı döner.
+ * Hem çoklu yükleme akışı hem kontrol raporundaki "oku ve dağıt" bunu kullanır.
+ */
+function bd_isle(PDO $pdo, string $gecici, string $ad, string $tur, bool $uygula): array
+{
+    $mime = guess_mime($gecici, $ad);
+    $veri = null;
+    try { $veri = blg_ai_oku($gecici, $mime, $tur); } catch (Throwable $e) { $veri = null; }
+    if (!$veri) {
+        blg_bekleme_notu($gecici, ['ad'=>$ad, 'tur'=>$tur, 'okunan'=>null]);
+        return ['ad'=>$ad,'durum'=>'okunamadi','mesaj'=>'AI belgeyi okuyamadı','gecici'=>basename($gecici),'tur'=>$tur];
+    }
+    $bul = blg_irsaliye_bul($pdo, $veri);
+    if (!$bul['irsaliye']) {
+        blg_bekleme_notu($gecici, ['ad'=>$ad, 'tur'=>$tur, 'okunan'=>$veri]);
+        return ['ad'=>$ad,'durum'=>'eslesmedi','mesaj'=>'İlgili irsaliye bulunamadı',
+                'veri'=>$veri,'adaylar'=>$bul['adaylar'],'gecici'=>basename($gecici),'tur'=>$tur];
+    }
+    $irs = $bul['irsaliye'];
+    $eski = blg_mukerrer($pdo, (int)$irs['id'], $tur, $veri, $ad, $gecici, __DIR__);
+    if ($eski) {
+        @unlink($gecici);
+        return ['ad'=>$ad,'durum'=>'mukerrer','veri'=>$veri,'irsaliye'=>$irs,
+                'mesaj'=>'Bu belge ' . $irs['irsaliye_no'] . ' irsaliyesine zaten ekli ('
+                       . format_date($eski['created_at']) . ') — tekrar eklenmedi'];
+    }
+    $tas = blg_dosya_tasi($gecici, $ad, (int)$irs['id'], __DIR__);
+    if (!$tas) return ['ad'=>$ad,'durum'=>'hata','mesaj'=>'İrsaliye klasörüne taşınamadı'];
+    blg_ekle($pdo, (int)$irs['id'], $ad, $tas['yol'], $tur, $veri, current_user_id());
+    $yazilan = ($uygula && $tur === 'kantar') ? blg_kantar_uygula($pdo, (int)$irs['id'], $veri, current_user_id()) : [];
+    return ['ad'=>$ad,'durum'=>'eslesti','irsaliye'=>$irs,'veri'=>$veri,'yontem'=>$bul['yontem'],'yazilan'=>$yazilan];
+}
+
 // ── Yükle + oku + dağıt ──────────────────────────────────────────────────────
 if (($_POST['action'] ?? '') === 'dagit' && !empty($_FILES['belge']['tmp_name'])) {
     @set_time_limit(600);   // AI okuma dosya başına saniyeler sürebilir
@@ -52,41 +88,7 @@ if (($_POST['action'] ?? '') === 'dagit' && !empty($_FILES['belge']['tmp_name'])
         $gecici = $BEKLEME . '/' . uniqid('bkl_', true) . '.' . (strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'bin');
         if (!@move_uploaded_file($tmp, $gecici)) { $sonuclar[] = ['ad'=>$ad,'durum'=>'hata','mesaj'=>'Diske yazılamadı']; continue; }
 
-        $veri = null;
-        try { $veri = blg_ai_oku($gecici, $mime, $tur); } catch (Throwable $e) { $veri = null; }
-        if (!$veri) {
-            blg_bekleme_notu($gecici, ['ad'=>$ad, 'tur'=>$tur, 'okunan'=>null]);
-            $sonuclar[] = ['ad'=>$ad,'durum'=>'okunamadi','mesaj'=>'AI belgeyi okuyamadı','gecici'=>basename($gecici),'tur'=>$tur];
-            continue;
-        }
-
-        $bul = blg_irsaliye_bul($pdo, $veri);
-        if (!$bul['irsaliye']) {
-            blg_bekleme_notu($gecici, ['ad'=>$ad, 'tur'=>$tur, 'okunan'=>$veri]);
-            $sonuclar[] = ['ad'=>$ad,'durum'=>'eslesmedi','mesaj'=>'İlgili irsaliye bulunamadı',
-                           'veri'=>$veri,'adaylar'=>$bul['adaylar'],'gecici'=>basename($gecici),'tur'=>$tur];
-            continue;
-        }
-
-        $irs = $bul['irsaliye'];
-
-        // Mükerrer önleme: aynı fiş/belge bu irsaliyeye zaten eklenmişse tekrar ekleme
-        $eski = blg_mukerrer($pdo, (int)$irs['id'], $tur, $veri, $ad, $gecici, __DIR__);
-        if ($eski) {
-            @unlink($gecici);
-            $sonuclar[] = ['ad'=>$ad,'durum'=>'mukerrer','veri'=>$veri,'irsaliye'=>$irs,
-                           'mesaj'=>'Bu belge ' . $irs['irsaliye_no'] . ' irsaliyesine zaten ekli ('
-                                  . format_date($eski['created_at']) . ') — tekrar eklenmedi'];
-            continue;
-        }
-
-        $tas = blg_dosya_tasi($gecici, $ad, (int)$irs['id'], __DIR__);
-        if (!$tas) { $sonuclar[] = ['ad'=>$ad,'durum'=>'hata','mesaj'=>'İrsaliye klasörüne taşınamadı']; continue; }
-        blg_ekle($pdo, (int)$irs['id'], $ad, $tas['yol'], $tur, $veri, current_user_id());
-
-        $yazilan = ($uygula && $tur === 'kantar') ? blg_kantar_uygula($pdo, (int)$irs['id'], $veri, current_user_id()) : [];
-        $sonuclar[] = ['ad'=>$ad,'durum'=>'eslesti','irsaliye'=>$irs,'veri'=>$veri,
-                       'yontem'=>$bul['yontem'],'yazilan'=>$yazilan];
+        $sonuclar[] = bd_isle($pdo, $gecici, $ad, $tur, $uygula);
     }
     if (!$sonuclar) flash('error', 'Dosya seçilmedi.');
 
@@ -113,6 +115,93 @@ if (isset($_GET['rapor']) && !empty($_SESSION['blg_sonuclar'])) {
 }
 
 // ── Bekleyen bir belgeyi elle irsaliyeye bağla ───────────────────────────────
+// ── TOPLU BELGE KONTROLÜ: "bu 100 belgeden hangisi zaten sistemde?" ─────────
+// AI KULLANMAZ, bedavadır: yüklenen dosya kayıtlı belgelerle ÖNCE boyut, sonra
+// md5 ile karşılaştırılır (aynı baytlar aynı belgedir). Eşleşmeyenler bekleme
+// klasöründe tutulur; rapordaki tek tuşla AI'ya yalnız ONLAR gönderilir.
+if (($_POST['action'] ?? '') === 'belge_kontrol' && !empty($_FILES['belge']['tmp_name'])) {
+    @set_time_limit(300);
+    if (!is_dir($BEKLEME)) @mkdir($BEKLEME, 0755, true);
+    $tur = isset($_POST['tur']) && isset(BLG_TURLER[$_POST['tur']]) ? $_POST['tur'] : 'kantar';
+
+    // Kayıtlı belgeler: boyut → [kayıt] haritası (md5 yalnız boyutu tutanlarda hesaplanır)
+    $boyutIdx = [];
+    foreach ($pdo->query("SELECT f.dosya_adi, f.dosya_yolu, f.tur, f.created_at, i.id irs_id, i.irsaliye_no
+                          FROM irsaliye_fotolar f JOIN irsaliyeler i ON i.id = f.irsaliye_id") as $fr) {
+        $tam = __DIR__ . '/' . $fr['dosya_yolu'];
+        if (!is_file($tam)) continue;
+        $boyutIdx[(int)filesize($tam)][] = $fr + ['tam' => $tam];
+    }
+    $kSonuc = [];
+    foreach ($_FILES['belge']['tmp_name'] as $i => $tmp) {
+        $ad = (string)$_FILES['belge']['name'][$i];
+        if ((int)$_FILES['belge']['error'][$i] !== UPLOAD_ERR_OK) { $kSonuc[] = ['ad'=>$ad,'durum'=>'hata','mesaj'=>'yükleme hatası']; continue; }
+        $boy  = (int)$_FILES['belge']['size'][$i];
+        $bulundu = null; $hash = null;
+        foreach ($boyutIdx[$boy] ?? [] as $aday) {
+            $hash ??= md5_file($tmp);
+            if (md5_file($aday['tam']) === $hash) { $bulundu = $aday; break; }
+        }
+        if ($bulundu) {
+            $kSonuc[] = ['ad'=>$ad, 'durum'=>'eklenmis', 'irs_id'=>(int)$bulundu['irs_id'],
+                         'irsaliye_no'=>$bulundu['irsaliye_no'], 'tur'=>$bulundu['tur'], 'tarih'=>$bulundu['created_at']];
+            continue;
+        }
+        $ext = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'bin';
+        $pid = uniqid('bkl_', true) . '.' . (preg_match('/^[a-z0-9]{1,6}$/', $ext) ? $ext : 'bin');
+        if (@move_uploaded_file($tmp, $BEKLEME . '/' . $pid)) {
+            blg_bekleme_notu($BEKLEME . '/' . $pid, ['ad'=>$ad, 'tur'=>$tur, 'okunan'=>null]);
+            $kSonuc[] = ['ad'=>$ad, 'durum'=>'eklenmemis', 'gecici'=>$pid, 'tur'=>$tur];
+        } else {
+            $kSonuc[] = ['ad'=>$ad, 'durum'=>'hata', 'mesaj'=>'diske yazılamadı'];
+        }
+    }
+    $_SESSION['blg_kontrol'] = array_merge($_SESSION['blg_kontrol'] ?? [], $kSonuc);
+    if (($_POST['ajax'] ?? '') === '1') {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'islenen'    => count($kSonuc),
+            'eklenmis'   => count(array_filter($kSonuc, fn($r) => $r['durum'] === 'eklenmis')),
+            'eklenmemis' => count(array_filter($kSonuc, fn($r) => $r['durum'] === 'eklenmemis')),
+            'hata'       => count(array_filter($kSonuc, fn($r) => $r['durum'] === 'hata')),
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    redirect('belge_dagit.php?kontrol=1');
+}
+$kontrolSonuc = null;
+if (isset($_GET['kontrol']) && !empty($_SESSION['blg_kontrol'])) {
+    $kontrolSonuc = $_SESSION['blg_kontrol'];
+    unset($_SESSION['blg_kontrol']);
+}
+
+// ── Kontrolde "sistemde yok" çıkanları AI ile OKU ve DAĞIT (parti AJAX) ─────
+if (($_POST['action'] ?? '') === 'belge_isle' && !empty($_POST['gecici'])) {
+    @set_time_limit(600);
+    $tur    = isset($_POST['tur']) && isset(BLG_TURLER[$_POST['tur']]) ? $_POST['tur'] : 'kantar';
+    $uygula = !empty($_POST['kantar_uygula']);
+    $iSonuc = [];
+    foreach ((array)$_POST['gecici'] as $pid) {
+        $pid = basename((string)$pid);
+        if (!preg_match('/^bkl_[\w.]+$/', $pid)) continue;
+        $tam = $BEKLEME . '/' . $pid;
+        if (!is_file($tam)) { $iSonuc[] = ['ad'=>$pid, 'durum'=>'hata', 'mesaj'=>'dosya bulunamadı']; continue; }
+        $not = blg_bekleme_notu_oku($tam);
+        $ad  = (string)($not['ad'] ?? $pid);
+        $iSonuc[] = bd_isle($pdo, $tam, $ad, (string)($not['tur'] ?? $tur), $uygula);
+    }
+    $_SESSION['blg_sonuclar'] = array_merge($_SESSION['blg_sonuclar'] ?? [], $iSonuc);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'islenen'  => count($iSonuc),
+        'eslesti'  => count(array_filter($iSonuc, fn($r) => $r['durum'] === 'eslesti')),
+        'mukerrer' => count(array_filter($iSonuc, fn($r) => $r['durum'] === 'mukerrer')),
+        'bekleyen' => count(array_filter($iSonuc, fn($r) => in_array($r['durum'], ['eslesmedi','okunamadi'], true))),
+        'hata'     => count(array_filter($iSonuc, fn($r) => $r['durum'] === 'hata')),
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 if (($_POST['action'] ?? '') === 'elle_bagla') {
     $dosya = basename((string)($_POST['gecici'] ?? ''));
     $irsId = (int)($_POST['irsaliye_id'] ?? 0);
@@ -275,6 +364,159 @@ document.getElementById('dagitForm').addEventListener('submit', async function (
     location.href = 'belge_dagit.php?rapor=1';
 });
 </script>
+
+<!-- TOPLU BELGE KONTROLÜ: AI kullanmaz — dosya içeriği (md5) ile "zaten ekli mi?" bakar -->
+<div class="card mb-4 border-info">
+    <div class="card-header bg-white fw-semibold"><i class="bi bi-clipboard-check me-1 text-info"></i> Toplu Belge Kontrolü
+        <span class="text-muted small fw-normal">— elinizdeki belgelerden hangisi sisteme eklenmiş, hangisi eksik? (AI harcamaz, saniyeler sürer)</span></div>
+    <div class="card-body">
+        <form method="post" enctype="multipart/form-data" class="row g-2 align-items-end" id="kontrolForm">
+            <input type="hidden" name="action" value="belge_kontrol">
+            <div class="col-md-3">
+                <label class="form-label small">Belge Türü <span class="text-muted">(eksikler bu türle işlenir)</span></label>
+                <select name="tur" class="form-select form-select-sm">
+                    <option value="kantar">Kantar Fişi</option>
+                    <option value="irsaliye">İrsaliye</option>
+                    <option value="fatura">Fatura</option>
+                    <option value="diger">Diğer</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small">Belgeler <span class="text-muted">(çoklu seçim — 100+ dosya olabilir)</span></label>
+                <input type="file" name="belge[]" class="form-control form-control-sm" multiple accept="image/*,application/pdf" required>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-info btn-sm text-white" id="kontrolBtn"><i class="bi bi-search me-1"></i>Kontrol Et</button>
+            </div>
+            <div class="col-12 d-none" id="kntKutu">
+                <div class="progress" style="height:20px"><div class="progress-bar bg-info progress-bar-striped progress-bar-animated" id="kntBar" style="width:0%">0%</div></div>
+                <div class="small text-muted mt-1" id="kntDurum"></div>
+            </div>
+        </form>
+        <div class="form-text">Karşılaştırma <strong>dosya içeriğine</strong> (md5) bakar: aynı baytlar aynı belgedir — dosya adı değişse de yakalar.
+            Sistemde bulunmayanlar bekletilir ve rapordaki tek tuşla AI'ya <strong>yalnız onlar</strong> gönderilir.</div>
+    </div>
+</div>
+
+<?php if ($kontrolSonuc !== null):
+    $kVar  = array_filter($kontrolSonuc, fn($r) => $r['durum'] === 'eklenmis');
+    $kYok  = array_values(array_filter($kontrolSonuc, fn($r) => $r['durum'] === 'eklenmemis'));
+    $kHata = array_filter($kontrolSonuc, fn($r) => $r['durum'] === 'hata'); ?>
+<div class="card mb-4 border-info">
+    <div class="card-header bg-white fw-semibold"><i class="bi bi-clipboard-data me-1 text-info"></i> Belge Kontrol Raporu
+        <span class="badge bg-primary ms-1"><?= count($kontrolSonuc) ?> dosya</span>
+        <span class="badge bg-success"><?= count($kVar) ?> zaten ekli</span>
+        <span class="badge bg-danger"><?= count($kYok) ?> sistemde yok</span>
+        <?php if ($kHata): ?><span class="badge bg-secondary"><?= count($kHata) ?> hata</span><?php endif; ?></div>
+    <div class="card-body p-0"><div class="table-responsive" style="max-height:55vh">
+        <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
+            <thead class="table-light" style="position:sticky;top:0"><tr>
+                <th>Dosya</th><th>Durum</th><th>Bağlı İrsaliye</th><th>Tür</th><th>Eklenme</th>
+            </tr></thead>
+            <tbody>
+            <?php foreach ($kontrolSonuc as $r): ?>
+                <tr class="<?= $r['durum'] === 'eklenmemis' ? 'table-danger' : ($r['durum'] === 'hata' ? 'table-secondary' : '') ?>">
+                    <td class="small"><?= h($r['ad']) ?></td>
+                    <td>
+                        <?php if ($r['durum'] === 'eklenmis'): ?><span class="badge bg-success">✓ zaten ekli</span>
+                        <?php elseif ($r['durum'] === 'eklenmemis'): ?><span class="badge bg-danger">✗ sistemde yok</span>
+                        <?php else: ?><span class="badge bg-secondary"><?= h((string)($r['mesaj'] ?? 'hata')) ?></span><?php endif; ?>
+                    </td>
+                    <td class="small"><?php if ($r['durum'] === 'eklenmis'): ?>
+                        <a href="irsaliye_detay.php?id=<?= (int)$r['irs_id'] ?>" target="_blank"><code><?= h((string)$r['irsaliye_no']) ?></code></a>
+                    <?php endif; ?></td>
+                    <td class="small text-muted"><?= h(blg_tur_ad($r['tur'] ?? null)) ?></td>
+                    <td class="small text-muted"><?= !empty($r['tarih']) ? h(format_date($r['tarih'])) : '' ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div></div>
+    <?php if ($kYok): ?>
+    <div class="card-footer bg-white small">
+        <button type="button" class="btn btn-success btn-sm" id="isleBtn"
+                data-gecici="<?= h(json_encode(array_column($kYok, 'gecici'))) ?>"
+                data-tur="<?= h((string)($kYok[0]['tur'] ?? 'kantar')) ?>">
+            <i class="bi bi-cpu me-1"></i>Sistemde olmayan <?= count($kYok) ?> belgeyi OKU ve DAĞIT
+        </button>
+        <span class="text-muted ms-2">AI yalnız bu belgeleri okur, irsaliyesini bulup bağlar. Eşleşmeyenler "Bekleyen Belgeler"de kalır.</span>
+        <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" id="isleKantar" checked>
+            <label class="form-check-label" for="isleKantar">Kantar değerlerini boş alanlara yaz</label>
+        </div>
+        <div class="d-none mt-2" id="isleKutu">
+            <div class="progress" style="height:20px"><div class="progress-bar bg-success progress-bar-striped progress-bar-animated" id="isleBar" style="width:0%">0%</div></div>
+            <div class="small text-muted mt-1" id="isleDurum"></div>
+            <div class="small text-danger mt-1"><i class="bi bi-exclamation-circle me-1"></i>AI okuma belge başına birkaç saniye — sayfayı kapatmayın.</div>
+        </div>
+    </div>
+    <?php endif; ?>
+</div>
+<script>
+// Kontrol: 15'erli parti (md5 karşılaştırması hızlı) — PHP 20 dosya sınırına takılmaz
+document.getElementById('kontrolForm').addEventListener('submit', async function (e) {
+    var form = this, files = Array.from(form.querySelector('input[type=file]').files || []);
+    if (files.length <= 15) return;
+    e.preventDefault();
+    var BATCH = 15, btn = document.getElementById('kontrolBtn');
+    btn.disabled = true;
+    document.getElementById('kntKutu').classList.remove('d-none');
+    var bar = document.getElementById('kntBar'), durum = document.getElementById('kntDurum');
+    var oz = {eklenmis:0, eklenmemis:0, hata:0}, csrf = form.querySelector('input[name=csrf]');
+    for (var i = 0; i < files.length; i += BATCH) {
+        var fd = new FormData();
+        fd.append('action', 'belge_kontrol'); fd.append('ajax', '1');
+        fd.append('tur', form.querySelector('[name=tur]').value);
+        if (csrf) fd.append('csrf', csrf.value);
+        files.slice(i, i + BATCH).forEach(function (f) { fd.append('belge[]', f); });
+        try {
+            var j = await (await fetch('belge_dagit.php', { method: 'POST', body: fd })).json();
+            oz.eklenmis += j.eklenmis || 0; oz.eklenmemis += j.eklenmemis || 0; oz.hata += j.hata || 0;
+        } catch (err) { oz.hata += Math.min(BATCH, files.length - i); }
+        var y = Math.round(100 * Math.min(i + BATCH, files.length) / files.length);
+        bar.style.width = y + '%'; bar.textContent = y + '%';
+        durum.textContent = Math.min(i + BATCH, files.length) + '/' + files.length + ' kontrol edildi — zaten ekli '
+                          + oz.eklenmis + ', sistemde yok ' + oz.eklenmemis + (oz.hata ? ', hata ' + oz.hata : '');
+    }
+    location.href = 'belge_dagit.php?kontrol=1';
+});
+
+// Eksikleri işle: 3'erli parti (AI ağır)
+(function () {
+    var btn = document.getElementById('isleBtn');
+    if (!btn) return;
+    btn.addEventListener('click', async function () {
+        var liste = JSON.parse(btn.dataset.gecici || '[]');
+        if (!liste.length) return;
+        if (!confirm(liste.length + ' belge AI ile okunup ilgili irsaliyelere bağlanacak. Devam edilsin mi?')) return;
+        btn.disabled = true;
+        document.getElementById('isleKutu').classList.remove('d-none');
+        var bar = document.getElementById('isleBar'), durum = document.getElementById('isleDurum');
+        var BATCH = 3, oz = {eslesti:0, mukerrer:0, bekleyen:0, hata:0};
+        var csrf = document.querySelector('input[name=csrf]');
+        var kantar = document.getElementById('isleKantar').checked;
+        for (var i = 0; i < liste.length; i += BATCH) {
+            var fd = new FormData();
+            fd.append('action', 'belge_isle');
+            fd.append('tur', btn.dataset.tur || 'kantar');
+            if (kantar) fd.append('kantar_uygula', '1');
+            if (csrf) fd.append('csrf', csrf.value);
+            liste.slice(i, i + BATCH).forEach(function (g) { fd.append('gecici[]', g); });
+            try {
+                var j = await (await fetch('belge_dagit.php', { method: 'POST', body: fd })).json();
+                oz.eslesti += j.eslesti || 0; oz.mukerrer += j.mukerrer || 0; oz.bekleyen += j.bekleyen || 0; oz.hata += j.hata || 0;
+            } catch (err) { oz.hata += Math.min(BATCH, liste.length - i); }
+            var y = Math.round(100 * Math.min(i + BATCH, liste.length) / liste.length);
+            bar.style.width = y + '%'; bar.textContent = y + '%';
+            durum.textContent = Math.min(i + BATCH, liste.length) + '/' + liste.length + ' belge işlendi — bağlanan '
+                              + oz.eslesti + ', bekleyen ' + oz.bekleyen + (oz.mukerrer ? ', mükerrer ' + oz.mukerrer : '') + (oz.hata ? ', hata ' + oz.hata : '');
+        }
+        durum.textContent = 'Tamamlandı — rapor açılıyor…';
+        location.href = 'belge_dagit.php?rapor=1';
+    });
+})();
+</script>
+<?php endif; ?>
     </div>
 </div>
 
