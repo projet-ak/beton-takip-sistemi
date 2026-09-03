@@ -40,29 +40,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $yetkili) {
                ->execute([trim((string)($_POST['ic_not'] ?? '')) ?: null, $id]);
         flash('success', 'Not kaydedildi.');
     } elseif ($islem === 'evrak') {
-        $f = $_FILES['evrak'] ?? [];
-        if (empty($f['tmp_name']) || !is_uploaded_file($f['tmp_name'])) {
-            flash('error', 'Dosya seçilmedi.');
-        } else {
-            $ad   = (string)$f['name'];
-            $mime = guess_mime($f['tmp_name'], $ad);
-            if (!in_array($mime, ['application/pdf','image/jpeg','image/png','image/webp'], true)) {
-                flash('error', 'Desteklenmeyen tür (PDF, JPG, PNG, WEBP): ' . $mime);
-            } elseif ((int)$f['size'] > 10*1024*1024) {
-                flash('error', 'Dosya 10 MB sınırını aşıyor.');
-            } else {
-                $dir = __DIR__ . '/../uploads/crm_ariza/' . $id;
-                if (!is_dir($dir)) @mkdir($dir, 0755, true);
-                $ext  = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'pdf';
-                $yeni = 'belge_' . date('Ymd_His') . '.' . $ext;
-                if (@move_uploaded_file($f['tmp_name'], $dir . '/' . $yeni)) {
-                    if ($r['evrak_url']) @unlink(__DIR__ . '/../' . $r['evrak_url']);
-                    $pdoCrm->prepare("UPDATE crm_arizalar SET evrak_url=? WHERE id=?")
-                           ->execute(['uploads/crm_ariza/' . $id . '/' . $yeni, $id]);
-                    flash('success', 'Belge yüklendi.');
-                } else flash('error', 'Dosya diske yazılamadı.');
-            }
+        // Çoklu yükleme: her dosya AYRI kayıt olur, öncekiler SİLİNMEZ
+        $f = $_FILES['belge'] ?? [];
+        $kisi = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ?? null;
+        $ok = 0; $hatalar = [];
+        $liste = is_array($f['name'] ?? null)
+            ? array_map(fn($i) => ['name'=>$f['name'][$i], 'tmp_name'=>$f['tmp_name'][$i],
+                                   'error'=>$f['error'][$i], 'size'=>$f['size'][$i]], array_keys($f['name']))
+            : ($f ? [$f] : []);
+        foreach ($liste as $d) {
+            if (($d['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) continue;
+            [$b, $m] = crm_belge_yukle($pdoCrm, $id, $d, $kisi);
+            if ($b) $ok++; else $hatalar[] = $m;
         }
+        if ($ok) flash('success', $ok . ' belge yüklendi.');
+        if ($hatalar) flash('error', implode(' · ', $hatalar));
+        if (!$ok && !$hatalar) flash('error', 'Dosya seçilmedi.');
+    } elseif ($islem === 'belge_sil') {
+        crm_belge_sil($pdoCrm, (int)($_POST['belge_id'] ?? 0));
+        flash('success', 'Belge silindi.');
     }
     redirect('ariza_detay.php?id=' . $id);
 }
@@ -76,6 +72,7 @@ if ($r['konut']) {
     $digerleri = $q->fetchAll();
 }
 
+$belgeler = crm_belgeler($pdoCrm, $id);
 $yas = crm_yas($r);
 $pageTitle = 'Arıza #' . $id . ' — CRM';
 require_once __DIR__ . '/../includes/header.php';
@@ -197,19 +194,53 @@ $bilgi = fn($e, $v) => '<div class="col-sm-6 col-lg-4"><div class="small text-mu
     </div>
 
     <div class="card border-0 shadow-sm">
-      <div class="card-header bg-white small"><i class="bi bi-paperclip me-1"></i><strong>Belge / fotoğraf</strong></div>
+      <div class="card-header bg-white small d-flex align-items-center">
+        <span><i class="bi bi-paperclip me-1"></i><strong>Belge / fotoğraf</strong></span>
+        <?php if ($belgeler): ?><span class="badge bg-secondary ms-auto"><?= count($belgeler) ?></span><?php endif; ?>
+      </div>
       <div class="card-body">
-        <?php if ($r['evrak_url']): ?>
-        <a href="../<?= h($r['evrak_url']) ?>" target="_blank" class="btn btn-success btn-sm w-100 mb-2">
-            <i class="bi bi-file-earmark-check me-1"></i>Ekli belgeyi aç</a>
+        <?php if ($belgeler): ?>
+        <div class="row g-2 mb-3">
+          <?php foreach ($belgeler as $b): $gorsel = str_starts_with((string)$b['mime'], 'image/')
+                || preg_match('/\.(jpe?g|png|webp|heic)$/i', (string)$b['dosya_url']); ?>
+          <div class="col-6">
+            <a href="../<?= h($b['dosya_url']) ?>" target="_blank" class="d-block text-decoration-none border rounded overflow-hidden">
+              <?php if ($gorsel): ?>
+                <img src="../<?= h($b['dosya_url']) ?>" alt="<?= h($b['ad'] ?: 'belge') ?>"
+                     style="width:100%;height:96px;object-fit:cover" loading="lazy">
+              <?php else: ?>
+                <div class="d-flex align-items-center justify-content-center bg-light" style="height:96px">
+                    <i class="bi bi-file-earmark-pdf text-danger fs-2"></i></div>
+              <?php endif; ?>
+              <div class="small text-truncate px-1 py-1" title="<?= h($b['ad']) ?>"><?= h($b['ad'] ?: basename($b['dosya_url'])) ?></div>
+            </a>
+            <div class="small text-muted px-1 d-flex align-items-center">
+              <span><?= h(date('d.m.Y', strtotime($b['created']))) ?></span>
+              <?php if ($yetkili): ?>
+              <form method="post" class="ms-auto" onsubmit="return confirm('Bu belge silinsin mi?')">
+                  <input type="hidden" name="action" value="belge_sil">
+                  <input type="hidden" name="belge_id" value="<?= (int)$b['id'] ?>">
+                  <button class="btn btn-link btn-sm text-danger p-0" title="Sil"><i class="bi bi-trash"></i></button>
+              </form>
+              <?php endif; ?>
+            </div>
+          </div>
+          <?php endforeach; ?>
+        </div>
         <?php endif; ?>
         <?php if ($yetkili): ?>
         <form method="post" enctype="multipart/form-data">
             <input type="hidden" name="action" value="evrak">
-            <input type="file" name="evrak" class="form-control form-control-sm" accept=".pdf,.jpg,.jpeg,.png,.webp" required>
-            <button class="btn btn-outline-primary btn-sm mt-2 w-100"><i class="bi bi-upload me-1"></i><?= $r['evrak_url'] ? 'Değiştir' : 'Yükle' ?></button>
+            <input type="file" name="belge[]" class="form-control form-control-sm" multiple
+                   accept=".pdf,.jpg,.jpeg,.png,.webp,.heic" capture="environment" required>
+            <button class="btn btn-outline-primary btn-sm mt-2 w-100"><i class="bi bi-upload me-1"></i>Yükle</button>
         </form>
-        <div class="form-text">PDF, JPG, PNG — maks 10 MB.</div>
+        <div class="form-text">
+            Birden çok dosya seçilebilir; <strong>öncekiler silinmez</strong>. PDF, JPG, PNG — dosya başına maks 15 MB.
+            Dosyalar <code>uploads/crm_ariza/<?= $id ?>/</code> klasöründe saklanır.
+        </div>
+        <?php elseif (!$belgeler): ?>
+        <div class="small text-muted">Belge eklenmemiş.</div>
         <?php endif; ?>
       </div>
     </div>

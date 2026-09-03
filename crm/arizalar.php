@@ -79,7 +79,8 @@ $sonSayfa = max(1, (int)ceil((int)$oz['adet'] / $adet));
 if ($sayfa > $sonSayfa) $sayfa = $sonSayfa;
 $atla  = ($sayfa - 1) * $adet;
 
-$st = $pdoCrm->prepare("SELECT * FROM crm_arizalar $wsql ORDER BY $sk $yon, id DESC LIMIT $adet OFFSET $atla");
+$st = $pdoCrm->prepare("SELECT a.*, (SELECT COUNT(*) FROM crm_ariza_belgeler b WHERE b.ariza_id=a.id) belge_adet
+                        FROM crm_arizalar a $wsql ORDER BY $sk $yon, a.id DESC LIMIT $adet OFFSET $atla");
 $st->execute($par);
 $liste = $st->fetchAll();
 
@@ -204,7 +205,9 @@ require_once __DIR__ . '/../includes/header.php';
         <?php foreach ($liste as $r): $yas = crm_yas($r); ?>
             <tr class="<?= $r['durum'] === 'acik' && $yas > 90 ? 'table-warning' : '' ?>">
                 <?php if ($yetkili): ?><td><input type="checkbox" name="sec[]" value="<?= (int)$r['id'] ?>" class="form-check-input satir"></td><?php endif; ?>
-                <td><a href="ariza_detay.php?id=<?= (int)$r['id'] ?>" class="text-decoration-none fw-semibold"><?= h($r['konut']) ?></a></td>
+                <td><a href="ariza_detay.php?id=<?= (int)$r['id'] ?>" class="text-decoration-none fw-semibold"><?= h($r['konut']) ?></a>
+                    <?php if (!empty($r['belge_adet'])): ?>
+                    <i class="bi bi-paperclip text-primary" title="<?= (int)$r['belge_adet'] ?> belge/fotoğraf"></i><?php endif; ?></td>
                 <td><?= h($r['blok']) ?></td>
                 <td class="text-nowrap"><?= h($r['kat']) ?></td>
                 <td><?= h($r['sikayet_turu']) ?></td>

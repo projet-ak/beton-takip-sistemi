@@ -135,6 +135,34 @@ function crm_semasi_kur(PDO $pdo): void
         KEY idx_konu (sikayet_konusu)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+    // Arıza başına BİRDEN ÇOK belge/fotoğraf. Dosyalar diskte `uploads/crm_ariza/{ariza_id}/`
+    // altında durur, DB'de yalnız göreli URL tutulur (DB şişmez, .htaccess PHP çalıştırmayı engeller).
+    $pdo->exec("CREATE TABLE IF NOT EXISTS crm_ariza_belgeler (
+        id        INT AUTO_INCREMENT PRIMARY KEY,
+        ariza_id  INT NOT NULL,
+        dosya_url VARCHAR(500) NOT NULL,
+        ad        VARCHAR(255) NULL      COMMENT 'yüklenen dosyanın özgün adı',
+        mime      VARCHAR(60) NULL,
+        boyut     INT NULL,
+        kullanici VARCHAR(100) NULL,
+        created   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_ariza (ariza_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Tek belgelik eski alan (`crm_arizalar.evrak_url`) → belge tablosuna taşı (bir kez, idempotent)
+    try {
+        $eski = $pdo->query("SELECT a.id, a.evrak_url FROM crm_arizalar a
+                             WHERE a.evrak_url IS NOT NULL AND a.evrak_url <> ''")->fetchAll();
+        if ($eski) {
+            $var = $pdo->prepare("SELECT COUNT(*) FROM crm_ariza_belgeler WHERE ariza_id=? AND dosya_url=?");
+            $ekle = $pdo->prepare("INSERT INTO crm_ariza_belgeler (ariza_id, dosya_url, ad) VALUES (?,?,?)");
+            foreach ($eski as $e) {
+                $var->execute([(int)$e['id'], $e['evrak_url']]);
+                if (!(int)$var->fetchColumn()) $ekle->execute([(int)$e['id'], $e['evrak_url'], basename($e['evrak_url'])]);
+            }
+        }
+    } catch (Throwable $ex) { /* taşıma yapılamazsa modül yine çalışır */ }
+
     $pdo->exec("CREATE TABLE IF NOT EXISTS crm_import_log (
         id          INT AUTO_INCREMENT PRIMARY KEY,
         dosya       VARCHAR(255) NULL,
@@ -147,6 +175,64 @@ function crm_semasi_kur(PDO $pdo): void
         created     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         KEY idx_created (created)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+/** Bir arızanın belgeleri (en yeni önce). */
+function crm_belgeler(PDO $pdo, int $arizaId): array
+{
+    try {
+        $st = $pdo->prepare("SELECT * FROM crm_ariza_belgeler WHERE ariza_id=? ORDER BY id DESC");
+        $st->execute([$arizaId]);
+        return $st->fetchAll();
+    } catch (Throwable $e) { return []; }
+}
+
+/**
+ * Belge/fotoğraf yükler → `uploads/crm_ariza/{ariza_id}/` klasörü.
+ * Önceki belgeyi SİLMEZ; her yükleme ayrı kayıt olur (bir arızanın birden çok fotoğrafı olur).
+ * @return array{0:bool,1:string}
+ */
+function crm_belge_yukle(PDO $pdo, int $arizaId, array $f, ?string $kullanici = null): array
+{
+    if (empty($f['tmp_name']) || !is_uploaded_file($f['tmp_name'])) return [false, 'Dosya seçilmedi.'];
+    $ad   = (string)($f['name'] ?? '');
+    $mime = guess_mime($f['tmp_name'], $ad);
+    if (!in_array($mime, ['application/pdf','image/jpeg','image/png','image/webp','image/heic'], true))
+        return [false, h($ad) . ': desteklenmeyen tür (PDF, JPG, PNG, WEBP) — ' . $mime];
+    if ((int)($f['size'] ?? 0) > 15 * 1024 * 1024) return [false, h($ad) . ': dosya 15 MB sınırını aşıyor.'];
+
+    $dir = __DIR__ . '/../uploads/crm_ariza/' . $arizaId;
+    if (!is_dir($dir) && !@mkdir($dir, 0755, true)) return [false, 'Klasör oluşturulamadı: uploads/crm_ariza/' . $arizaId];
+    $ext  = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'bin';
+    $yeni = 'belge_' . date('Ymd_His') . '_' . substr(md5($ad . microtime()), 0, 6) . '.' . $ext;
+    if (!@move_uploaded_file($f['tmp_name'], $dir . '/' . $yeni)) return [false, h($ad) . ': dosya diske yazılamadı.'];
+
+    $url = 'uploads/crm_ariza/' . $arizaId . '/' . $yeni;
+    $pdo->prepare("INSERT INTO crm_ariza_belgeler (ariza_id, dosya_url, ad, mime, boyut, kullanici) VALUES (?,?,?,?,?,?)")
+        ->execute([$arizaId, $url, mb_substr($ad, 0, 255), $mime, (int)($f['size'] ?? 0), $kullanici]);
+    // Eski tek-belge alanı en yeni belgeyi gösterir (liste ekranındaki ataç rozeti buna bakar)
+    $pdo->prepare("UPDATE crm_arizalar SET evrak_url=? WHERE id=?")->execute([$url, $arizaId]);
+    return [true, h($ad) . ' yüklendi.'];
+}
+
+/** Belgeyi siler (kayıt + disk) ve arızanın evrak_url'ini kalan en yeniye günceller. */
+function crm_belge_sil(PDO $pdo, int $belgeId): bool
+{
+    $st = $pdo->prepare("SELECT * FROM crm_ariza_belgeler WHERE id=?");
+    $st->execute([$belgeId]);
+    $b = $st->fetch();
+    if (!$b) return false;
+    $pdo->prepare("DELETE FROM crm_ariza_belgeler WHERE id=?")->execute([$belgeId]);
+    // Dosyayı yalnız başka kayıt kullanmıyorsa diskten sil
+    $v = $pdo->prepare("SELECT COUNT(*) FROM crm_ariza_belgeler WHERE dosya_url=?");
+    $v->execute([$b['dosya_url']]);
+    if (!(int)$v->fetchColumn() && str_starts_with((string)$b['dosya_url'], 'uploads/crm_ariza/'))
+        @unlink(__DIR__ . '/../' . $b['dosya_url']);
+    $son = $pdo->prepare("SELECT dosya_url FROM crm_ariza_belgeler WHERE ariza_id=? ORDER BY id DESC LIMIT 1");
+    $son->execute([(int)$b['ariza_id']]);
+    $pdo->prepare("UPDATE crm_arizalar SET evrak_url=? WHERE id=?")
+        ->execute([$son->fetchColumn() ?: null, (int)$b['ariza_id']]);
+    return true;
 }
 
 /** Dashboard/rapor KPI'ları. */

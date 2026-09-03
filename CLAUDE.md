@@ -117,12 +117,21 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   en çok arızalı daireler / son gelen arızalar) · **arizalar** (filtreler: durum/blok/kat/tür/konu/detay/sorumlu/
   tarih aralığı/serbest arama, whitelist sıralama, sayfalama, **Excel dışa aktarma**, toplu çöz/yeniden aç, 90+
   gün açık satır sarı) · **ariza_detay** (tüm CRM alanları + aynı dairenin diğer arızaları + elle çöz/yeniden aç +
-  **iç not** + belge/fotoğraf `uploads/crm_ariza/{id}/`) · **raporlar** (tarih aralığı filtresi + KPI + aylık
+  **iç not** + **çoklu belge/fotoğraf**: her arızaya sınırsız dosya, tablo `crm_ariza_belgeler`
+  (ariza_id/dosya_url/ad/mime/boyut/kullanıcı), dosyalar **`uploads/crm_ariza/{ariza_id}/` klasöründe**,
+  DB'de yalnız göreli URL; görsellerde küçük önizleme, tek tek silme [dosya başka kayıtta kullanılmıyorsa
+  diskten de silinir], listede ataç rozeti. ⚠ Eski tek-belgelik `crm_arizalar.evrak_url` yeni belge **en
+  yenisini** gösterir; şema kurulumunda eski değerler belge tablosuna taşınır (idempotent). Önceki sürüm her
+  yüklemede eski dosyayı SİLİYORDU — artık silmez) · **raporlar** (tarih aralığı filtresi + KPI + aylık
   trend [tarih filtresinden BAĞIMSIZ — filtre yalnız gelen tarafını kesip çözülenle uyumsuz grafik üretiyordu]
   + açık arıza yaş dağılımı [0-7/8-30/31-90/90+] + tür/konu/detay/arıza tipi/blok/kat/daire tipi/sorumlu
   kırılımları [toplam·açık·çözülen·ort. çözüm günü] + en çok arızalı daireler; **ERN_RAPOR** ile Excel'e Aktar +
   PDF İndir + Yazdır) · **import** (çoklu dosya; dosya adındaki tarih rapor tarihi sayılır; kapanan arızaların
-  listesi `<details>` ile gösterilir) · kurulum_crm. Çekirdek: `crm/_ortak.php` (crm_norm, crm_tarih, crm_anahtar,
+  listesi `<details>` ile gösterilir; **her satırın hesabı verilir** — `okunan = yeni + güncellenen + atlanan`
+  eşitliği ekranda gösterilir, tutmazsa uyarı. **Atlanan satırlar sebebiyle listelenir** (Excel satır no +
+  içerik): 'aynı dosyada birebir tekrar' · 'konut ve şikayet konusu boş — arıza satırı değil'. **Aynı kimlik
+  farklı içerik artık ATLANMAZ**: `md5(anahtar#n)` ile ayrı kayıt açılır (veri kaybı olmaz; dosya sırası sabit
+  olduğundan tekrar yüklemede yine aynı kimlik üretilir, mükerrer oluşmaz)) · kurulum_crm. Çekirdek: `crm/_ortak.php` (crm_norm, crm_tarih, crm_anahtar,
   crm_kat_sira, crm_semasi_kur, crm_ozet, crm_filtre, crm_secenekler) + `crm/_import.php` (CRM_ALAN başlık
   haritası — "Aciklama" EN SONA, yoksa "Sikayet/Durum Aciklamasi" sütununu kapar; crm_sayfa/crm_harita/crm_import).
   İlk dosya (2026-09-03) ile doğrulandı: 610 açık arıza, 211 daire, 7 blok, 2025-07-30 → 2026-08-31.
@@ -388,7 +397,7 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 - Beton: `uploads/images/` (scan), `uploads/pdf/`, `uploads/irsaliye_fotolar/`, `uploads/irsaliye_{id}/`, `uploads/faturalar/{Y}/{m}/`, `uploads/belge_bekleyen/` (eşleşmeyen belgeler, 7 gün).
 - **Demir (ayrı)**: `uploads/demir/gorseller/`, `uploads/demir/belgeler/`, `uploads/demir_tutanak/{id}/`, `uploads/demir_iade/{id}/`, `uploads/demir_tutanak_takip/{tutanak_no}/`, `uploads/demir_hurda/{id}/`, `uploads/demir_sozlesme/{id}/`.
 - Görseller **dosya olarak** tutulur; DB'ye yalnızca göreli URL yazılır (DB boyutu şişmez).
-- **CRM**: `uploads/crm_ariza/{id}/` (arıza belgesi/fotoğrafı).
+- **CRM**: `uploads/crm_ariza/{ariza_id}/` (arıza başına çoklu belge/fotoğraf; kayıtlar `crm_ariza_belgeler`).
 - `uploads/.htaccess` PHP çalıştırmayı engeller (alt klasörlere de uygulanır).
 
 ---

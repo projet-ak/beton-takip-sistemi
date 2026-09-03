@@ -97,14 +97,44 @@ $f0 = fn($n) => number_format((float)$n, 0, ',', '.');
             <div class="text-danger"><i class="bi bi-x-circle me-1"></i><?= h($r['hata']) ?></div>
         <?php else: $s = $r['sonuc']; ?>
             <div class="d-flex flex-wrap gap-3 mb-2">
-                <span><span class="badge bg-secondary"><?= $f0($s['satir']) ?></span> satır okundu</span>
+                <span><span class="badge bg-secondary"><?= $f0($s['okunan']) ?></span> satır okundu</span>
                 <span><span class="badge bg-danger"><?= $f0($s['yeni']) ?></span> yeni arıza</span>
                 <span><span class="badge bg-primary"><?= $f0($s['guncellenen']) ?></span> güncellenen</span>
                 <span><span class="badge bg-success"><?= $f0($s['kapanan']) ?></span> kapanan (çözüldü)</span>
                 <?php if ($s['yenidenAcilan']): ?>
                 <span><span class="badge bg-warning text-dark"><?= $f0($s['yenidenAcilan']) ?></span> yeniden açılan</span>
                 <?php endif; ?>
+                <?php if ($s['atlanan']): ?>
+                <span><span class="badge bg-dark"><?= $f0(count($s['atlanan'])) ?></span> atlanan</span>
+                <?php endif; ?>
+                <?php if ($s['ikinciKayit']): ?>
+                <span><span class="badge bg-info text-dark"><?= $f0($s['ikinciKayit']) ?></span> aynı kimlikte ayrı kayıt</span>
+                <?php endif; ?>
             </div>
+            <div class="text-muted mb-2">
+                Hesap: <?= $f0($s['okunan']) ?> okunan = <?= $f0($s['yeni']) ?> yeni +
+                <?= $f0($s['guncellenen']) ?> güncellenen + <?= $f0(count($s['atlanan'])) ?> atlanan
+                <?php if ($s['okunan'] === $s['yeni'] + $s['guncellenen'] + count($s['atlanan'])): ?>
+                    <i class="bi bi-check-circle-fill text-success ms-1" title="Her satırın hesabı verildi"></i>
+                <?php endif; ?>
+            </div>
+            <?php if ($s['atlanan']): ?>
+            <details class="mb-2"><summary style="cursor:pointer" class="text-warning-emphasis">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i><strong><?= count($s['atlanan']) ?> satır kayıt açılmadan atlandı</strong>
+                — sebebiyle birlikte göster</summary>
+                <div class="table-responsive mt-2">
+                <table class="table table-sm table-bordered mb-0" style="font-size:.8rem">
+                    <thead class="table-light"><tr><th style="width:70px">Excel satırı</th><th>Sebep</th><th>Satır içeriği</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($s['atlanan'] as $at): ?>
+                        <tr><td><?= (int)$at['satir'] ?></td><td><?= h($at['sebep']) ?></td>
+                            <td class="text-muted"><?= h($at['ozet']) ?></td></tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+                </div>
+            </details>
+            <?php endif; ?>
             <?php if ($s['kapananlar']): ?>
             <details><summary style="cursor:pointer">Kapanan arızalar (raporda artık yok) — listeyi göster</summary>
                 <div class="table-responsive mt-2">
@@ -171,6 +201,9 @@ $f0 = fn($n) => number_format((float)$n, 0, ',', '.');
                 <tr><td>Sistemde açık, raporda yok</td><td><span class="badge bg-success">Çözüldü</span> sayılır (kapanış: otomatik)</td></tr>
                 <tr><td>Kapatılmıştı, raporda yine var</td><td><span class="badge bg-warning text-dark">Yeniden açılır</span> — hatalı kapanış kendini düzeltir</td></tr>
                 <tr><td>Raporda Çözümlenme Tarihi dolu</td><td>Çözüldü sayılır (kapanış: excel), tarih birebir alınır</td></tr>
+                <tr><td>Aynı dosyada <strong>birebir aynı</strong> satır</td><td>Tek kayıt açılır, ikincisi <span class="badge bg-dark">atlanan</span> listesinde sebebiyle görünür</td></tr>
+                <tr><td>Aynı kimlik, <strong>farklı içerik</strong></td><td>Satır KAYBOLMAZ — ayrı kayıt açılır (<span class="badge bg-info text-dark">aynı kimlikte ayrı kayıt</span>)</td></tr>
+                <tr><td>Konut ve şikayet konusu boş satır</td><td>Arıza satırı sayılmaz, <span class="badge bg-dark">atlanan</span> listesinde içeriğiyle gösterilir</td></tr>
             </tbody>
         </table>
         <div class="text-muted">

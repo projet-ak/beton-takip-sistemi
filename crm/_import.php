@@ -107,8 +107,10 @@ function crm_import(PDO $pdo, SimpleXLSX $x, array $opt = []): array
     $kapat  = $opt['kapat'] ?? true;
     $rapor  = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($opt['rapor_tarihi'] ?? '')) ? $opt['rapor_tarihi'] : date('Y-m-d');
     $raporSon = $rapor . ' 23:59:59';
-    $sonuc  = ['satir'=>0, 'yeni'=>0, 'guncellenen'=>0, 'kapanan'=>0, 'yenidenAcilan'=>0,
-               'kapananlar'=>[], 'uyari'=>[], 'rapor_tarihi'=>$rapor];
+    // okunan = dolu satır · satir = kimliklenip işlenen · atlanan = neden yazılmadığı listesi
+    // (her satırın hesabı verilir: okunan == yeni + guncellenen + atlanan olmalı)
+    $sonuc  = ['okunan'=>0, 'satir'=>0, 'yeni'=>0, 'guncellenen'=>0, 'kapanan'=>0, 'yenidenAcilan'=>0,
+               'ikinciKayit'=>0, 'atlanan'=>[], 'kapananlar'=>[], 'uyari'=>[], 'rapor_tarihi'=>$rapor];
 
     $si = crm_sayfa($x);
     if ($si === null) throw new RuntimeException('Dosyada "UretimArizalari" sayfası bulunamadı (sayfalar: ' . implode(', ', $x->sheetNames()) . ').');
@@ -136,19 +138,42 @@ function crm_import(PDO $pdo, SimpleXLSX $x, array $opt = []): array
         $pdo->exec("CREATE TEMPORARY TABLE crm_gelen (anahtar CHAR(32) PRIMARY KEY)");
         $gelenIns = $pdo->prepare("INSERT IGNORE INTO crm_gelen (anahtar) VALUES (?)");
 
-        $dosyaIci = [];   // aynı dosyada birebir tekrar eden satırlar
+        $dosyaIci = [];   // kimlik → [ham içerik, kaçıncı, ilk satır no]
         for ($i = $hr + 1; $i < count($rows); $i++) {
             $row = $rows[$i];
+            $ham = trim(implode('|', array_map('strval', $row)));
+            if ($ham === '' || trim(str_replace('|', '', $ham)) === '') continue;   // tamamen boş satır
+            $sonuc['okunan']++;
+
             $a = [];
             foreach ($alanlar as $alan) $a[$alan] = crm_al($row, $h, $alan);
-            if ($a['konut'] === '' && $a['sikayet_konusu'] === '') continue;   // boş satır
+            if ($a['konut'] === '' && $a['sikayet_konusu'] === '') {
+                // Dolu ama tanınmayan satır (ara başlık, toplam satırı, kaymış sütun) — sessizce yutulmaz
+                $sonuc['atlanan'][] = ['satir'=>$i+1, 'sebep'=>'Konut ve şikayet konusu boş — arıza satırı değil',
+                                       'ozet'=>mb_substr(preg_replace('/\|+/', ' · ', $ham), 0, 90)];
+                continue;
+            }
             $a['olusturma']  = crm_tarih($a['olusturma']);
             $a['cozumlenme'] = crm_tarih($a['cozumlenme']);
-            $sonuc['satir']++;
 
             $anahtar = crm_anahtar($a);
-            if (isset($dosyaIci[$anahtar])) continue;   // dosya içinde birebir aynı satır
-            $dosyaIci[$anahtar] = true;
+            if (isset($dosyaIci[$anahtar])) {
+                if ($dosyaIci[$anahtar]['ham'] === $ham) {
+                    // Birebir aynı satır iki kez yazılmış → tek kayıt yeter
+                    $sonuc['atlanan'][] = ['satir'=>$i+1, 'sebep'=>'Aynı dosyada birebir tekrar (satır ' . $dosyaIci[$anahtar]['satir'] . ' ile aynı)',
+                                           'ozet'=>$a['konut'] . ' · ' . $a['sikayet_konusu'] . ' · ' . mb_substr($a['ariza_tipi'], 0, 40)];
+                    continue;
+                }
+                // Kimlik aynı ama içerik farklı (ör. açıklaması 120. karakterden sonra ayrışıyor):
+                // satır KAYBOLMAZ, sıralı kimlikle ayrı kayıt açılır. Aynı dosya tekrar yüklendiğinde
+                // sıra aynı olduğundan yine aynı kimlik üretilir → mükerrer oluşmaz.
+                $sira = ++$dosyaIci[$anahtar]['sayac'];
+                $anahtar = md5($anahtar . '#' . $sira);
+                $sonuc['ikinciKayit']++;
+            } else {
+                $dosyaIci[$anahtar] = ['ham'=>$ham, 'sayac'=>1, 'satir'=>$i+1];
+            }
+            $sonuc['satir']++;
             $gelenIns->execute([$anahtar]);
 
             $deger = array_map(fn($alan) => $a[$alan] === '' ? null : $a[$alan], $alanlar);
@@ -175,7 +200,7 @@ function crm_import(PDO $pdo, SimpleXLSX $x, array $opt = []): array
         }
 
         // Dosyada olmayan açık kayıtlar → arıza kapanmış
-        if ($kapat && $sonuc['satir'] > 0) {
+        if ($kapat && $sonuc['satir'] > 0) {   // boş/başarısız dosya her şeyi kapatmasın
             $ornek = $pdo->prepare("SELECT konut, sikayet_konusu, sikayet_aciklamasi, ariza_tipi, olusturma
                                     FROM crm_arizalar
                                     WHERE durum='acik' AND olusturma <= ?
@@ -202,5 +227,8 @@ function crm_import(PDO $pdo, SimpleXLSX $x, array $opt = []): array
     }
 
     if ($sonuc['satir'] === 0) $sonuc['uyari'][] = 'Dosyada veri satırı bulunamadı.';
+    // Hesap tutmalı: okunan = yeni + güncellenen + atlanan
+    $fark = $sonuc['okunan'] - ($sonuc['yeni'] + $sonuc['guncellenen'] + count($sonuc['atlanan']));
+    if ($fark !== 0) $sonuc['uyari'][] = "Satır sayımı tutmuyor ($fark satır fark) — lütfen bildirin.";
     return $sonuc;
 }
