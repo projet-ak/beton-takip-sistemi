@@ -1,9 +1,15 @@
 <?php
 /**
- * hareket_tutanak.php — Depo giriş/çıkış hareketi için A4 yazdırılabilir tutanak
+ * hareket_tutanak.php — Depo giriş/çıkış için A4 yazdırılabilir fiş/tutanak
  *
  * Giriş → MALZEME TESLİM ALMA TUTANAĞI (firma → ERN Taahhüt depo)
- * Çıkış → MALZEME TESLİM TUTANAĞI      (ERN Taahhüt depo → firma/taşeron)
+ * Çıkış → DEPO MALZEME ÇIKIŞ FİŞİ      (ERN Taahhüt depo → firma/taşeron)
+ * Hurda → MALZEME HURDAYA AYIRMA TUTANAĞI
+ *
+ * Bir fişte birçok kalem olur: aynı fişin (tür+kaynak+hurda+fiş no+tarih+firma)
+ * bütün satırları `dp_fis_satirlari()` ile toplanır ve TEK belgede listelenir —
+ * kalemler tek tek girilse de sahaya çıkan evrak birdir. `gomulu=1` araç çubuğunu
+ * gizler (işlem sonu ekranındaki ön izleme çerçevesi için).
  *
  * ERN Taahhüt, ERN Holding'in inşaat koludur — saha evrakları Taahhüt adına düzenlenir.
  */
@@ -23,11 +29,24 @@ $st->execute([$id]);
 $hr = $st->fetch();
 if (!$hr) { flash('error', 'Hareket bulunamadı.'); redirect('hareketler.php'); }
 
-$g   = $hr['tur'] === 'giris';
-$no  = 'DEP-' . ($g ? 'G' : 'C') . '-' . str_pad((string)$hr['id'], 5, '0', STR_PAD_LEFT);
-$fmt = fn($n) => number_format((float)$n, 2, ',', '.');
-$baslik = !empty($hr['hurda']) ? 'MALZEME HURDAYA AYIRMA TUTANAĞI'
-        : ($g ? 'MALZEME TESLİM ALMA TUTANAĞI' : 'MALZEME TESLİM TUTANAĞI');
+$g      = $hr['tur'] === 'giris';
+$hurda  = !empty($hr['hurda']);
+$gomulu = ($_GET['gomulu'] ?? '') === '1';
+$fmt    = fn($n) => number_format((float)$n, 2, ',', '.');
+$baslik = $hurda ? 'MALZEME HURDAYA AYIRMA TUTANAĞI'
+        : ($g ? 'MALZEME TESLİM ALMA TUTANAĞI' : 'DEPO MALZEME ÇIKIŞ FİŞİ');
+
+// Aynı fişin tüm kalemleri (tek tek girilmiş olsa da belge birdir)
+$ids = dp_fis_satirlari($pdoDepo, $hr);
+$q   = $pdoDepo->prepare("SELECT * FROM depo_hareketler
+                          WHERE id IN (" . implode(',', array_fill(0, count($ids), '?')) . ") ORDER BY id");
+$q->execute($ids);
+$kalemler = $q->fetchAll();
+// Belge no: fiş no varsa o esas, yoksa kayıt id'sinden üretilir
+$no  = trim((string)($hr['belge_no'] ?? '')) !== ''
+     ? (string)$hr['belge_no']
+     : 'DEP-' . ($g ? 'G' : 'C') . '-' . str_pad((string)$hr['id'], 5, '0', STR_PAD_LEFT);
+$toplam = array_sum(array_map(fn($k) => (float)$k['miktar'], $kalemler));
 ?>
 <!DOCTYPE html>
 <html lang="tr"><head>
@@ -47,6 +66,7 @@ $baslik = !empty($hr['hurda']) ? 'MALZEME HURDAYA AYIRMA TUTANAĞI'
   table.items { width:100%; border-collapse:collapse; font-size:12px; margin-top:4px; }
   table.items th, table.items td { border:1px solid #bbb; padding:6px 8px; }
   table.items th { background:#00584E; color:#fff; font-weight:600; }
+  table.items tfoot th { background:#f5f7f7; color:#111; }
   table.items td.r, table.items th.r { text-align:right; }
   .note { font-size:11px; color:#444; margin:14px 0; line-height:1.5; }
   .signs { display:flex; justify-content:space-between; margin-top:44px; }
@@ -62,10 +82,13 @@ $baslik = !empty($hr['hurda']) ? 'MALZEME HURDAYA AYIRMA TUTANAĞI'
 </style>
 </head>
 <body>
+<?php if (!$gomulu): ?>
 <div class="toolbar">
   <button class="btn-print" onclick="window.print()">🖨 Yazdır / PDF Kaydet</button>
-  <a class="btn-back" href="hareketler.php">← Geri</a>
+  <a class="btn-back" href="hareket_sonuc.php?id=<?= (int)$hr['id'] ?>">← İşlem ekranı</a>
+  <a class="btn-back" href="hareketler.php">Hareket defteri</a>
 </div>
+<?php endif; ?>
 
 <div class="sheet">
   <div class="top">
@@ -81,7 +104,7 @@ $baslik = !empty($hr['hurda']) ? 'MALZEME HURDAYA AYIRMA TUTANAĞI'
   </div>
 
   <div class="doc-title"><?= h($baslik) ?></div>
-  <div class="doc-no">Tutanak No: <?= h($no) ?></div>
+  <div class="doc-no"><?= $g ? 'İrsaliye / Belge No' : ($hurda ? 'Tutanak No' : 'Fiş No') ?>: <?= h($no) ?></div>
 
   <table class="info">
     <tr><td class="k"><?= $g ? 'Gönderen Firma' : 'Teslim Edilen Firma / Taşeron' ?></td><td><?= h($hr['firma'] ?: '—') ?></td>
@@ -91,7 +114,7 @@ $baslik = !empty($hr['hurda']) ? 'MALZEME HURDAYA AYIRMA TUTANAĞI'
     <tr><td class="k">Teslim Alan</td><td><?= h($hr['teslim_alan'] ?: '—') ?></td>
         <td class="k">Onaylayan</td><td><?= h($hr['onay'] ?: '—') ?></td></tr>
     <tr><td class="k">Lokasyon</td><td><?= h($hr['lokasyon'] ?: '—') ?></td>
-        <td class="k"><?= !empty($hr['hurda']) ? 'Hurdaya Ayrılma Sebebi' : 'Açıklama' ?></td>
+        <td class="k"><?= $hurda ? 'Hurdaya Ayrılma Sebebi' : 'Açıklama' ?></td>
         <td><?= h($hr['aciklama'] ?: '—') ?></td></tr>
   </table>
 
@@ -99,13 +122,23 @@ $baslik = !empty($hr['hurda']) ? 'MALZEME HURDAYA AYIRMA TUTANAĞI'
     <thead><tr><th style="width:36px">S.No</th><th>Malzeme Adı ve Tanımı</th><th>Özellik / Marka</th>
                <th class="r" style="width:100px">Miktar</th><th style="width:70px">Birim</th></tr></thead>
     <tbody>
-      <tr><td>1</td><td><?= h($hr['malzeme']) ?></td><td><?= h($hr['ozellik'] ?: '—') ?></td>
-          <td class="r"><?= $fmt($hr['miktar']) ?></td><td><?= h($hr['birim'] ?: 'Adet') ?></td></tr>
+      <?php foreach ($kalemler as $i => $k): ?>
+      <tr><td><?= $i + 1 ?></td><td><?= h($k['malzeme']) ?></td><td><?= h($k['ozellik'] ?: '—') ?></td>
+          <td class="r"><?= $fmt($k['miktar']) ?></td><td><?= h($k['birim'] ?: 'Adet') ?></td></tr>
+      <?php endforeach; ?>
+      <?php // Elle doldurulabilmesi için boş satırlar (sahada kalem eklenebilir)
+      for ($b = count($kalemler); $b < 8; $b++): ?>
+      <tr><td><?= $b + 1 ?></td><td>&nbsp;</td><td>&nbsp;</td><td class="r">&nbsp;</td><td>&nbsp;</td></tr>
+      <?php endfor; ?>
     </tbody>
+    <?php if (count($kalemler) > 1): ?>
+    <tfoot><tr><th colspan="3" style="text-align:right">TOPLAM (<?= count($kalemler) ?> kalem)</th>
+        <th class="r"><?= $fmt($toplam) ?></th><th>&nbsp;</th></tr></tfoot>
+    <?php endif; ?>
   </table>
 
   <div class="note">
-    Yukarıda cinsi, miktarı ve özellikleri belirtilen malzeme<?= !empty($hr['hurda'])
+    Yukarıda cinsi, miktarı ve özellikleri belirtilen malzeme<?= $hurda
         ? ' kullanım dışı kalması nedeniyle HURDAYA AYRILMIŞTIR'
         : ($g ? ' eksiksiz ve hasarsız olarak teslim alınmıştır'
               : ', belirtilen firmaya/kişiye eksiksiz olarak teslim edilmiştir') ?>.

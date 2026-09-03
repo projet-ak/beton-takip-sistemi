@@ -35,7 +35,22 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   + yürüyen bakiye; bakiye eksiye düşerse kırmızı satır + "sayım öncesi stok VEYA giriş kaydı eksik" açıklama bandı —
   "olmayan ürünü nereden verdiniz?" sorusunun cevabı; stok kartı eşleşmesi dp_mal_norm ile, benzer ad önerileri) ·
   **lokasyonlar**(alan/raf bazlı stok akordeonu [kalem+stok+mali değer] + sahaya çıkışların lokasyon özeti) ·
-  **firma_ekstre**(firma/taşeron seç → firmadan gelen / firmaya verilen; malzeme bazlı net + tarihli döküm) · **hareket_form**(günlük elle giriş/çıkış: `elle=1` işaretli — Excel tam yenilemesinde KORUNUR [import `elle=0` siler]; opsiyonel "stok kalemine işle" `kalem_id` → depo_kalemler GELEN/GİDEN güncellenir, silme/düzenlemede `dp_stok_islet()` geri alır; malzeme datalist'ten seçilince kalem otomatik eşleşir) · **hareket_tutanak**(hareket başına A4 tutanak: giriş=TESLİM ALMA, çıkış=TESLİM, hurda=HURDAYA AYIRMA; **ERN Taahhüt** logolu, kayıt sonrası bannerdan ve listeden yazdırılır) · import(**ÇOKLU DOSYA** `dosya[]` multiple — 7 sayfa/bölüm: DEMİRBAŞLAR/
+  **firma_ekstre**(firma/taşeron seç → firmadan gelen / firmaya verilen; malzeme bazlı net + tarihli döküm) · **hareket_form**(günlük elle giriş/çıkış: `elle=1` işaretli — Excel tam yenilemesinde KORUNUR [import `elle=0` siler];
+  **aranabilir malzeme açılır menüsü** — sayfanın kendi JSON ucu `?kalem_ara=` → `dp_kalem_ara()`: süzme SQL LIKE ile DEĞİL
+  PHP'de `dp_mal_norm` ile (Türkçe harf duyarsız: "ampul"→"Ampül"; LIKE'ta 'İ' i/ı ile eşleşmediğinden kayıtlar sessizce
+  düşüyordu), kelime sırası serbest ("salter kompakt 200"→"Tmş Kompakt Şalter 200 A"), ad başı→ad içi→özellik/kod sıralı,
+  satırda stok+birim rozeti · kategori · lokasyon; ok tuşları/Enter/Esc, ⌄ düğmesi en çok stoklu 25 kalemi açar. Seçimde
+  özellik/birim/lokasyon boşsa otomatik dolar, `kalem_id` gizli alana yazılır, **"stok kalemine işle"** onay kutusu
+  etkinleşir (kapatılırsa yalnız deftere yazılır) ve çıkışta **"bu çıkıştan sonra kalan"** canlı hesaplanır — eksiye
+  düşerse kırmızı uyarı. Kayıt → **hareket_sonuc.php**) ·
+  **hareket_sonuc**(İŞLEM SONU ekranı: kayıt özeti + **fişin tüm kalemleri** tablosu, "Çıkış Fişini Yazdır",
+  **"Aynı fişe malzeme ekle"** [fiş no/tarih/firma/teslim alan/onay/lokasyon URL ile forma taşınır → yalnız malzeme+miktar
+  girilir; formda bilgi bandı], **imzalı fişi GERİ YÜKLE** (`dp_evrak_kaydet` → `uploads/depo_hareket/{id}/`, belge fişin
+  TÜM satırlarına bağlanır) ve fişin iframe ön izlemesi) ·
+  **hareket_tutanak**(A4 belge, **ERN Taahhüt** logolu: giriş=TESLİM ALMA TUTANAĞI, çıkış=**DEPO MALZEME ÇIKIŞ FİŞİ**,
+  hurda=HURDAYA AYIRMA TUTANAĞI. **Bir fiş = bir belge**: `dp_fis_satirlari()` [tür+kaynak+hurda+belge no+tarih+firma]
+  ile aynı fişin bütün kalemleri tek sayfada listelenir + TOPLAM satırı + sahada elle yazmak için 8'e kadar boş satır;
+  fiş no yoksa belge no DEP-C-00001 üretilir; `gomulu=1` araç çubuğunu gizler [ön izleme çerçevesi]) · import(**ÇOKLU DOSYA** `dosya[]` multiple — 7 sayfa/bölüm: DEMİRBAŞLAR/
   SARF MALZEME/EL ALETLERİ → stok, MALZEME GİRİŞ-ÇIKIŞ + TAŞERON MALZEME GİRİŞ-TESLİMAT → hareket; her biri kendi
   türünde tam yenileme, dosyada olmayan sayfaya dokunulmaz — takip 2026-08'den beri **4 AYRI dosya** geliyor
   [Demirbaş Takip / Sarf Malzeme Stok (sarf+el aletleri) / Malzeme Takip (giriş+çıkış) / Sarf Taşeron Teslimat],
@@ -51,7 +66,10 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   tablosu hangi dosyanın ne zaman yüklendiğini gösterir, bu yüklemede yenilenenler yeşil. 2026-09-03 dosyalarıyla
   doğrulandı: 1809 demirbaş (mali 14.664.437,90 TL Excel'le birebir) / 609 sarf (fiyat girilmemiş, mali 0) / 26 el aleti /
   1449+1955 depo giriş-çıkış / 511+854 taşeron giriş-teslimat; taşeron teslimatta 2025 tarihli mekanik ekipman satırları gerçektir) · raporlar (KPI'lar [kalem/mali değer/tükenen/hurda/zimmet] + kategori/disiplin mali değer grafikleri + **aylık giriş-çıkış hareket trendi** + firma bazlı çıkış + en değerli / **en çok çıkan** malzemeler + **el aletleri zimmet dağılımı** + tükenenler; **4 ayrı Excel** [özet/değerli/çok çıkan/tükenen] + **ERN Taahhüt logolu PDF/Yazdır**) · kurulum_depo. El aletleri: fiyat/disiplin yok, **Seri No + Zimmetli Kişi** var. Demirbaş/
-  sarf: birim fiyat → **mali değer** (STOK × B.Fiyat). `depo/_ortak.php` (dp_sayi, DP_KATEGORI, dp_ozet).
+  sarf: birim fiyat → **mali değer** (STOK × B.Fiyat). `depo/_ortak.php` (dp_sayi, DP_KATEGORI, dp_ozet, dp_mal_norm, **dp_kalem_ara** [malzeme açılır menüsü aramasi],
+  **dp_fis_satirlari** [aynı fişin satırları], **dp_evrak_kaydet** [imzalı belgeyi fişin tüm satırlarına bağlar],
+  **dp_evrak_bagi_kaldir/dp_evrak_dosya_temizle** [dosya birden çok satıra bağlı olabildiğinden diskten yalnız
+  SON bağ koptuğunda silinir], dp_import_log_kur).
 - **Akaryakıt modülü** = `akaryakit/` alt klasörü. Şantiye mazot (dizel) stok + araç/makine bazında
   aylık tüketim takibi. **Ayrı veritabanı** (`takbulut_akaryakit`, `AKARYAKIT_DB_NAME`).
   `includes/db_akaryakit.php` → `$pdoAkaryakit`. Tablolar: `akaryakit_araclar` (araç/makine kaydı,

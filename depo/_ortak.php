@@ -154,3 +154,140 @@ function dp_mal_norm(string $s): string {
     $s = mb_strtoupper(trim($s), 'UTF-8');
     return preg_replace('/\s+/', ' ', $s);
 }
+
+/**
+ * Stok kalemlerinde hızlı arama (hareket formundaki açılır menü için).
+ *
+ * Süzme SQL LIKE ile DEĞİL, PHP'de `dp_mal_norm` ile yapılır: Türkçe harfler
+ * ASCII'ye katlandığı için "ampul" yazınca "Ampül" de bulunur, "sise" → "Şişe".
+ * (LIKE ile ön süzme denenmemeli — 'İ' MySQL'de i/ı ile eşleşmediğinden kayıtlar
+ * sessizce düşüyor, LIMIT'li ön süzme de alfabetik ilk N kaydı alıp gerisini atıyordu.)
+ * Kalem sayısı binler ölçeğinde olduğundan tüm liste okunup bellekte süzülür.
+ *
+ * Sıralama: adı aranan metinle BAŞLAYAN → içinde geçen; sonra kısa ad önce.
+ *
+ * @return array<int,array{id:int,ad:string,ozellik:string,birim:string,alan:string,stok:float,kategori:string}>
+ */
+function dp_kalem_ara(PDO $pdo, string $q, ?string $kategori = null, int $limit = 25): array
+{
+    $q   = trim($q);
+    $sql = "SELECT id, kategori, ad, COALESCE(ozellik,'') ozellik, COALESCE(birim,'') birim,
+                   COALESCE(alan,'') alan, COALESCE(kod,'') kod, (sayim+gelen-giden) stok
+            FROM depo_kalemler WHERE aktif=1";
+    $par = [];
+    if ($kategori !== null && dp_katGecerli($kategori)) { $sql .= " AND kategori=?"; $par[] = $kategori; }
+    // Arama yoksa en çok stoğu olanlar (menü ilk açıldığında dolu görünsün)
+    $sql .= $q === '' ? " ORDER BY (sayim+gelen-giden) DESC, ad LIMIT " . (int)$limit
+                      : " ORDER BY ad LIMIT 20000";
+    $st = $pdo->prepare($sql);
+    $st->execute($par);
+    $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+
+    if ($q !== '') {
+        $n      = dp_mal_norm($q);
+        $kelime = array_values(array_filter(explode(' ', $n), fn($w) => $w !== ''));
+        $es     = [];
+        foreach ($rows as $r) {
+            $ad  = dp_mal_norm($r['ad']);
+            $tum = $ad . ' ' . dp_mal_norm($r['ozellik'] . ' ' . $r['kod']);
+            $poz = mb_strpos($ad, $n);
+            if ($poz === 0)                                  $sira = 0;   // ad aranan metinle BAŞLIYOR
+            elseif ($poz !== false)                           $sira = 1;   // adın içinde geçiyor
+            elseif (mb_strpos($tum, $n) !== false)            $sira = 2;   // özellik / malzeme kodunda
+            // Kelimeler farklı sırada yazılmış olabilir ("dolap soyunma" → "Soyunma Dolabı")
+            elseif (count($kelime) > 1
+                    && !array_filter($kelime, fn($w) => mb_strpos($tum, $w) === false)) $sira = 3;
+            else continue;
+            $r['_sira'] = $sira;
+            $es[] = $r;
+        }
+        usort($es, fn($a, $b) => [$a['_sira'], mb_strlen($a['ad']), $a['ad']] <=> [$b['_sira'], mb_strlen($b['ad']), $b['ad']]);
+        $rows = array_slice($es, 0, $limit);
+    }
+    return array_map(fn($r) => [
+        'id'       => (int)$r['id'],
+        'ad'       => $r['ad'],
+        'ozellik'  => $r['ozellik'],
+        'birim'    => $r['birim'] ?: ($GLOBALS['DP_KATEGORI'][$r['kategori']]['birim'] ?? 'Adet'),
+        'alan'     => $r['alan'],
+        'stok'     => (float)$r['stok'],
+        'kategori' => dp_katAd($r['kategori']),
+    ], $rows);
+}
+
+/**
+ * Aynı FİŞE ait hareket satırları (bir çıkış fişinde birden çok malzeme olur).
+ * Anahtar: tür + kaynak + hurda + belge no + tarih + firma. Belge no boşsa yalnız kendisi.
+ * @return int[] id listesi (sıralı)
+ */
+function dp_fis_satirlari(PDO $pdo, array $hr): array
+{
+    $kendi = [(int)$hr['id']];
+    if (trim((string)($hr['belge_no'] ?? '')) === '') return $kendi;
+    $sql = "SELECT id FROM depo_hareketler
+            WHERE tur=? AND kaynak=? AND hurda=? AND belge_no=? AND COALESCE(firma,'')=?";
+    $par = [$hr['tur'], $hr['kaynak'], (int)($hr['hurda'] ?? 0), $hr['belge_no'], (string)($hr['firma'] ?? '')];
+    if (!empty($hr['tarih'])) { $sql .= " AND tarih=?"; $par[] = $hr['tarih']; }
+    else                      { $sql .= " AND tarih IS NULL"; }
+    $sql .= " ORDER BY id";
+    $st = $pdo->prepare($sql);
+    $st->execute($par);
+    $ids = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+    return $ids ?: $kendi;
+}
+
+/**
+ * İmzalı evrak (çıkış fişi / irsaliye / tutanak) yükler.
+ * Fiş no varsa belge o fişin TÜM satırlarına bağlanır — bir imzalı fiş tüm kalemleri kapsar.
+ * @return array{0:bool,1:string} [başarılı mı, mesaj]
+ */
+function dp_evrak_kaydet(PDO $pdo, array $hr, array $f): array
+{
+    if (empty($f['tmp_name']) || !is_uploaded_file($f['tmp_name'])) return [false, 'Dosya seçilmedi.'];
+    $ad   = (string)($f['name'] ?? '');
+    $mime = guess_mime($f['tmp_name'], $ad);
+    if (!in_array($mime, ['application/pdf','image/jpeg','image/png','image/webp'], true))
+        return [false, 'Desteklenmeyen tür (PDF, JPG, PNG, WEBP): ' . $mime];
+    if ((int)($f['size'] ?? 0) > 10 * 1024 * 1024) return [false, 'Dosya 10 MB sınırını aşıyor.'];
+
+    $hid = (int)$hr['id'];
+    $dir = __DIR__ . '/../uploads/depo_hareket/' . $hid;
+    if (!is_dir($dir) && !@mkdir($dir, 0755, true)) return [false, 'Klasör oluşturulamadı.'];
+    $ext  = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'pdf';
+    $yeni = 'evrak_' . date('Ymd_His') . '.' . $ext;
+    if (!@move_uploaded_file($f['tmp_name'], $dir . '/' . $yeni)) return [false, 'Dosya diske yazılamadı.'];
+
+    $ids  = dp_fis_satirlari($pdo, $hr);
+    $yer  = implode(',', array_fill(0, count($ids), '?'));
+    // Değiştirilen belgeler: bağ koptuktan SONRA diskten silinecek (başka satır kullanıyorsa kalır)
+    $q = $pdo->prepare("SELECT DISTINCT evrak_url FROM depo_hareketler WHERE id IN ($yer) AND evrak_url IS NOT NULL");
+    $q->execute($ids);
+    $eskiler = $q->fetchAll(PDO::FETCH_COLUMN);
+
+    $url = 'uploads/depo_hareket/' . $hid . '/' . $yeni;
+    $pdo->prepare("UPDATE depo_hareketler SET evrak_url=? WHERE id IN ($yer)")
+        ->execute(array_merge([$url], $ids));
+    foreach ($eskiler as $e) if ($e && $e !== $url) dp_evrak_dosya_temizle($pdo, (string)$e);
+
+    return [true, 'İmzalı evrak yüklendi' . (count($ids) > 1 ? ' ve bu fişin ' . count($ids) . ' satırına bağlandı.' : '.')];
+}
+
+/** Evrak bağını kaldırır; dosyayı yalnız son bağ da koptuysa diskten siler. */
+function dp_evrak_bagi_kaldir(PDO $pdo, int $id): bool
+{
+    $v = $pdo->prepare("SELECT evrak_url FROM depo_hareketler WHERE id=?");
+    $v->execute([$id]);
+    $url = (string)($v->fetchColumn() ?: '');
+    if ($url === '') return false;
+    $pdo->prepare("UPDATE depo_hareketler SET evrak_url=NULL WHERE id=?")->execute([$id]);
+    dp_evrak_dosya_temizle($pdo, $url);
+    return true;
+}
+
+/** Dosyayı diskten sil — ama yalnız hiçbir hareket artık ona bağlı değilse. */
+function dp_evrak_dosya_temizle(PDO $pdo, string $url): void
+{
+    $v = $pdo->prepare("SELECT COUNT(*) FROM depo_hareketler WHERE evrak_url=?");
+    $v->execute([$url]);
+    if ((int)$v->fetchColumn() === 0 && str_starts_with($url, 'uploads/depo_hareket/')) @unlink(__DIR__ . '/../' . $url);
+}

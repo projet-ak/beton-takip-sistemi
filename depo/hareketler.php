@@ -20,45 +20,21 @@ require_once __DIR__ . '/_ortak.php';
 dp_hareket_semasi_kur($pdoDepo);
 $pageTitle = 'Hareketler — Depo';
 
-// ── İmzalı evrak yükle (hurda/teslim tutanağının taraması) ──────────────────
+// ── İmzalı evrak yükle (çıkış fişi / irsaliye / hurda tutanağı taraması) ────
+// Ortak katman: dp_evrak_kaydet() belgeyi aynı FİŞİN tüm satırlarına bağlar
+// (bir imzalı fiş üzerindeki tüm kalemleri kapsar).
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'evrak_yukle') {
-    $hid = (int)($_POST['id'] ?? 0);
-    $v = $pdoDepo->prepare("SELECT id, evrak_url FROM depo_hareketler WHERE id=?");
-    $v->execute([$hid]);
+    $v = $pdoDepo->prepare("SELECT * FROM depo_hareketler WHERE id=?");
+    $v->execute([(int)($_POST['id'] ?? 0)]);
     $kayit = $v->fetch();
     if (!$kayit) { flash('error', 'Kayıt bulunamadı.'); redirect('hareketler.php'); }
-    if (empty($_FILES['evrak']['tmp_name']) || !is_uploaded_file($_FILES['evrak']['tmp_name'])) {
-        flash('error', 'Dosya seçilmedi.');
-    } else {
-        $ad   = (string)$_FILES['evrak']['name'];
-        $mime = guess_mime($_FILES['evrak']['tmp_name'], $ad);
-        if (!in_array($mime, ['application/pdf','image/jpeg','image/png','image/webp'], true)) {
-            flash('error', 'Desteklenmeyen tür (PDF, JPG, PNG, WEBP): ' . $mime);
-        } elseif ((int)$_FILES['evrak']['size'] > 10*1024*1024) {
-            flash('error', 'Dosya 10 MB sınırını aşıyor.');
-        } else {
-            $dir = __DIR__ . '/../uploads/depo_hareket/' . $hid;
-            if (!is_dir($dir)) @mkdir($dir, 0755, true);
-            $ext  = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'pdf';
-            $yeni = 'evrak_' . date('Ymd_His') . '.' . $ext;
-            if (@move_uploaded_file($_FILES['evrak']['tmp_name'], $dir . '/' . $yeni)) {
-                if ($kayit['evrak_url']) @unlink(__DIR__ . '/../' . $kayit['evrak_url']);
-                $pdoDepo->prepare("UPDATE depo_hareketler SET evrak_url=? WHERE id=?")
-                    ->execute(['uploads/depo_hareket/' . $hid . '/' . $yeni, $hid]);
-                flash('success', 'İmzalı evrak yüklendi.');
-            } else flash('error', 'Dosya diske yazılamadı.');
-        }
-    }
+    [$ok, $mesaj] = dp_evrak_kaydet($pdoDepo, $kayit, $_FILES['evrak'] ?? []);
+    flash($ok ? 'success' : 'error', $mesaj);
     redirect('hareketler.php' . (!empty($_POST['geri_hurda']) ? '?hurda=1' : ''));
 }
 if (isset($_GET['evrak_sil']) && ctype_digit($_GET['evrak_sil']) && has_role('admin','teknik_ofis_admin')) {
-    $v = $pdoDepo->prepare("SELECT evrak_url FROM depo_hareketler WHERE id=?");
-    $v->execute([(int)$_GET['evrak_sil']]);
-    if ($u = $v->fetchColumn()) {
-        @unlink(__DIR__ . '/../' . $u);
-        $pdoDepo->prepare("UPDATE depo_hareketler SET evrak_url=NULL WHERE id=?")->execute([(int)$_GET['evrak_sil']]);
-        flash('success', 'İmzalı evrak silindi.');
-    }
+    // Dosya birden çok satıra bağlı olabilir; dp_evrak_bagi_kaldir yalnız son bağ koptuğunda diskten siler
+    if (dp_evrak_bagi_kaldir($pdoDepo, (int)$_GET['evrak_sil'])) flash('success', 'Evrak bağı kaldırıldı.');
     redirect('hareketler.php');
 }
 
@@ -180,7 +156,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <?php foreach(['success','error','warning'] as $t): if($m=get_flash($t)): ?><div class="alert alert-<?= $t==='error'?'danger':$t ?>"><?= h($m) ?>
 <?php if ($t==='success' && isset($_GET['tutanak']) && ctype_digit($_GET['tutanak'])): ?>
- <a href="hareket_tutanak.php?id=<?= (int)$_GET['tutanak'] ?>" target="_blank" class="alert-link"><i class="bi bi-printer me-1"></i>Tutanak yazdır</a>
+ <a href="hareket_sonuc.php?id=<?= (int)$_GET['tutanak'] ?>" class="alert-link"><i class="bi bi-printer me-1"></i>Fişi yazdır / imzalıyı yükle</a>
 <?php endif; ?></div><?php endif; endforeach; ?>
 
 <?php if (!$toplamSatir && !$where): ?>
@@ -337,8 +313,10 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="modal-header"><h6 class="modal-title"><i class="bi bi-paperclip me-1"></i>Belge Ekle</h6>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
-            <label class="form-label small">İrsaliye / fatura / imzalı tutanak taraması veya fotoğrafı <span class="text-muted">(PDF, JPG, PNG — maks 10 MB)</span></label>
+            <label class="form-label small">İrsaliye / fatura / imzalı çıkış fişi taraması veya fotoğrafı <span class="text-muted">(PDF, JPG, PNG — maks 10 MB)</span></label>
             <input type="file" name="evrak" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.webp" required>
+            <div class="form-text">Belge no (irsaliye / fiş no) dolu satırlarda belge <strong>aynı fişin tüm kalemlerine</strong>
+                bağlanır — bir imzalı fiş üzerindeki bütün malzemeleri kapsar.</div>
         </div>
         <div class="modal-footer">
             <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Vazgeç</button>
