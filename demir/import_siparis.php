@@ -26,7 +26,24 @@ if ($_SERVER['REQUEST_METHOD']==='POST' && !empty($_FILES['dosya']['tmp_name']))
         $si=null;
         foreach ($xlsx->sheetNames() as $i=>$n) { if (mb_stripos($n,'SİPARİŞ')!==false && mb_stripos($n,'TAKİP')!==false) { $si=$i; break; } }
         if ($si===null) foreach ($xlsx->sheetNames() as $i=>$n) { if (mb_stripos($n,'SIPARIŞ')!==false || mb_stripos($n,'SİPARİŞ')!==false) { $si=$i; break; } }
-        if ($si===null) { $hata='"Sipariş Takip" sayfası bulunamadı.'; }
+        if ($si===null) {
+            // Yanlış ekrana atılan dosya: türünü tanı; talep dosyasıysa DOĞRU aktarıcıyla işle
+            require_once __DIR__ . '/_talep_import.php';
+            $tur = tlp_dosya_turu($xlsx);
+            if ($tur === 'talep') {
+                try {
+                    $ts = tlp_import($pdoDemir, $xlsx);
+                    flash('success', 'Bu dosya bir "Demir Siparişleri Takip Tablosu" (IFS talep) dosyasıydı — Sipariş Talepleri ekranına aktarıldı: '
+                                   . $ts['talep'] . ' talep, ' . $ts['kalem'] . ' kalem' . ($ts['atlanan'] ? ', atlanan sayfa: ' . implode(', ', $ts['atlanan']) : '') . '.');
+                    redirect('talepler.php');
+                } catch (Throwable $e) { $hata = 'Talep aktarımı hatası: ' . h($e->getMessage()); }
+            } elseif ($tur === 'sevkiyat') {
+                flash('warning', 'Yüklediğiniz dosya "İNŞAAT DEMİRİ TAKİP" (sevkiyat) dosyası — bu ekran sipariş dosyası bekler. Aynı dosyayı buradan yükleyin.');
+                redirect('import.php');
+            } else {
+                $hata = '"Sipariş Takip" sayfası bulunamadı. Bu ekran "Sipariş Takip" sayfalı Excel bekler; talep dosyası için Sipariş Talepleri, sevkiyat dosyası için Sevkiyat İçe Aktar ekranını kullanın.';
+            }
+        }
         else {
             $rows=$xlsx->rows($si, 3000);
             // çap başlık satırı: "Ø8" veya "KANGAL" içeren
