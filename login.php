@@ -18,7 +18,7 @@ if (!empty($_SESSION['user'])) {
 require_once __DIR__ . '/config.php';
 
 $error    = '';
-$redirect = trim($_GET['redirect'] ?? 'index.php');
+$redirect = trim($_GET['redirect'] ?? '');   // boş = giriş sonrası izinli ilk modüle git
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
@@ -67,8 +67,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($error !== '') { $user = null; $stmt = null; }
             else {
+            modul_erisim_semasi($pdo);   // users.modul_erisim kolonunu garanti et
             $stmt = $pdo->prepare(
-                "SELECT id, username, password_hash, full_name, role, aktif
+                "SELECT id, username, password_hash, full_name, role, aktif, modul_erisim
                  FROM users
                  WHERE username = ?
                  LIMIT 1"
@@ -86,20 +87,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Session fixation koruması
                 session_regenerate_id(true);
                 $_SESSION['user'] = [
-                    'id'        => (int)$user['id'],
-                    'username'  => $user['username'],
-                    'full_name' => $user['full_name'],
-                    'role'      => $user['role'],
+                    'id'           => (int)$user['id'],
+                    'username'     => $user['username'],
+                    'full_name'    => $user['full_name'],
+                    'role'         => $user['role'],
+                    'modul_erisim' => $user['modul_erisim'] ?? null,   // DB'ye ulaşılamazsa yedek
                 ];
                 // Güvenli yönlendirme: // ve http(s):// yasak, / ile başlayan mutlak yollar geçerli
                 $base = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/';
-                $safeRedirect = $base . 'index.php';
+                // Beton'a erişimi olmayan kullanıcı ana sayfada 403 görmesin: izinli ilk modüle git
+                $safeRedirect = $base . (function_exists('ilk_modul_sayfasi') ? ilk_modul_sayfasi() : 'index.php');
                 if (
                     !empty($redirect)
                     && !str_starts_with($redirect, '//')
                     && !preg_match('#^https?://#i', $redirect)
                 ) {
-                    $safeRedirect = $redirect ?: $base . 'index.php';
+                    $safeRedirect = $redirect ?: $safeRedirect;
                 }
                 redirect($safeRedirect);
             } elseif ($user && $user['aktif'] == 0) {

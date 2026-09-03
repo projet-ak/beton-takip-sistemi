@@ -551,31 +551,20 @@ if ($__user) {
     @media (max-width:575.98px){.module-switch-item span{display:none;}.module-switch-item{padding:.34rem .55rem;}}
     </style>
     <div class="module-switch">
-      <a href="<?= $__rootPath ?>index.php" class="module-switch-item <?= $__module==='beton'?'active':'' ?>">
-        <i class="bi bi-buildings"></i><span>Beton Takip</span>
+      <?php
+      // Modül şeridi: MODULLER kaydından üretilir ve KULLANICI BAZLI erişime saygılıdır
+      // (users.modul_erisim — izinsiz modül şeritte hiç görünmez, açılmaya çalışılsa da 403).
+      foreach (MODULLER as $__mk => [$__mAd, $__mIkon, $__mSayfa]):
+          if (!can_module($__mk)) continue;
+          if ($__mk === 'crm'      && !has_role('admin','teknik_ofis_admin','teknik_ofis','saha_sefi')) continue;
+          if ($__mk === 'whatsapp' && !(can_edit() || can_view_reports())) continue;
+          $__mHref = $__mk === 'whatsapp' ? $__waHome : $__mSayfa;
+          $__mEt   = $__mk === 'crm' ? 'CRM' : $__mAd;
+      ?>
+      <a href="<?= $__rootPath . $__mHref ?>" class="module-switch-item <?= $__module===$__mk?'active':'' ?>">
+        <i class="bi <?= h($__mIkon) ?>"></i><span><?= h($__mEt) ?></span>
       </a>
-      <a href="<?= $__rootPath ?>demir/index.php" class="module-switch-item <?= $__module==='demir'?'active':'' ?>">
-        <i class="bi bi-rulers"></i><span>Demir Takip</span>
-      </a>
-      <a href="<?= $__rootPath ?>seramik/index.php" class="module-switch-item <?= $__module==='seramik'?'active':'' ?>">
-        <i class="bi bi-grid-1x2"></i><span>Seramik Takip</span>
-      </a>
-      <a href="<?= $__rootPath ?>depo/index.php" class="module-switch-item <?= $__module==='depo'?'active':'' ?>">
-        <i class="bi bi-box-seam"></i><span>Depo Takip</span>
-      </a>
-      <a href="<?= $__rootPath ?>akaryakit/index.php" class="module-switch-item <?= $__module==='akaryakit'?'active':'' ?>">
-        <i class="bi bi-fuel-pump"></i><span>Akaryakıt Takip</span>
-      </a>
-      <?php if(has_role('admin','teknik_ofis_admin','teknik_ofis','saha_sefi')): ?>
-      <a href="<?= $__rootPath ?>crm/index.php" class="module-switch-item <?= $__module==='crm'?'active':'' ?>">
-        <i class="bi bi-headset"></i><span>CRM</span>
-      </a>
-      <?php endif; ?>
-      <?php if(can_edit() || can_view_reports()): ?>
-      <a href="<?= $__rootPath . $__waHome ?>" class="module-switch-item <?= $__module==='whatsapp'?'active':'' ?>">
-        <i class="bi bi-chat-dots"></i><span>Saha Takip</span>
-      </a>
-      <?php endif; ?>
+      <?php endforeach; ?>
     </div>
     <?php endif; ?>
 

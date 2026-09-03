@@ -126,6 +126,7 @@ try {
             full_name VARCHAR(150) NOT NULL DEFAULT '',
             role ENUM('admin','teknik_ofis_admin','teknik_ofis','saha_sefi','depo') NOT NULL DEFAULT 'teknik_ofis',
             aktif TINYINT(1) NOT NULL DEFAULT 1,
+            modul_erisim VARCHAR(255) NULL COMMENT 'izinli modüller (virgüllü); boş = tümü',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
@@ -273,6 +274,9 @@ try {
     require_once __DIR__ . '/includes/belge.php';
     blg_semasi_kur($pdo);
     $log[] = ['ok', 'irsaliye_fotolar belge kolonları (tur, okunan) eklendi / zaten mevcuttu'];
+
+    modul_erisim_semasi($pdo);   // users.modul_erisim (kullanıcı bazlı modül erişimi)
+    $log[] = ['ok', 'users.modul_erisim kolonu eklendi / zaten mevcuttu'];
 
     // ── İndeksleri garanti et (mevcut DB'lerde CREATE TABLE indeks eklemez) ────
     $idxEnsure = [

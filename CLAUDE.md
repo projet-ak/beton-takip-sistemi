@@ -198,6 +198,21 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   - **`require_auth()` login yönlendirmesi `$rootPath` kullanır** (alt klasör `demir/`'den doğru
     `login.php`'ye gider — bunu bozma; yoksa 404 olur).
   - **Roller ENUM**: `admin`, `teknik_ofis_admin`, `teknik_ofis`, `saha_sefi`, `depo`.
+  - **KULLANICI BAZLI MODÜL ERİŞİMİ** (rolden bağımsız, 2026-09): `users.modul_erisim` (VARCHAR, virgüllü
+    liste; **boş/NULL = sınırsız** — eski kullanıcılar etkilenmez). Sabitler/fonksiyonlar auth.php'de:
+    `MODULLER` (anahtar → [ad, ikon, giriş sayfası]; beton/demir/seramik/depo/akaryakit/crm/whatsapp),
+    `MODUL_MUAF` (login/logout/kurulum/kullanicilar/yedek/aktivite… — denetimden muaf kök sayfalar),
+    `aktif_modul()` (PHP_SELF klasöründen), `modul_erisimi()` (izin listesi; **admin her zaman sınırsız**;
+    değer her istekte DB'den okunur — static önbellekli, config.php gerekirse yüklenir — böylece admin
+    değişikliği anında geçerli olur, yeniden giriş beklenmez), `can_module()`, `ilk_modul_sayfasi()`,
+    `modul_erisim_semasi()` (runtime ALTER). Denetim **`require_auth()` içinde tek noktada** yapılır:
+    izin yoksa 403; kök `index.php` istisnası → 403 yerine izinli ilk modüle **yönlendirir** (kullanıcı
+    çıkmaz sokakta kalmaz). ⚠ `/api/` yolları muaf — demir sayfaları kök `../api/demir_*.php`'yi çağırır,
+    modül denetimi bunları kırardı; uçlar kendi `require_auth` rol kontrolünü yapar.
+    `includes/403.php` mesajı + **kullanıcının girebildiği modüllerin linklerini** gösterir.
+    `header.php` modül şeridi `MODULLER` + `can_module()` ile üretilir (izinsiz modül hiç görünmez).
+    `login.php` girişte `modul_erisim`i oturuma yazar ve **izinli ilk modülün ana sayfasına** yönlendirir
+    (`?redirect=` verilmişse o önceliklidir).
   - Yetki fonksiyonları: `can_edit()`, `can_edit_irsaliye($row)` (durum bazlı), `can_approve_saha()`,
     `can_approve_teknik()`, `can_view_reports()`, `can_manage_definitions()` (admin+teknik_ofis_admin),
     `can_manage_users()` (admin), `has_role(...)`, `is_admin()`.
@@ -268,7 +283,12 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
     (`mesaj_temizle`, mesajlar.php'de olasılıksal tetik). Onaylılar arşivdir, silinmez.
   - Meta bağlantısı kurulursa: `WHATSAPP_GRAPH_TOKEN` tanımlanınca gelen fotoğraflar otomatik iner
     (`meta_medya_indir`, media id → uploads/whatsapp/Y/m/).
-- Diğer: `kullanicilar.php` (admin), `ai_ayarlar.php`, `yedek.php`, `import.php`, `kurulum.php` (seed).
+- **`kullanicilar.php`** (admin) — kullanıcı CRUD + **Modül Erişimi** bölümü: "Tüm modüller" anahtarı
+  (kapalıyken tek tek modül kutucukları etkinleşir; açıkken `modul_erisim` NULL = sınırsız kaydedilir),
+  seçim `users.modul_erisim`e virgüllü yazılır (geçersiz anahtar süzülür). Listede her kullanıcının
+  erişimi rozetlerle görünür ("Tüm modüller" ya da modül rozetleri). Admin rolü her zaman tüm modülleri
+  görür (alan kaydedilse de dikkate alınmaz).
+- Diğer: `ai_ayarlar.php`, `yedek.php`, `import.php`, `kurulum.php` (seed).
 
 ---
 
@@ -331,7 +351,8 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · **Sipariş Talepleri** · **
 ### Beton (`kurulum.php`)
 Tanım tabloları (id/ad/aktif): beton_siniflari, katki_listesi, pompa_turleri, firmalar,
 kivam_siniflari, parseller. Hiyerarşik: imalat_gruplari→ana_is_kalemleri, bloklar→kotlar.
-`tedarikciler`(vkn), `projeler`(kod UNIQUE), `users`(role ENUM), **`irsaliyeler`** (~40 kolon:
+`tedarikciler`(vkn), `projeler`(kod UNIQUE), `users`(role ENUM + **`modul_erisim`** [virgüllü modül listesi,
+boş=tümü; runtime ALTER `modul_erisim_semasi()` + kurulum]), **`irsaliyeler`** (~40 kolon:
 tip/durum ENUM, kantar_net_*/kantar_farki, tüm tanım FK'leri, onay alanları, scan_image_url runtime),
 `irsaliye_fotolar` (+ runtime `tur`/`okunan` — `blg_semasi_kur`), `audit_log` (JSON diff), **`faturalar`** (fatura_no UNIQUE, tarih, tedarikci_id, tutar, miktar_m3, ettn, irsaliye_adet, eksik_adet, dosya_url) + `irsaliyeler.fatura_id` bağı (runtime `fat_semasi_kur`). Seed admin: `tayyar_akbulut`/`admin`.
 

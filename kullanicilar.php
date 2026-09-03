@@ -10,6 +10,8 @@ if (!file_exists(__DIR__ . '/config.php')) { redirect('install.php'); }
 require_auth(['admin']);
 require_once __DIR__ . '/includes/db.php';
 
+modul_erisim_semasi($pdo);   // users.modul_erisim kolonu (runtime migration)
+
 $pageTitle  = 'Kullanıcı Yönetimi — Beton Takip Sistemi';
 $currentUid = current_user_id();
 $error      = '';
@@ -23,6 +25,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $role     = $_POST['role']      ?? '';
     $password = $_POST['password']  ?? '';
     $aktif    = isset($_POST['aktif']) ? 1 : 0;
+
+    // Modül erişimi: seçilen modüller virgüllü saklanır. BOŞ = tüm modüller (sınırsız).
+    // Admin rolü zaten her modülü görür; onun için alan kaydedilse de dikkate alınmaz.
+    $modulSec = array_values(array_intersect((array)($_POST['moduller'] ?? []), array_keys(MODULLER)));
+    $modulStr = (!empty($_POST['modul_tumu']) || !$modulSec) ? null : implode(',', $modulSec);
 
     $allowedRoles = ['admin','teknik_ofis_admin','teknik_ofis','saha_sefi','depo'];
 
@@ -45,11 +52,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Güncelleme
                 if ($password !== '') {
                     $hash = password_hash($password, PASSWORD_BCRYPT);
-                    $stmt = $pdo->prepare("UPDATE users SET username=?,full_name=?,role=?,aktif=?,password_hash=? WHERE id=?");
-                    $stmt->execute([$username, $fullName, $role, $aktif, $hash, $editId]);
+                    $stmt = $pdo->prepare("UPDATE users SET username=?,full_name=?,role=?,aktif=?,modul_erisim=?,password_hash=? WHERE id=?");
+                    $stmt->execute([$username, $fullName, $role, $aktif, $modulStr, $hash, $editId]);
                 } else {
-                    $stmt = $pdo->prepare("UPDATE users SET username=?,full_name=?,role=?,aktif=? WHERE id=?");
-                    $stmt->execute([$username, $fullName, $role, $aktif, $editId]);
+                    $stmt = $pdo->prepare("UPDATE users SET username=?,full_name=?,role=?,aktif=?,modul_erisim=? WHERE id=?");
+                    $stmt->execute([$username, $fullName, $role, $aktif, $modulStr, $editId]);
                 }
                 flash('success', 'Kullanıcı güncellendi.');
             } else {
@@ -58,8 +65,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = 'Şifre en az 6 karakter olmalıdır.';
                 } else {
                     $hash = password_hash($password, PASSWORD_BCRYPT);
-                    $stmt = $pdo->prepare("INSERT INTO users (username,password_hash,full_name,role,aktif) VALUES (?,?,?,?,?)");
-                    $stmt->execute([$username, $hash, $fullName, $role, $aktif]);
+                    $stmt = $pdo->prepare("INSERT INTO users (username,password_hash,full_name,role,aktif,modul_erisim) VALUES (?,?,?,?,?,?)");
+                    $stmt->execute([$username, $hash, $fullName, $role, $aktif, $modulStr]);
                     flash('success', 'Yeni kullanıcı oluşturuldu.');
                     redirect('kullanicilar.php');
                 }
@@ -78,13 +85,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // ── Düzenlenecek kullanıcıyı çek ────────────────────────────────────────────
 $editUser = null;
 if (isset($_GET['edit'])) {
-    $editUser = $pdo->prepare("SELECT id,username,full_name,role,aktif FROM users WHERE id=?");
+    $editUser = $pdo->prepare("SELECT id,username,full_name,role,aktif,modul_erisim FROM users WHERE id=?");
     $editUser->execute([(int)$_GET['edit']]);
     $editUser = $editUser->fetch() ?: null;
 }
 
 // ── Kullanıcı listesi ────────────────────────────────────────────────────────
-$users = $pdo->query("SELECT id,username,full_name,role,aktif,created_at FROM users ORDER BY id")->fetchAll();
+$users = $pdo->query("SELECT id,username,full_name,role,aktif,modul_erisim,created_at FROM users ORDER BY id")->fetchAll();
+
+/** Kullanıcının izinli modül anahtarları (boş dizi = sınırsız). */
+$modulListe = function (?string $ham): array {
+    return array_values(array_intersect(
+        array_filter(array_map('trim', explode(',', (string)$ham))), array_keys(MODULLER)));
+};
 
 require_once __DIR__ . '/includes/header.php';
 ?>
@@ -133,6 +146,14 @@ require_once __DIR__ . '/includes/header.php';
                             $rc = $roleColors[$u['role']] ?? 'secondary';
                             ?>
                             <span class="badge bg-<?= $rc ?>"><?= role_label($u['role']) ?></span>
+                            <?php $uMod = $modulListe($u['modul_erisim'] ?? null); ?>
+                            <div class="small mt-1">
+                                <?php if ($u['role'] === 'admin' || !$uMod): ?>
+                                    <span class="text-muted"><i class="bi bi-grid-3x3-gap me-1"></i>Tüm modüller</span>
+                                <?php else: foreach ($uMod as $mk): ?>
+                                    <span class="badge bg-light text-dark border me-1"><i class="bi <?= h(MODULLER[$mk][1]) ?> me-1"></i><?= h(MODULLER[$mk][0]) ?></span>
+                                <?php endforeach; endif; ?>
+                            </div>
                         </td>
                         <td>
                             <?php if ($u['aktif']): ?>
@@ -201,10 +222,43 @@ require_once __DIR__ . '/includes/header.php';
                         </label>
                         <input name="password" type="password" class="form-control" <?= $editUser ? '' : 'required minlength="6"' ?> placeholder="<?= $editUser ? '(değiştirmek için girin)' : 'En az 6 karakter' ?>">
                     </div>
-                    <div class="form-check">
+                    <div class="form-check mb-3">
                         <input class="form-check-input" type="checkbox" name="aktif" id="chkAktif" value="1"
                                <?= (!$editUser || $editUser['aktif']) ? 'checked' : '' ?>>
                         <label class="form-check-label" for="chkAktif">Aktif</label>
+                    </div>
+
+                    <!-- Modül erişimi: hangi kullanıcı hangi modülü açabilir -->
+                    <?php $secili = $modulListe($editUser['modul_erisim'] ?? null); ?>
+                    <div class="border rounded p-2">
+                        <div class="d-flex align-items-center mb-2">
+                            <strong class="small"><i class="bi bi-grid-3x3-gap me-1"></i>Modül Erişimi</strong>
+                            <div class="form-check form-switch ms-auto">
+                                <input class="form-check-input" type="checkbox" name="modul_tumu" value="1" id="chkTumu"
+                                       <?= $secili ? '' : 'checked' ?>>
+                                <label class="form-check-label small" for="chkTumu">Tüm modüller</label>
+                            </div>
+                        </div>
+                        <div id="modulKutu" class="row g-1 <?= $secili ? '' : 'opacity-50' ?>">
+                            <?php foreach (MODULLER as $mk => [$mAd, $mIkon, $mSayfa]): ?>
+                            <div class="col-6">
+                                <div class="form-check">
+                                    <input class="form-check-input modul-chk" type="checkbox" name="moduller[]"
+                                           value="<?= h($mk) ?>" id="mod_<?= h($mk) ?>"
+                                           <?= in_array($mk, $secili, true) ? 'checked' : '' ?>
+                                           <?= $secili ? '' : 'disabled' ?>>
+                                    <label class="form-check-label small" for="mod_<?= h($mk) ?>">
+                                        <i class="bi <?= h($mIkon) ?> me-1"></i><?= h($mAd) ?></label>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <div class="form-text mt-1">
+                            "Tüm modüller" açıkken kullanıcı her modülü görür. Kapatıp seçim yaparsanız
+                            <strong>yalnız işaretlenen modüllere</strong> girebilir; diğerleri üst şeritte görünmez ve
+                            adres çubuğundan açılmaya çalışılsa da engellenir.
+                            <strong>Admin rolü her zaman tüm modülleri görür.</strong>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -218,13 +272,22 @@ require_once __DIR__ . '/includes/header.php';
     </div>
 </div>
 
-<?php if ($editUser): ?>
 <script>
+// "Tüm modüller" anahtarı: açıkken tek tek seçim kapalı (ve boş kaydedilir = sınırsız)
 document.addEventListener('DOMContentLoaded', function () {
-    var modal = new bootstrap.Modal(document.getElementById('modalKullanici'));
-    modal.show();
+    var tumu = document.getElementById('chkTumu'), kutu = document.getElementById('modulKutu');
+    if (tumu && kutu) {
+        var uygula = function () {
+            kutu.classList.toggle('opacity-50', tumu.checked);
+            kutu.querySelectorAll('.modul-chk').forEach(function (c) { c.disabled = tumu.checked; });
+        };
+        tumu.addEventListener('change', uygula);
+        uygula();
+    }
+<?php if ($editUser): ?>
+    new bootstrap.Modal(document.getElementById('modalKullanici')).show();
+<?php endif; ?>
 });
 </script>
-<?php endif; ?>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>
