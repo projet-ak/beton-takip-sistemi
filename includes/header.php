@@ -14,11 +14,12 @@ $__module   = (strpos($__self,'/demir/')!==false) ? 'demir'
             : ((strpos($__self,'/seramik/')!==false) ? 'seramik'
             : ((strpos($__self,'/depo/')!==false) ? 'depo'
             : ((strpos($__self,'/akaryakit/')!==false) ? 'akaryakit'
-            : ((strpos($__self,'/whatsapp/')!==false) ? 'whatsapp' : 'beton'))));
-$__modAd    = ['beton'=>'Beton Takip','demir'=>'Demir Takip','seramik'=>'Seramik Takip','depo'=>'Depo Takip','akaryakit'=>'Akaryakıt Takip','whatsapp'=>'Saha Takip'][$__module] ?? 'Beton Takip';
+            : ((strpos($__self,'/crm/')!==false) ? 'crm'
+            : ((strpos($__self,'/whatsapp/')!==false) ? 'whatsapp' : 'beton')))));
+$__modAd    = ['beton'=>'Beton Takip','demir'=>'Demir Takip','seramik'=>'Seramik Takip','depo'=>'Depo Takip','akaryakit'=>'Akaryakıt Takip','crm'=>'CRM — Üretim Arızaları','whatsapp'=>'Saha Takip'][$__module] ?? 'Beton Takip';
 // Saha Takip girişi yetkiye göre: onay kuyruğu yetkisi yoksa doğrudan analiz sayfası
 $__waHome   = (function_exists('can_edit') && can_edit()) ? 'whatsapp/mesajlar.php' : 'whatsapp/saha_analiz.php';
-$__modHome  = ['beton'=>'index.php','demir'=>'demir/index.php','seramik'=>'seramik/index.php','depo'=>'depo/index.php','akaryakit'=>'akaryakit/index.php','whatsapp'=>$__waHome][$__module];
+$__modHome  = ['beton'=>'index.php','demir'=>'demir/index.php','seramik'=>'seramik/index.php','depo'=>'depo/index.php','akaryakit'=>'akaryakit/index.php','crm'=>'crm/index.php','whatsapp'=>$__waHome][$__module];
 
 // ── Aktivite izleme (oturum süresi + sayfa gezinme) ──────────────────────────
 // Ana (beton) DB'de tutulur; $pdo varsa onu, yoksa kendi bağlantısını kullanır.
@@ -437,6 +438,28 @@ if ($__user) {
     </ul>
     <?php endif; ?>
 
+    <?php if($__module==='crm'): /* ── CRM (ÜRETİM ARIZALARI) MENÜSÜ ── */ ?>
+    <ul class="list-unstyled mb-0">
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('index.php') ?>" href="<?= $__rootPath ?>crm/index.php" data-label="Dashboard"><i class="bi bi-speedometer2"></i><span>Dashboard</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('arizalar.php').__isActive('ariza_detay.php') ?>" href="<?= $__rootPath ?>crm/arizalar.php" data-label="Arızalar"><i class="bi bi-tools"></i><span>Üretim Arızaları</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link" href="<?= $__rootPath ?>crm/arizalar.php?durum=acik" data-label="Açık Arızalar"><i class="bi bi-exclamation-circle"></i><span>Açık Arızalar</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('raporlar.php') ?>" href="<?= $__rootPath ?>crm/raporlar.php" data-label="Raporlar"><i class="bi bi-bar-chart-line"></i><span>Raporlar</span></a>
+      </li>
+      <?php if(has_role('admin','teknik_ofis_admin')): ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('import.php') ?>" href="<?= $__rootPath ?>crm/import.php" data-label="Günlük Rapor"><i class="bi bi-cloud-arrow-up"></i><span>Günlük Rapor Aktar</span></a>
+      </li>
+      <?php endif; ?>
+    </ul>
+    <?php endif; ?>
+
     <?php if($__module==='whatsapp'): /* ── SAHA TAKİP (WhatsApp) MENÜSÜ ── */ ?>
     <ul class="sidebar-nav">
       <?php if(can_edit()):
@@ -543,6 +566,11 @@ if ($__user) {
       <a href="<?= $__rootPath ?>akaryakit/index.php" class="module-switch-item <?= $__module==='akaryakit'?'active':'' ?>">
         <i class="bi bi-fuel-pump"></i><span>Akaryakıt Takip</span>
       </a>
+      <?php if(has_role('admin','teknik_ofis_admin','teknik_ofis','saha_sefi')): ?>
+      <a href="<?= $__rootPath ?>crm/index.php" class="module-switch-item <?= $__module==='crm'?'active':'' ?>">
+        <i class="bi bi-headset"></i><span>CRM</span>
+      </a>
+      <?php endif; ?>
       <?php if(can_edit() || can_view_reports()): ?>
       <a href="<?= $__rootPath . $__waHome ?>" class="module-switch-item <?= $__module==='whatsapp'?'active':'' ?>">
         <i class="bi bi-chat-dots"></i><span>Saha Takip</span>

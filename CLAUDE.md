@@ -91,6 +91,35 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   TOPLAM hücreleri bayat olduğundan stok hesaplanır** (devir+gelen, −kullanılan). Gün d → Mazot col
   `7+2d`, Km col `8+2d` (gün 1=col9…31=col69); özet col 71 aylık/72 çalışma/73 ortalama/74-76 okuma.
   `akaryakit/_ortak.php` (ak_sayi, ak_norm, ak_donemSira TR ay→sıra, ak_aracId, ak_donemler).
+- **CRM modülü** = `crm/` alt klasörü. **Üretim Arızaları** (konut teslim sonrası eksik/kusur) takibi.
+  **Ayrı veritabanı** (`takbulut_crm`, `CRM_DB_NAME`), tablolar `crm_` önekli. `includes/db_crm.php` → `$pdoCrm`.
+  **Kaynak: CRM'den GÜNLÜK alınan "UretimArizalari" Excel raporu** — rapor o anda AÇIK olan arızaların anlık
+  görüntüsüdür (tüm satırlar "Etkin", Çözümlenme Tarihi `1.01.0001` = boş). Bu yüzden içe aktarma **tam yenileme
+  DEĞİL BİRLEŞTİRME**: dosyada olup sistemde olmayan → yeni arıza · her ikisinde olan → güncellenir ·
+  **sistemde açık ama dosyada yok → arıza kapanmış sayılır** (otomatik "çözüldü"; kısmi rapor gelirse kutu kapatılır) ·
+  kapatılmış kayıt raporda yine görünürse **yeniden açılır** (hatalı kapanış kendini düzeltir) · raporun kendi
+  Çözümlenme Tarihi doluysa kapanış oradan alınır. Böylece tek dosyadan "kaç yeni geldi / kaç kapandı / ne kadar
+  bekledi" çıkar. ⚠ Excel'de **ID kolonu yok**: kimlik `crm_anahtar()` ile içerikten üretilir
+  (konut + açılış anı + şikayet zinciri + açıklama → md5, `kayit_anahtari` UNIQUE) — **aynı dosya defalarca
+  yüklense de mükerrer kayıt oluşmaz**. Excel alanları her aktarımda ezilir; sistem içi `ic_not` ve `evrak_url`
+  KORUNUR. Tablolar: `crm_arizalar` (konut/ada/parsel/blok/kat[+`kat_sira`: bodrum<zemin<kat sıralaması]/daire
+  no+tipi, dönem, kaynak, eksik-kusur, ölçek, aciliyet, şikayet türü→konusu→açıklaması, arıza tipi, açıklama,
+  sorumlu, sonlandıran, olusturma/cozumlenme, durum ENUM acik/cozuldu, kapanis_kaynagi excel|otomatik|elle,
+  ilk_gorulme/son_gorulme) · `crm_import_log` (dosya/rapor tarihi/satır/yeni/güncellenen/kapanan/kullanıcı).
+  Sayfalar: **index** (dashboard: rapor güncellik bandı [son yükleme + kaç yeni/kaç kapandı, 2 günden eskiyse
+  uyarı] + KPI'lar [açık · bu ay yeni · bu ay çözülen · ort. açık kalma · 30+ gün bekleyen · toplam] + aylık
+  gelen/çözülen çizgi + şikayet türü doughnut + blok yığılmış bar + en sık arıza tipleri + en uzun süredir açık /
+  en çok arızalı daireler / son gelen arızalar) · **arizalar** (filtreler: durum/blok/kat/tür/konu/detay/sorumlu/
+  tarih aralığı/serbest arama, whitelist sıralama, sayfalama, **Excel dışa aktarma**, toplu çöz/yeniden aç, 90+
+  gün açık satır sarı) · **ariza_detay** (tüm CRM alanları + aynı dairenin diğer arızaları + elle çöz/yeniden aç +
+  **iç not** + belge/fotoğraf `uploads/crm_ariza/{id}/`) · **raporlar** (tarih aralığı filtresi + KPI + aylık
+  trend + açık arıza yaş dağılımı [0-7/8-30/31-90/90+] + tür/konu/detay/arıza tipi/blok/kat/daire tipi/sorumlu
+  kırılımları [toplam·açık·çözülen·ort. çözüm günü] + en çok arızalı daireler; **ERN_RAPOR** ile Excel'e Aktar +
+  PDF İndir + Yazdır) · **import** (çoklu dosya; dosya adındaki tarih rapor tarihi sayılır; kapanan arızaların
+  listesi `<details>` ile gösterilir) · kurulum_crm. Çekirdek: `crm/_ortak.php` (crm_norm, crm_tarih, crm_anahtar,
+  crm_kat_sira, crm_semasi_kur, crm_ozet, crm_filtre, crm_secenekler) + `crm/_import.php` (CRM_ALAN başlık
+  haritası — "Aciklama" EN SONA, yoksa "Sikayet/Durum Aciklamasi" sütununu kapar; crm_sayfa/crm_harita/crm_import).
+  İlk dosya (2026-09-03) ile doğrulandı: 610 açık arıza, 211 daire, 7 blok, 2025-07-30 → 2026-08-31.
 - Geliştirici: **Tayyar Akbulut**. Sürüm: v3.0. Canlı: `https://ernsaha.com.tr/beton/` (eski: takbulut.com/beton/).
 
 > **⭐ TEMEL İLKE — Excel şablonu "kutsal kitap" (tek doğru kaynak).** Sistem, ilgili Excel
@@ -275,14 +304,14 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · **Sipariş Talepleri** · **
 
 ## 6. Veritabanları
 
-> **Canlıda 5 AYRI veritabanı vardır** (2026-08 ayrıştırması). Her modül kendi DB'sinde:
+> **Canlıda 6 AYRI veritabanı vardır** (2026-08 ayrıştırması + 2026-09 CRM). Her modül kendi DB'sinde:
 > `takbulut_beton` (beton) · `takbulut_demir` · `takbulut_seramik` · `takbulut_depo` ·
-> `takbulut_akaryakit`. Tümü `config.php`'deki `DEMIR_DB_NAME`/`SERAMIK_DB_NAME`/`DEPO_DB_NAME`/
-> `AKARYAKIT_DB_NAME` sabitleriyle etkinleştirilmiştir; tek DB kullanıcısı hepsine yetkili.
+> `takbulut_akaryakit` · `takbulut_crm`. Tümü `config.php`'deki `DEMIR_DB_NAME`/`SERAMIK_DB_NAME`/
+> `DEPO_DB_NAME`/`AKARYAKIT_DB_NAME`/`CRM_DB_NAME` sabitleriyle etkinleştirilir; tek DB kullanıcısı hepsine yetkili.
 > ⚠️ Bu sabitlerden biri **tanımsız kalırsa** ilgili modül sessizce **ana DB'ye** düşer ve veriler
 > "kaybolmuş" görünür (tablolar önekli olduğu için çakışma olmaz, ama modül boş açılır).
 > Aktif DB'yi ilgili modülün `kurulum_*.php` sayfasındaki **rozetten** görebilirsin
-> (yeşil = ayrı DB, sarı = ana DB). Yedekleme artık **5 DB'yi birden** kapsamalıdır.
+> (yeşil = ayrı DB, sarı = ana DB). Yedekleme artık **6 DB'yi birden** kapsamalıdır.
 
 ### Beton (`kurulum.php`)
 Tanım tabloları (id/ad/aktif): beton_siniflari, katki_listesi, pompa_turleri, firmalar,
@@ -353,6 +382,7 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 - Beton: `uploads/images/` (scan), `uploads/pdf/`, `uploads/irsaliye_fotolar/`, `uploads/irsaliye_{id}/`, `uploads/faturalar/{Y}/{m}/`, `uploads/belge_bekleyen/` (eşleşmeyen belgeler, 7 gün).
 - **Demir (ayrı)**: `uploads/demir/gorseller/`, `uploads/demir/belgeler/`, `uploads/demir_tutanak/{id}/`, `uploads/demir_iade/{id}/`, `uploads/demir_tutanak_takip/{tutanak_no}/`, `uploads/demir_hurda/{id}/`, `uploads/demir_sozlesme/{id}/`.
 - Görseller **dosya olarak** tutulur; DB'ye yalnızca göreli URL yazılır (DB boyutu şişmez).
+- **CRM**: `uploads/crm_ariza/{id}/` (arıza belgesi/fotoğrafı).
 - `uploads/.htaccess` PHP çalıştırmayı engeller (alt klasörlere de uygulanır).
 
 ---

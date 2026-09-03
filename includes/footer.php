@@ -25,8 +25,9 @@ $__navMod = $__module ?? (
     (strpos($__self2,'/demir/')!==false) ? 'demir'
   : ((strpos($__self2,'/seramik/')!==false) ? 'seramik'
   : ((strpos($__self2,'/depo/')!==false) ? 'depo'
-  : ((strpos($__self2,'/akaryakit/')!==false) ? 'akaryakit' : 'beton'))));
-$__navKlasor = ['beton'=>'','demir'=>'demir/','seramik'=>'seramik/','depo'=>'depo/','akaryakit'=>'akaryakit/'][$__navMod] ?? '';
+  : ((strpos($__self2,'/akaryakit/')!==false) ? 'akaryakit'
+  : ((strpos($__self2,'/crm/')!==false) ? 'crm' : 'beton')))));
+$__navKlasor = ['beton'=>'','demir'=>'demir/','seramik'=>'seramik/','depo'=>'depo/','akaryakit'=>'akaryakit/','crm'=>'crm/'][$__navMod] ?? '';
 // Her modül için alt menü öğeleri: [sayfa, etiket, ikon]
 $__navSetler = [
   'beton'     => [['index.php','Dashboard','bi-speedometer2'],['irsaliyeler.php','İrsaliye','bi-file-earmark-text'],['raporlar.php','Raporlar','bi-bar-chart-line']],
@@ -34,6 +35,7 @@ $__navSetler = [
   'seramik'   => [['index.php','Dashboard','bi-speedometer2'],['girisler.php','Giriş','bi-box-arrow-in-down'],['cikislar.php','Çıkış','bi-box-arrow-up'],['stok.php','Stok','bi-boxes']],
   'depo'      => [['index.php','Dashboard','bi-speedometer2'],['kalemler.php','Demirbaş','bi-hdd-stack'],['import.php','Aktar','bi-cloud-arrow-up']],
   'akaryakit' => [['index.php','Dashboard','bi-speedometer2'],['aylik.php','Aylık','bi-calendar3'],['stok.php','Stok','bi-fuel-pump'],['tutanaklar.php','Tutanak','bi-file-earmark-text']],
+  'crm'       => [['index.php','Dashboard','bi-speedometer2'],['arizalar.php','Arızalar','bi-tools'],['raporlar.php','Rapor','bi-bar-chart-line']],
 ];
 $__navItems = $__navSetler[$__navMod] ?? $__navSetler['beton'];
 ?>

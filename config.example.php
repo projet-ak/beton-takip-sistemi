@@ -32,6 +32,11 @@ define('DB_PASS', 'sifre');
 // define('AKARYAKIT_DB_USER', '');  // boşsa DB_USER (ör. takbulut_betonapp)
 // define('AKARYAKIT_DB_PASS', '');  // boşsa DB_PASS
 
+// ── CRM modülü (Üretim Arızaları — ayrı DB, opsiyonel) ───────────────────────
+// define('CRM_DB_NAME', 'takbulut_crm');
+// define('CRM_DB_USER', '');       // boşsa DB_USER (ör. takbulut_betonapp)
+// define('CRM_DB_PASS', '');       // boşsa DB_PASS
+
 // ── Deploy (deploy.php / deploy2.php) ────────────────────────────────────────
 // GÜÇLÜ, rastgele bir token üretin (ör. PHP: bin2hex(random_bytes(24))) ve buraya yazın.
 // Bu dosya (config.php) git-ignored olduğundan token koda/sürüm kontrolüne girmez.
