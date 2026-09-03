@@ -109,6 +109,20 @@ function dp_hareket_semasi_kur(PDO $pdo): void
     if ($ekle) $pdo->exec("ALTER TABLE depo_hareketler " . implode(', ', $ekle));
 }
 
+/** Bölüm bazında son yükleme günlüğü (hangi dosya ne zaman yüklendi). */
+function dp_import_log_kur(PDO $pdo): void
+{
+    $pdo->exec("CREATE TABLE IF NOT EXISTS depo_import_log (
+        id        INT AUTO_INCREMENT PRIMARY KEY,
+        bolum     VARCHAR(30) NOT NULL,
+        dosya     VARCHAR(255) NULL,
+        satir     INT NOT NULL DEFAULT 0,
+        kullanici VARCHAR(100) NULL,
+        created   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_bolum (bolum)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
 /**
  * Hareketin stok etkisini uygular/geri alır.
  * Giriş → kalem.gelen, çıkış → kalem.giden; $yon=-1 geri alma (silme/düzenleme öncesi).

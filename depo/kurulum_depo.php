@@ -37,6 +37,8 @@ try {
     foreach ($tablolar as $ad=>$sql){ $pdoDepo->exec($sql); $log[]=$ad; }
     dp_hareket_semasi_kur($pdoDepo);           // hareket defteri (giriş/çıkış)
     $log[] = 'depo_hareketler';
+    dp_import_log_kur($pdoDepo);              // bölüm bazında son Excel yükleme günlüğü
+    $log[] = 'depo_import_log';
 }
 catch (Throwable $e) { $hata = $e->getMessage(); }
 
