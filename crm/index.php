@@ -21,16 +21,9 @@ $ozet  = crm_ozet($pdoCrm);
 $son   = crm_son_import($pdoCrm);
 $bos   = $ozet['toplam'] === 0;
 
-// Aylık gelen / çözülen (son 14 ay)
-$aylik = [];
-foreach ($pdoCrm->query("SELECT DATE_FORMAT(olusturma,'%Y-%m') ay, COUNT(*) n FROM crm_arizalar
-                         WHERE olusturma IS NOT NULL GROUP BY ay ORDER BY ay")->fetchAll() as $a)
-    $aylik[$a['ay']]['gelen'] = (int)$a['n'];
-foreach ($pdoCrm->query("SELECT DATE_FORMAT(cozumlenme,'%Y-%m') ay, COUNT(*) n FROM crm_arizalar
-                         WHERE cozumlenme IS NOT NULL GROUP BY ay ORDER BY ay")->fetchAll() as $a)
-    $aylik[$a['ay']]['cozulen'] = (int)$a['n'];
-ksort($aylik);
-$aylik = array_slice($aylik, -14, 14, true);
+// Aylık gelen / çözülen / birikmiş açık (boş aylar dahil, son 14 ay)
+$aylik = crm_aylik_seri($pdoCrm, 14);
+$hicCozum = !array_filter($aylik, fn($a) => $a['cozulen'] > 0);
 
 $tur   = $pdoCrm->query("SELECT sikayet_turu ad, COUNT(*) toplam, SUM(durum='acik') acik FROM crm_arizalar
                          WHERE sikayet_turu IS NOT NULL GROUP BY sikayet_turu ORDER BY toplam DESC")->fetchAll();
@@ -119,14 +112,22 @@ foreach ($kpi as [$ad, $deger, $renk, $ikon, $link]): ?>
 <div class="row g-3 mb-3">
     <div class="col-lg-8">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="fw-semibold mb-2"><i class="bi bi-graph-up-arrow me-1"></i>Aylık gelen / çözülen arıza</div>
-            <canvas id="chAylik" height="110"></canvas>
+            <div class="d-flex align-items-center mb-2">
+                <span class="fw-semibold"><i class="bi bi-graph-up-arrow me-1"></i>Aylık gelen / çözülen arıza</span>
+                <span class="ms-auto small text-muted">çubuklar: ay içi · çizgi: ay sonunda birikmiş açık</span>
+            </div>
+            <div style="height:300px"><canvas id="chAylik"></canvas></div>
+            <?php if ($hicCozum): ?>
+            <div class="form-text mt-1"><i class="bi bi-info-circle me-1"></i>Henüz kapanan arıza yok — "çözülen"
+                serisi <strong>ikinci günlük rapordan</strong> itibaren dolar (bir arıza raporda görünmez olduğunda
+                kapanmış sayılır).</div>
+            <?php endif; ?>
         </div></div>
     </div>
     <div class="col-lg-4">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
             <div class="fw-semibold mb-2"><i class="bi bi-pie-chart me-1"></i>Şikayet türü</div>
-            <canvas id="chTur" height="200"></canvas>
+            <div style="height:300px"><canvas id="chTur"></canvas></div>
         </div></div>
     </div>
 </div>
@@ -135,13 +136,13 @@ foreach ($kpi as [$ad, $deger, $renk, $ikon, $link]): ?>
     <div class="col-lg-6">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
             <div class="fw-semibold mb-2"><i class="bi bi-building me-1"></i>Blok bazında arıza (açık / toplam)</div>
-            <canvas id="chBlok" height="150"></canvas>
+            <div style="height:260px"><canvas id="chBlok"></canvas></div>
         </div></div>
     </div>
     <div class="col-lg-6">
         <div class="card border-0 shadow-sm h-100"><div class="card-body">
             <div class="fw-semibold mb-2"><i class="bi bi-list-ol me-1"></i>En sık görülen arıza tipleri</div>
-            <canvas id="chTip" height="150"></canvas>
+            <div style="height:260px"><canvas id="chTip"></canvas></div>
         </div></div>
     </div>
 </div>
@@ -207,20 +208,26 @@ foreach ($kpi as [$ad, $deger, $renk, $ikon, $link]): ?>
 
 <script>
 (function(){
-    const AY = <?= json_encode(array_map(fn($k, $v) => ['ay'=>$k, 'gelen'=>(int)($v['gelen'] ?? 0), 'cozulen'=>(int)($v['cozulen'] ?? 0)], array_keys($aylik), $aylik), JSON_UNESCAPED_UNICODE) ?>;
+    const AY = <?= json_encode($aylik, JSON_UNESCAPED_UNICODE) ?>;
     const TUR  = <?= json_encode($tur, JSON_UNESCAPED_UNICODE) ?>;
     const BLOK = <?= json_encode($blok, JSON_UNESCAPED_UNICODE) ?>;
     const TIP  = <?= json_encode($tip, JSON_UNESCAPED_UNICODE) ?>;
     const ayEt = a => { const [y,m] = a.split('-'); return ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'][+m-1] + ' ' + y.slice(2); };
 
+    // Çubuklar ayın kendi hareketi, çizgi ay sonunda BİRİKMİŞ açık arıza (sağ eksen) —
+    // ilk raporda hiç kapanış olmadığından yalnız iki çizgi olsa grafik boş görünüyordu.
     new Chart(document.getElementById('chAylik'), {
-        type: 'line',
         data: { labels: AY.map(a => ayEt(a.ay)), datasets: [
-            { label:'Gelen', data: AY.map(a=>a.gelen), borderColor:'#dc3545', backgroundColor:'rgba(220,53,69,.12)', fill:true, tension:.3 },
-            { label:'Çözülen', data: AY.map(a=>a.cozulen), borderColor:'#198754', backgroundColor:'rgba(25,135,84,.10)', fill:true, tension:.3 }
+            { type:'bar', label:'Gelen', data: AY.map(a=>a.gelen), backgroundColor:'#dc3545', yAxisID:'y' },
+            { type:'bar', label:'Çözülen', data: AY.map(a=>a.cozulen), backgroundColor:'#198754', yAxisID:'y' },
+            { type:'line', label:'Birikmiş açık', data: AY.map(a=>a.acik), borderColor:'#0d6efd',
+              backgroundColor:'rgba(13,110,253,.10)', borderWidth:2, pointRadius:2, tension:.3, fill:true, yAxisID:'y1' }
         ]},
-        options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}},
-                   scales:{ y:{ beginAtZero:true, ticks:{precision:0} } } }
+        options: { responsive:true, maintainAspectRatio:false, interaction:{mode:'index', intersect:false},
+                   plugins:{legend:{position:'bottom'}},
+                   scales:{ y:{ beginAtZero:true, ticks:{precision:0}, title:{display:true, text:'ay içi adet'} },
+                            y1:{ position:'right', beginAtZero:true, ticks:{precision:0}, grid:{drawOnChartArea:false},
+                                 title:{display:true, text:'birikmiş açık'} } } }
     });
 
     new Chart(document.getElementById('chTur'), {

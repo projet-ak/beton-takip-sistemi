@@ -45,16 +45,9 @@ $kat   = $grup('kat', 'MIN(kat_sira) ASC');
 $dtip  = $grup('daire_tipi', 'ad ASC');
 $sorum = $grup('sorumlu');
 
-// Aylık gelen / çözülen
-$aylik = [];
-$st = $pdoCrm->prepare("SELECT DATE_FORMAT(olusturma,'%Y-%m') ay, COUNT(*) n FROM crm_arizalar
-                        " . ($wsql ?: ' WHERE 1=1') . " AND olusturma IS NOT NULL GROUP BY ay ORDER BY ay");
-$st->execute($p);
-foreach ($st->fetchAll() as $a) $aylik[$a['ay']]['gelen'] = (int)$a['n'];
-foreach ($pdoCrm->query("SELECT DATE_FORMAT(cozumlenme,'%Y-%m') ay, COUNT(*) n FROM crm_arizalar
-                         WHERE cozumlenme IS NOT NULL GROUP BY ay ORDER BY ay")->fetchAll() as $a)
-    $aylik[$a['ay']]['cozulen'] = (int)$a['n'];
-ksort($aylik);
+// Aylık gelen / çözülen / birikmiş açık — trend HER ZAMAN tüm zamanları kapsar:
+// tarih filtresi yalnız "gelen" tarafını kesip çözülenle uyumsuz bir grafik üretiyordu.
+$aylik = crm_aylik_seri($pdoCrm);
 
 // Açık arızaların yaş dağılımı
 $yasSql = "SELECT
@@ -127,23 +120,26 @@ foreach ($kpi as [$ad, $deger, $renk]): ?>
 
 <div class="row g-3 mb-3">
     <div class="col-lg-8"><div class="card border-0 shadow-sm h-100"><div class="card-body">
-        <div class="fw-semibold mb-2">Aylık gelen / çözülen</div>
-        <canvas id="chAylik" height="110"></canvas>
+        <div class="d-flex align-items-center mb-2">
+            <span class="fw-semibold">Aylık gelen / çözülen</span>
+            <span class="ms-auto small text-muted">tüm zamanlar · çizgi: birikmiş açık</span>
+        </div>
+        <div style="height:300px"><canvas id="chAylik"></canvas></div>
     </div></div></div>
     <div class="col-lg-4"><div class="card border-0 shadow-sm h-100"><div class="card-body">
         <div class="fw-semibold mb-2">Açık arızaların yaşı</div>
-        <canvas id="chYas" height="200"></canvas>
+        <div style="height:300px"><canvas id="chYas"></canvas></div>
     </div></div></div>
 </div>
 
 <div class="row g-3 mb-3">
     <div class="col-lg-6"><div class="card border-0 shadow-sm h-100"><div class="card-body">
         <div class="fw-semibold mb-2">Şikayet konusu (ilk 12)</div>
-        <canvas id="chKonu" height="200"></canvas>
+        <div style="height:320px"><canvas id="chKonu"></canvas></div>
     </div></div></div>
     <div class="col-lg-6"><div class="card border-0 shadow-sm h-100"><div class="card-body">
         <div class="fw-semibold mb-2">Blok × durum</div>
-        <canvas id="chBlok" height="200"></canvas>
+        <div style="height:320px"><canvas id="chBlok"></canvas></div>
     </div></div></div>
 </div>
 
@@ -220,7 +216,7 @@ const CRM = {
     kpi:   <?= json_encode(['toplam'=>$ozet['toplam'],'acik'=>$ozet['acik'],'cozuldu'=>$ozet['cozuldu'],
                             'ortAcik'=>round($ozet['ortAcikGun'],1),'ortCozum'=>round($ozet['ortCozumGun'],1),
                             'eski90'=>$ozet['eski90']]) ?>,
-    aylik: <?= json_encode(array_map(fn($k,$v)=>['ay'=>$k,'gelen'=>(int)($v['gelen']??0),'cozulen'=>(int)($v['cozulen']??0)], array_keys($aylik), $aylik), JSON_UNESCAPED_UNICODE) ?>,
+    aylik: <?= json_encode($aylik, JSON_UNESCAPED_UNICODE) ?>,
     yas:   <?= json_encode(array_map('intval', $yas)) ?>,
     tur:   <?= json_encode($tur, JSON_UNESCAPED_UNICODE) ?>,
     konu:  <?= json_encode($konu, JSON_UNESCAPED_UNICODE) ?>,
@@ -238,12 +234,17 @@ const f1 = n => (n === null || n === undefined || n === '') ? '—' : Number(n).
 const ayEt = a => { const [y,m] = a.split('-'); return ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'][+m-1] + ' ' + y.slice(2); };
 
 new Chart(document.getElementById('chAylik'), {
-    type:'line',
     data:{ labels: CRM.aylik.map(a=>ayEt(a.ay)), datasets:[
-        {label:'Gelen', data:CRM.aylik.map(a=>a.gelen), borderColor:'#dc3545', backgroundColor:'rgba(220,53,69,.12)', fill:true, tension:.3},
-        {label:'Çözülen', data:CRM.aylik.map(a=>a.cozulen), borderColor:'#198754', backgroundColor:'rgba(25,135,84,.10)', fill:true, tension:.3}
+        {type:'bar', label:'Gelen', data:CRM.aylik.map(a=>a.gelen), backgroundColor:'#dc3545', yAxisID:'y'},
+        {type:'bar', label:'Çözülen', data:CRM.aylik.map(a=>a.cozulen), backgroundColor:'#198754', yAxisID:'y'},
+        {type:'line', label:'Birikmiş açık', data:CRM.aylik.map(a=>a.acik), borderColor:'#0d6efd',
+         backgroundColor:'rgba(13,110,253,.10)', borderWidth:2, pointRadius:2, tension:.3, fill:true, yAxisID:'y1'}
     ]},
-    options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, scales:{y:{beginAtZero:true, ticks:{precision:0}}}}
+    options:{responsive:true, maintainAspectRatio:false, interaction:{mode:'index', intersect:false},
+             plugins:{legend:{position:'bottom'}},
+             scales:{ y:{beginAtZero:true, ticks:{precision:0}, title:{display:true, text:'ay içi adet'}},
+                      y1:{position:'right', beginAtZero:true, ticks:{precision:0}, grid:{drawOnChartArea:false},
+                          title:{display:true, text:'birikmiş açık'}} }}
 });
 new Chart(document.getElementById('chYas'), {
     type:'doughnut',
@@ -280,8 +281,8 @@ function crmPdf(mode){
         + '<div><b>' + f1(CRM.kpi.ortAcik) + ' gün</b>Ort. Açık Kalma</div>'
         + '<div><b>' + f0(CRM.kpi.eski90) + '</b>90+ Gündür Açık</div></div>'
         + '<p><b>Dönem:</b> ' + ERN_RAPOR.esc(CRM.donem) + '</p>'
-        + '<h2>Aylık Gelen / Çözülen</h2>' + tbl(['Ay','Gelen','Çözülen'],
-            CRM.aylik.map(a => [ayEt(a.ay), f0(a.gelen), f0(a.cozulen)]))
+        + '<h2>Aylık Gelen / Çözülen</h2>' + tbl(['Ay','Gelen','Çözülen','Birikmiş açık'],
+            CRM.aylik.map(a => [ayEt(a.ay), f0(a.gelen), f0(a.cozulen), f0(a.acik)]))
         + '<h2>Açık Arızaların Yaşı</h2>' + tbl(['Aralık','Adet'],
             [['0-7 gün', f0(CRM.yas.a1)], ['8-30 gün', f0(CRM.yas.a2)], ['31-90 gün', f0(CRM.yas.a3)], ['90+ gün', f0(CRM.yas.a4)]])
         + kir('Şikayet Türü', CRM.tur, 'Tür')
@@ -314,10 +315,10 @@ async function crmExcel(){
      ['90+ gündür açık', CRM.kpi.eski90]].forEach(r => ws.addRow(r));
 
     ws = wb.addWorksheet('Aylık');
-    ws.columns = [{width:14},{width:12},{width:12}];
-    ERN_RAPOR.title(wb, ws, 'AYLIK GELEN / ÇÖZÜLEN', 3);
-    ERN_RAPOR.hdr(ws.addRow(['Ay','Gelen','Çözülen']));
-    CRM.aylik.forEach(a => ws.addRow([ayEt(a.ay), a.gelen, a.cozulen]));
+    ws.columns = [{width:14},{width:12},{width:12},{width:16}];
+    ERN_RAPOR.title(wb, ws, 'AYLIK GELEN / ÇÖZÜLEN', 4);
+    ERN_RAPOR.hdr(ws.addRow(['Ay','Gelen','Çözülen','Birikmiş açık']));
+    CRM.aylik.forEach(a => ws.addRow([ayEt(a.ay), a.gelen, a.cozulen, a.acik]));
 
     kir('Şikayet Türü', 'ŞİKAYET TÜRÜ', CRM.tur, 'Tür');
     kir('Konu', 'ŞİKAYET KONUSU', CRM.konu, 'Konu');

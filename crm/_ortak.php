@@ -174,6 +174,46 @@ function crm_ozet(PDO $pdo): array
     return $o;
 }
 
+/**
+ * Aylık gelen / çözülen / açık kalan serisi.
+ *
+ * Boş aylar DA döner: sorgu yalnız kaydı olan ayları verdiğinden aradaki boş aylar
+ * seriden düşüyor ve grafikte zaman ekseni çarpılıyordu. Seri ilk kayıttan BUGÜNE
+ * kadar ay ay doldurulur.
+ *
+ * `acik` = ay sonundaki birikmiş açık arıza (kümülatif gelen − çözülen). İlk günlük
+ * raporda henüz hiç kapanış olmadığından "çözülen" sıfırdır; bu seri sayesinde grafik
+ * yine de anlamlı olur (biriken yük görünür).
+ *
+ * @param int $sonAy 0 = tümü, >0 = yalnız son N ay (kümülatif bakiye ÖNCESİNİ de sayar)
+ */
+function crm_aylik_seri(PDO $pdo, int $sonAy = 0): array
+{
+    crm_semasi_kur($pdo);
+    $gelen = []; $coz = [];
+    foreach ($pdo->query("SELECT DATE_FORMAT(olusturma,'%Y-%m') ay, COUNT(*) n FROM crm_arizalar
+                          WHERE olusturma IS NOT NULL GROUP BY ay")->fetchAll() as $r) $gelen[$r['ay']] = (int)$r['n'];
+    foreach ($pdo->query("SELECT DATE_FORMAT(cozumlenme,'%Y-%m') ay, COUNT(*) n FROM crm_arizalar
+                          WHERE cozumlenme IS NOT NULL GROUP BY ay")->fetchAll() as $r) $coz[$r['ay']] = (int)$r['n'];
+
+    $aylar = array_keys($gelen + $coz);
+    if (!$aylar) return [];
+    sort($aylar);
+    $son = max($aylar[count($aylar)-1], date('Y-m'));   // veri bitse de bugüne kadar uzat
+
+    $seri = []; $bakiye = 0;
+    $d = new DateTime($aylar[0] . '-01');
+    $bit = new DateTime($son . '-01');
+    while ($d <= $bit) {
+        $ay = $d->format('Y-m');
+        $g = $gelen[$ay] ?? 0; $c = $coz[$ay] ?? 0;
+        $bakiye += $g - $c;
+        $seri[] = ['ay'=>$ay, 'gelen'=>$g, 'cozulen'=>$c, 'acik'=>$bakiye];
+        $d->modify('first day of next month');
+    }
+    return $sonAy > 0 ? array_slice($seri, -$sonAy) : $seri;
+}
+
 /** Son içe aktarma kaydı (dashboard'da "rapor ne zaman güncellendi" bandı için). */
 function crm_son_import(PDO $pdo): ?array
 {

@@ -107,13 +107,19 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   sorumlu, sonlandıran, olusturma/cozumlenme, durum ENUM acik/cozuldu, kapanis_kaynagi excel|otomatik|elle,
   ilk_gorulme/son_gorulme) · `crm_import_log` (dosya/rapor tarihi/satır/yeni/güncellenen/kapanan/kullanıcı).
   Sayfalar: **index** (dashboard: rapor güncellik bandı [son yükleme + kaç yeni/kaç kapandı, 2 günden eskiyse
-  uyarı] + KPI'lar [açık · bu ay yeni · bu ay çözülen · ort. açık kalma · 30+ gün bekleyen · toplam] + aylık
-  gelen/çözülen çizgi + şikayet türü doughnut + blok yığılmış bar + en sık arıza tipleri + en uzun süredir açık /
+  uyarı] + KPI'lar [açık · bu ay yeni · bu ay çözülen · ort. açık kalma · 30+ gün bekleyen · toplam] + **aylık
+  gelen/çözülen çubuk + "birikmiş açık" çizgisi** (`crm_aylik_seri()`: kaydı olmayan aylar da doldurulur —
+  sorgu yalnız dolu ayları verdiğinden zaman ekseni çarpılıyordu; seri bugüne kadar uzar, çizgi ay sonundaki
+  kümülatif açık yükü sağ eksende gösterir. İlk raporda hiç kapanış olmadığından yalnız gelen/çözülen çizgileri
+  boş görünüyordu; bant "çözülen serisi ikinci rapordan itibaren dolar" der. ⚠ **Chart.js canvas'ları sabit
+  yükseklikli `<div style="height:…">` içinde** olmalı — `maintainAspectRatio:false` yükseklik veren bir kutu
+  ister, yoksa grafik ezilir/şişer) + şikayet türü doughnut + blok yığılmış bar + en sık arıza tipleri + en uzun süredir açık /
   en çok arızalı daireler / son gelen arızalar) · **arizalar** (filtreler: durum/blok/kat/tür/konu/detay/sorumlu/
   tarih aralığı/serbest arama, whitelist sıralama, sayfalama, **Excel dışa aktarma**, toplu çöz/yeniden aç, 90+
   gün açık satır sarı) · **ariza_detay** (tüm CRM alanları + aynı dairenin diğer arızaları + elle çöz/yeniden aç +
   **iç not** + belge/fotoğraf `uploads/crm_ariza/{id}/`) · **raporlar** (tarih aralığı filtresi + KPI + aylık
-  trend + açık arıza yaş dağılımı [0-7/8-30/31-90/90+] + tür/konu/detay/arıza tipi/blok/kat/daire tipi/sorumlu
+  trend [tarih filtresinden BAĞIMSIZ — filtre yalnız gelen tarafını kesip çözülenle uyumsuz grafik üretiyordu]
+  + açık arıza yaş dağılımı [0-7/8-30/31-90/90+] + tür/konu/detay/arıza tipi/blok/kat/daire tipi/sorumlu
   kırılımları [toplam·açık·çözülen·ort. çözüm günü] + en çok arızalı daireler; **ERN_RAPOR** ile Excel'e Aktar +
   PDF İndir + Yazdır) · **import** (çoklu dosya; dosya adındaki tarih rapor tarihi sayılır; kapanan arızaların
   listesi `<details>` ile gösterilir) · kurulum_crm. Çekirdek: `crm/_ortak.php` (crm_norm, crm_tarih, crm_anahtar,
