@@ -17,7 +17,8 @@ $__module   = (strpos($__self,'/demir/')!==false) ? 'demir'
             : ((strpos($__self,'/crm/')!==false) ? 'crm'
             : ((strpos($__self,'/prekast/')!==false) ? 'prekast'
             : ((strpos($__self,'/whatsapp/')!==false) ? 'whatsapp' : 'beton'))))));
-$__modAd    = ['beton'=>'Beton Takip','demir'=>'Demir Takip','seramik'=>'Seramik Takip','depo'=>'Depo Takip','akaryakit'=>'Akaryakıt Takip','crm'=>'CRM — Üretim Arızaları','prekast'=>'Prekast Takip','whatsapp'=>'Saha Takip'][$__module] ?? 'Beton Takip';
+// Modül adı yöneticinin verdiği addır (moduller.php); verilmemişse MODULLER varsayılanı
+$__modAd    = function_exists('modul_ad') ? modul_ad($__module) : ($__module ?: 'Beton Takip');
 // Saha Takip girişi yetkiye göre: onay kuyruğu yetkisi yoksa doğrudan analiz sayfası
 $__waHome   = (function_exists('can_edit') && can_edit()) ? 'whatsapp/mesajlar.php' : 'whatsapp/saha_analiz.php';
 $__modHome  = ['beton'=>'index.php','demir'=>'demir/index.php','seramik'=>'seramik/index.php','depo'=>'depo/index.php','akaryakit'=>'akaryakit/index.php','crm'=>'crm/index.php','prekast'=>'prekast/index.php','whatsapp'=>$__waHome][$__module];
@@ -212,7 +213,7 @@ if ($__user) {
       <?php endif; ?>
 
       <?php if(is_admin()): ?>
-      <?php $__araA = in_array($__page,['yedek.php','import.php','ai_ayarlar.php','veri_kontrol.php','aktivite.php'],true); ?>
+      <?php $__araA = in_array($__page,['yedek.php','import.php','ai_ayarlar.php','veri_kontrol.php','aktivite.php','moduller.php'],true); ?>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= $__araA?'active':'' ?>" href="#subAra" data-bs-toggle="collapse" role="button" aria-expanded="<?= $__araA?'true':'false' ?>">
           <i class="bi bi-tools"></i><span>Araçlar</span><i class="bi bi-chevron-right chev"></i>
@@ -224,6 +225,7 @@ if ($__user) {
             <li><a class="sidebar-sub-link <?= __isActive('veri_kontrol.php') ?>" href="<?= $__rootPath ?>veri_kontrol.php"><i class="bi bi-shield-check me-1"></i>Veri Kontrol</a></li>
             <li><a class="sidebar-sub-link <?= __isActive('aktivite.php') ?>" href="<?= $__rootPath ?>aktivite.php"><i class="bi bi-activity me-1"></i>Aktivite Raporu</a></li>
             <li><a class="sidebar-sub-link <?= __isActive('onbellek_temizle.php') ?>" href="<?= $__rootPath ?>onbellek_temizle.php"><i class="bi bi-arrow-clockwise me-1"></i>Önbellek Temizle</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('moduller.php') ?>" href="<?= $__rootPath ?>moduller.php"><i class="bi bi-grid-3x3-gap me-1"></i>Modüller (ad / gizle)</a></li>
             <li><a class="sidebar-sub-link <?= __isActive('ai_ayarlar.php') ?>" href="<?= $__rootPath ?>ai_ayarlar.php"><i class="bi bi-stars me-1"></i>AI Ayarları</a></li>
           </ul>
         </div>
@@ -577,13 +579,16 @@ if ($__user) {
       <?php
       // Modül şeridi: MODULLER kaydından üretilir ve KULLANICI BAZLI erişime saygılıdır
       // (users.modul_erisim — izinsiz modül şeritte hiç görünmez, açılmaya çalışılsa da 403).
-      foreach (MODULLER as $__mk => [$__mAd, $__mIkon, $__mSayfa]):
+      // Liste MODULLER + yönetici ayarları (ad/gizle/sıra) birleşimidir — modul_listesi()
+      foreach (modul_listesi() as $__mk => $__m):
+          [$__mAd, $__mIkon, $__mSayfa] = [$__m['ad'], $__m['ikon'], $__m['sayfa']];
           if (!can_module($__mk)) continue;
           if ($__mk === 'crm'      && !has_role('admin','teknik_ofis_admin','teknik_ofis','saha_sefi')) continue;
           if ($__mk === 'prekast'  && !has_role('admin','teknik_ofis_admin','teknik_ofis','saha_sefi')) continue;
           if ($__mk === 'whatsapp' && !(can_edit() || can_view_reports())) continue;
           $__mHref = $__mk === 'whatsapp' ? $__waHome : $__mSayfa;
-          $__mEt   = ['crm'=>'CRM', 'prekast'=>'Prekast'][$__mk] ?? $__mAd;
+          // Varsayılan adlar şeritte uzun kalıyor; yönetici kendi adını verdiyse ona dokunulmaz
+          $__mEt   = ($__m['ad'] === $__m['varsayilan_ad']) ? (['crm'=>'CRM','prekast'=>'Prekast'][$__mk] ?? $__mAd) : $__mAd;
       ?>
       <a href="<?= $__rootPath . $__mHref ?>" class="module-switch-item <?= $__module===$__mk?'active':'' ?>">
         <i class="bi <?= h($__mIkon) ?>"></i><span><?= h($__mEt) ?></span>

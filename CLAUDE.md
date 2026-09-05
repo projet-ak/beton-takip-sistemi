@@ -254,6 +254,18 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
     `header.php` modül şeridi `MODULLER` + `can_module()` ile üretilir (izinsiz modül hiç görünmez).
     `login.php` girişte `modul_erisim`i oturuma yazar ve **izinli ilk modülün ana sayfasına** yönlendirir
     (`?redirect=` verilmişse o önceliklidir).
+  - **MODÜL ADLANDIRMA / GİZLEME / SIRALAMA** (2026-09): tablo `modul_ayarlar`
+    (anahtar PK, `ad` [boş=varsayılan], `gizli`, `sira`) — `MODULLER` sabiti sistemin VARSAYILANI kalır,
+    bu tablo yalnız **üzerine yazar**; tablo yoksa/erişilemezse sistem varsayılanlarla sorunsuz çalışır.
+    Fonksiyonlar auth.php'de: `modul_ayar_semasi()` (runtime CREATE + kurulum), `modul_ayarlari()`
+    (istek başına tek okuma, static önbellek), **`modul_listesi(bool $gizliDahil=false)`** (MODULLER +
+    ayarlar birleşimi, `sira` sonra doğal sıraya göre sıralı; anahtar => [ad, ikon, sayfa, gizli, sira,
+    dogal, varsayilan_ad]), `modul_ad()`, `modul_gizli()`. **Gizli modül `can_module()` içinde
+    admin dışında herkese kapalıdır** (yoksa modülü geri açacak kimse kalmazdı) ve menülerde/şeritte
+    hiç görünmez; 403 mesajı "yönetici tarafından kapatılmış" der. `ilk_modul_sayfasi()` gizlileri
+    atlar (beton gizliyse ilk görünür modüle düşer). Tüketiciler: `header.php` modül şeridi + `$__modAd`,
+    `includes/403.php`, `kullanicilar.php` (gizli modül rozetle işaretlenir ama izin verilebilir —
+    modül geri açıldığında kullanıcı beklemesin). Yönetim ekranı **`moduller.php`** (admin, Araçlar menüsü).
   - Yetki fonksiyonları: `can_edit()`, `can_edit_irsaliye($row)` (durum bazlı), `can_approve_saha()`,
     `can_approve_teknik()`, `can_view_reports()`, `can_manage_definitions()` (admin+teknik_ofis_admin),
     `can_manage_users()` (admin), `has_role(...)`, `is_admin()`.
@@ -329,6 +341,13 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   seçim `users.modul_erisim`e virgüllü yazılır (geçersiz anahtar süzülür). Listede her kullanıcının
   erişimi rozetlerle görünür ("Tüm modüller" ya da modül rozetleri). Admin rolü her zaman tüm modülleri
   görür (alan kaydedilse de dikkate alınmaz).
+- **`moduller.php`** (admin, Araçlar → "Modüller (ad / gizle)") — **Modül Yönetimi**: her modülün
+  **görünen adı** değiştirilir (boş = varsayılan), **gizlenir** (menülerde hiç görünmez, adresi elle
+  yazılsa da 403 — yalnız admin girebilir; veri SİLİNMEZ) ve **sırası** verilir (küçük önce, 0 = doğal).
+  Ayarlar `modul_ayarlar` tablosunda tutulur ve tüm sistemde geçerlidir (üst şerit, sidebar, yetki
+  ekranı, 403). Satırda modülün kaç kullanıcıya özel izinli olduğu gösterilir. Güvenlik: **tüm modüller
+  gizlenemez** (en az biri açık kalmalı) + tek tıkla **Varsayılana Dön** (özel adlar silinir, gizliler
+  açılır; `users.modul_erisim` izinleri etkilenmez). Değişiklikler `audit_log`'a yazılır.
 - Diğer: `ai_ayarlar.php`, `yedek.php`, `import.php`, `kurulum.php` (seed).
 
 ---
@@ -396,6 +415,7 @@ kivam_siniflari, parseller. Hiyerarşik: imalat_gruplari→ana_is_kalemleri, blo
 `tedarikciler`(vkn), `projeler`(kod UNIQUE), `users`(role ENUM + **`modul_erisim`** [virgüllü modül listesi,
 boş=tümü; runtime ALTER `modul_erisim_semasi()` + kurulum]), **`irsaliyeler`** (~40 kolon:
 tip/durum ENUM, kantar_net_*/kantar_farki, tüm tanım FK'leri, onay alanları, scan_image_url runtime),
+`modul_ayarlar` (anahtar PK, ad, gizli, sira — modül adlandırma/gizleme; runtime `modul_ayar_semasi()` + kurulum),
 `irsaliye_fotolar` (+ runtime `tur`/`okunan` — `blg_semasi_kur`), `audit_log` (JSON diff), **`faturalar`** (fatura_no UNIQUE, tarih, tedarikci_id, tutar, miktar_m3, ettn, irsaliye_adet, eksik_adet, dosya_url) + `irsaliyeler.fatura_id` bağı (runtime `fat_semasi_kur`). Seed admin: `tayyar_akbulut`/`admin`.
 
 ### Demir (`demir/kurulum_demir.php`) — `demir_` önekli, ayrı DB

@@ -10,9 +10,10 @@ $__mesaj = $GLOBALS['__403_mesaj'] ?? 'Bu sayfaya erişim yetkiniz yok.';
 $__kok   = $GLOBALS['__403_kok']   ?? '/';
 $__izin  = function_exists('modul_erisimi') ? modul_erisimi() : null;
 $__liste = [];
-if (defined('MODULLER')) {
-    foreach (MODULLER as $k => [$ad, $ikon, $sayfa]) {
-        if ($__izin === null || in_array($k, $__izin, true)) $__liste[] = [$ad, $ikon, $sayfa];
+if (function_exists('modul_listesi')) {
+    // Gizlenen modüller listelenmez; adlar yöneticinin verdiği adlardır
+    foreach (modul_listesi() as $k => $m) {
+        if ($__izin === null || in_array($k, $__izin, true)) $__liste[] = [$m['ad'], $m['ikon'], $m['sayfa']];
     }
 }
 ?>

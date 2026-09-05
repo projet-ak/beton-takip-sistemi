@@ -118,7 +118,7 @@ const MODULLER = [
 const MODUL_MUAF = [
     'login.php','logout.php','install.php','tanitim.php','deploy.php','deploy2.php','migrate.php',
     'migrate_scan_url.php','onbellek_temizle.php','sistem_kontrol.php','kurulum.php',
-    'kullanicilar.php','ai_ayarlar.php','yedek.php','aktivite.php','veri_kontrol.php',
+    'kullanicilar.php','ai_ayarlar.php','yedek.php','aktivite.php','veri_kontrol.php','moduller.php',
 ];
 
 /** İstenen sayfanın hangi modüle ait olduğu (PHP_SELF klasöründen). */
@@ -147,6 +147,80 @@ function modul_erisim_semasi(PDO $pdo): void
         if (!$var) $pdo->exec("ALTER TABLE users ADD COLUMN modul_erisim VARCHAR(255) NULL
                                COMMENT 'izinli modüller (virgüllü); boş = tümü'");
     } catch (Throwable $e) { /* yetki yoksa modül sınırsız çalışmaya devam eder */ }
+}
+
+/**
+ * `modul_ayarlar` tablosunu garanti eder (runtime migration; kurulum.php da kurar).
+ * Modül ADI ve GİZLİLİĞİ yönetici tarafından değiştirilebilsin diye MODULLER sabiti
+ * varsayılan kalır, bu tablo yalnız **üzerine yazar** — tablo yoksa/erişilemezse
+ * sistem varsayılanlarla sorunsuz çalışır.
+ */
+function modul_ayar_semasi(PDO $pdo): void
+{
+    static $yapildi = false;
+    if ($yapildi) return;
+    $yapildi = true;
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS modul_ayarlar (
+            anahtar VARCHAR(32) NOT NULL PRIMARY KEY COMMENT 'MODULLER anahtarı',
+            ad      VARCHAR(60) NULL   COMMENT 'yöneticinin verdiği ad; boş = varsayılan',
+            gizli   TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = menülerde hiç görünmez',
+            sira    INT NOT NULL DEFAULT 0 COMMENT 'menü sırası (küçük önce)',
+            updated TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    } catch (Throwable $e) { /* yetki yoksa varsayılanlarla devam */ }
+}
+
+/**
+ * Yönetici modül ayarları: anahtar => [ad, gizli, sira]. İstek başına bir kez okunur.
+ * Tablo yoksa boş döner (varsayılanlar geçerli olur).
+ */
+function modul_ayarlari(): array
+{
+    static $ayar = null;
+    if ($ayar !== null) return $ayar;
+    $ayar = [];
+    if (!defined('DB_HOST') && file_exists(__DIR__ . '/../config.php')) require_once __DIR__ . '/../config.php';
+    if (!function_exists('aktivite_pdo') || !($pdo = aktivite_pdo(null))) return $ayar;
+    try {
+        foreach ($pdo->query("SELECT anahtar, ad, gizli, sira FROM modul_ayarlar")->fetchAll(PDO::FETCH_ASSOC) as $r)
+            $ayar[$r['anahtar']] = ['ad' => (string)($r['ad'] ?? ''), 'gizli' => (int)$r['gizli'], 'sira' => (int)$r['sira']];
+    } catch (Throwable $e) { /* tablo henüz yok */ }
+    return $ayar;
+}
+
+/**
+ * MODULLER + yönetici ayarları birleşimi: anahtar => [ad, ikon, sayfa, gizli, sira].
+ * Sıralama `sira` (0 = MODULLER'deki doğal sıra), sonra doğal sıra.
+ *
+ * @param bool $gizliDahil true ise gizlenen modüller de döner (yönetim ekranları için)
+ */
+function modul_listesi(bool $gizliDahil = false): array
+{
+    $ayar = modul_ayarlari();
+    $liste = []; $i = 0;
+    foreach (MODULLER as $k => [$ad, $ikon, $sayfa]) {
+        $i++;
+        $a = $ayar[$k] ?? ['ad' => '', 'gizli' => 0, 'sira' => 0];
+        if (!$gizliDahil && $a['gizli']) continue;
+        $liste[$k] = ['ad' => $a['ad'] !== '' ? $a['ad'] : $ad, 'ikon' => $ikon, 'sayfa' => $sayfa,
+                      'gizli' => (bool)$a['gizli'], 'sira' => $a['sira'] ?: $i, 'dogal' => $i, 'varsayilan_ad' => $ad];
+    }
+    uasort($liste, fn($x, $y) => [$x['sira'], $x['dogal']] <=> [$y['sira'], $y['dogal']]);
+    return $liste;
+}
+
+/** Modülün görünen adı (yönetici verdiyse o, yoksa varsayılan). */
+function modul_ad(string $k): string
+{
+    $a = modul_ayarlari()[$k]['ad'] ?? '';
+    return $a !== '' ? $a : (MODULLER[$k][0] ?? $k);
+}
+
+/** Modül yönetici tarafından gizlendi mi? */
+function modul_gizli(string $k): bool
+{
+    return (bool)(modul_ayarlari()[$k]['gizli'] ?? 0);
 }
 
 /**
@@ -183,9 +257,14 @@ function modul_erisimi(): ?array
     return $izin;
 }
 
-/** Kullanıcı bu modüle girebilir mi? */
+/**
+ * Kullanıcı bu modüle girebilir mi?
+ * İki kapı var: (1) yöneticinin **gizlediği** modül kimsede görünmez/açılmaz — admin
+ * hariç, yoksa gizlenen modülü geri açacak kimse kalmaz; (2) kullanıcı bazlı izin listesi.
+ */
 function can_module(string $mod): bool
 {
+    if (modul_gizli($mod) && ($_SESSION['user']['role'] ?? '') !== 'admin') return false;
     $izin = modul_erisimi();
     return $izin === null || in_array($mod, $izin, true);
 }
@@ -194,12 +273,14 @@ function can_module(string $mod): bool
 function ilk_modul_sayfasi(): string
 {
     $izin = modul_erisimi();
-    if ($izin === null) return 'index.php';
-    foreach (MODULLER as $k => [$ad, $ikon, $sayfa]) {
+    // Gizlenmiş modüle yönlendirme yapılmaz; beton gizliyse de ilk görünür modüle düşülür
+    $gorunur = modul_listesi();
+    if ($izin === null) return isset($gorunur['beton']) ? 'index.php' : (reset($gorunur)['sayfa'] ?? 'index.php');
+    foreach ($gorunur as $k => $m) {
         if (!in_array($k, $izin, true)) continue;
         // Saha Takip'te onay kuyruğu yetkisi yoksa analiz sayfası açılır (mesajlar.php 403 verirdi)
         if ($k === 'whatsapp' && function_exists('can_edit') && !can_edit()) return 'whatsapp/saha_analiz.php';
-        return $sayfa;
+        return $m['sayfa'];
     }
     return 'index.php';
 }
@@ -236,7 +317,9 @@ function require_auth(array $roller = []): void
     // Ana sayfaya düşen kullanıcı 403 duvarına toslamasın: izinli ilk modüle götür
     if ($mod === 'beton' && $sayfa === 'index.php') { header('Location: ' . $kok . ilk_modul_sayfasi()); exit; }
 
-    $GLOBALS['__403_mesaj'] = (MODULLER[$mod][0] ?? $mod) . ' modülüne erişim yetkiniz yok.';
+    $GLOBALS['__403_mesaj'] = modul_gizli($mod)
+        ? modul_ad($mod) . ' modülü yönetici tarafından kapatılmış.'
+        : modul_ad($mod) . ' modülüne erişim yetkiniz yok.';
     $GLOBALS['__403_kok']   = $kok;
     http_response_code(403);
     include __DIR__ . '/403.php';

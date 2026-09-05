@@ -278,6 +278,9 @@ try {
     modul_erisim_semasi($pdo);   // users.modul_erisim (kullanıcı bazlı modül erişimi)
     $log[] = ['ok', 'users.modul_erisim kolonu eklendi / zaten mevcuttu'];
 
+    modul_ayar_semasi($pdo);     // modul_ayarlar (modül adı / gizleme / sıra — moduller.php)
+    $log[] = ['ok', 'modul_ayarlar tablosu eklendi / zaten mevcuttu'];
+
     // ── İndeksleri garanti et (mevcut DB'lerde CREATE TABLE indeks eklemez) ────
     $idxEnsure = [
         ['irsaliyeler', 'idx_tip_tarih', '(tip, tarih)'],

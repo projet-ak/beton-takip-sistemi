@@ -151,7 +151,8 @@ require_once __DIR__ . '/includes/header.php';
                                 <?php if ($u['role'] === 'admin' || !$uMod): ?>
                                     <span class="text-muted"><i class="bi bi-grid-3x3-gap me-1"></i>Tüm modüller</span>
                                 <?php else: foreach ($uMod as $mk): ?>
-                                    <span class="badge bg-light text-dark border me-1"><i class="bi <?= h(MODULLER[$mk][1]) ?> me-1"></i><?= h(MODULLER[$mk][0]) ?></span>
+                                    <span class="badge bg-light text-dark border me-1<?= modul_gizli($mk) ? ' opacity-50' : '' ?>"
+                                          <?= modul_gizli($mk) ? 'title="Bu modül şu an gizli"' : '' ?>><i class="bi <?= h(MODULLER[$mk][1]) ?> me-1"></i><?= h(modul_ad($mk)) ?><?= modul_gizli($mk) ? ' (gizli)' : '' ?></span>
                                 <?php endforeach; endif; ?>
                             </div>
                         </td>
@@ -240,15 +241,19 @@ require_once __DIR__ . '/includes/header.php';
                             </div>
                         </div>
                         <div id="modulKutu" class="row g-1 <?= $secili ? '' : 'opacity-50' ?>">
-                            <?php foreach (MODULLER as $mk => [$mAd, $mIkon, $mSayfa]): ?>
+                            <?php /* Gizli modüller de listelenir (rozetle) — izin şimdiden verilebilsin,
+                                      modül geri açıldığında kullanıcı beklemesin. */ ?>
+                            <?php foreach (modul_listesi(true) as $mk => $m): ?>
                             <div class="col-6">
                                 <div class="form-check">
                                     <input class="form-check-input modul-chk" type="checkbox" name="moduller[]"
                                            value="<?= h($mk) ?>" id="mod_<?= h($mk) ?>"
                                            <?= in_array($mk, $secili, true) ? 'checked' : '' ?>
                                            <?= $secili ? '' : 'disabled' ?>>
-                                    <label class="form-check-label small" for="mod_<?= h($mk) ?>">
-                                        <i class="bi <?= h($mIkon) ?> me-1"></i><?= h($mAd) ?></label>
+                                    <label class="form-check-label small<?= $m['gizli'] ? ' text-muted' : '' ?>" for="mod_<?= h($mk) ?>">
+                                        <i class="bi <?= h($m['ikon']) ?> me-1"></i><?= h($m['ad']) ?>
+                                        <?php if ($m['gizli']): ?><span class="badge bg-secondary ms-1" style="font-size:.62rem">gizli</span><?php endif; ?>
+                                    </label>
                                 </div>
                             </div>
                             <?php endforeach; ?>
