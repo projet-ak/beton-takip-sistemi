@@ -159,16 +159,73 @@
         flyoutTimer = setTimeout(hideFlyout, 200);
     });
 
-    const darkBtn  = document.getElementById('darkToggleBtn');
-    const darkIcon = document.getElementById('darkToggleIcon');
+    /* ── Tema seçici: görünüm + renk paleti + yüksek kontrast ────────────────
+       Ayarlar cihaza özeldir (localStorage). Sayfa açılışında header.php'deki
+       boot script zaten uygulamıştır; burası yalnız menüyü işaretler ve
+       değişikliği anında yansıtır (yeniden yükleme yok). */
+    const kok      = document.documentElement;
+    const temaIkon = document.getElementById('temaIkon');
+    const temaMenu = document.getElementById('temaMenu');
+    const kontrastChk = document.getElementById('kontrastChk');
+    const depo = { get(k){ try { return localStorage.getItem(k); } catch(e) { return null; } },
+                   set(k,v){ try { localStorage.setItem(k,v); } catch(e) {} } };
 
-    function applyDark(isDark) {
-        document.documentElement.setAttribute('data-dark', isDark ? '1' : '0');
-        localStorage.setItem('beton_dark', isDark ? '1' : '0');
-        if (darkIcon) darkIcon.className = isDark ? 'bi bi-sun-fill' : 'bi bi-moon-stars-fill';
+    function temaTercihi() {
+        var t = depo.get('ern_tema');
+        if (t) return t;
+        var eski = depo.get('beton_dark');
+        return eski === '1' ? 'koyu' : (eski === '0' ? 'aydinlik' : 'sistem');
     }
-    if (darkIcon) darkIcon.className = document.documentElement.getAttribute('data-dark') === '1' ? 'bi bi-sun-fill' : 'bi bi-moon-stars-fill';
-    darkBtn?.addEventListener('click', () => applyDark(document.documentElement.getAttribute('data-dark') !== '1'));
+    function koyuMu(tercih) {
+        return tercih === 'koyu' ||
+               (tercih === 'sistem' && window.matchMedia('(prefers-color-scheme:dark)').matches);
+    }
+    function temaUygula(tercih) {
+        depo.set('ern_tema', tercih);
+        depo.set('beton_dark', koyuMu(tercih) ? '1' : '0');   // eski anahtar: geri uyum
+        kok.setAttribute('data-dark', koyuMu(tercih) ? '1' : '0');
+        menuyuIsaretle();
+    }
+    function renkUygula(renk) {
+        depo.set('ern_renk', renk);
+        kok.setAttribute('data-renk', renk);
+        menuyuIsaretle();
+    }
+    function kontrastUygula(acik) {
+        depo.set('ern_kontrast', acik ? '1' : '0');
+        kok.setAttribute('data-kontrast', acik ? '1' : '0');
+        menuyuIsaretle();
+    }
+    function menuyuIsaretle() {
+        var tercih = temaTercihi();
+        if (temaIkon) {
+            // Simge o an EKRANDA ne olduğunu anlatır: kontrast açıksa onu, değilse görünümü
+            temaIkon.className = kok.getAttribute('data-kontrast') === '1' ? 'bi bi-circle-half'
+                               : (kok.getAttribute('data-dark') === '1' ? 'bi bi-moon-stars-fill' : 'bi bi-sun-fill');
+        }
+        if (!temaMenu) return;
+        temaMenu.querySelectorAll('[data-grup="tema"] button').forEach(function(b) {
+            b.classList.toggle('aktif', b.dataset.deger === tercih);
+        });
+        var renk = kok.getAttribute('data-renk') || 'ern';
+        temaMenu.querySelectorAll('[data-grup="renk"] button').forEach(function(b) {
+            b.classList.toggle('aktif', b.dataset.deger === renk);
+        });
+        if (kontrastChk) kontrastChk.checked = kok.getAttribute('data-kontrast') === '1';
+    }
+
+    temaMenu?.querySelectorAll('[data-grup="tema"] button').forEach(function(b) {
+        b.addEventListener('click', function() { temaUygula(b.dataset.deger); });
+    });
+    temaMenu?.querySelectorAll('[data-grup="renk"] button').forEach(function(b) {
+        b.addEventListener('click', function() { renkUygula(b.dataset.deger); });
+    });
+    kontrastChk?.addEventListener('change', function() { kontrastUygula(kontrastChk.checked); });
+    // "Sistem" seçiliyken işletim sistemi teması değişirse anında uy
+    window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change', function() {
+        if (temaTercihi() === 'sistem') temaUygula('sistem');
+    });
+    menuyuIsaretle();
 
     function animateCount(el, target, decimals) {
         var start = performance.now(), dur = 1100;
@@ -214,12 +271,21 @@
     });
 
     if (typeof Chart !== 'undefined') {
-        var dk = function() { return document.documentElement.getAttribute('data-dark') === '1'; };
+        // Grafik metni/ızgarası tema değişkenlerinden okunur — sabit hex olsaydı
+        // renk paleti ve yüksek kontrast modunda grafikler eski renklerde kalırdı.
+        var css = function(ad) { return getComputedStyle(document.documentElement).getPropertyValue(ad).trim(); };
+        var grafikRenk = function() {
+            Chart.defaults.color = css('--bt-text-muted') || '#4E7068';
+            Chart.defaults.borderColor = css('--bt-border-soft') || 'rgba(0,0,0,.1)';
+        };
         Chart.defaults.font.family = "'Outfit', system-ui, sans-serif";
         Chart.defaults.font.size   = 12;
-        Chart.defaults.color       = dk() ? '#6EA89E' : '#4E7068';
-        new MutationObserver(function() { Chart.defaults.color = dk() ? '#6EA89E' : '#4E7068'; })
-            .observe(document.documentElement, { attributes: true, attributeFilter: ['data-dark'] });
+        grafikRenk();
+        new MutationObserver(function() {
+            grafikRenk();
+            // Açık duran grafikler yeni renkleri alsın
+            Object.values(Chart.instances || {}).forEach(function(c) { try { c.update('none'); } catch (e) {} });
+        }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-dark','data-renk','data-kontrast'] });
     }
 
     document.querySelectorAll('table').forEach(function(tbl) {

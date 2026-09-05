@@ -273,8 +273,34 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   `redirect()`, `audit_log()`, `current_user_id()`.
 - **`header.php`** — layout + **modül algılama** (`$__module` = PHP_SELF `/demir/` içeriyorsa 'demir').
   Topbar'da **Beton/Demir geçiş banner'ı**; modüle göre sidebar menüsü. **Oturum sayacı** (topbar,
-  geri sayım, fetch/XHR'de sıfırlanır, 0'da logout). Dark mode (`localStorage beton_dark`).
+  geri sayım, fetch/XHR'de sıfırlanır, 0'da logout).
   Demir sayfaları `$rootPath='../'` set etmeli (linkler ve login yönlendirmesi buna dayanır).
+- **TEMA SİSTEMİ** (2026-09) — topbar'daki 🎨 düğmesinde **üç bağımsız ayar**, hepsi cihaza özel
+  (`localStorage`, sunucuya yazılmaz): **görünüm** `ern_tema` = aydinlik|koyu|**sistem** (OS'i izler,
+  OS teması değişince sayfa yenilenmeden uyar) · **renk teması** `ern_renk` = ern|mavi|antrasit|turuncu ·
+  **yüksek kontrast** `ern_kontrast` = 0|1. HTML kökündeki `data-dark` / `data-renk` / `data-kontrast`
+  özniteliklerine yazılır. ⚠ Üçü de **`header.php`'nin `<head>` içindeki boot script'inde, ilk boyamadan
+  ÖNCE** uygulanır — sonradan uygulansa sayfa bir kare yanlış renkte görünüp "zıplar". Eski tek anahtar
+  `beton_dark` **korunur** (ilk açılışta `ern_tema`ya göç eder, her değişiklikte senkron yazılır).
+  `localStorage` erişimi try/catch'lidir (gizli sekme / depolama kapalı).
+  - **CSS mimarisi** (`assets/css/style.css`): marka rengi artık **tek kaynaktan** gelir —
+    `--ern` + **`--ern-rgb`** (gölge/tint hesapları `rgba(var(--ern-rgb),…)`) + `--ern-dark/darker/
+    light/ultra/teal` + `--sidebar-1/2` (sidebar degrade durakları) + **`--ern-hc` / `--ern-hc-dark`**
+    (yüksek kontrastta beyaz/siyah zemin üstünde AA geçen koyu/açık tonlar). Palet blokları
+    (`html[data-renk="…"]`) yalnız bu değişkenleri ezer, **yerleşim/ölçü hiç değişmez**.
+    `--bs-primary/-rgb/link-color` marka değişkenlerine bağlandı, böylece `text-primary`/`bg-primary`
+    de paleti izler. Koyu temada bağlantı rengi `--ern-ultra`ya çekildi (koyu yeşil link siyah zeminde
+    ≈2:1 okunuyordu), `--bt-tint/--bt-ring` de `color-mix` ile paleti izler (sabit teal turuncu temada yamalıydı).
+  - **Yüksek kontrast** (`html[data-kontrast="1"]` + koyu için `[data-dark="1"]` bileşimi): saf beyaz/siyah
+    zemin, soluk griler kalkar, **gölge yerine 2px net kenarlık**, bağlantılar **altı çizili** (rengi ayırt
+    edemeyenler için ikinci ipucu), odak halkası 3px, tablo ızgarası görünür, `--bs-table-bg` yüzeye bağlı
+    (Bootstrap varsayılanı şeffaf olduğundan koyu kontrastta hücreler beyaz kalıyordu), düğmelerde degrade
+    yerine düz renk, animasyon/transform kapalı. Aksan HC'de `--ern-hc`/`--ern-hc-dark`e döner —
+    aksi halde renkli aksan siyah/beyaz üstünde AA eşiğini geçmez.
+  - **Chart.js** renkleri sabit hex yerine `--bt-text-muted`/`--bt-border-soft`'tan okunur; `data-dark`,
+    `data-renk`, `data-kontrast` değişince MutationObserver açık grafikleri `update('none')` ile yeniler.
+  - Playwright + WCAG oran ölçümüyle doğrulandı: yüksek kontrastta ölçülen tüm metin/zemin çiftleri
+    **AAA** (7:1+), çoğu 12–21:1; normal temalarda AA.
 - **`footer.php`** — footer, mobil bottom-nav, `ai_chat_widget.php`, app.js, service worker.
 - **`ai_call.php`** — `ai_call($system,$parts,$maxTokens)` → Claude/Gemini/OpenRouter.
 - **`config.example.php`** — sadece DB_HOST/NAME/USER/PASS şablonu. Gerçek `config.php` git-ignored.

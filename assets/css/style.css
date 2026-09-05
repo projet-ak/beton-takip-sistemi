@@ -5,8 +5,9 @@
 
 /* ── Design Tokens ────────────────────────────────────────────────── */
 :root {
-    /* ERN Marka Renkleri */
+    /* ERN Marka Renkleri — RENK TEMASI bu bloğu ezer (html[data-renk="..."]) */
     --ern:           #00584E;
+    --ern-rgb:       0, 88, 78;      /* gölge/tint hesapları için */
     --ern-dark:      #003D35;
     --ern-darker:    #002920;
     --ern-light:     #007A6A;
@@ -14,12 +15,18 @@
     --ern-teal:      #00C9B1;
     --ern-gold:      #C9A84C;
     --ern-gold-dark: #A88A2E;
+    /* Yüksek kontrast modunda kullanılan koyu/açık marka tonları (AA/AAA) */
+    --ern-hc:        #003D35;        /* beyaz zemin üstünde */
+    --ern-hc-dark:   #4FE0C8;        /* siyah zemin üstünde */
+    /* Sidebar degrade durakları (koyu tema ve uçan menüler bunları kullanır) */
+    --sidebar-1:     #002820;
+    --sidebar-2:     #001A14;
 
     /* Bootstrap override */
-    --bs-primary:          #00584E;
-    --bs-primary-rgb:      0, 88, 78;
-    --bs-link-color:       #00584E;
-    --bs-link-hover-color: #007A6A;
+    --bs-primary:          var(--ern);
+    --bs-primary-rgb:      var(--ern-rgb);
+    --bs-link-color:       var(--ern);
+    --bs-link-hover-color: var(--ern-light);
 
     /* Sidebar */
     --sidebar-w:    260px;
@@ -34,15 +41,15 @@
     --bt-text:         #0D2E28;
     --bt-text-muted:   #4E7068;
     --bt-text-soft:    #8AA9A3;
-    --bt-tint:         rgba(0,88,78,.07);
-    --bt-ring:         rgba(0,88,78,.2);
+    --bt-tint:         rgba(var(--ern-rgb),.07);
+    --bt-ring:         rgba(var(--ern-rgb),.2);
 
     /* Shadows – yeşil tonlu */
-    --shadow-xs: 0 1px 2px rgba(0,88,78,.06);
-    --shadow-sm: 0 2px 8px rgba(0,88,78,.08), 0 1px 3px rgba(0,88,78,.04);
-    --shadow-md: 0 4px 20px rgba(0,88,78,.1), 0 2px 6px rgba(0,88,78,.06);
-    --shadow-lg: 0 8px 32px rgba(0,88,78,.12), 0 4px 12px rgba(0,88,78,.07);
-    --shadow-xl: 0 16px 48px rgba(0,88,78,.14), 0 6px 16px rgba(0,88,78,.08);
+    --shadow-xs: 0 1px 2px rgba(var(--ern-rgb),.06);
+    --shadow-sm: 0 2px 8px rgba(var(--ern-rgb),.08), 0 1px 3px rgba(var(--ern-rgb),.04);
+    --shadow-md: 0 4px 20px rgba(var(--ern-rgb),.1), 0 2px 6px rgba(var(--ern-rgb),.06);
+    --shadow-lg: 0 8px 32px rgba(var(--ern-rgb),.12), 0 4px 12px rgba(var(--ern-rgb),.07);
+    --shadow-xl: 0 16px 48px rgba(var(--ern-rgb),.14), 0 6px 16px rgba(var(--ern-rgb),.08);
 
     --transition: .24s cubic-bezier(.4,0,.2,1);
     --radius-sm:  8px;
@@ -132,7 +139,7 @@ a { text-decoration: none; }
     position: fixed;          /* fixed — sidebar dışına taşmaz */
     left: 270px;              /* sidebar genişliğinin sağı */
     bottom: 12px;
-    background: linear-gradient(160deg, #004A40 0%, #002920 100%);
+    background: linear-gradient(160deg, var(--ern-dark) 0%, var(--ern-darker) 100%);
     border: 1px solid rgba(255,255,255,.15);
     border-radius: 16px;
     padding: .9rem;
@@ -244,7 +251,7 @@ a { text-decoration: none; }
     left: 64px;
     top: 0;
     min-width: 210px;
-    background: linear-gradient(160deg, #003D35 0%, #002920 100%);
+    background: linear-gradient(160deg, var(--ern-dark) 0%, var(--ern-darker) 100%);
     border-radius: 0 14px 14px 0;
     padding: .45rem .45rem .55rem;
     box-shadow: 6px 4px 28px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.07);
@@ -704,11 +711,11 @@ code { color: var(--ern); background: var(--bt-tint); padding: .12rem .4rem; bor
 .btn-primary {
     background: linear-gradient(135deg, var(--ern-light) 0%, var(--ern) 100%);
     border: none; color: #fff;
-    box-shadow: 0 4px 14px rgba(0,88,78,.3);
+    box-shadow: 0 4px 14px rgba(var(--ern-rgb),.3);
 }
 .btn-primary:hover {
     background: linear-gradient(135deg, var(--ern-ultra) 0%, var(--ern-light) 100%);
-    box-shadow: 0 6px 20px rgba(0,88,78,.4);
+    box-shadow: 0 6px 20px rgba(var(--ern-rgb),.4);
     transform: translateY(-1px);
     color: #fff;
 }
@@ -871,8 +878,14 @@ html[data-dark="1"] {
     --bt-text:        #DCF0EC;
     --bt-text-muted:  #6EA89E;
     --bt-text-soft:   #3D6862;
-    --bt-tint:        rgba(0,200,180,.07);
-    --bt-ring:        rgba(0,200,180,.22);
+    /* Vurgu/odak tonları renk paletini izlesin (sabit teal, turuncu temada yamalıydı) */
+    --bt-tint:        color-mix(in srgb, var(--ern-ultra) 9%, transparent);
+    --bt-ring:        color-mix(in srgb, var(--ern-ultra) 24%, transparent);
+
+    /* Bağlantılar koyu zeminde marka yeşilinin KOYU tonuyla okunmuyordu (≈2:1);
+       aydınlık tondaki aksana çekildi. */
+    --bs-link-color:       var(--ern-ultra);
+    --bs-link-hover-color: var(--ern-teal);
 
     --shadow-xs: 0 1px 2px rgba(0,0,0,.4);
     --shadow-sm: 0 2px 8px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.3);
@@ -884,7 +897,7 @@ html[data-dark="1"] {
 html[data-dark="1"] body { color-scheme: dark; background: var(--bt-bg); color: var(--bt-text); }
 
 html[data-dark="1"] .ern-sidebar {
-    background: linear-gradient(175deg, #002820 0%, #001A14 100%);
+    background: linear-gradient(175deg, var(--sidebar-1) 0%, var(--sidebar-2) 100%);
 }
 
 html[data-dark="1"] .card,
@@ -1090,7 +1103,7 @@ html[data-dark="1"] h4,html[data-dark="1"] h5,html[data-dark="1"] h6 { color: va
     align-items: center;
     justify-content: space-around;
     z-index: 150;
-    box-shadow: 0 -4px 20px rgba(0,88,78,.1);
+    box-shadow: 0 -4px 20px rgba(var(--ern-rgb),.1);
     padding-bottom: env(safe-area-inset-bottom, 0); /* iPhone notch */
 }
 .bottom-nav-item {
@@ -1120,7 +1133,7 @@ html[data-dark="1"] h4,html[data-dark="1"] h5,html[data-dark="1"] h6 { color: va
     display: flex; align-items: center; justify-content: center;
     color: #fff;
     font-size: 1.3rem;
-    box-shadow: 0 4px 16px rgba(0,88,78,.4);
+    box-shadow: 0 4px 16px rgba(var(--ern-rgb),.4);
     text-decoration: none;
     margin-top: -20px;
     border: 3px solid var(--bt-surface);
@@ -1129,7 +1142,7 @@ html[data-dark="1"] h4,html[data-dark="1"] h5,html[data-dark="1"] h6 { color: va
 }
 .bottom-nav-fab:hover, .bottom-nav-fab:active {
     transform: scale(1.1);
-    box-shadow: 0 6px 22px rgba(0,88,78,.5);
+    box-shadow: 0 6px 22px rgba(var(--ern-rgb),.5);
     color: #fff;
 }
 .bottom-nav-fab.active {
@@ -1244,3 +1257,194 @@ html[data-dark="1"] .btn-group .btn-outline-secondary.active {
     .card { box-shadow: none !important; border: 1px solid #dee2e6 !important; animation: none; }
     body { background: #fff; }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   RENK TEMALARI  (html[data-renk="..."])
+   ------------------------------------------------------------------
+   Yalnız marka değişkenlerini ezerler; yerleşim/ölçü hiç değişmez.
+   Her palet, YÜKSEK KONTRAST modunda kullanılacak koyu (--ern-hc) ve
+   açık (--ern-hc-dark) tonlarını da tanımlar — aksi halde renkli aksan
+   siyah/beyaz zeminde AA eşiğini geçmez.
+   ══════════════════════════════════════════════════════════════════ */
+html[data-renk="mavi"] {
+    --ern:         #0B4F8A;  --ern-rgb: 11, 79, 138;
+    --ern-dark:    #073B69;  --ern-darker: #04263F;
+    --ern-light:   #1268B4;  --ern-ultra:  #2E8FDE;  --ern-teal: #58B6F5;
+    --ern-hc:      #063A66;  --ern-hc-dark: #6FC2FF;
+    --sidebar-1:   #052A47;  --sidebar-2:  #021624;
+}
+html[data-renk="antrasit"] {
+    --ern:         #37474F;  --ern-rgb: 55, 71, 79;
+    --ern-dark:    #263238;  --ern-darker: #161E22;
+    --ern-light:   #4A616B;  --ern-ultra:  #6B8794;  --ern-teal: #90A9B5;
+    --ern-hc:      #1B252A;  --ern-hc-dark: #C6D6DE;
+    --sidebar-1:   #1B252A;  --sidebar-2:  #0C1215;
+}
+html[data-renk="turuncu"] {
+    --ern:         #B34700;  --ern-rgb: 179, 71, 0;
+    --ern-dark:    #8A3700;  --ern-darker: #5C2500;
+    --ern-light:   #D45800;  --ern-ultra:  #F07520;  --ern-teal: #FF9B4D;
+    --ern-hc:      #7A3000;  --ern-hc-dark: #FFA24D;
+    --sidebar-1:   #4A1E00;  --sidebar-2:  #2A1000;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   YÜKSEK KONTRAST  (html[data-kontrast="1"])
+   ------------------------------------------------------------------
+   Şantiye koşulları için: güneş altında okunabilirlik, düşük görme.
+   Yumuşak griler kalkar, kenarlıklar kalınlaşır, gölgeler yerine
+   NET çerçeve gelir, bağlantılar altı çizili olur, odak halkası
+   3px'e çıkar. Aydınlık ve koyu için iki ayrı blok.
+   ══════════════════════════════════════════════════════════════════ */
+html[data-kontrast="1"] {
+    --ern:            var(--ern-hc);
+    --bt-bg:          #FFFFFF;
+    --bt-bg-soft:     #F0F0F0;
+    --bt-surface:     #FFFFFF;
+    --bt-border:      #000000;
+    --bt-border-soft: #4A4A4A;
+    --bt-text:        #000000;
+    --bt-text-muted:  #1A1A1A;
+    --bt-text-soft:   #333333;
+    --bt-tint:        rgba(0,0,0,.09);
+    --bt-ring:        rgba(0,0,0,.5);
+    --bs-table-bg:    var(--bt-surface);
+    --bs-table-color: var(--bt-text);
+    --shadow-xs: none; --shadow-sm: none; --shadow-md: none;
+    --shadow-lg: none; --shadow-xl: none;
+}
+html[data-kontrast="1"][data-dark="1"] {
+    --ern:            var(--ern-hc-dark);
+    --bt-bg:          #000000;
+    --bt-bg-soft:     #0D0D0D;
+    --bt-surface:     #000000;
+    --bt-border:      #FFFFFF;
+    --bt-border-soft: #B8B8B8;
+    --bt-text:        #FFFFFF;
+    --bt-text-muted:  #EAEAEA;
+    --bt-text-soft:   #CCCCCC;
+    --bt-tint:        rgba(255,255,255,.12);
+    --bt-ring:        rgba(255,255,255,.55);
+    --bs-table-bg:    var(--bt-surface);
+    --bs-table-color: var(--bt-text);
+}
+
+/* Kenarlıklar: gölge yerine görünür çerçeve */
+html[data-kontrast="1"] .card,
+html[data-kontrast="1"] .modal-content,
+html[data-kontrast="1"] .dropdown-menu,
+html[data-kontrast="1"] .list-group-item,
+html[data-kontrast="1"] .alert,
+html[data-kontrast="1"] .form-control,
+html[data-kontrast="1"] .form-select,
+html[data-kontrast="1"] .input-group-text,
+html[data-kontrast="1"] .btn,
+html[data-kontrast="1"] .badge,
+html[data-kontrast="1"] .progress {
+    border: 2px solid var(--bt-border) !important;
+    box-shadow: none !important;
+}
+html[data-kontrast="1"] .card-header,
+html[data-kontrast="1"] .card-footer { border-color: var(--bt-border) !important; border-width: 2px !important; }
+html[data-kontrast="1"] .ern-topbar,
+html[data-kontrast="1"] .ern-footer,
+html[data-kontrast="1"] .bottom-nav { border-color: var(--bt-border) !important; border-width: 2px !important; box-shadow: none !important; }
+html[data-kontrast="1"] .ern-sidebar { border-right: 2px solid var(--bt-border) !important; }
+
+/* Metin: soluk griler kalkar */
+html[data-kontrast="1"] .text-muted,
+html[data-kontrast="1"] .form-text,
+html[data-kontrast="1"] small.text-muted { color: var(--bt-text-muted) !important; }
+html[data-kontrast="1"] .opacity-50,
+html[data-kontrast="1"] .opacity-75 { opacity: 1 !important; }
+
+/* Bağlantılar altı çizili — rengi ayırt edemeyenler için ikinci ipucu */
+html[data-kontrast="1"] a:not(.btn):not(.nav-link):not(.sidebar-nav-link):not(.sidebar-sub-link):not(.module-switch-item):not(.bottom-nav-item):not(.dropdown-item) {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+/* Odak halkası: klavye ile gezinme net görünsün */
+html[data-kontrast="1"] :focus-visible {
+    outline: 3px solid var(--bt-ring) !important;
+    outline-offset: 2px !important;
+}
+
+/* Tablolar: her hücrede görünür ızgara */
+html[data-kontrast="1"] .table > :not(caption) > * > * { border-color: var(--bt-border-soft) !important; }
+html[data-kontrast="1"] .table thead th,
+html[data-kontrast="1"] .table > thead > tr > th {
+    background: var(--bt-bg-soft) !important; color: var(--bt-text) !important;
+    border-bottom: 2px solid var(--bt-border) !important; font-weight: 700;
+}
+html[data-kontrast="1"] .table-hover > tbody > tr:hover > * {
+    background-color: var(--bt-tint) !important; color: var(--bt-text) !important;
+}
+
+/* Düğmeler: degrade yerine düz renk + kalın kenarlık */
+html[data-kontrast="1"] .btn-primary {
+    background: var(--ern) !important; color: #fff !important; border-color: var(--bt-border) !important;
+}
+html[data-kontrast="1"][data-dark="1"] .btn-primary { color: #000 !important; }
+html[data-kontrast="1"] .btn-primary:hover { background: var(--ern) !important; filter: brightness(1.15); transform: none; }
+html[data-kontrast="1"] .btn-outline-secondary { color: var(--bt-text) !important; }
+
+/* Rozetler: açık zeminli rozetler siyah metinle okunur kalsın */
+html[data-kontrast="1"] .badge.bg-light,
+html[data-kontrast="1"] .badge.bg-warning,
+html[data-kontrast="1"] .badge.bg-info { color: #000 !important; }
+html[data-kontrast="1"][data-dark="1"] .badge.bg-light { background: #fff !important; color: #000 !important; }
+
+/* Kenar yumuşatma/animasyon azaltma — dikkat dağıtmasın */
+html[data-kontrast="1"] .card,
+html[data-kontrast="1"] .btn { transition: none; }
+html[data-kontrast="1"] .btn:hover { transform: none; }
+
+/* Tema seçici (topbar açılır menüsü) */
+.tema-menu { min-width: 236px; padding: .6rem; }
+.tema-menu .tema-baslik {
+    font-size: .68rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--bt-text-soft); margin: .35rem .25rem .3rem;
+}
+.tema-secim { display: flex; gap: .3rem; }
+.tema-secim button {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: .18rem;
+    padding: .42rem .2rem; border-radius: 10px; font-size: .68rem; font-weight: 600;
+    border: 1.5px solid var(--bt-border); background: var(--bt-surface); color: var(--bt-text-muted);
+    cursor: pointer; transition: var(--transition);
+}
+.tema-secim button i { font-size: .95rem; }
+.tema-secim button:hover { border-color: var(--ern); color: var(--ern); }
+.tema-secim button.aktif { background: var(--ern); border-color: var(--ern); color: #fff; }
+html[data-kontrast="1"][data-dark="1"] .tema-secim button.aktif { color: #000; }
+.renk-secim { display: flex; gap: .4rem; flex-wrap: wrap; }
+.renk-secim button {
+    width: 34px; height: 34px; border-radius: 50%; cursor: pointer;
+    border: 2px solid var(--bt-border); position: relative; transition: var(--transition);
+}
+.renk-secim button:hover { transform: scale(1.1); }
+.renk-secim button.aktif::after {
+    content: ''; position: absolute; inset: -5px; border-radius: 50%;
+    border: 2px solid var(--ern);
+}
+.tema-anahtar { display: flex; align-items: center; gap: .5rem; padding: .35rem .25rem; }
+.tema-anahtar label { font-size: .8rem; font-weight: 600; color: var(--bt-text); cursor: pointer; margin: 0; }
+
+/* Yüksek kontrast — sidebar ve modül şeridi
+   Sidebar marka renginde kalır (koyu zemin + beyaz metin zaten yüksek kontrasttır)
+   ama soluk beyazlar (%68 opaklık) tam beyaza çekilir ve aktif satır düz renk olur. */
+html[data-kontrast="1"] .sidebar-nav-link,
+html[data-kontrast="1"] .sidebar-sub-link { color: #fff; font-weight: 600; }
+html[data-kontrast="1"] .sidebar-nav-link.active {
+    background: #fff; color: #000; box-shadow: inset 4px 0 0 var(--ern-teal);
+}
+html[data-kontrast="1"] .sidebar-nav-link.active i { color: #000; }
+html[data-kontrast="1"] .sidebar-nav-link:hover { background: rgba(255,255,255,.28); color: #fff; transform: none; }
+html[data-kontrast="1"] .nav-section { color: #fff; opacity: 1; }
+
+/* Modül şeridi: aktif sekme her iki modda da okunur kalsın
+   (koyu kontrastta aksan açık renk olduğundan üstüne beyaz metin gitmez) */
+html[data-kontrast="1"] .module-switch { border-width: 2px; border-color: var(--bt-border); }
+html[data-kontrast="1"] .module-switch-item { color: var(--bt-text); }
+html[data-kontrast="1"] .module-switch-item.active { background: var(--ern); color: #fff; box-shadow: none; }
+html[data-kontrast="1"][data-dark="1"] .module-switch-item.active { color: #000; }

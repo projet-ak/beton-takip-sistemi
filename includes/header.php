@@ -60,7 +60,23 @@ if ($__user) {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap">
-<script>(function(){var d=localStorage.getItem('beton_dark')||(window.matchMedia('(prefers-color-scheme:dark)').matches?'1':'0');document.documentElement.setAttribute('data-dark',d);})();</script>
+<script>
+/* Tema ayarları ilk boyamadan ÖNCE uygulanır — aksi halde sayfa bir kare
+   yanlış renkte görünüp "zıplar". Üç bağımsız ayar: görünüm (aydınlık/koyu/
+   sistem), renk paleti, yüksek kontrast. Eski tek anahtar `beton_dark`
+   korunur (geri uyum) ve ilk açılışta `ern_tema`ya taşınır. */
+(function(){
+  var r = document.documentElement, ls;
+  try { ls = localStorage; } catch(e) { ls = null; }          /* gizli sekme/kapalı depolama */
+  var g = function(k){ try { return ls && ls.getItem(k); } catch(e){ return null; } };
+  var tema = g('ern_tema');
+  if (!tema) { var eski = g('beton_dark'); tema = eski === '1' ? 'koyu' : (eski === '0' ? 'aydinlik' : 'sistem'); }
+  var koyu = tema === 'koyu' || (tema === 'sistem' && window.matchMedia('(prefers-color-scheme:dark)').matches);
+  r.setAttribute('data-dark', koyu ? '1' : '0');
+  r.setAttribute('data-renk', g('ern_renk') || 'ern');
+  r.setAttribute('data-kontrast', g('ern_kontrast') === '1' ? '1' : '0');
+})();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="<?= $__rootPath ?>assets/css/style.css?v=<?= time() ?>">
 </head>
@@ -605,7 +621,34 @@ if ($__user) {
         <span id="sessionTimerText">--:--</span>
       </div>
       <?php endif; ?>
-      <button class="btn-topbar" id="darkToggleBtn" title="Tema"><i class="bi bi-moon-stars-fill" id="darkToggleIcon"></i></button>
+      <div class="dropdown">
+        <button class="btn-topbar" id="temaBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                title="Tema ve görünüm" aria-label="Tema ve görünüm"><i class="bi bi-palette-fill" id="temaIkon"></i></button>
+        <div class="dropdown-menu dropdown-menu-end tema-menu" id="temaMenu">
+          <div class="tema-baslik">Görünüm</div>
+          <div class="tema-secim" data-grup="tema">
+            <button type="button" data-deger="aydinlik"><i class="bi bi-sun-fill"></i>Aydınlık</button>
+            <button type="button" data-deger="koyu"><i class="bi bi-moon-stars-fill"></i>Koyu</button>
+            <button type="button" data-deger="sistem"><i class="bi bi-circle-half"></i>Sistem</button>
+          </div>
+          <div class="tema-baslik">Renk teması</div>
+          <div class="renk-secim" data-grup="renk">
+            <button type="button" data-deger="ern"      style="background:#00584E" title="ERN Yeşili" aria-label="ERN Yeşili"></button>
+            <button type="button" data-deger="mavi"     style="background:#0B4F8A" title="Kurumsal Mavi" aria-label="Kurumsal Mavi"></button>
+            <button type="button" data-deger="antrasit" style="background:#37474F" title="Antrasit" aria-label="Antrasit"></button>
+            <button type="button" data-deger="turuncu"  style="background:#B34700" title="İnşaat Turuncusu" aria-label="İnşaat Turuncusu"></button>
+          </div>
+          <hr class="my-2">
+          <div class="tema-anahtar form-check form-switch ps-0">
+            <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" id="kontrastChk">
+            <label for="kontrastChk"><i class="bi bi-circle-half me-1"></i>Yüksek kontrast</label>
+          </div>
+          <div class="form-text px-1" style="font-size:.72rem">
+            Güneş altında ve düşük görmede okunabilirlik: soluk griler kalkar, kenarlıklar
+            kalınlaşır, bağlantılar altı çizili olur.
+          </div>
+        </div>
+      </div>
       <?php if($__user): ?>
       <div class="dropdown">
         <div class="topbar-user" data-bs-toggle="dropdown">
