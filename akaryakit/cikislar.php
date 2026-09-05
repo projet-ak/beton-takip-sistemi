@@ -48,7 +48,7 @@ try {
 // ── Kaydet / güncelle ────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'kaydet') {
     $id     = (int)($_POST['id'] ?? 0);
-    $miktar = ak_sayi($_POST['miktar'] ?? '');
+    $miktar = ak_sayi_form($_POST['miktar'] ?? '');   // elle yazılan "1.200" = 1200 Lt
     $tarih  = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['tarih'] ?? '') ? $_POST['tarih'] : date('Y-m-d');
     $aracId = isset($_POST['arac_id']) && ctype_digit((string)$_POST['arac_id']) && (int)$_POST['arac_id'] > 0 ? (int)$_POST['arac_id'] : null;
     $sofor  = trim((string)($_POST['sofor'] ?? ''));

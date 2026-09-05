@@ -82,6 +82,18 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   günleri çoğu ay girilmemiş), `akaryakit_tuketim` (dönem×araç: aylık tüketim/çalışma/ortalama/okumalar + **günlük 31
   günün Mazot/Km detayı JSON** `gunluk`), `akaryakit_tutanak` (aylık imzalı tüketim raporu satırları).
   Sayfalar: index(dashboard: stok KPI + aylık tüketim/kalan grafik + firma doughnut + en çok tüketen) ·
+  **hareketler**(GÜNLÜK HAREKET DEFTERİ — "bugün tanka ne geldi, hangi araca ne verildi" tek ekranda.
+  İki kaynak BİRLEŞİR, veri kopyalanmaz: GİRİŞ → yeni tablo `akaryakit_girisler` (tarih, belge_no
+  [irsaliye/fiş], tedarikci, plaka [tanker], miktar_lt, birim_fiyat, tutar [boşsa miktar×fiyat],
+  teslim_alan, aciklama, **evrak_url** → `uploads/akaryakit_giris/{id}/`) · ÇIKIŞ → `akaryakit_cikislar`
+  (cikislar.php'nin tablosu, olduğu yerden okunur — iki ekran arasında veri ikilemi olmaz).
+  `ak_defter()` satırları tarih sırasına dizer (aynı gün önce girişler). **Yürüyen bakiye**:
+  açılış `ak_defter_acilis()` ile — ay seçili + Excel dönemi varsa **Excel DEVRİ**, serbest tarih
+  aralığında **defterin kendi önceki hareketleri** (ikisi karıştırılırsa çift sayardı). ⚠ Tür/araç
+  süzgeci açıkken **bakiye sütunu gizlenir** — hareketlerin bir kısmı listede olmadığından yürüyen
+  bakiye yanıltırdı. **Excel mutabakat bandı**: seçilen ayın defter toplamları `akaryakit_donemler`
+  Gelen/Kullanılan ile karşılaştırılır, fark gösterilir (**Excel esastır**; fark ay sonu işlenmemişse
+  beklenir). Filtreler ay | tarih aralığı / tür / araç / serbest arama + KPI + Excel dışa aktarma) ·
   aylik(dönem seçmeli araç tüketim tablosu + günlük detay modal) · stok(dönem zinciri, uyuşmayan geçiş
   kırmızı, elle düzelt) · **cikislar**(günlük mazot çıkışı: araç seçimi otomatik doldurur, ay filtresi + KPI;
   tablo `akaryakit_cikislar` runtime+kurulum, **imzalı evrak yükleme** `evrak_url` → `uploads/akaryakit_cikis/{id}/`; stok zincirine KARIŞMAZ — Excel esastır, ay sonunda Excel'e işlenir) ·
@@ -90,7 +102,12 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   Import: aylık sayfalar (OCAK 2026…) + TUTANAK sayfaları **dönem bazlı tam yenileme**; sayfa altındaki **imza bloğu** (DEPO ŞEFİ…/MALİ İŞLER ŞEFİ:/İMZA:/TARİH:) `ak_imza_satiri()` ile atlanır — aksi halde 'İMZA:' adlı araçlar oluşuyordu; `ak_imza_temizle()` eski çöp araç/tüketim/tutanak kayıtlarını import sonunda siler; **Excel'in
   TOPLAM hücreleri bayat olduğundan stok hesaplanır** (devir+gelen, −kullanılan). Gün d → Mazot col
   `7+2d`, Km col `8+2d` (gün 1=col9…31=col69); özet col 71 aylık/72 çalışma/73 ortalama/74-76 okuma.
-  `akaryakit/_ortak.php` (ak_sayi, ak_norm, ak_donemSira TR ay→sıra, ak_aracId, ak_donemler).
+  `akaryakit/_ortak.php` (ak_sayi, **ak_sayi_form**, ak_norm, ak_donemSira TR ay→sıra, ak_aracId,
+  ak_donemler, ak_giris_semasi_kur, ak_defter_filtre, **ak_defter**, ak_defter_acilis, ak_donem_ay).
+  ⚠ **`ak_sayi` Excel içindir, `ak_sayi_form` FORM içindir**: Excel'de "6.000" ondalıktır, elle
+  yazılan alanda ise Türkçe binlik ayracıdır — "6.000 Lt" 6 litre olarak kaydediliyordu (hem
+  hareketler hem cikislar'da). `ak_sayi_form` noktayı yalnız **üçerli gruplar** biçimindeyse
+  (1.234 · 1.234.567) binlik sayar, "6.5" ondalık kalır.
 - **CRM modülü** = `crm/` alt klasörü. **Üretim Arızaları** (konut teslim sonrası eksik/kusur) takibi.
   **Ayrı veritabanı** (`takbulut_crm`, `CRM_DB_NAME`), tablolar `crm_` önekli. `includes/db_crm.php` → `$pdoCrm`.
   **Kaynak: CRM'den GÜNLÜK alınan "UretimArizalari" Excel raporu** — rapor o anda AÇIK olan arızaların anlık
@@ -507,6 +524,7 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 - **Demir (ayrı)**: `uploads/demir/gorseller/`, `uploads/demir/belgeler/`, `uploads/demir_tutanak/{id}/`, `uploads/demir_iade/{id}/`, `uploads/demir_tutanak_takip/{tutanak_no}/`, `uploads/demir_hurda/{id}/`, `uploads/demir_sozlesme/{id}/`.
 - Görseller **dosya olarak** tutulur; DB'ye yalnızca göreli URL yazılır (DB boyutu şişmez).
 - **CRM**: `uploads/crm_ariza/{ariza_id}/` (arıza başına çoklu belge/fotoğraf; kayıtlar `crm_ariza_belgeler`).
+- **Akaryakıt**: `uploads/akaryakit_cikis/{id}/` (imzalı çıkış fişi) · `uploads/akaryakit_giris/{id}/` (mazot giriş irsaliyesi/faturası).
 - `uploads/.htaccess` PHP çalıştırmayı engeller (alt klasörlere de uygulanır).
 
 ---

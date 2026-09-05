@@ -10,6 +10,22 @@ function ak_sayi($v): float {
     return is_numeric($v) ? (float)$v : 0.0;
 }
 
+/**
+ * FORM alanından gelen sayı ("6.000" → 6000). `ak_sayi()` Excel içindir ve orada
+ * "6.000" ondalık demektir; ELLE yazılan alanda ise Türkçe binlik ayracıdır —
+ * "6.000 Lt" 6 litre olarak kaydediliyordu. Nokta yalnız **üçerli gruplar**
+ * biçimindeyse (1.234, 1.234.567) binlik sayılır, "6.5" ondalık kalır.
+ */
+function ak_sayi_form($v): float {
+    $s = trim((string)$v);
+    if ($s === '') return 0.0;
+    $s = str_replace([' ', "\xc2\xa0"], '', $s);
+    if (strpos($s, ',') === false && preg_match('/^-?\d{1,3}(\.\d{3})+$/', $s)) {
+        return (float)str_replace('.', '', $s);
+    }
+    return ak_sayi($s);
+}
+
 /** Metni normalize et (İ/I katlama, boşluk sadeleştirme) — eşleştirme için */
 function ak_norm(string $s): string {
     $s = trim($s);
@@ -105,4 +121,161 @@ function ak_imza_temizle(PDO $pdo): int {
         }
     } catch (Throwable $e) {}
     return $silinen;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   GÜNLÜK HAREKET DEFTERİ  (hareketler.php)
+   --------------------------------------------------------------------------
+   Defter iki kaynaktan birleşir:
+     GİRİŞ  → `akaryakit_girisler`  (tanka gelen mazot; bu modülde yeni)
+     ÇIKIŞ  → `akaryakit_cikislar`  (araca verilen mazot; cikislar.php'nin tablosu)
+   Çıkış verisi KOPYALANMAZ — tek kaynak `akaryakit_cikislar`'dır, defter onu
+   olduğu yerden okur. Böylece iki ekran arasında veri ikilemi oluşmaz.
+
+   ⚠ Stok zinciri (akaryakit_donemler) EXCEL'den kurulur; defter onun yerine
+   geçmez, günlük işleyişi + imzalı evrakı tutar ve ay sonunda Excel ile
+   karşılaştırılır (hareketler.php'deki mutabakat bandı).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/** Giriş tablosu şeması (runtime; kurulum_akaryakit.php de kurar). */
+function ak_giris_semasi_kur(PDO $pdo): void
+{
+    static $yapildi = false;
+    if ($yapildi) return;
+    $yapildi = true;
+    $pdo->exec("CREATE TABLE IF NOT EXISTS akaryakit_girisler (
+        id          INT AUTO_INCREMENT PRIMARY KEY,
+        tarih       DATE NOT NULL,
+        belge_no    VARCHAR(60) NULL   COMMENT 'irsaliye / fiş no',
+        tedarikci   VARCHAR(160) NULL  COMMENT 'mazotu getiren firma',
+        plaka       VARCHAR(40) NULL   COMMENT 'tanker plakası',
+        miktar_lt   DECIMAL(12,2) NOT NULL DEFAULT 0,
+        birim_fiyat DECIMAL(12,4) NULL,
+        tutar       DECIMAL(14,2) NULL,
+        teslim_alan VARCHAR(120) NULL,
+        aciklama    VARCHAR(255) NULL,
+        evrak_url   VARCHAR(500) NULL  COMMENT 'irsaliye/fatura taraması',
+        created_by  INT NULL,
+        created     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated     TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_tarih (tarih)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+/**
+ * Defter filtrelerini normalize eder (hepsi prepared sorguda kullanılır).
+ * @return array{bas:string,bit:string,tur:string,arac_id:int,ara:string,ay:string}
+ */
+function ak_defter_filtre(array $g): array
+{
+    $ay = preg_match('/^\d{4}-\d{2}$/', (string)($g['ay'] ?? '')) ? $g['ay'] : '';
+    $bas = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($g['bas'] ?? '')) ? $g['bas'] : '';
+    $bit = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($g['bit'] ?? '')) ? $g['bit'] : '';
+    // Ay seçiliyse ve elle tarih verilmemişse ayın ilk/son gününe çevir
+    if ($ay !== '' && $bas === '' && $bit === '') {
+        $bas = $ay . '-01';
+        $bit = date('Y-m-t', strtotime($bas));
+    }
+    $tur = in_array($g['tur'] ?? '', ['giris','cikis'], true) ? $g['tur'] : '';
+    return ['bas'=>$bas, 'bit'=>$bit, 'tur'=>$tur,
+            'arac_id'=>(int)($g['arac_id'] ?? 0), 'ara'=>trim((string)($g['ara'] ?? '')), 'ay'=>$ay];
+}
+
+/**
+ * Birleşik hareket defteri: giriş + çıkış satırları tek listede, tarih sırasında.
+ * Satır: tur/id/tarih/belge_no/taraf/detay/plaka/giris/cikis/sayac/evrak_url/
+ *        aciklama/arac_id/tutar
+ */
+function ak_defter(PDO $pdo, array $f): array
+{
+    ak_giris_semasi_kur($pdo);
+    $satir = [];
+    $ara = $f['ara'] !== '' ? '%' . $f['ara'] . '%' : '';
+
+    // ── GİRİŞLER ────────────────────────────────────────────────────────────
+    if ($f['tur'] !== 'cikis' && $f['arac_id'] === 0) {   // giriş satırının aracı yoktur
+        $w = []; $p = [];
+        if ($f['bas'] !== '') { $w[] = 'tarih >= ?'; $p[] = $f['bas']; }
+        if ($f['bit'] !== '') { $w[] = 'tarih <= ?'; $p[] = $f['bit']; }
+        if ($ara !== '')      { $w[] = '(tedarikci LIKE ? OR belge_no LIKE ? OR plaka LIKE ? OR aciklama LIKE ? OR teslim_alan LIKE ?)';
+                                for ($i = 0; $i < 5; $i++) $p[] = $ara; }
+        $sql = "SELECT * FROM akaryakit_girisler" . ($w ? ' WHERE ' . implode(' AND ', $w) : '');
+        $st = $pdo->prepare($sql); $st->execute($p);
+        foreach ($st->fetchAll() as $r) {
+            $satir[] = ['tur'=>'giris', 'id'=>(int)$r['id'], 'tarih'=>$r['tarih'],
+                        'belge_no'=>$r['belge_no'], 'taraf'=>$r['tedarikci'], 'detay'=>'Tanka giriş',
+                        'plaka'=>$r['plaka'], 'giris'=>(float)$r['miktar_lt'], 'cikis'=>0.0,
+                        'sayac'=>null, 'evrak_url'=>$r['evrak_url'], 'aciklama'=>$r['aciklama'],
+                        'arac_id'=>null, 'tutar'=>$r['tutar'] !== null ? (float)$r['tutar'] : null,
+                        'teslim_alan'=>$r['teslim_alan']];
+        }
+    }
+
+    // ── ÇIKIŞLAR (cikislar.php'nin tablosu — kopyalanmaz, oradan okunur) ────
+    if ($f['tur'] !== 'giris') {
+        $w = []; $p = [];
+        if ($f['bas'] !== '')      { $w[] = 'tarih >= ?'; $p[] = $f['bas']; }
+        if ($f['bit'] !== '')      { $w[] = 'tarih <= ?'; $p[] = $f['bit']; }
+        if ($f['arac_id'] > 0)     { $w[] = 'arac_id = ?'; $p[] = $f['arac_id']; }
+        if ($ara !== '')           { $w[] = '(sofor LIKE ? OR cinsi LIKE ? OR firma LIKE ? OR plaka LIKE ? OR aciklama LIKE ? OR teslim_alan LIKE ?)';
+                                     for ($i = 0; $i < 6; $i++) $p[] = $ara; }
+        $sql = "SELECT * FROM akaryakit_cikislar" . ($w ? ' WHERE ' . implode(' AND ', $w) : '');
+        try {
+            $st = $pdo->prepare($sql); $st->execute($p);
+            foreach ($st->fetchAll() as $r) {
+                $detay = trim(implode(' · ', array_filter([$r['cinsi'] ?? '', $r['firma'] ?? ''])));
+                $satir[] = ['tur'=>'cikis', 'id'=>(int)$r['id'], 'tarih'=>$r['tarih'],
+                            'belge_no'=>null, 'taraf'=>$r['sofor'], 'detay'=>$detay ?: '—',
+                            'plaka'=>$r['plaka'], 'giris'=>0.0, 'cikis'=>(float)$r['miktar_lt'],
+                            'sayac'=>$r['sayac'], 'evrak_url'=>$r['evrak_url'] ?? null, 'aciklama'=>$r['aciklama'],
+                            'arac_id'=>$r['arac_id'] !== null ? (int)$r['arac_id'] : null, 'tutar'=>null,
+                            'teslim_alan'=>$r['teslim_alan']];
+            }
+        } catch (Throwable $e) { /* çıkış tablosu henüz yoksa defter yalnız girişleri gösterir */ }
+    }
+
+    // Tarih artan (yürüyen bakiye için şart); aynı gün içinde önce girişler
+    usort($satir, function ($a, $b) {
+        return [$a['tarih'], $a['cikis'] > 0 ? 1 : 0, $a['id']]
+           <=> [$b['tarih'], $b['cikis'] > 0 ? 1 : 0, $b['id']];
+    });
+    return $satir;
+}
+
+/**
+ * Defterin açılış bakiyesi ve kaynağı.
+ *   Ay seçili + Excel dönemi varsa  → Excel'deki DEVİR (tek doğru kaynak)
+ *   Serbest tarih aralığında        → defterin kendi önceki hareketleri toplamı
+ * Aksi halde 0. İkisi karıştırılırsa bakiye çift sayardı, bu yüzden ayrık.
+ * @return array{0:float,1:string}  [açılış, kaynak açıklaması]
+ */
+function ak_defter_acilis(PDO $pdo, array $f, ?array $donem): array
+{
+    if ($donem) return [(float)$donem['devir'], 'Excel dönem devri (' . $donem['donem'] . ')'];
+    if ($f['bas'] === '') return [0.0, ''];
+    ak_giris_semasi_kur($pdo);
+    $g = $pdo->prepare("SELECT COALESCE(SUM(miktar_lt),0) FROM akaryakit_girisler WHERE tarih < ?");
+    $g->execute([$f['bas']]);
+    $onceGiris = (float)$g->fetchColumn();
+    $onceCikis = 0.0;
+    try {
+        $c = $pdo->prepare("SELECT COALESCE(SUM(miktar_lt),0) FROM akaryakit_cikislar WHERE tarih < ?");
+        $c->execute([$f['bas']]);
+        $onceCikis = (float)$c->fetchColumn();
+    } catch (Throwable $e) {}
+    return [$onceGiris - $onceCikis, 'defterin önceki hareketleri (' . date('d.m.Y', strtotime($f['bas'] . ' -1 day')) . ' sonu)'];
+}
+
+/**
+ * Seçilen ayın Excel dönem satırı (mutabakat bandı için).
+ * "2026-01" → donem_sira 202601 ile eşleşen `akaryakit_donemler` kaydı.
+ */
+function ak_donem_ay(PDO $pdo, string $ay): ?array
+{
+    if (!preg_match('/^(\d{4})-(\d{2})$/', $ay, $m)) return null;
+    try {
+        $st = $pdo->prepare("SELECT * FROM akaryakit_donemler WHERE donem_sira=? LIMIT 1");
+        $st->execute([(int)$m[1] * 100 + (int)$m[2]]);
+        return $st->fetch() ?: null;
+    } catch (Throwable $e) { return null; }
 }

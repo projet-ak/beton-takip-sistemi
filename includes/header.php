@@ -440,6 +440,9 @@ if ($__user) {
         <a class="sidebar-nav-link <?= __isActive('stok.php') ?>" href="<?= $__rootPath ?>akaryakit/stok.php" data-label="Stok Hareketi"><i class="bi bi-fuel-pump"></i><span>Stok Hareketi</span></a>
       </li>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('hareketler.php') ?>" href="<?= $__rootPath ?>akaryakit/hareketler.php" data-label="Hareketler"><i class="bi bi-arrow-left-right"></i><span>Hareketler</span></a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('cikislar.php') ?>" href="<?= $__rootPath ?>akaryakit/cikislar.php" data-label="Mazot Çıkışları"><i class="bi bi-droplet-half"></i><span>Mazot Çıkışları</span></a>
       </li>
       <li class="sidebar-nav-item">
