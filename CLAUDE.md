@@ -135,6 +135,47 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   crm_kat_sira, crm_semasi_kur, crm_ozet, crm_filtre, crm_secenekler) + `crm/_import.php` (CRM_ALAN başlık
   haritası — "Aciklama" EN SONA, yoksa "Sikayet/Durum Aciklamasi" sütununu kapar; crm_sayfa/crm_harita/crm_import).
   İlk dosya (2026-09-03) ile doğrulandı: 610 açık arıza, 211 daire, 7 blok, 2025-07-30 → 2026-08-31.
+- **Prekast modülü** = `prekast/` alt klasörü. Cephe prekast (T profil) **montaj iş takibi + hakkediş**.
+  **CRM ile aynı veritabanını paylaşır** (`takbulut_crm`, `CRM_DB_NAME`), tablolar `prekast_` önekli;
+  `includes/db_prekast.php` → `$pdoPrekast` (istenirse `PREKAST_DB_NAME` ile ayrılır).
+  **Kaynak: sahadan GÜNLÜK gelen "İŞ TAKİP / HAKKEDİŞ ÇİZELGESİ" Excel'i.** Çizelge SABİT bir iş
+  listesidir; her gün aynı satırlar gelir, yalnız **durumlar dolar**: Kesim → Silikon → Metraj →
+  Hakkediş (= metraj × birim fiyat). Bu yüzden içe aktarma tam yenileme DEĞİL **BİRLEŞTİRME**
+  (CRM ile aynı mantık): dosyada olup sistemde olmayan → yeni iş · her ikisinde olan → güncellenir ·
+  **sistemde olup dosyada olmayan → SİLİNMEZ**, `dosyada=0` ile "çizelgede yok" işaretlenir (arşiv).
+  Bir satır **ilk kez "Yapıldı"** olduğunda o günün rapor tarihi damgalanır (`kesim_tarih`/`silikon_tarih`)
+  — ilerleme takvimi ve günlük trend buradan çıkar. ⚠ Excel'de **ID kolonu yok** ve **blok+daire tekrar
+  ediyor** (aynı dairede birden çok cephe işi: B/61 iki satır, F/21 üç satır): kimlik `pk_anahtar()` ile
+  çizelge + blok + daire + **o gruptaki tekrar sırası**ndan üretilir (`kayit_anahtari` UNIQUE) — aynı dosya
+  defalarca yüklense de mükerrer kayıt oluşmaz. Sistem içi `ic_not` aktarımda KORUNUR. Tablolar:
+  `prekast_isler` (cizelge/is_tipi/sira/blok/daire[+`daire_sira`]/tekrar, kesim+kesim_metin+kesim_tarih,
+  silikon+silikon_metin+silikon_tarih, metraj, birim_fiyat, hakkedis, durum ENUM bekliyor/kesim/tamam,
+  dosyada, ilk/son_gorulme, ic_not) · `prekast_gunluk` (rapor_tarihi+cizelge UNIQUE: o günün anlık toplamı
+  satır/kesim/silikon/metraj/hakkediş + yeni_satir/yeni_kesim/yeni_silikon/dosya/kullanıcı — **trend grafiği
+  bundan çizilir**). Sayfalar: **index** (canlı dashboard: çizelge güncellik bandı [son yükleme + kaç yeni
+  iş/kesim/silikon] + KPI'lar [toplam iş · tamamlanan · silikon bekleyen · kesim bekleyen · metraj · hakkediş]
+  + genel tamamlanma çubuğu [+ bekleyen işlerin **tahmini hakkedişi** = ort. metraj × birim fiyat] +
+  **günlük ilerleme grafiği** (`pk_gunluk_seri()`: gün gün tamamlanan/kesilen çubuk + birikmiş toplam çizgi,
+  sağ eksen; boş günler doldurulur) + iş durumu doughnut + blok bazında ilerleme/hakkediş +
+  silikon bekleyenler [kesimden bu yana geçen gün, 14 günü aşan kırmızı] / son tamamlananlar / en yüksek
+  metrajlı daireler) · **isler** (filtreler: durum/blok/daire/çizelge/serbest arama/tamamlanma tarih aralığı/
+  **kapsam** [çizelgede duranlar · çizelgeden düşenler · hepsi], whitelist sıralama, sayfalama, **Excel dışa
+  aktarma**) · **is_detay** (çizelge alanları + **ilerleme takvimi** [kesim/silikon damgaları, kesimden
+  silikona kaç gün] + aynı dairedeki diğer işler + **iç not**; hakkediş metraj × birim fiyatla tutmuyorsa
+  rozet — Excel esas) · **raporlar** (tarih aralığı **tamamlanma tarihine** uygulanır [dönem hakkedişi] +
+  KPI + aylık tamamlanan iş & hakkediş + silikon bekleyenlerin yaş dağılımı + blok/çizelge/iş tipi/daire
+  kırılımları [iş·kesim·tamamlanan·%·metraj·hakkediş] + günlük ilerleme; **ERN_RAPOR** ile Excel'e Aktar +
+  PDF İndir + Yazdır) · **import** (çoklu dosya, dosya adındaki tarih rapor tarihi sayılır; **her satırın
+  hesabı verilir** [okunan = yeni + güncellenen + değişmeyen + atlanan], boş şablon satırları [blok+daire boş,
+  yalnız No + birim fiyat dolu] tek sayaçta toplanır, **veri doğrulama** [hakkediş = metraj × birim fiyat
+  çapraz kontrolü, birim fiyatı boş satır, silikon yapıldı ama metraj yok, metraj var ama silikon işaretsiz]
+  + "durumu ilerleyen işler" listesi) · kurulum_prekast. Çekirdek: `prekast/_ortak.php` (pk_norm, pk_sayi,
+  pk_yapildi, pk_anahtar, PK_DURUM/pk_durum, pk_semasi_kur, pk_ozet, pk_son_import, pk_gunluk_seri, pk_filtre,
+  pk_secenekler) + `prekast/_import.php` (PK_ALAN başlık haritası — **"Daire" EN SONA**, yoksa "Kesim/Silikon
+  Yapılan Daire" sütunlarını kapar; pk_sayfa/pk_baslik_satiri/pk_harita/pk_cizelge_adi/pk_is_tipi/
+  pk_dosya_tarihi/pk_import). İlk dosya (KARTAL BATIYAKASI C ve B PARSEL **T PROFİL** MONTAJ İŞİ) ile
+  doğrulandı: 82 iş satırı, 5 blok (F42/C17/D11/B10/H2), kesim 82, silikon 47, metraj **250,50** ve hakkediş
+  **473.445,00 TL** Excel'le birebir; birim fiyat sabit 1890, metraj×fiyat sağlamasında 0 sapma.
 - Geliştirici: **Tayyar Akbulut**. Sürüm: v3.0. Canlı: `https://ernsaha.com.tr/beton/` (eski: takbulut.com/beton/).
 
 > **⭐ TEMEL İLKE — Excel şablonu "kutsal kitap" (tek doğru kaynak).** Sistem, ilgili Excel
@@ -200,7 +241,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   - **Roller ENUM**: `admin`, `teknik_ofis_admin`, `teknik_ofis`, `saha_sefi`, `depo`.
   - **KULLANICI BAZLI MODÜL ERİŞİMİ** (rolden bağımsız, 2026-09): `users.modul_erisim` (VARCHAR, virgüllü
     liste; **boş/NULL = sınırsız** — eski kullanıcılar etkilenmez). Sabitler/fonksiyonlar auth.php'de:
-    `MODULLER` (anahtar → [ad, ikon, giriş sayfası]; beton/demir/seramik/depo/akaryakit/crm/whatsapp),
+    `MODULLER` (anahtar → [ad, ikon, giriş sayfası]; beton/demir/seramik/depo/akaryakit/crm/prekast/whatsapp),
     `MODUL_MUAF` (login/logout/kurulum/kullanicilar/yedek/aktivite… — denetimden muaf kök sayfalar),
     `aktif_modul()` (PHP_SELF klasöründen), `modul_erisimi()` (izin listesi; **admin her zaman sınırsız**;
     değer her istekte DB'den okunur — static önbellekli, config.php gerekirse yüklenir — böylece admin
@@ -341,7 +382,8 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · **Sipariş Talepleri** · **
 
 > **Canlıda 6 AYRI veritabanı vardır** (2026-08 ayrıştırması + 2026-09 CRM). Her modül kendi DB'sinde:
 > `takbulut_beton` (beton) · `takbulut_demir` · `takbulut_seramik` · `takbulut_depo` ·
-> `takbulut_akaryakit` · `takbulut_crm`. Tümü `config.php`'deki `DEMIR_DB_NAME`/`SERAMIK_DB_NAME`/
+> `takbulut_akaryakit` · `takbulut_crm` (**CRM + Prekast birlikte** — `prekast_` önekli tablolar
+> aynı DB'de durur, ayırmak istenirse `PREKAST_DB_NAME`). Tümü `config.php`'deki `DEMIR_DB_NAME`/`SERAMIK_DB_NAME`/
 > `DEPO_DB_NAME`/`AKARYAKIT_DB_NAME`/`CRM_DB_NAME` sabitleriyle etkinleştirilir; tek DB kullanıcısı hepsine yetkili.
 > ⚠️ Bu sabitlerden biri **tanımsız kalırsa** ilgili modül sessizce **ana DB'ye** düşer ve veriler
 > "kaybolmuş" görünür (tablolar önekli olduğu için çakışma olmaz, ama modül boş açılır).

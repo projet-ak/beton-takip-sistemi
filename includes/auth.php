@@ -110,6 +110,7 @@ const MODULLER = [
     'depo'      => ['Depo Takip',               'bi-box-seam',   'depo/index.php'],
     'akaryakit' => ['Akaryakıt Takip',          'bi-fuel-pump',  'akaryakit/index.php'],
     'crm'       => ['CRM — Üretim Arızaları',   'bi-headset',    'crm/index.php'],
+    'prekast'   => ['Prekast Takip',            'bi-bricks',     'prekast/index.php'],
     'whatsapp'  => ['Saha Takip',               'bi-chat-dots',  'whatsapp/mesajlar.php'],
 ];
 

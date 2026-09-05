@@ -15,11 +15,12 @@ $__module   = (strpos($__self,'/demir/')!==false) ? 'demir'
             : ((strpos($__self,'/depo/')!==false) ? 'depo'
             : ((strpos($__self,'/akaryakit/')!==false) ? 'akaryakit'
             : ((strpos($__self,'/crm/')!==false) ? 'crm'
-            : ((strpos($__self,'/whatsapp/')!==false) ? 'whatsapp' : 'beton')))));
-$__modAd    = ['beton'=>'Beton Takip','demir'=>'Demir Takip','seramik'=>'Seramik Takip','depo'=>'Depo Takip','akaryakit'=>'Akaryakıt Takip','crm'=>'CRM — Üretim Arızaları','whatsapp'=>'Saha Takip'][$__module] ?? 'Beton Takip';
+            : ((strpos($__self,'/prekast/')!==false) ? 'prekast'
+            : ((strpos($__self,'/whatsapp/')!==false) ? 'whatsapp' : 'beton'))))));
+$__modAd    = ['beton'=>'Beton Takip','demir'=>'Demir Takip','seramik'=>'Seramik Takip','depo'=>'Depo Takip','akaryakit'=>'Akaryakıt Takip','crm'=>'CRM — Üretim Arızaları','prekast'=>'Prekast Takip','whatsapp'=>'Saha Takip'][$__module] ?? 'Beton Takip';
 // Saha Takip girişi yetkiye göre: onay kuyruğu yetkisi yoksa doğrudan analiz sayfası
 $__waHome   = (function_exists('can_edit') && can_edit()) ? 'whatsapp/mesajlar.php' : 'whatsapp/saha_analiz.php';
-$__modHome  = ['beton'=>'index.php','demir'=>'demir/index.php','seramik'=>'seramik/index.php','depo'=>'depo/index.php','akaryakit'=>'akaryakit/index.php','crm'=>'crm/index.php','whatsapp'=>$__waHome][$__module];
+$__modHome  = ['beton'=>'index.php','demir'=>'demir/index.php','seramik'=>'seramik/index.php','depo'=>'depo/index.php','akaryakit'=>'akaryakit/index.php','crm'=>'crm/index.php','prekast'=>'prekast/index.php','whatsapp'=>$__waHome][$__module];
 
 // ── Aktivite izleme (oturum süresi + sayfa gezinme) ──────────────────────────
 // Ana (beton) DB'de tutulur; $pdo varsa onu, yoksa kendi bağlantısını kullanır.
@@ -460,6 +461,28 @@ if ($__user) {
     </ul>
     <?php endif; ?>
 
+    <?php if($__module==='prekast'): /* ── PREKAST TAKİP MENÜSÜ ── */ ?>
+    <ul class="list-unstyled mb-0">
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('index.php') ?>" href="<?= $__rootPath ?>prekast/index.php" data-label="Dashboard"><i class="bi bi-speedometer2"></i><span>Dashboard</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('isler.php').__isActive('is_detay.php') ?>" href="<?= $__rootPath ?>prekast/isler.php" data-label="İş Listesi"><i class="bi bi-list-check"></i><span>İş Listesi</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link" href="<?= $__rootPath ?>prekast/isler.php?durum=kesim" data-label="Bekleyen"><i class="bi bi-hourglass-split"></i><span>Silikon Bekleyen</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('raporlar.php') ?>" href="<?= $__rootPath ?>prekast/raporlar.php" data-label="Raporlar"><i class="bi bi-bar-chart-line"></i><span>Raporlar &amp; Hakkediş</span></a>
+      </li>
+      <?php if(has_role('admin','teknik_ofis_admin')): ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('import.php') ?>" href="<?= $__rootPath ?>prekast/import.php" data-label="Çizelge Aktar"><i class="bi bi-cloud-arrow-up"></i><span>Günlük Çizelge Aktar</span></a>
+      </li>
+      <?php endif; ?>
+    </ul>
+    <?php endif; ?>
+
     <?php if($__module==='whatsapp'): /* ── SAHA TAKİP (WhatsApp) MENÜSÜ ── */ ?>
     <ul class="sidebar-nav">
       <?php if(can_edit()):
@@ -557,9 +580,10 @@ if ($__user) {
       foreach (MODULLER as $__mk => [$__mAd, $__mIkon, $__mSayfa]):
           if (!can_module($__mk)) continue;
           if ($__mk === 'crm'      && !has_role('admin','teknik_ofis_admin','teknik_ofis','saha_sefi')) continue;
+          if ($__mk === 'prekast'  && !has_role('admin','teknik_ofis_admin','teknik_ofis','saha_sefi')) continue;
           if ($__mk === 'whatsapp' && !(can_edit() || can_view_reports())) continue;
           $__mHref = $__mk === 'whatsapp' ? $__waHome : $__mSayfa;
-          $__mEt   = $__mk === 'crm' ? 'CRM' : $__mAd;
+          $__mEt   = ['crm'=>'CRM', 'prekast'=>'Prekast'][$__mk] ?? $__mAd;
       ?>
       <a href="<?= $__rootPath . $__mHref ?>" class="module-switch-item <?= $__module===$__mk?'active':'' ?>">
         <i class="bi <?= h($__mIkon) ?>"></i><span><?= h($__mEt) ?></span>
