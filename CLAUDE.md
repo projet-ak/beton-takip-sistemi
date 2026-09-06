@@ -103,7 +103,9 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   defterin tamamı). ⚠ Tür/araç süzgeci açıkken **bakiye sütunu gizlenir** (hareketlerin bir kısmı
   listede olmadığından yanıltırdı). **Mutabakat bandı**: Excel aylık özet ↔ Excel günlük hücreler
   (tutmuyorsa kırmızı + sentetik satır açıklaması) + Excel'de olmayan elle kayıt sayısı.
-  Filtreler ay | tarih aralığı / tür / araç / serbest arama (Excel satırlarında ak_norm ile) + KPI +
+  **Varsayılan görünüm TÜMÜ** (zincir en eski Excel döneminin devriyle başlar, her ay sonu Excel KALAN'a iner);
+  **Dönem** açılır menüsü = Excel dönem adları (OCAK 2026…) + yalnız elle kaydı olan aylar ("… (yalnız elle)"),
+  `?ay=YYYY-MM` ile taşınır. Filtreler dönem | tarih aralığı / tür / araç / serbest arama (Excel satırlarında ak_norm ile) + KPI +
   Excel dışa aktarma [Kaynak/Durum sütunlu, bakiye yalnız sayılanla ilerler]. ⚠ Kaynak dosyada
   "EYLÜL 2026" sayfasının A1 başlığı "AĞUSTOS 2026" kalmış (kopyalanıp düzeltilmemiş) — import dönemi
   **sayfa adından** aldığı için sorun çıkarmaz) ·

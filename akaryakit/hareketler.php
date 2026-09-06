@@ -103,7 +103,7 @@ if (isset($_GET['giris_sil']) && ctype_digit($_GET['giris_sil']) && $yetkili) {
 }
 
 // ── Filtre + defter ──────────────────────────────────────────────────────────
-if (!isset($_GET['ay']) && !isset($_GET['bas']) && !isset($_GET['bit'])) $_GET['ay'] = date('Y-m');
+// Varsayılan görünüm TÜMÜ: dönem seçilmezse defterin tamamı (Excel zinciri baştan sona) listelenir
 $f      = ak_defter_filtre($_GET);
 $defter = ak_defter($pdoAkaryakit, $f);
 
@@ -150,6 +150,23 @@ if (($_GET['disaaktar'] ?? '') === 'xlsx') {
 }
 
 $araclar = $pdoAkaryakit->query("SELECT id, sofor, cinsi, firma, plaka FROM akaryakit_araclar WHERE aktif=1 ORDER BY sofor")->fetchAll();
+
+// Dönem açılır menüsü: Excel dönemleri (OCAK 2026…) + yalnız elle kaydı olan aylar; en yeni önce
+$donemSec = [];   // 'YYYY-MM' => etiket
+foreach (ak_donemler($pdoAkaryakit) as $d) {
+    $sira = (int)$d['donem_sira'];
+    if ($sira < 190001) continue;
+    $donemSec[sprintf('%04d-%02d', intdiv($sira, 100), $sira % 100)] = $d['donem'];
+}
+$trAy = [1=>'OCAK','ŞUBAT','MART','NİSAN','MAYIS','HAZİRAN','TEMMUZ','AĞUSTOS','EYLÜL','EKİM','KASIM','ARALIK'];
+foreach (['akaryakit_girisler', 'akaryakit_cikislar'] as $tb) {
+    try {
+        foreach ($pdoAkaryakit->query("SELECT DISTINCT DATE_FORMAT(tarih,'%Y-%m') ay FROM $tb")->fetchAll(PDO::FETCH_COLUMN) as $ay) {
+            if ($ay && !isset($donemSec[$ay])) $donemSec[$ay] = $trAy[(int)substr($ay, 5, 2)] . ' ' . substr($ay, 0, 4) . ' (yalnız elle)';
+        }
+    } catch (Throwable $e) {}
+}
+krsort($donemSec);
 $duzenle = null;
 if (isset($_GET['duzenle']) && ctype_digit($_GET['duzenle'])) {
     $d = $pdoAkaryakit->prepare("SELECT * FROM akaryakit_girisler WHERE id=?");
@@ -241,8 +258,13 @@ foreach ($kpi as [$ad, $deger, $renk, $ikon]): ?>
 <div class="card border-0 shadow-sm mb-3"><div class="card-body py-3">
     <form method="get" class="row g-2 align-items-end">
         <div class="col-6 col-md-2">
-            <label class="form-label small mb-1">Ay</label>
-            <input type="month" name="ay" class="form-control form-control-sm" value="<?= h($f['ay']) ?>">
+            <label class="form-label small mb-1">Dönem</label>
+            <select name="ay" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="">Tümü</option>
+                <?php foreach ($donemSec as $k => $etiket): ?>
+                    <option value="<?= h($k) ?>" <?= $f['ay'] === $k ? 'selected' : '' ?>><?= h($etiket) ?></option>
+                <?php endforeach; ?>
+            </select>
         </div>
         <div class="col-6 col-md-2">
             <label class="form-label small mb-1">Başlangıç</label>
@@ -278,7 +300,7 @@ foreach ($kpi as [$ad, $deger, $renk, $ikon]): ?>
             <button class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>Filtrele</button>
             <a href="hareketler.php" class="btn btn-outline-secondary btn-sm">Temizle</a>
             <span class="small text-muted align-self-center">
-                Ay seçiliyken tarih aralığı boş bırakılırsa ayın tamamı listelenir; tarih verirseniz o öncelikli olur.
+                Dönem seçilmezse tüm hareketler listelenir; tarih aralığı verirseniz o öncelikli olur.
                 <?php if (!$bakiyeGoster): ?><strong class="text-warning-emphasis">Tür/araç süzgeci açıkken bakiye sütunu
                 gizlenir</strong> — hareketlerin bir kısmı listede olmadığından yürüyen bakiye yanıltırdı.<?php endif; ?>
             </span>

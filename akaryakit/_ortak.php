@@ -395,7 +395,15 @@ function ak_defter(PDO $pdo, array $f): array
 function ak_defter_acilis(PDO $pdo, array $f, ?array $donem): array
 {
     if ($donem) return [(float)$donem['devir'], 'Excel dönem devri (' . $donem['donem'] . ')'];
-    if ($f['bas'] === '') return [0.0, ''];
+    if ($f['bas'] === '') {
+        // "Tümü": zincir en eski Excel döneminin devriyle başlar; o zaman her ay sonu Excel KALAN'a iner
+        try {
+            $ilk = $pdo->query("SELECT donem, devir FROM akaryakit_donemler WHERE donem_sira >= 190001
+                                ORDER BY donem_sira ASC LIMIT 1")->fetch();
+            if ($ilk) return [(float)$ilk['devir'], 'Excel dönem devri (' . $ilk['donem'] . ', zincirin başı)'];
+        } catch (Throwable $e) {}
+        return [0.0, ''];
+    }
     $dun = date('Y-m-d', strtotime($f['bas'] . ' -1 day'));
     // Başlangıç ayının Excel dönemi varsa zincir oradan kurulur: o ayın DEVRİ + ay başından
     // başlangıca kadarki (Excel + elle, eşleşenler düşülmüş) hareketler. Aksi halde defterin
