@@ -114,22 +114,31 @@ $donem = $f['ay'] !== '' ? ak_donem_ay($pdoAkaryakit, $f['ay']) : null;
 // bakiye o durumda YANILTIR (yalnız girişleri toplar), bu yüzden sütun gizlenir.
 $bakiyeGoster = $f['tur'] === '' && $f['arac_id'] === 0;
 
-$tGiris = array_sum(array_column($defter, 'giris'));
-$tCikis = array_sum(array_column($defter, 'cikis'));
-$tTutar = array_sum(array_map(fn($r) => (float)($r['tutar'] ?? 0), $defter));
+// Toplam/bakiye yalnız SAYILAN satırlardan: Excel'e işlenmiş (eşleşen) elle kayıt iki kez sayılmaz
+$sayilan  = array_values(array_filter($defter, fn($r) => !empty($r['sayilir'])));
+$tGiris   = array_sum(array_column($sayilan, 'giris'));
+$tCikis   = array_sum(array_column($sayilan, 'cikis'));
+$tTutar   = array_sum(array_map(fn($r) => (float)($r['tutar'] ?? 0), $sayilan));
 $aracAdet = count(array_unique(array_filter(array_column($defter, 'arac_id'))));
+$excelAdet    = count(array_filter($defter, fn($r) => $r['kaynak'] === 'excel'));
+$elleBekleyen = array_values(array_filter($defter, fn($r) => $r['kaynak'] === 'elle' && !empty($r['sayilir'])));
+$elleIslenen  = count(array_filter($defter, fn($r) => $r['kaynak'] === 'elle' && empty($r['sayilir'])));
+$excelGiris   = array_sum(array_map(fn($r) => $r['kaynak'] === 'excel' && empty($r['sentetik']) ? $r['giris'] : 0, $defter));
+$excelCikis   = array_sum(array_map(fn($r) => $r['kaynak'] === 'excel' && empty($r['sentetik']) ? $r['cikis'] : 0, $defter));
 
 // ── Excel dışa aktarma (filtrelere saygılı) ─────────────────────────────────
 if (($_GET['disaaktar'] ?? '') === 'xlsx') {
     require_once __DIR__ . '/../includes/XlsxWriter.php';
     $xl = new \XlsxWriter('Akaryakıt Hareketleri');
-    $xl->header(array_merge(['Tarih','Tür','Belge No','Taraf','Detay','Plaka','Giriş (Lt)','Çıkış (Lt)'],
+    $xl->header(array_merge(['Tarih','Tür','Kaynak','Durum','Belge No','Taraf','Detay','Plaka','Giriş (Lt)','Çıkış (Lt)'],
                  $bakiyeGoster ? ['Bakiye (Lt)'] : [], ['Sayaç','Teslim Alan','Tutar (TL)','Açıklama']));
     $bak = $devir;
     foreach ($defter as $r) {
-        $bak += $r['giris'] - $r['cikis'];
+        if (!empty($r['sayilir'])) $bak += $r['giris'] - $r['cikis'];
+        $durum = $r['kaynak'] === 'excel' ? 'Excel' : (!empty($r['sayilir']) ? "Excel'de yok" : "Excel'e işlendi");
         $xl->row(array_merge([
             ['v'=>$r['tarih'],'t'=>'date'], ['v'=>$r['tur'] === 'giris' ? 'Giriş' : 'Çıkış'],
+            ['v'=>$r['kaynak'] === 'excel' ? 'Excel' : 'Elle'], ['v'=>$durum],
             ['v'=>$r['belge_no']], ['v'=>$r['taraf']], ['v'=>$r['detay']], ['v'=>$r['plaka']],
             ['v'=>$r['giris'] ?: null,'t'=>'number'], ['v'=>$r['cikis'] ?: null,'t'=>'number'],
         ], $bakiyeGoster ? [['v'=>round($bak, 2),'t'=>'number']] : [], [
@@ -155,7 +164,7 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
         <h4 class="mb-0"><i class="bi bi-arrow-left-right text-primary me-2"></i>Hareketler</h4>
-        <small class="text-muted">Günlük mazot giriş/çıkış defteri — tanka gelen ve araca verilen tek listede</small>
+        <small class="text-muted">Excel'in günlük hücreleri + elle girilen hareketler tek listede · Excel esastır, elle kayıt Excel'e işlenince bir kez sayılır</small>
     </div>
     <div class="d-flex gap-2 flex-wrap">
         <a href="<?= h($qs(['disaaktar'=>'xlsx'])) ?>" class="btn btn-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Excel'e Aktar</a>
@@ -170,25 +179,38 @@ require_once __DIR__ . '/../includes/header.php';
 <?php endif; endforeach; ?>
 
 <?php if ($donem):
-    $farkG = $tGiris - (float)$donem['gelen'];
-    $farkC = $tCikis - (float)$donem['kullanilan'];
-    $uyum  = abs($farkG) < 0.5 && abs($farkC) < 0.5; ?>
-<div class="alert <?= $uyum ? 'alert-success' : 'alert-warning' ?> py-2 small">
-    <i class="bi bi-<?= $uyum ? 'check-circle' : 'exclamation-triangle' ?> me-1"></i>
+    // Excel'in kendi iç tutarlılığı: günlük hücreler toplamı ↔ aylık özet hücresi
+    $gunFarkG = $excelGiris - (float)$donem['gelen'];
+    $gunFarkC = $excelCikis - (float)$donem['kullanilan'];
+    $bekleyen = count($elleBekleyen);
+    $sorun = $bekleyen > 0 || abs($gunFarkC) >= 0.5 || abs($gunFarkG) >= 0.5; ?>
+<div class="alert <?= $sorun ? 'alert-warning' : 'alert-success' ?> py-2 small">
+    <i class="bi bi-<?= $sorun ? 'exclamation-triangle' : 'check-circle' ?> me-1"></i>
     <strong>Excel mutabakatı — <?= h($donem['donem']) ?>:</strong>
-    Gelen defter <strong><?= $f0($tGiris) ?></strong> / Excel <strong><?= $f0($donem['gelen']) ?></strong> Lt
-    (<?= $farkG > 0 ? '+' : '' ?><?= $f0($farkG) ?>) ·
-    Kullanılan defter <strong><?= $f0($tCikis) ?></strong> / Excel <strong><?= $f0($donem['kullanilan']) ?></strong> Lt
-    (<?= $farkC > 0 ? '+' : '' ?><?= $f0($farkC) ?>).
-    <?php if (!$uyum): ?>
-        <span class="d-block mt-1"><strong>Excel esastır</strong> — defterdeki günlük kayıtlar ay sonunda Excel'e işlenmemişse
-        bu fark beklenir. <a href="import.php" class="alert-link">Excel'i içe aktar</a> ya da eksik günlük kaydı ekleyin.</span>
+    Excel aylık özet: gelen <strong><?= $f0($donem['gelen']) ?></strong> · kullanılan <strong><?= $f0($donem['kullanilan']) ?></strong> Lt.
+    Excel günlük hücreler: gelen <strong><?= $f0($excelGiris) ?></strong>
+    · kullanılan <strong><?= $f0($excelCikis) ?></strong>
+    <?php if (abs($gunFarkG) >= 0.5 || abs($gunFarkC) >= 0.5): ?>
+        <span class="text-danger">— günlük hücreler aylık özetle tutmuyor
+        (<?= abs($gunFarkG) >= 0.5 ? 'gelen ' . ($gunFarkG > 0 ? '+' : '') . $f0($gunFarkG) : '' ?><?= abs($gunFarkG) >= 0.5 && abs($gunFarkC) >= 0.5 ? ', ' : '' ?><?= abs($gunFarkC) >= 0.5 ? 'kullanılan ' . ($gunFarkC > 0 ? '+' : '') . $f0($gunFarkC) : '' ?>)</span>
+    <?php endif; ?>.
+    <?php $sentetik = array_filter($defter, fn($r) => !empty($r['sentetik'])); if ($sentetik): ?>
+        <span class="d-block mt-1"><i class="bi bi-info-circle me-1"></i>Fark, <strong>"Excel özet"</strong> rozetli
+        <?= count($sentetik) ?> satırla deftere eklendi ki ay sonu bakiyesi Excel'in KALAN'ıyla birebir olsun
+        (geliş günü yazılmayan mazot ayın 1'ine, araç detayı girilmeyen tüketim ayın sonuna yazılır).</span>
+    <?php endif; ?>
+    <?php if ($bekleyen): ?>
+        <span class="d-block mt-1"><strong><?= $bekleyen ?> elle kayıt</strong> (<?= $f0(array_sum(array_map(fn($r) => $r['giris'] + $r['cikis'], $elleBekleyen))) ?> Lt)
+        henüz Excel'de yok — ay sonunda Excel'e işlenip <a href="import.php" class="alert-link">içe aktarılınca</a>
+        "Excel'e işlendi" rozetine döner. <strong>Excel esastır</strong>; işlenene kadar defter bu kayıtları da sayar.</span>
+    <?php elseif ($elleIslenen): ?>
+        <span class="d-block mt-1"><?= $elleIslenen ?> elle kayıt Excel'e işlenmiş (bir kez sayıldı).</span>
     <?php endif; ?>
 </div>
 <?php elseif ($f['ay'] !== ''): ?>
 <div class="alert alert-secondary py-2 small">
-    <i class="bi bi-info-circle me-1"></i>Bu ay için Excel dönem kaydı yok — açılış devri <strong>0</strong> alındı,
-    bakiye sütunu yalnız defterin kendi hareketlerini toplar.
+    <i class="bi bi-info-circle me-1"></i>Bu ay için Excel dönem kaydı yok — listede yalnız elle girilen hareketler var,
+    açılış devri <strong>0</strong> alındı.
     <a href="import.php" class="alert-link">Aylık Excel'i yükleyin</a>.
 </div>
 <?php endif; ?>
@@ -200,8 +222,10 @@ $kpi = [
     ['Çıkış',   $f0($tCikis) . ' Lt', 'danger',  'bi-box-arrow-up'],
     ['Net',     ($tGiris - $tCikis >= 0 ? '+' : '') . $f0($tGiris - $tCikis) . ' Lt', 'primary', 'bi-arrow-left-right'],
     [$bakiyeGoster ? 'Dönem sonu bakiye' : 'Süzgeçli net', $f0($devir + $tGiris - $tCikis) . ' Lt', 'info', 'bi-fuel-pump'],
-    ['Hareket', $f0(count($defter)), 'secondary', 'bi-list-ol'],
-    ['Araç',    $f0($aracAdet), 'dark', 'bi-truck'],
+    ['Hareket', $f0(count($defter)) . ' <span class="small fw-normal text-muted">(' . $f0($excelAdet) . ' Excel)</span>', 'secondary', 'bi-list-ol'],
+    [count($elleBekleyen) ? "Excel'de olmayan elle kayıt" : 'Araç',
+     count($elleBekleyen) ? $f0(count($elleBekleyen)) : $f0($aracAdet),
+     count($elleBekleyen) ? 'warning' : 'dark', count($elleBekleyen) ? 'bi-exclamation-diamond' : 'bi-truck'],
 ];
 foreach ($kpi as [$ad, $deger, $renk, $ikon]): ?>
     <div class="col-6 col-md-4 col-xl-2">
@@ -277,11 +301,22 @@ foreach ($kpi as [$ad, $deger, $renk, $ikon]): ?>
             <td class="text-end fw-bold"><?= $f0($devir) ?></td><td colspan="3"></td>
         </tr>
     <?php endif; ?>
-    <?php $bak = $devir; foreach ($defter as $r): $bak += $r['giris'] - $r['cikis']; ?>
-        <tr>
+    <?php $bak = $devir; foreach ($defter as $r):
+        $sayilir = !empty($r['sayilir']);
+        if ($sayilir) $bak += $r['giris'] - $r['cikis']; ?>
+        <tr class="<?= $sayilir ? '' : 'opacity-50' ?><?= !empty($r['sentetik']) ? ' fst-italic' : '' ?>" <?= $sayilir ? '' : 'title="Bu elle kayıt Excel\'e işlenmiş — Excel satırı sayıldı, bu satır toplama girmez"' ?>>
             <td class="text-nowrap"><?= format_date($r['tarih']) ?></td>
-            <td><span class="badge bg-<?= $r['tur'] === 'giris' ? 'success' : 'danger' ?>">
-                <?= $r['tur'] === 'giris' ? 'Giriş' : 'Çıkış' ?></span></td>
+            <td class="text-nowrap"><span class="badge bg-<?= $r['tur'] === 'giris' ? 'success' : 'danger' ?>">
+                <?= $r['tur'] === 'giris' ? 'Giriş' : 'Çıkış' ?></span>
+                <?php if ($r['kaynak'] === 'excel' && !empty($r['sentetik'])): ?>
+                    <span class="badge bg-info text-dark" title="Excel'in aylık özet hücresi ile günlük hücreleri arasındaki fark — gün bilgisi Excel'de yok">Excel özet</span>
+                <?php elseif ($r['kaynak'] === 'excel'): ?>
+                    <span class="badge bg-light text-dark border" title="Excel aylık sayfasındaki günlük hücreden">Excel</span>
+                <?php elseif ($sayilir): ?>
+                    <span class="badge bg-warning text-dark" title="Elle girildi, Excel'de henüz yok — ay sonunda Excel'e işlenmeli">Excel'de yok</span>
+                <?php else: ?>
+                    <span class="badge bg-secondary" title="Elle girilmişti, Excel'e işlenmiş — bir kez sayıldı">Excel'e işlendi ✓</span>
+                <?php endif; ?></td>
             <td class="small font-monospace"><?= h($r['belge_no'] ?: '—') ?></td>
             <td class="fw-semibold"><?= h($r['taraf'] ?: '—') ?></td>
             <td class="small text-muted"><?= h($r['detay'] ?: '—') ?>
@@ -292,9 +327,11 @@ foreach ($kpi as [$ad, $deger, $renk, $ikon]): ?>
             <?php if ($bakiyeGoster): ?>
             <td class="text-end fw-semibold <?= $bak < 0 ? 'text-danger' : '' ?>"><?= $f0($bak) ?></td>
             <?php endif; ?>
-            <td class="small text-muted"><?= h($r['sayac'] ?: '—') ?></td>
+            <td class="small text-muted"><?php if ($r['sayac'] !== null && $r['sayac'] !== ''): ?><?= h($r['sayac']) ?>
+                <?php else: ?><span title="Km / Mak. saati girilmemiş">—</span><?php endif; ?></td>
             <td class="text-nowrap">
-                <?php if (!empty($r['evrak_url'])): ?>
+                <?php if ($r['kaynak'] === 'excel'): ?><span class="text-muted">—</span>
+                <?php elseif (!empty($r['evrak_url'])): ?>
                     <a href="../<?= h($r['evrak_url']) ?>" target="_blank" class="btn btn-sm btn-success py-0" title="Belgeyi aç"><i class="bi bi-file-earmark-check"></i></a>
                 <?php elseif ($r['tur'] === 'giris'): ?>
                     <form method="post" enctype="multipart/form-data" class="d-inline-flex gap-1">
@@ -306,7 +343,13 @@ foreach ($kpi as [$ad, $deger, $renk, $ikon]): ?>
                 <?php else: ?><span class="text-muted">—</span><?php endif; ?>
             </td>
             <td class="text-end text-nowrap">
-                <?php if ($r['tur'] === 'giris'): ?>
+                <?php if ($r['kaynak'] === 'excel'): ?>
+                    <?php if ($r['arac_id']): ?>
+                    <a href="araclar.php" class="btn btn-sm btn-outline-secondary py-0" title="Araç yakıt geçmişi (Excel)"><i class="bi bi-clock-history"></i></a>
+                    <?php else: ?>
+                    <a href="stok.php" class="btn btn-sm btn-outline-secondary py-0" title="Dönem stok zinciri"><i class="bi bi-fuel-pump"></i></a>
+                    <?php endif; ?>
+                <?php elseif ($r['tur'] === 'giris'): ?>
                     <a href="<?= h($qs(['duzenle'=>$r['id']])) ?>" class="btn btn-sm btn-outline-secondary py-0" title="Düzenle"><i class="bi bi-pencil"></i></a>
                     <?php if ($yetkili): ?>
                     <a href="<?= h($qs(['giris_sil'=>$r['id']])) ?>" class="btn btn-sm btn-outline-danger py-0"

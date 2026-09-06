@@ -83,17 +83,30 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   günün Mazot/Km detayı JSON** `gunluk`), `akaryakit_tutanak` (aylık imzalı tüketim raporu satırları).
   Sayfalar: index(dashboard: stok KPI + aylık tüketim/kalan grafik + firma doughnut + en çok tüketen) ·
   **hareketler**(GÜNLÜK HAREKET DEFTERİ — "bugün tanka ne geldi, hangi araca ne verildi" tek ekranda.
-  İki kaynak BİRLEŞİR, veri kopyalanmaz: GİRİŞ → yeni tablo `akaryakit_girisler` (tarih, belge_no
-  [irsaliye/fiş], tedarikci, plaka [tanker], miktar_lt, birim_fiyat, tutar [boşsa miktar×fiyat],
-  teslim_alan, aciklama, **evrak_url** → `uploads/akaryakit_giris/{id}/`) · ÇIKIŞ → `akaryakit_cikislar`
-  (cikislar.php'nin tablosu, olduğu yerden okunur — iki ekran arasında veri ikilemi olmaz).
-  `ak_defter()` satırları tarih sırasına dizer (aynı gün önce girişler). **Yürüyen bakiye**:
-  açılış `ak_defter_acilis()` ile — ay seçili + Excel dönemi varsa **Excel DEVRİ**, serbest tarih
-  aralığında **defterin kendi önceki hareketleri** (ikisi karıştırılırsa çift sayardı). ⚠ Tür/araç
-  süzgeci açıkken **bakiye sütunu gizlenir** — hareketlerin bir kısmı listede olmadığından yürüyen
-  bakiye yanıltırdı. **Excel mutabakat bandı**: seçilen ayın defter toplamları `akaryakit_donemler`
-  Gelen/Kullanılan ile karşılaştırılır, fark gösterilir (**Excel esastır**; fark ay sonu işlenmemişse
-  beklenir). Filtreler ay | tarih aralığı / tür / araç / serbest arama + KPI + Excel dışa aktarma) ·
+  **ÜÇ kaynak birleşir, veri kopyalanmaz**: (1) **EXCEL günlük hücreleri** `ak_excel_gunluk()` — çıkış =
+  `akaryakit_tuketim.gunluk` `[{g,mz,km}]` × araç (tarih = dönem yıl-ay + gün; **km=0 Excel'de
+  "girilmemiş"** → sayaç "—"), giriş = `akaryakit_donemler.gunluk.gelen` `{gün:Lt}`; (2) ELLE giriş →
+  yeni tablo `akaryakit_girisler` (tarih, belge_no [irsaliye/fiş], tedarikci, plaka [tanker], miktar_lt,
+  birim_fiyat, tutar [boşsa miktar×fiyat], teslim_alan, aciklama, **evrak_url** → `uploads/akaryakit_giris/{id}/`);
+  (3) ELLE çıkış → `akaryakit_cikislar` (cikislar.php'nin tablosu, olduğu yerden okunur).
+  **Excel esastır → elle↔Excel EŞLEŞTİRME**: elle satır aynı tarih + aynı araç (girişte aynı tarih) +
+  aynı miktar (±0,5) Excel satırıyla eşleşirse `sayilir=false` olur — listede soluk, "Excel'e işlendi ✓"
+  rozeti, toplama/bakiyeye GİRMEZ (aynı litre iki kez sayılmaz); eşleşmeyen elle satır sayılır ve
+  "Excel'de yok" rozetiyle ay sonunda Excel'e aktarılacaklar listesini verir (KPI + bantta adet/Lt).
+  **SENTETİK "Excel özet" satırları**: Excel'de çoğu ay YENİ GELEN'in geliş günü yazılmaz (yalnız aylık
+  toplam) ve araç satırlarında detayı olmayan tüketim olabilir; aylık özet − günlük hücreler farkı satır
+  olarak eklenir (geliş ayın 1'ine, açıklanamayan tüketim ayın sonuna; `sentetik=1`, italik, mavi rozet)
+  — aksi halde ay sonu bakiyesi Excel KALAN'ından sapıyordu (Ağustos −689 görünüyordu, Excel 9.272).
+  Gerçek dosyayla doğrulandı: **Ocak–Ağustos 2026'nın 8 ayında defter sonu = Excel KALAN birebir**.
+  **Yürüyen bakiye** açılışı `ak_defter_acilis()`: ay seçili + Excel dönemi → **Excel DEVRİ**; serbest
+  tarih aralığı → başlangıç ayının Excel devri + ay başından başlangıca kadarki hareketler (dönem yoksa
+  defterin tamamı). ⚠ Tür/araç süzgeci açıkken **bakiye sütunu gizlenir** (hareketlerin bir kısmı
+  listede olmadığından yanıltırdı). **Mutabakat bandı**: Excel aylık özet ↔ Excel günlük hücreler
+  (tutmuyorsa kırmızı + sentetik satır açıklaması) + Excel'de olmayan elle kayıt sayısı.
+  Filtreler ay | tarih aralığı / tür / araç / serbest arama (Excel satırlarında ak_norm ile) + KPI +
+  Excel dışa aktarma [Kaynak/Durum sütunlu, bakiye yalnız sayılanla ilerler]. ⚠ Kaynak dosyada
+  "EYLÜL 2026" sayfasının A1 başlığı "AĞUSTOS 2026" kalmış (kopyalanıp düzeltilmemiş) — import dönemi
+  **sayfa adından** aldığı için sorun çıkarmaz) ·
   aylik(dönem seçmeli araç tüketim tablosu + günlük detay modal) · stok(dönem zinciri, uyuşmayan geçiş
   kırmızı, elle düzelt) · **cikislar**(günlük mazot çıkışı: araç seçimi otomatik doldurur, ay filtresi + KPI;
   tablo `akaryakit_cikislar` runtime+kurulum, **imzalı evrak yükleme** `evrak_url` → `uploads/akaryakit_cikis/{id}/`; stok zincirine KARIŞMAZ — Excel esastır, ay sonunda Excel'e işlenir) ·
@@ -103,7 +116,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   TOPLAM hücreleri bayat olduğundan stok hesaplanır** (devir+gelen, −kullanılan). Gün d → Mazot col
   `7+2d`, Km col `8+2d` (gün 1=col9…31=col69); özet col 71 aylık/72 çalışma/73 ortalama/74-76 okuma.
   `akaryakit/_ortak.php` (ak_sayi, **ak_sayi_form**, ak_norm, ak_donemSira TR ay→sıra, ak_aracId,
-  ak_donemler, ak_giris_semasi_kur, ak_defter_filtre, **ak_defter**, ak_defter_acilis, ak_donem_ay).
+  ak_donemler, ak_giris_semasi_kur, ak_defter_filtre, **ak_excel_gunluk**, **ak_defter**, ak_defter_acilis, ak_donem_ay).
   ⚠ **`ak_sayi` Excel içindir, `ak_sayi_form` FORM içindir**: Excel'de "6.000" ondalıktır, elle
   yazılan alanda ise Türkçe binlik ayracıdır — "6.000 Lt" 6 litre olarak kaydediliyordu (hem
   hareketler hem cikislar'da). `ak_sayi_form` noktayı yalnız **üçerli gruplar** biçimindeyse

@@ -182,36 +182,158 @@ function ak_defter_filtre(array $g): array
 }
 
 /**
- * Birleşik hareket defteri: giriş + çıkış satırları tek listede, tarih sırasında.
- * Satır: tur/id/tarih/belge_no/taraf/detay/plaka/giris/cikis/sayac/evrak_url/
- *        aciklama/arac_id/tutar
+ * Excel'den gelen GÜNLÜK hareketler (import.php'nin yazdığı JSON'lardan):
+ *   ÇIKIŞ → akaryakit_tuketim.gunluk  [{g:gün, mz:Lt, km:sayaç}] × araç
+ *   GİRİŞ → akaryakit_donemler.gunluk {gelen:{gün:Lt}}
+ * Tarih = dönemin yılı-ayı + gün. km=0 Excel'de "girilmemiş" demektir → null.
+ * [$bas,$bit] aralığına giren dönemler okunur (boşsa hepsi).
+ */
+function ak_excel_gunluk(PDO $pdo, string $bas, string $bit): array
+{
+    $satir = [];
+    $siraBas = $bas !== '' ? (int)substr($bas, 0, 4) * 100 + (int)substr($bas, 5, 2) : 0;
+    $siraBit = $bit !== '' ? (int)substr($bit, 0, 4) * 100 + (int)substr($bit, 5, 2) : 999912;
+    $tarihUygun = function (string $t) use ($bas, $bit): bool {
+        return ($bas === '' || $t >= $bas) && ($bit === '' || $t <= $bit);
+    };
+    try {
+        $dq = $pdo->prepare("SELECT id, donem, donem_sira, gunluk FROM akaryakit_donemler
+                             WHERE donem_sira BETWEEN ? AND ? ORDER BY donem_sira");
+        $dq->execute([$siraBas, $siraBit]);
+        $donemler = $dq->fetchAll();
+    } catch (Throwable $e) { return []; }
+    if (!$donemler) return [];
+
+    $tq = $pdo->prepare("SELECT t.id, t.arac_id, t.gunluk, a.sofor, a.cinsi, a.firma, a.plaka
+                         FROM akaryakit_tuketim t LEFT JOIN akaryakit_araclar a ON a.id = t.arac_id
+                         WHERE t.donem_sira = ? AND t.gunluk IS NOT NULL");
+    foreach ($donemler as $dn) {
+        $sira = (int)$dn['donem_sira'];
+        if ($sira < 190001) continue;                       // ay çözülemeyen dönem
+        $yil = intdiv($sira, 100); $ay = $sira % 100;
+        if ($ay < 1 || $ay > 12) continue;
+        $gunSay = (int)date('t', mktime(0, 0, 0, $ay, 1, $yil));
+
+        // Tanka giriş günleri
+        $g = json_decode((string)($dn['gunluk'] ?? ''), true);
+        foreach ((array)($g['gelen'] ?? []) as $gun => $lt) {
+            $gun = (int)$gun; $lt = (float)$lt;
+            if ($gun < 1 || $gun > $gunSay || $lt <= 0) continue;
+            $t = sprintf('%04d-%02d-%02d', $yil, $ay, $gun);
+            if (!$tarihUygun($t)) continue;
+            $satir[] = ['tur'=>'giris', 'kaynak'=>'excel', 'id'=>(int)$dn['id'] * 100 + $gun, 'tarih'=>$t,
+                        'belge_no'=>null, 'taraf'=>'Excel — YENİ GELEN', 'detay'=>'Tanka giriş (' . $dn['donem'] . ')',
+                        'plaka'=>null, 'giris'=>$lt, 'cikis'=>0.0, 'sayac'=>null, 'evrak_url'=>null,
+                        'aciklama'=>null, 'arac_id'=>null, 'tutar'=>null, 'teslim_alan'=>null, 'sayilir'=>true];
+        }
+        $gunlukGelen = 0.0;
+        foreach ((array)($g['gelen'] ?? []) as $lt) $gunlukGelen += (float)$lt;
+
+        // Araç bazında günlük alımlar
+        $gunlukKull = 0.0;
+        $tq->execute([$sira]);
+        foreach ($tq->fetchAll() as $t) {
+            $gl = json_decode((string)$t['gunluk'], true);
+            if (!is_array($gl)) continue;
+            foreach ($gl as $x) {
+                $gun = (int)($x['g'] ?? 0); $mz = (float)($x['mz'] ?? 0); $km = (float)($x['km'] ?? 0);
+                if ($gun < 1 || $gun > $gunSay || $mz <= 0) continue;
+                $tr = sprintf('%04d-%02d-%02d', $yil, $ay, $gun);
+                $gunlukKull += $mz;
+                if (!$tarihUygun($tr)) continue;
+                $detay = trim(implode(' · ', array_filter([$t['cinsi'] ?? '', $t['firma'] ?? ''])));
+                $satir[] = ['tur'=>'cikis', 'kaynak'=>'excel', 'id'=>(int)$t['id'] * 100 + $gun, 'tarih'=>$tr,
+                            'belge_no'=>null, 'taraf'=>$t['sofor'] ?: '—', 'detay'=>$detay ?: '—',
+                            'plaka'=>$t['plaka'], 'giris'=>0.0, 'cikis'=>$mz,
+                            'sayac'=>$km > 0 ? rtrim(rtrim(number_format($km, 2, '.', ''), '0'), '.') : null,
+                            'evrak_url'=>null, 'aciklama'=>null,
+                            'arac_id'=>$t['arac_id'] !== null ? (int)$t['arac_id'] : null,
+                            'tutar'=>null, 'teslim_alan'=>null, 'sayilir'=>true];
+            }
+        }
+
+        // ── Aylık özet ile günlük hücreler arasındaki fark: SENTETİK satır ─────
+        // Excel'de çoğu ay "YENİ GELEN"in geliş günü yazılmaz (yalnız aylık toplam);
+        // araç satırlarında da detayı girilmemiş tüketim olabilir (TAŞERON VE DİĞERLER).
+        // Fark satır olarak eklenmezse ay sonu bakiyesi Excel'in KALAN'ından sapar
+        // (Ağustos'ta −689 görünüyordu, Excel 9.272 diyor). Geliş ayın 1'ine, açıklanamayan
+        // tüketim ayın sonuna yazılır; ikisi de `sentetik=1` ile işaretlidir.
+        $ozet = $pdo->prepare("SELECT gelen, kullanilan FROM akaryakit_donemler WHERE id=?");
+        $ozet->execute([(int)$dn['id']]);
+        $oz = $ozet->fetch() ?: ['gelen'=>0, 'kullanilan'=>0];
+        $gelenFark = (float)$oz['gelen'] - $gunlukGelen;
+        if ($gelenFark > 0.5) {
+            $t1 = sprintf('%04d-%02d-01', $yil, $ay);
+            if ($tarihUygun($t1)) $satir[] = ['tur'=>'giris', 'kaynak'=>'excel', 'sentetik'=>true,
+                'id'=>(int)$dn['id'] * 100 + 99, 'tarih'=>$t1, 'belge_no'=>null,
+                'taraf'=>'Excel — YENİ GELEN (aylık özet)', 'detay'=>'Geliş günü Excel\'de girilmemiş; ayın 1\'ine yazıldı (' . $dn['donem'] . ')',
+                'plaka'=>null, 'giris'=>round($gelenFark, 2), 'cikis'=>0.0, 'sayac'=>null, 'evrak_url'=>null,
+                'aciklama'=>null, 'arac_id'=>null, 'tutar'=>null, 'teslim_alan'=>null, 'sayilir'=>true];
+        }
+        $kullFark = (float)$oz['kullanilan'] - $gunlukKull;
+        if ($kullFark > 0.5) {
+            $tSon = sprintf('%04d-%02d-%02d', $yil, $ay, $gunSay);
+            if ($tarihUygun($tSon)) $satir[] = ['tur'=>'cikis', 'kaynak'=>'excel', 'sentetik'=>true,
+                'id'=>(int)$dn['id'] * 100 + 98, 'tarih'=>$tSon, 'belge_no'=>null,
+                'taraf'=>'Excel — KULLANILAN (araç detayı yok)', 'detay'=>'Aylık özet ile araç satırları arasındaki fark (taşeron/diğer) — ' . $dn['donem'],
+                'plaka'=>null, 'giris'=>0.0, 'cikis'=>round($kullFark, 2), 'sayac'=>null, 'evrak_url'=>null,
+                'aciklama'=>null, 'arac_id'=>null, 'tutar'=>null, 'teslim_alan'=>null, 'sayilir'=>true];
+        }
+    }
+    return $satir;
+}
+
+/**
+ * Birleşik hareket defteri — ÜÇ kaynak tek listede, tarih sırasında:
+ *   excel  → Excel'in günlük satırları (ak_excel_gunluk; aylık sayfadan içe aktarılan)
+ *   elle   → akaryakit_girisler (giriş) + akaryakit_cikislar (çıkış; cikislar.php)
+ *
+ * ⚠ Excel tek doğru kaynaktır. Elle yazılan bir hareket Excel'e de işlenmişse aynı
+ *   litre iki kez görünürdü; bu yüzden elle satır, aynı tarih + aynı araç (girişte aynı
+ *   tarih) + aynı miktardaki Excel satırıyla EŞLEŞTİRİLİR: eşleşen elle satır listede
+ *   kalır ama `sayilir=false` olur (toplama/bakiyeye girmez, "Excel'e işlendi" rozeti).
+ *   Eşleşmeyen elle satır sayılır ve "Excel'de yok" rozetiyle işaretlenir — ay sonunda
+ *   Excel'e aktarılması gerekenlerin listesi budur.
+ *
+ * Satır: tur/kaynak/id/tarih/belge_no/taraf/detay/plaka/giris/cikis/sayac/evrak_url/
+ *        aciklama/arac_id/tutar/teslim_alan/sayilir/eslesen
  */
 function ak_defter(PDO $pdo, array $f): array
 {
     ak_giris_semasi_kur($pdo);
     $satir = [];
     $ara = $f['ara'] !== '' ? '%' . $f['ara'] . '%' : '';
+    $araNorm = $f['ara'] !== '' ? ak_norm($f['ara']) : '';
 
-    // ── GİRİŞLER ────────────────────────────────────────────────────────────
+    // ── EXCEL günlük satırları ──────────────────────────────────────────────
+    $excel = ak_excel_gunluk($pdo, $f['bas'], $f['bit']);
+    foreach ($excel as $r) {
+        if ($f['tur'] !== '' && $r['tur'] !== $f['tur']) continue;
+        if ($f['arac_id'] > 0 && $r['arac_id'] !== $f['arac_id']) continue;
+        if ($araNorm !== '' && mb_strpos(ak_norm(implode(' ', [$r['taraf'], $r['detay'], (string)$r['plaka']])), $araNorm) === false) continue;
+        $satir[] = $r;
+    }
+
+    // ── ELLE girişler ───────────────────────────────────────────────────────
     if ($f['tur'] !== 'cikis' && $f['arac_id'] === 0) {   // giriş satırının aracı yoktur
         $w = []; $p = [];
         if ($f['bas'] !== '') { $w[] = 'tarih >= ?'; $p[] = $f['bas']; }
         if ($f['bit'] !== '') { $w[] = 'tarih <= ?'; $p[] = $f['bit']; }
         if ($ara !== '')      { $w[] = '(tedarikci LIKE ? OR belge_no LIKE ? OR plaka LIKE ? OR aciklama LIKE ? OR teslim_alan LIKE ?)';
                                 for ($i = 0; $i < 5; $i++) $p[] = $ara; }
-        $sql = "SELECT * FROM akaryakit_girisler" . ($w ? ' WHERE ' . implode(' AND ', $w) : '');
-        $st = $pdo->prepare($sql); $st->execute($p);
+        $st = $pdo->prepare("SELECT * FROM akaryakit_girisler" . ($w ? ' WHERE ' . implode(' AND ', $w) : ''));
+        $st->execute($p);
         foreach ($st->fetchAll() as $r) {
-            $satir[] = ['tur'=>'giris', 'id'=>(int)$r['id'], 'tarih'=>$r['tarih'],
+            $satir[] = ['tur'=>'giris', 'kaynak'=>'elle', 'id'=>(int)$r['id'], 'tarih'=>$r['tarih'],
                         'belge_no'=>$r['belge_no'], 'taraf'=>$r['tedarikci'], 'detay'=>'Tanka giriş',
                         'plaka'=>$r['plaka'], 'giris'=>(float)$r['miktar_lt'], 'cikis'=>0.0,
                         'sayac'=>null, 'evrak_url'=>$r['evrak_url'], 'aciklama'=>$r['aciklama'],
                         'arac_id'=>null, 'tutar'=>$r['tutar'] !== null ? (float)$r['tutar'] : null,
-                        'teslim_alan'=>$r['teslim_alan']];
+                        'teslim_alan'=>$r['teslim_alan'], 'sayilir'=>true];
         }
     }
 
-    // ── ÇIKIŞLAR (cikislar.php'nin tablosu — kopyalanmaz, oradan okunur) ────
+    // ── ELLE çıkışlar (cikislar.php'nin tablosu — kopyalanmaz, oradan okunur) ─
     if ($f['tur'] !== 'giris') {
         $w = []; $p = [];
         if ($f['bas'] !== '')      { $w[] = 'tarih >= ?'; $p[] = $f['bas']; }
@@ -219,25 +341,46 @@ function ak_defter(PDO $pdo, array $f): array
         if ($f['arac_id'] > 0)     { $w[] = 'arac_id = ?'; $p[] = $f['arac_id']; }
         if ($ara !== '')           { $w[] = '(sofor LIKE ? OR cinsi LIKE ? OR firma LIKE ? OR plaka LIKE ? OR aciklama LIKE ? OR teslim_alan LIKE ?)';
                                      for ($i = 0; $i < 6; $i++) $p[] = $ara; }
-        $sql = "SELECT * FROM akaryakit_cikislar" . ($w ? ' WHERE ' . implode(' AND ', $w) : '');
         try {
-            $st = $pdo->prepare($sql); $st->execute($p);
+            $st = $pdo->prepare("SELECT * FROM akaryakit_cikislar" . ($w ? ' WHERE ' . implode(' AND ', $w) : ''));
+            $st->execute($p);
             foreach ($st->fetchAll() as $r) {
                 $detay = trim(implode(' · ', array_filter([$r['cinsi'] ?? '', $r['firma'] ?? ''])));
-                $satir[] = ['tur'=>'cikis', 'id'=>(int)$r['id'], 'tarih'=>$r['tarih'],
+                $sayac = trim((string)($r['sayac'] ?? ''));
+                $satir[] = ['tur'=>'cikis', 'kaynak'=>'elle', 'id'=>(int)$r['id'], 'tarih'=>$r['tarih'],
                             'belge_no'=>null, 'taraf'=>$r['sofor'], 'detay'=>$detay ?: '—',
                             'plaka'=>$r['plaka'], 'giris'=>0.0, 'cikis'=>(float)$r['miktar_lt'],
-                            'sayac'=>$r['sayac'], 'evrak_url'=>$r['evrak_url'] ?? null, 'aciklama'=>$r['aciklama'],
+                            'sayac'=>($sayac === '' || $sayac === '0') ? null : $sayac,
+                            'evrak_url'=>$r['evrak_url'] ?? null, 'aciklama'=>$r['aciklama'],
                             'arac_id'=>$r['arac_id'] !== null ? (int)$r['arac_id'] : null, 'tutar'=>null,
-                            'teslim_alan'=>$r['teslim_alan']];
+                            'teslim_alan'=>$r['teslim_alan'], 'sayilir'=>true];
             }
-        } catch (Throwable $e) { /* çıkış tablosu henüz yoksa defter yalnız girişleri gösterir */ }
+        } catch (Throwable $e) { /* çıkış tablosu henüz yoksa */ }
     }
 
-    // Tarih artan (yürüyen bakiye için şart); aynı gün içinde önce girişler
+    // ── Elle ↔ Excel eşleştirme (aynı litre iki kez sayılmasın) ─────────────
+    $excelKullanilan = [];
+    foreach ($satir as $i => $r) if ($r['kaynak'] === 'excel') $excelKullanilan[$i] = false;
+    foreach ($satir as $i => &$r) {
+        if ($r['kaynak'] !== 'elle') continue;
+        $miktar = $r['giris'] ?: $r['cikis'];
+        foreach ($excelKullanilan as $j => $kul) {
+            if ($kul) continue;
+            $e = $satir[$j];
+            if ($e['tur'] !== $r['tur'] || $e['tarih'] !== $r['tarih']) continue;
+            if ($r['tur'] === 'cikis' && $e['arac_id'] !== $r['arac_id']) continue;
+            if (abs(($e['giris'] ?: $e['cikis']) - $miktar) > 0.5) continue;
+            $excelKullanilan[$j] = true;
+            $r['sayilir'] = false; $r['eslesen'] = $e['id'];
+            break;
+        }
+    }
+    unset($r);
+
+    // Tarih artan (yürüyen bakiye için şart); aynı gün önce girişler, Excel önce
     usort($satir, function ($a, $b) {
-        return [$a['tarih'], $a['cikis'] > 0 ? 1 : 0, $a['id']]
-           <=> [$b['tarih'], $b['cikis'] > 0 ? 1 : 0, $b['id']];
+        return [$a['tarih'], $a['cikis'] > 0 ? 1 : 0, $a['kaynak'] === 'excel' ? 0 : 1, $a['id']]
+           <=> [$b['tarih'], $b['cikis'] > 0 ? 1 : 0, $b['kaynak'] === 'excel' ? 0 : 1, $b['id']];
     });
     return $satir;
 }
@@ -253,17 +396,20 @@ function ak_defter_acilis(PDO $pdo, array $f, ?array $donem): array
 {
     if ($donem) return [(float)$donem['devir'], 'Excel dönem devri (' . $donem['donem'] . ')'];
     if ($f['bas'] === '') return [0.0, ''];
-    ak_giris_semasi_kur($pdo);
-    $g = $pdo->prepare("SELECT COALESCE(SUM(miktar_lt),0) FROM akaryakit_girisler WHERE tarih < ?");
-    $g->execute([$f['bas']]);
-    $onceGiris = (float)$g->fetchColumn();
-    $onceCikis = 0.0;
-    try {
-        $c = $pdo->prepare("SELECT COALESCE(SUM(miktar_lt),0) FROM akaryakit_cikislar WHERE tarih < ?");
-        $c->execute([$f['bas']]);
-        $onceCikis = (float)$c->fetchColumn();
-    } catch (Throwable $e) {}
-    return [$onceGiris - $onceCikis, 'defterin önceki hareketleri (' . date('d.m.Y', strtotime($f['bas'] . ' -1 day')) . ' sonu)'];
+    $dun = date('Y-m-d', strtotime($f['bas'] . ' -1 day'));
+    // Başlangıç ayının Excel dönemi varsa zincir oradan kurulur: o ayın DEVRİ + ay başından
+    // başlangıca kadarki (Excel + elle, eşleşenler düşülmüş) hareketler. Aksi halde defterin
+    // tamamı baştan toplanır (Excel dönemi hiç yoksa yalnız elle kayıtlar).
+    $ayDonem = ak_donem_ay($pdo, substr($f['bas'], 0, 7));
+    $bak = $ayDonem ? (float)$ayDonem['devir'] : 0.0;
+    $ilk = $ayDonem ? substr($f['bas'], 0, 7) . '-01' : '';
+    if ($ilk === '' || $ilk <= $dun) {
+        $onceki = ak_defter($pdo, ['bas'=>$ilk, 'bit'=>$dun, 'tur'=>'', 'arac_id'=>0, 'ara'=>'', 'ay'=>'']);
+        foreach ($onceki as $r) if ($r['sayilir']) $bak += $r['giris'] - $r['cikis'];
+    }
+    $kaynak = $ayDonem ? 'Excel devri ' . $ayDonem['donem'] . ' + ' . date('d.m.Y', strtotime($dun)) . ' sonuna kadarki hareketler'
+                       : 'defterin önceki hareketleri (' . date('d.m.Y', strtotime($dun)) . ' sonu)';
+    return [$bak, $kaynak];
 }
 
 /**
