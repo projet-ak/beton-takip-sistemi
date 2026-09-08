@@ -68,8 +68,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($error !== '') { $user = null; $stmt = null; }
             else {
             modul_erisim_semasi($pdo);   // users.modul_erisim kolonunu garanti et
+            yetki_semasi($pdo);          // users.yetkiler + unvan (yetki matrisi)
             $stmt = $pdo->prepare(
-                "SELECT id, username, password_hash, full_name, role, aktif, modul_erisim
+                "SELECT id, username, password_hash, full_name, role, aktif, modul_erisim, yetkiler, unvan
                  FROM users
                  WHERE username = ?
                  LIMIT 1"
@@ -92,6 +93,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'full_name'    => $user['full_name'],
                     'role'         => $user['role'],
                     'modul_erisim' => $user['modul_erisim'] ?? null,   // DB'ye ulaşılamazsa yedek
+                    'yetkiler'     => $user['yetkiler'] ?? null,       // modül × işlem matrisi (yedek kopya)
+                    'unvan'        => $user['unvan'] ?? null,
                 ];
                 // Güvenli yönlendirme: // ve http(s):// yasak, / ile başlayan mutlak yollar geçerli
                 $base = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/';

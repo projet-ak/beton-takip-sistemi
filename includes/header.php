@@ -20,7 +20,9 @@ $__module   = (strpos($__self,'/demir/')!==false) ? 'demir'
 // Modül adı yöneticinin verdiği addır (moduller.php); verilmemişse MODULLER varsayılanı
 $__modAd    = function_exists('modul_ad') ? modul_ad($__module) : ($__module ?: 'Beton Takip');
 // Saha Takip girişi yetkiye göre: onay kuyruğu yetkisi yoksa doğrudan analiz sayfası
-$__waHome   = (function_exists('can_edit') && can_edit()) ? 'whatsapp/mesajlar.php' : 'whatsapp/saha_analiz.php';
+// Saha Takip giriş sayfası: onay kuyruğu yazma yetkisi isteyene, diğerlerine analiz (matrisli kullanıcıda whatsapp modülünün kendi yetkisi)
+$__waHome   = (function_exists('yetki_matris') && yetki_matris() !== null ? yetki_yazma('whatsapp') : (function_exists('can_edit') && can_edit()))
+              ? 'whatsapp/mesajlar.php' : 'whatsapp/saha_analiz.php';
 $__modHome  = ['beton'=>'index.php','demir'=>'demir/index.php','seramik'=>'seramik/index.php','depo'=>'depo/index.php','akaryakit'=>'akaryakit/index.php','crm'=>'crm/index.php','prekast'=>'prekast/index.php','whatsapp'=>$__waHome][$__module];
 
 // ── Aktivite izleme (oturum süresi + sayfa gezinme) ──────────────────────────
@@ -128,6 +130,7 @@ if ($__user) {
         </div>
       </li>
 
+      <?php if(can_edit()): // tarama ve belge dağıtma = veri girişi; salt okuma kullanıcısına gösterilmez ?>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('hizli_tarama.php') ?>" href="<?= $__rootPath ?>hizli_tarama.php" data-label="Hızlı Tarama">
           <i class="bi bi-qr-code-scan"></i><span>Hızlı Tarama</span>
@@ -139,6 +142,7 @@ if ($__user) {
           <i class="bi bi-magic"></i><span>Belge Oku & Dağıt</span>
         </a>
       </li>
+      <?php endif; ?>
 
       <?php if(can_view_reports()): ?>
       <li class="sidebar-nav-item">
@@ -573,7 +577,7 @@ if ($__user) {
     <div class="sidebar-avatar"><?= h($__initials?:'U') ?></div>
     <div class="sidebar-user-info">
       <div class="sidebar-user-name"><?= h($__user['full_name']?:$__user['username']) ?></div>
-      <div class="sidebar-user-role"><?= role_label($__user['role']) ?></div>
+      <div class="sidebar-user-role"><?= h(!empty($__user['unvan']) ? $__user['unvan'] : role_label($__user['role'])) ?></div>
     </div>
     <a href="<?= $__rootPath ?>logout.php" class="sidebar-logout" title="Çıkış"><i class="bi bi-box-arrow-right"></i></a>
   </div>
@@ -605,9 +609,10 @@ if ($__user) {
       foreach (modul_listesi() as $__mk => $__m):
           [$__mAd, $__mIkon, $__mSayfa] = [$__m['ad'], $__m['ikon'], $__m['sayfa']];
           if (!can_module($__mk)) continue;
-          if ($__mk === 'crm'      && !has_role('admin','teknik_ofis_admin','teknik_ofis','saha_sefi')) continue;
-          if ($__mk === 'prekast'  && !has_role('admin','teknik_ofis_admin','teknik_ofis','saha_sefi')) continue;
-          if ($__mk === 'whatsapp' && !(can_edit() || can_view_reports())) continue;
+          // Rol bazlı (matrissiz) kullanıcıda CRM/Prekast yalnız teknik ofis + saha şefine açık; matrisli kullanıcıda can_module() yeter
+          if (yetki_matris() === null && $__mk === 'crm'     && !has_role('admin','teknik_ofis_admin','teknik_ofis','saha_sefi')) continue;
+          if (yetki_matris() === null && $__mk === 'prekast' && !has_role('admin','teknik_ofis_admin','teknik_ofis','saha_sefi')) continue;
+          if ($__mk === 'whatsapp' && yetki_matris() === null && !(can_edit() || can_view_reports())) continue;
           $__mHref = $__mk === 'whatsapp' ? $__waHome : $__mSayfa;
           // Varsayılan adlar şeritte uzun kalıyor; yönetici kendi adını verdiyse ona dokunulmaz
           $__mEt   = ($__m['ad'] === $__m['varsayilan_ad']) ? (['crm'=>'CRM','prekast'=>'Prekast'][$__mk] ?? $__mAd) : $__mAd;
@@ -661,7 +666,7 @@ if ($__user) {
           <div class="topbar-user-avatar"><?= h($__initials?:'U') ?></div>
           <div class="d-none d-sm-block">
             <div class="topbar-user-name"><?= h($__user['full_name']?:$__user['username']) ?></div>
-            <div class="topbar-user-role"><?= role_label($__user['role']) ?></div>
+            <div class="topbar-user-role"><?= h(!empty($__user['unvan']) ? $__user['unvan'] : role_label($__user['role'])) ?></div>
           </div>
           <i class="bi bi-chevron-down ms-1" style="font-size:.7rem;color:var(--bt-text-soft)"></i>
         </div>

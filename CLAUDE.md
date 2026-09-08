@@ -314,6 +314,36 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
     atlar (beton gizliyse ilk görünür modüle düşer). Tüketiciler: `header.php` modül şeridi + `$__modAd`,
     `includes/403.php`, `kullanicilar.php` (gizli modül rozetle işaretlenir ama izin verilebilir —
     modül geri açıldığında kullanıcı beklemesin). Yönetim ekranı **`moduller.php`** (admin, Araçlar menüsü).
+  - **GELİŞMİŞ YETKİ MATRİSİ** (2026-09): rol artık **etiket + başlangıç şablonu**; gerçek yetki kullanıcı
+    bazlı **modül × işlem** matrisidir — `users.yetkiler` (TEXT JSON `{"beton":["oku","giris"],"crm":["oku","rapor"]}`)
+    + `users.unvan` (serbest görev adı, topbar/sidebar'da rol etiketi yerine gösterilir) + `role` VARCHAR(40)
+    (ENUM'dan genişletildi; runtime `yetki_semasi()` + kurulum). İşlemler `YETKI_ISLEMLER`: **oku** (modülü
+    açma/liste/detay) · **giris** (yeni kayıt, import, tarama) · **duzenle** (mevcut kaydı değiştirme/silme,
+    tanımlar) · **onay** (saha/teknik onay, toplu onay) · **rapor** (raporlar, icmal/zayiat ekranları,
+    `?export=`/`?indir=`). Roller `ROLLER` (ad, rozet rengi, açıklama): eski 5 rol + **kalite** (Kalite Birimi),
+    **proje_muduru**, **direktor** (Direktör/Üst Yönetim), **izleyici** (salt okuma); `yetki_sablon($rol)` her
+    rolün varsayılan matrisi (kullanıcı ekranında "Rol şablonunu uygula"). `yetki_normalize()` bilinmeyen
+    modül/işlemi düşürür ve oku dışındaki her işleme **oku'yu otomatik ekler**.
+    ⚠ **Matris NULL olan eski kullanıcılar rol bazlı ESKİ davranışla aynen çalışır** (geriye uyumluluk);
+    admin her zaman sınırsız (matris kaydedilse de yok sayılır). Matrisi olan kullanıcıda:
+    `yetki_matris()` (istek başına DB'den, `kullanici_yetki_satiri()` static), `yetki_var($islem, $mod=null)`
+    (mod boşsa `aktif_modul()`), `yetki_yazma()` (giris∨duzenle∨onay), `modul_erisimi()` = matrisin anahtarları,
+    tüm `can_*()` matrise bakar (can_edit=giris∨duzenle, can_view_reports=rapor, can_approve_*=onay,
+    can_manage_definitions=duzenle, can_create_irsaliye=giris, can_edit_irsaliye: duzenle→her durumda /
+    yalnız giris→beklemede) ve **`has_role()` bir YETKİ SEVİYESİ sorusuna dönüşür**: listedeki en zayıf klasik
+    rolün ima ettiği işlem aranır (`admin,toa`→duzenle · `…,teknik_ofis`→duzenle∨giris · `…,saha_sefi`→
+    giris∨duzenle∨onay · `…,depo`→giris∨duzenle · yalnız admin→false; **tek rol sorulursa gerçek rol**
+    karşılaştırılır, ör. `has_role('depo')`). Böylece 100+ sayfadaki `require_auth([...])` / `has_role(...)`
+    çağrıları değiştirilmeden matrisle çalışır. `require_auth()`: matrisli kullanıcıda rol listesi ATLANIR
+    (yalnız `['admin']` sayfaları ve `kurulum*` her zaman rol bazlı), yerine **`sayfa_islemi()`** sayfanın
+    gerektirdiği işlemi çıkarır: rapor sayfaları listesi/export → rapor; `import*`, `*_form` (id'siz),
+    toplu_irsaliye/hizli_tarama/belge_dagit/fatura_eslestir/faturalar + api kaydetme uçları → giris;
+    `*_form?id=`/`?edit=`/POST id>0 → duzenle; diğer sayfalarda **POST → yazma** (giris∨duzenle∨onay);
+    geri kalan GET → oku. Yetkisiz: 403 sayfası "X modülünde 'değiştirme' yetkiniz yok" (API/JSON isteğinde
+    JSON 403). `api/demir_*.php` demir modülü sayılır. Saha Takip: `$__waHome`/`ilk_modul_sayfasi` whatsapp
+    modülünün kendi yazma yetkisine bakar; whatsapp sayfalarındaki eski rol kapıları matrisli kullanıcıda
+    atlanır (require_auth zaten denetler). Sidebar Hızlı Tarama / Belge Oku `can_edit()` ile gizlenir.
+    Test: scratchpad `yetki_test.php` (10 senaryo) + `yetki_case.php` (require_auth 23 sayfa kapısı) + `msm/runk2.php`.
   - Yetki fonksiyonları: `can_edit()`, `can_edit_irsaliye($row)` (durum bazlı), `can_approve_saha()`,
     `can_approve_teknik()`, `can_view_reports()`, `can_manage_definitions()` (admin+teknik_ofis_admin),
     `can_manage_users()` (admin), `has_role(...)`, `is_admin()`.
@@ -410,11 +440,17 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
     (`mesaj_temizle`, mesajlar.php'de olasılıksal tetik). Onaylılar arşivdir, silinmez.
   - Meta bağlantısı kurulursa: `WHATSAPP_GRAPH_TOKEN` tanımlanınca gelen fotoğraflar otomatik iner
     (`meta_medya_indir`, media id → uploads/whatsapp/Y/m/).
-- **`kullanicilar.php`** (admin) — kullanıcı CRUD + **Modül Erişimi** bölümü: "Tüm modüller" anahtarı
-  (kapalıyken tek tek modül kutucukları etkinleşir; açıkken `modul_erisim` NULL = sınırsız kaydedilir),
-  seçim `users.modul_erisim`e virgüllü yazılır (geçersiz anahtar süzülür). Listede her kullanıcının
-  erişimi rozetlerle görünür ("Tüm modüller" ya da modül rozetleri). Admin rolü her zaman tüm modülleri
-  görür (alan kaydedilse de dikkate alınmaz).
+- **`kullanicilar.php`** (YALNIZ admin; sidebar bağlantısı `can_manage_users()`) — kullanıcı CRUD +
+  **Yetki Matrisi**: modal'da satır = modül (gizliler rozetle), sütun = Okuma/Veri Girişi/Değiştirme/Onay/Rapor
+  kutucukları + satır "Tümü" + sütun başlığı toplu seçim; JS tutarlılık (oku dışı işlem → oku açılır, oku
+  kapanınca satır boşalır); **"Rol şablonunu uygula"** (`yetki_sablon`, yeni kullanıcıda rol değişince
+  otomatik dolar) / Hepsi / Temizle; Rol seçiminde açıklama; **Görev/Unvan** serbest alanı. Admin rolünde
+  matris kilitli ("her şeye yetkili"). Kayıt: `y[modül][]` → `yetki_normalize` → JSON `users.yetkiler`;
+  `modul_erisim` matrisle senkron (tüm modüller ise NULL). Güvenlik: en az bir modülde okuma zorunlu,
+  kendi hesabının admin rolü kaldırılamaz / pasife alınamaz / silinemez; değişiklikler `audit_log`.
+  Listede kullanıcı başına modül rozeti + O·G·D·N·R harfleri (yetkisiz harf üstü çizili), unvan, "siz" rozeti;
+  matrisi olmayan kullanıcı **"Eski rol düzeni"** rozetiyle işaretlenir (üstte sayısı verilir) — düzenleme
+  modalında matris rol şablonu + eski modül listesinden ÖNERİLİR, kaydedince devreye girer.
 - **`moduller.php`** (admin, Araçlar → "Modüller (ad / gizle)") — **Modül Yönetimi**: her modülün
   **görünen adı** değiştirilir (boş = varsayılan), **gizlenir** (menülerde hiç görünmez, adresi elle
   yazılsa da 403 — yalnız admin girebilir; veri SİLİNMEZ) ve **sırası** verilir (küçük önce, 0 = doğal).
@@ -486,8 +522,9 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · **Sipariş Talepleri** · **
 ### Beton (`kurulum.php`)
 Tanım tabloları (id/ad/aktif): beton_siniflari, katki_listesi, pompa_turleri, firmalar,
 kivam_siniflari, parseller. Hiyerarşik: imalat_gruplari→ana_is_kalemleri, bloklar→kotlar.
-`tedarikciler`(vkn), `projeler`(kod UNIQUE), `users`(role ENUM + **`modul_erisim`** [virgüllü modül listesi,
-boş=tümü; runtime ALTER `modul_erisim_semasi()` + kurulum]), **`irsaliyeler`** (~40 kolon:
+`tedarikciler`(vkn), `projeler`(kod UNIQUE), `users`(role VARCHAR(40) [ROLLER] + **`modul_erisim`** [virgüllü modül listesi,
+boş=tümü; runtime ALTER `modul_erisim_semasi()` + kurulum] + **`yetkiler`** [modül × işlem JSON matrisi, NULL = rol bazlı eski
+davranış] + `unvan`; runtime `yetki_semasi()` + kurulum), **`irsaliyeler`** (~40 kolon:
 tip/durum ENUM, kantar_net_*/kantar_farki, tüm tanım FK'leri, onay alanları, scan_image_url runtime),
 `modul_ayarlar` (anahtar PK, ad, gizli, sira — modül adlandırma/gizleme; runtime `modul_ayar_semasi()` + kurulum),
 `irsaliye_fotolar` (+ runtime `tur`/`okunan` — `blg_semasi_kur`), `audit_log` (JSON diff), **`faturalar`** (fatura_no UNIQUE, tarih, tedarikci_id, tutar, miktar_m3, ettn, irsaliye_adet, eksik_adet, dosya_url) + `irsaliyeler.fatura_id` bağı (runtime `fat_semasi_kur`). Seed admin: `tayyar_akbulut`/`admin`.

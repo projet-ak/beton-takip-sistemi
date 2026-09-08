@@ -28,12 +28,17 @@ function format_number($n, int $decimals = 2): string
  */
 function role_label(string $role): string
 {
+    if (defined('ROLLER') && isset(ROLLER[$role])) return ROLLER[$role][0];
     $map = [
         'admin'             => 'Yönetici',
         'teknik_ofis_admin' => 'Teknik Ofis Yöneticisi',
         'teknik_ofis'       => 'Teknik Ofis',
         'saha_sefi'         => 'Saha Şefi',
         'depo'              => 'Depo',
+        'kalite'            => 'Kalite Birimi',
+        'proje_muduru'      => 'Proje Müdürü',
+        'direktor'          => 'Direktör / Üst Yönetim',
+        'izleyici'          => 'Görüntüleyici',
     ];
     return $map[$role] ?? htmlspecialchars($role);
 }

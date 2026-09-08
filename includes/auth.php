@@ -121,6 +121,209 @@ const MODUL_MUAF = [
     'kullanicilar.php','ai_ayarlar.php','yedek.php','aktivite.php','veri_kontrol.php','moduller.php',
 ];
 
+/**
+ * ── GELİŞMİŞ KULLANICI YETKİLERİ (2026-09) ─────────────────────────────────────
+ * Rol artık bir ETİKET + ŞABLONDUR; gerçek yetki kullanıcı bazlı **modül × işlem**
+ * matrisidir (`users.yetkiler`, JSON: {"beton":["oku","giris"],"crm":["oku","rapor"]}).
+ *   oku      → modülü açma, liste/detay görüntüleme
+ *   giris    → yeni kayıt / içe aktarma / tarama (veri girişi)
+ *   duzenle  → mevcut kaydı değiştirme, silme, tanımlar (veri değiştirme)
+ *   onay     → saha / teknik ofis onayı, toplu onay
+ *   rapor    → raporlar, icmal/zayiat ekranları, Excel/PDF dışa aktarma
+ * Matris NULL olan (eski) kullanıcılar için ROL BAZLI eski davranış aynen sürer.
+ * Matrisi olan kullanıcıda `has_role()` ve tüm `can_*()` fonksiyonları matrise bakar;
+ * admin her zaman sınırsızdır (matris kaydedilse de dikkate alınmaz).
+ */
+const ROLLER = [
+    'admin'             => ['Yönetici',                 'danger',              'Sistem yöneticisi — her şeye yetkili, kullanıcıları yönetir'],
+    'teknik_ofis_admin' => ['Teknik Ofis Yöneticisi',   'warning text-dark',   'Tüm modüllerde tam yetki (tanımlar, içe aktarma, onay)'],
+    'teknik_ofis'       => ['Teknik Ofis',              'info text-dark',      'Veri girişi, düzenleme, teknik onay ve raporlar'],
+    'saha_sefi'         => ['Saha Şefi',                'primary',             'Sahadan veri girişi ve saha onayı'],
+    'depo'              => ['Depo',                     'secondary',           'Depo / seramik / akaryakıt giriş-çıkış, beton irsaliyesi açma'],
+    'kalite'            => ['Kalite Birimi',            'success',             'Üretim arızaları takibi (CRM) + raporlar; diğer modüllerde görüntüleme'],
+    'proje_muduru'      => ['Proje Müdürü',             'dark',                'Tüm modülleri görür, raporları alır, onay verir; veri girmez'],
+    'direktor'          => ['Direktör / Üst Yönetim',   'dark',                'Tüm modüllerde görüntüleme + rapor (veri değiştirmez)'],
+    'izleyici'          => ['Görüntüleyici',            'light text-dark border', 'Yalnız okuma — hiçbir veri değiştiremez, rapor alamaz'],
+];
+
+/** İşlem türleri: anahtar => [ad, ikon, açıklama]. Sıra matris ekranındaki sütun sırasıdır. */
+const YETKI_ISLEMLER = [
+    'oku'     => ['Okuma',          'bi-eye',            'Modülü açar, listeleri ve detayları görür'],
+    'giris'   => ['Veri Girişi',    'bi-plus-circle',    'Yeni kayıt açar, Excel/tarama ile veri aktarır'],
+    'duzenle' => ['Değiştirme',     'bi-pencil-square',  'Mevcut kayıtları düzenler/siler, tanımları yönetir'],
+    'onay'    => ['Onay',           'bi-check2-circle',  'Saha / teknik ofis onayı verir (toplu onay dahil)'],
+    'rapor'   => ['Rapor',          'bi-bar-chart-line', 'Raporlar, icmal/zayiat ekranları, Excel/PDF dışa aktarma'],
+];
+
+/**
+ * Rol şablonu: rol seçildiğinde matrisin varsayılan doluşu (yönetici sonra tek tek değiştirir).
+ * Eski roller eski davranışa yakın; yeni roller (kalite / proje müdürü / direktör / izleyici) okuma+rapor ağırlıklı.
+ */
+function yetki_sablon(string $rol): array
+{
+    $tum   = array_keys(MODULLER);
+    $hepsi = array_keys(YETKI_ISLEMLER);
+    $doldur = function (array $modKume, array $islem) { $o = []; foreach ($modKume as $m) $o[$m] = $islem; return $o; };
+    switch ($rol) {
+        case 'admin':
+        case 'teknik_ofis_admin':
+        case 'teknik_ofis':
+            return $doldur($tum, $hepsi);
+        case 'saha_sefi':
+            return $doldur(['beton','demir','depo','crm','prekast','whatsapp'], ['oku','giris','onay']);
+        case 'depo':
+            return ['beton' => ['oku','giris']]
+                 + $doldur(['seramik','depo','akaryakit'], ['oku','giris','duzenle','rapor']);
+        case 'kalite':
+            return ['crm' => ['oku','giris','duzenle','rapor']]
+                 + $doldur(['beton','demir','seramik','prekast'], ['oku','rapor']);
+        case 'proje_muduru':
+            return $doldur($tum, ['oku','onay','rapor']);
+        case 'direktor':
+            return $doldur($tum, ['oku','rapor']);
+        case 'izleyici':
+        default:
+            return $doldur($tum, ['oku']);
+    }
+}
+
+/**
+ * Ham matrisi (JSON/dizi) temizler: yalnız bilinen modül/işlem kalır, oku dışındaki
+ * her işlem `oku`yu da getirir (okuyamadığı modülde giriş yapamaz). Boş modül düşer.
+ */
+function yetki_normalize($ham): array
+{
+    if (is_string($ham)) { $ham = json_decode($ham, true); }
+    if (!is_array($ham)) return [];
+    $out = [];
+    foreach ($ham as $mod => $islemler) {
+        if (!isset(MODULLER[$mod])) continue;
+        if (is_string($islemler)) $islemler = explode(',', $islemler);
+        $set = array_values(array_intersect(array_keys(YETKI_ISLEMLER), array_map('trim', (array)$islemler)));
+        if (!$set) continue;
+        if (!in_array('oku', $set, true)) array_unshift($set, 'oku');
+        $out[$mod] = $set;
+    }
+    return $out;
+}
+
+/**
+ * `users.yetkiler` (JSON matris) + `users.unvan` kolonlarını garanti eder; `role` kolonu
+ * yeni roller için ENUM'dan VARCHAR'a genişletilir (mevcut değerler korunur).
+ */
+function yetki_semasi(PDO $pdo): void
+{
+    static $yapildi = false;
+    if ($yapildi) return;
+    $yapildi = true;
+    try {
+        $kolon = [];
+        foreach ($pdo->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_ASSOC) as $c) $kolon[$c['Field']] = $c['Type'];
+        if (!isset($kolon['yetkiler'])) $pdo->exec("ALTER TABLE users ADD COLUMN yetkiler TEXT NULL
+                                                   COMMENT 'modül × işlem yetki matrisi (JSON); NULL = rol bazlı eski davranış'");
+        if (!isset($kolon['unvan']))    $pdo->exec("ALTER TABLE users ADD COLUMN unvan VARCHAR(80) NULL COMMENT 'görev / unvan (serbest metin)'");
+        if (isset($kolon['role']) && stripos($kolon['role'], 'enum') === 0)
+            $pdo->exec("ALTER TABLE users MODIFY role VARCHAR(40) NOT NULL DEFAULT 'teknik_ofis'");
+    } catch (Throwable $e) { /* yetki yoksa rol bazlı çalışmaya devam eder */ }
+}
+
+/**
+ * Oturumdaki kullanıcının DB satırındaki yetki alanları (modul_erisim + yetkiler).
+ * Her istekte bir kez okunur — admin değişikliği anında geçerli olur, yeniden giriş gerekmez.
+ * DB'ye ulaşılamazsa oturumdaki kopya kullanılır.
+ */
+function kullanici_yetki_satiri(): array
+{
+    static $satir = null;
+    if ($satir !== null) return $satir;
+    $u = $_SESSION['user'] ?? [];
+    $satir = ['modul_erisim' => $u['modul_erisim'] ?? null, 'yetkiler' => $u['yetkiler'] ?? null];
+    if (!$u) return $satir;
+    if (!defined('DB_HOST') && file_exists(__DIR__ . '/../config.php')) require_once __DIR__ . '/../config.php';
+    if (function_exists('aktivite_pdo') && ($pdo = aktivite_pdo(null))) {
+        try {
+            $st = $pdo->prepare("SELECT modul_erisim, yetkiler FROM users WHERE id=?");
+            $st->execute([(int)($u['id'] ?? 0)]);
+            if ($r = $st->fetch(PDO::FETCH_ASSOC)) {
+                $satir = ['modul_erisim' => $r['modul_erisim'], 'yetkiler' => $r['yetkiler']];
+                $_SESSION['user']['modul_erisim'] = $r['modul_erisim'];
+                $_SESSION['user']['yetkiler']     = $r['yetkiler'];
+            }
+        } catch (Throwable $e) { /* kolon henüz yoksa oturumdaki kopya */ }
+    }
+    return $satir;
+}
+
+/**
+ * Kullanıcının yetki matrisi. null = matris tanımlı değil (admin ya da eski kullanıcı → rol bazlı).
+ */
+function yetki_matris(): ?array
+{
+    static $m = false;
+    if ($m !== false) return $m;
+    $m = null;
+    $u = $_SESSION['user'] ?? null;
+    if (!$u || ($u['role'] ?? '') === 'admin') return $m;
+    $ham = kullanici_yetki_satiri()['yetkiler'];
+    if ($ham === null || $ham === '') return $m;
+    $m = yetki_normalize($ham);
+    return $m;
+}
+
+/**
+ * Kullanıcı bu modülde bu işlemi yapabilir mi? (admin → her zaman evet.)
+ * Matrisi olmayan (eski) kullanıcıda rol bazlı eşdeğer kural uygulanır — eski davranış korunur.
+ */
+function yetki_var(string $islem, ?string $mod = null): bool
+{
+    $u = $_SESSION['user'] ?? null;
+    if (!$u) return false;
+    if (($u['role'] ?? '') === 'admin') return true;
+    $mod = $mod ?: aktif_modul();
+    $m = yetki_matris();
+    if ($m !== null) return in_array($islem, $m[$mod] ?? [], true);
+    // Rol bazlı eski eşdeğerler
+    $rol = $u['role'] ?? '';
+    switch ($islem) {
+        case 'oku':     return true;
+        case 'giris':   return in_array($rol, ['teknik_ofis_admin','teknik_ofis','saha_sefi','depo'], true);
+        case 'duzenle': return in_array($rol, ['teknik_ofis_admin','teknik_ofis','saha_sefi'], true);
+        case 'onay':    return in_array($rol, ['teknik_ofis_admin','teknik_ofis','saha_sefi'], true);
+        case 'rapor':   return in_array($rol, ['teknik_ofis_admin','teknik_ofis'], true);
+    }
+    return false;
+}
+
+/** Yazma yetkisi (giriş VEYA değiştirme VEYA onay) — POST istekleri için asgari kapı. */
+function yetki_yazma(?string $mod = null): bool
+{
+    return yetki_var('giris', $mod) || yetki_var('duzenle', $mod) || yetki_var('onay', $mod);
+}
+
+/**
+ * Bu istek hangi işlemi gerektirir? (matrisli kullanıcılar için sayfa bazlı kapı)
+ *   rapor   → raporlar/icmal/zayiat/mutabakat… sayfaları, ?export= / ?indir= dışa aktarma
+ *   giris   → import*, *_form (id'siz), toplu giriş, tarama, belge dağıt, fatura eşleştirme
+ *   duzenle → *_form?id= / ?edit= (mevcut kaydı açma)
+ *   yaz     → diğer sayfalarda POST (giriş VEYA değiştirme VEYA onay yeter; ayrıntı can_*() ile)
+ *   oku     → geri kalan her GET
+ */
+function sayfa_islemi(): string
+{
+    $s    = basename($_SERVER['PHP_SELF'] ?? '');
+    $post = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
+    $raporSayfa = ['raporlar.php','icmal.php','icmal_beton.php','icmal_pdf.php','zayiat.php','zayiat_takip.php',
+                   'mutabakat.php','prp_ustyapi.php','istinat.php','temel_kazik.php','metraj_sayfasi.php',
+                   'mobilizasyon.php','taseron_bakiye.php','arac_takip.php','saha_analiz.php','ai_rapor.php'];
+    if (!$post && (in_array($s, $raporSayfa, true) || isset($_GET['export']) || isset($_GET['indir']))) return 'rapor';
+    $girisSayfa = preg_match('/^(import\d*|toplu_irsaliye|hizli_tarama|belge_dagit|fatura_eslestir|faturalar|hizli_kaydet|hizli_guncelle|ai_okut|demir_okut|demir_scan_kaydet|demir_pdf_kaydet|pdf_kaydet|foto_yukle)\.php$/', $s)
+               || str_ends_with($s, '_form.php');
+    $kayitAcik = !empty($_GET['edit']) || (str_ends_with($s, '_form.php') && (!empty($_GET['id']) || (int)($_POST['id'] ?? 0) > 0));
+    if ($kayitAcik) return 'duzenle';
+    if ($girisSayfa) return 'giris';
+    if ($post) return in_array($s, $raporSayfa, true) ? 'rapor' : 'yaz';
+    return 'oku';
+}
 /** İstenen sayfanın hangi modüle ait olduğu (PHP_SELF klasöründen). */
 function aktif_modul(): string
 {
@@ -237,20 +440,11 @@ function modul_erisimi(): ?array
     if (!$u) return $izin;
     if (($u['role'] ?? '') === 'admin') return $izin;   // admin her modülü görür
 
-    // require_auth() config.php yüklenmeden de çalışabiliyor; DB sabitleri yoksa önce onu al
-    if (!defined('DB_HOST') && file_exists(__DIR__ . '/../config.php')) require_once __DIR__ . '/../config.php';
+    // Yetki matrisi tanımlıysa modül listesi = matriste 'oku' olan modüller (tek doğru kaynak)
+    $m = yetki_matris();
+    if ($m !== null) { $izin = array_keys($m); return $izin; }
 
-    $ham = null;
-    if (function_exists('aktivite_pdo') && ($pdo = aktivite_pdo(null))) {
-        try {
-            $st = $pdo->prepare("SELECT modul_erisim FROM users WHERE id=?");
-            $st->execute([(int)($u['id'] ?? 0)]);
-            $ham = $st->fetchColumn();
-            $_SESSION['user']['modul_erisim'] = $ham;    // DB'ye ulaşılamazsa yedek
-        } catch (Throwable $e) { $ham = $u['modul_erisim'] ?? null; }
-    } else {
-        $ham = $u['modul_erisim'] ?? null;
-    }
+    $ham   = kullanici_yetki_satiri()['modul_erisim'];
     $liste = array_values(array_filter(array_map('trim', explode(',', (string)$ham))));
     $liste = array_values(array_intersect($liste, array_keys(MODULLER)));
     $izin  = $liste ?: null;                  // boşsa sınırsız
@@ -279,7 +473,7 @@ function ilk_modul_sayfasi(): string
     foreach ($gorunur as $k => $m) {
         if (!in_array($k, $izin, true)) continue;
         // Saha Takip'te onay kuyruğu yetkisi yoksa analiz sayfası açılır (mesajlar.php 403 verirdi)
-        if ($k === 'whatsapp' && function_exists('can_edit') && !can_edit()) return 'whatsapp/saha_analiz.php';
+        if ($k === 'whatsapp' && !(yetki_matris() !== null ? yetki_yazma('whatsapp') : (function_exists('can_edit') && can_edit()))) return 'whatsapp/saha_analiz.php';
         return $m['sayfa'];
     }
     return 'index.php';
@@ -301,19 +495,50 @@ function require_auth(array $roller = []): void
         header('Location: ' . $root . 'login.php?redirect=' . urlencode($current));
         exit;
     }
-    if (!empty($roller) && !in_array($_SESSION['user']['role'], $roller, true)) {
-        http_response_code(403);
-        include __DIR__ . '/403.php';
-        exit;
+    $sayfa  = basename($_SERVER['PHP_SELF'] ?? '');
+    $api    = strpos($_SERVER['PHP_SELF'] ?? '', '/api/') !== false;
+    $mod    = aktif_modul();
+    if ($api && str_starts_with($sayfa, 'demir_')) $mod = 'demir';   // kök api/demir_*.php demir modülünündür
+    $kok    = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/' . ($GLOBALS['rootPath'] ?? '');
+    $matris = yetki_matris();
+    $rol    = $_SESSION['user']['role'] ?? '';
+
+    // Yalnız admin'e açık sayfalar ve kurulum sayfaları her zaman rol bazlıdır (matris burayı açamaz)
+    $adminSayfa = ($roller === ['admin']) || str_starts_with($sayfa, 'kurulum');
+    if ($matris === null || $adminSayfa || $rol === 'admin') {
+        if (!empty($roller) && !in_array($rol, $roller, true)) {
+            http_response_code(403);
+            include __DIR__ . '/403.php';
+            exit;
+        }
     }
 
     // ── Modül erişimi (kullanıcı bazlı) ──────────────────────────────────────
-    $sayfa = basename($_SERVER['PHP_SELF'] ?? '');
-    $mod   = aktif_modul();
-    if (in_array($sayfa, MODUL_MUAF, true) || strpos($_SERVER['PHP_SELF'] ?? '', '/api/') !== false) return;
-    if (can_module($mod)) return;
+    if (in_array($sayfa, MODUL_MUAF, true)) return;
+    if ($api || can_module($mod)) {
+        // ── İşlem yetkisi (matrisli kullanıcı): sayfanın gerektirdiği işlem matriste var mı? ──
+        if ($matris !== null && $rol !== 'admin' && !$adminSayfa) {
+            $islem = sayfa_islemi();
+            $ok = $islem === 'yaz' ? yetki_yazma($mod) : yetki_var($islem, $mod);
+            if (!$ok) {
+                $adlar = ['oku' => 'okuma', 'giris' => 'veri girişi', 'duzenle' => 'değiştirme', 'onay' => 'onay',
+                          'rapor' => 'rapor', 'yaz' => 'veri girişi / değiştirme'];
+                if ($api || (($_SERVER['HTTP_ACCEPT'] ?? '') && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json') && !str_contains($_SERVER['HTTP_ACCEPT'], 'text/html'))) {
+                    http_response_code(403);
+                    if (!headers_sent()) header('Content-Type: application/json; charset=utf-8');
+                    echo json_encode(['ok' => false, 'error' => 'Bu işlem için yetkiniz yok (' . ($adlar[$islem] ?? $islem) . ').'], JSON_UNESCAPED_UNICODE);
+                    exit;
+                }
+                $GLOBALS['__403_mesaj'] = modul_ad($mod) . ' modülünde "' . ($adlar[$islem] ?? $islem) . '" yetkiniz yok.';
+                $GLOBALS['__403_kok']   = $kok;
+                http_response_code(403);
+                include __DIR__ . '/403.php';
+                exit;
+            }
+        }
+        return;
+    }
 
-    $kok = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/\\') . '/' . ($GLOBALS['rootPath'] ?? '');
     // Ana sayfaya düşen kullanıcı 403 duvarına toslamasın: izinli ilk modüle götür
     if ($mod === 'beton' && $sayfa === 'index.php') { header('Location: ' . $kok . ilk_modul_sayfasi()); exit; }
 
@@ -343,7 +568,27 @@ function has_role(string ...$roller): bool
     if (!$user) {
         return false;
     }
-    return in_array($user['role'], $roller, true);
+    $rol = $user['role'];
+    if ($rol === 'admin') return in_array('admin', $roller, true);
+    $m = yetki_matris();
+    if ($m === null) return in_array($rol, $roller, true);
+
+    // ── Matrisli kullanıcı: rol listesi bir YETKİ SEVİYESİ sorusudur ─────────────
+    // Sayfalar "has_role('admin','teknik_ofis_admin')" ile "değiştirme yetkisi var mı" diye sorar;
+    // listedeki EN ZAYIF klasik rolün ima ettiği işlem matriste aranır. Tek rol sorulursa
+    // (ör. has_role('depo') = depo kullanıcısına özel davranış) gerçek rol karşılaştırılır.
+    if (count($roller) === 1) return in_array($rol, $roller, true);
+    $sira = ['admin' => 5, 'teknik_ofis_admin' => 4, 'teknik_ofis' => 3, 'saha_sefi' => 2, 'depo' => 1];
+    $min  = 99;
+    foreach ($roller as $r) { if (isset($sira[$r])) $min = min($min, $sira[$r]); elseif ($r === $rol) return true; }
+    switch ($min) {
+        case 5:  return false;                                               // yalnız admin
+        case 4:  return yetki_var('duzenle');                                // yönetim / değiştirme
+        case 3:  return yetki_var('duzenle') || yetki_var('giris');          // teknik ofis = düzenleme
+        case 2:  return yetki_var('giris') || yetki_var('duzenle') || yetki_var('onay');
+        case 1:  return yetki_var('giris') || yetki_var('duzenle');
+        default: return in_array($rol, $roller, true);
+    }
 }
 
 // ── Yardımcı kısa fonksiyonlar ───────────────────────────────────────────────
@@ -360,6 +605,7 @@ function is_admin(): bool
  */
 function can_create_irsaliye(): bool
 {
+    if (yetki_matris() !== null && !is_admin()) return yetki_var('giris');
     return has_role('admin', 'teknik_ofis_admin', 'saha_sefi', 'depo');
 }
 
@@ -370,6 +616,7 @@ function can_create_irsaliye(): bool
  */
 function can_edit(): bool
 {
+    if (yetki_matris() !== null && !is_admin()) return yetki_var('giris') || yetki_var('duzenle');
     return has_role('admin', 'teknik_ofis_admin', 'teknik_ofis', 'saha_sefi');
 }
 
@@ -382,6 +629,12 @@ function can_edit(): bool
  */
 function can_edit_irsaliye(array $irsaliye): bool
 {
+    if (yetki_matris() !== null && !is_admin()) {
+        // Matrisli kullanıcı: değiştirme yetkisi → her durumda; yalnız giriş yetkisi → henüz onaylanmamışsa
+        if (yetki_var('duzenle')) return true;
+        if (yetki_var('giris'))   return ($irsaliye['durum'] ?? 'beklemede') === 'beklemede';
+        return false;
+    }
     if (has_role('admin', 'teknik_ofis_admin')) return true;
     if (has_role('teknik_ofis')) return in_array($irsaliye['durum'] ?? 'beklemede', ['beklemede','saha_onaylandi']);
     if (has_role('saha_sefi'))   return ($irsaliye['durum'] ?? 'beklemede') === 'beklemede';
@@ -394,6 +647,7 @@ function can_edit_irsaliye(array $irsaliye): bool
  */
 function can_approve_saha(): bool
 {
+    if (yetki_matris() !== null && !is_admin()) return yetki_var('onay');
     return has_role('admin', 'teknik_ofis_admin', 'saha_sefi');
 }
 
@@ -403,6 +657,7 @@ function can_approve_saha(): bool
  */
 function can_approve_teknik(): bool
 {
+    if (yetki_matris() !== null && !is_admin()) return yetki_var('onay');
     return has_role('admin', 'teknik_ofis_admin', 'teknik_ofis');
 }
 
@@ -412,7 +667,7 @@ function can_approve_teknik(): bool
  */
 function can_view_reports(): bool
 {
-    return has_role('admin', 'teknik_ofis_admin', 'teknik_ofis');
+    return yetki_var('rapor');
 }
 
 /**
@@ -421,6 +676,7 @@ function can_view_reports(): bool
  */
 function can_manage_definitions(): bool
 {
+    if (yetki_matris() !== null && !is_admin()) return yetki_var('duzenle');
     return has_role('admin', 'teknik_ofis_admin');
 }
 

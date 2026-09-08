@@ -14,7 +14,8 @@ require_auth();
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/_ortak.php';
 
-if (!can_edit()) { flash('error', 'Bu sayfa için yetkiniz yok.'); redirect('saha_analiz.php'); }
+// Onay kuyruğu = yazma işi: matrisli kullanıcıda giriş/değiştirme/onay yetkisi, eski düzende can_edit()
+if (yetki_matris() !== null ? !yetki_yazma('whatsapp') : !can_edit()) { flash('error', 'Bu sayfa için yetkiniz yok.'); redirect('saha_analiz.php'); }
 
 $pageTitle = 'Gelen Mesajlar — Saha Takip';
 mesaj_semasi_kur($pdo);

@@ -18,7 +18,7 @@ require_auth();
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/_ortak.php';
 
-if (!can_view_reports()) { flash('error', 'Bu sayfa için yetkiniz yok.'); redirect('../index.php'); }
+if (yetki_matris() === null && !can_view_reports()) { flash('error', 'Bu sayfa için yetkiniz yok.'); redirect('../index.php'); }
 
 $pageTitle = 'Araç Takibi — Saha Takip';
 saha_semasi_kur($pdo);

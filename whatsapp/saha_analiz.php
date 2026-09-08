@@ -14,7 +14,8 @@ require_auth();
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/_ortak.php';
 
-if (!can_view_reports()) { flash('error', 'Bu sayfa için yetkiniz yok.'); redirect('../index.php'); }
+// Matrisli kullanıcıda modül okuma yetkisi require_auth() ile denetlendi; eski düzende rapor yetkisi gerekir
+if (yetki_matris() === null && !can_view_reports()) { flash('error', 'Bu sayfa için yetkiniz yok.'); redirect('../index.php'); }
 
 $pageTitle = 'Saha Analizi — Şantiye Takip Sistemi';
 saha_semasi_kur($pdo);

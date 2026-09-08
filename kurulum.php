@@ -124,9 +124,11 @@ try {
             username VARCHAR(50) NOT NULL UNIQUE,
             password_hash VARCHAR(255) NOT NULL,
             full_name VARCHAR(150) NOT NULL DEFAULT '',
-            role ENUM('admin','teknik_ofis_admin','teknik_ofis','saha_sefi','depo') NOT NULL DEFAULT 'teknik_ofis',
+            role VARCHAR(40) NOT NULL DEFAULT 'teknik_ofis' COMMENT 'rol = etiket + yetki şablonu (ROLLER)',
             aktif TINYINT(1) NOT NULL DEFAULT 1,
             modul_erisim VARCHAR(255) NULL COMMENT 'izinli modüller (virgüllü); boş = tümü',
+            yetkiler TEXT NULL COMMENT 'modül × işlem yetki matrisi (JSON); NULL = rol bazlı',
+            unvan VARCHAR(80) NULL COMMENT 'görev / unvan',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
 
@@ -277,6 +279,8 @@ try {
 
     modul_erisim_semasi($pdo);   // users.modul_erisim (kullanıcı bazlı modül erişimi)
     $log[] = ['ok', 'users.modul_erisim kolonu eklendi / zaten mevcuttu'];
+    yetki_semasi($pdo);          // users.yetkiler + unvan, role VARCHAR (yetki matrisi)
+    $log[] = ['ok', 'users.yetkiler / unvan kolonları eklendi, role kolonu genişletildi (yetki matrisi)'];
 
     modul_ayar_semasi($pdo);     // modul_ayarlar (modül adı / gizleme / sıra — moduller.php)
     $log[] = ['ok', 'modul_ayarlar tablosu eklendi / zaten mevcuttu'];
