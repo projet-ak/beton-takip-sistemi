@@ -146,6 +146,16 @@ require_once __DIR__ . '/includes/header.php';
 .yharf { display:inline-block; min-width:1.15em; padding:0 .2em; border-radius:.3em; font-size:.66rem; font-weight:700; line-height:1.5;
          background: rgba(var(--ern-rgb), .12); color: var(--ern-dark); margin-left:1px; }
 .yharf.yok { background: transparent; color: var(--bt-text-muted); opacity:.35; text-decoration: line-through; }
+/* Modal: gövde kendi içinde kayar, başlık ve Kaydet düğmesi her zaman görünür kalır
+   (matris 8 satır + form alanları kısa ekranlarda footer'ı ekran dışına itiyordu) */
+/* ⚠ Başlık/gövde/alt bilgi <form> içinde olduğundan Bootstrap'in modal-dialog-scrollable'ı işlemez
+   (flex zinciri form'da kopar) — bu yüzden flex sütunu FORM'a uygulanır. */
+#modalKullanici .modal-content { max-height: calc(100vh - 3.5rem); }
+#modalKullanici .modal-content > form { display: flex; flex-direction: column; min-height: 0; max-height: calc(100vh - 3.5rem); }
+#modalKullanici .modal-body { overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+#modalKullanici .modal-header, #modalKullanici .modal-footer { flex: 0 0 auto; }
+@media (max-width: 767.98px) { #modalKullanici .modal-content, #modalKullanici .modal-content > form { max-height: 100vh; } }
+.ymatris thead th { position: sticky; top: 0; z-index: 1; background: var(--bt-surface, #f8f9fa); }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -251,7 +261,7 @@ require_once __DIR__ . '/includes/header.php';
 
 <!-- Modal: Yeni / Düzenle -->
 <div class="modal fade" id="modalKullanici" tabindex="-1" aria-labelledby="modalKullaniciLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-lg modal-fullscreen-md-down">
         <div class="modal-content">
             <form method="post" id="frmKullanici">
                 <input type="hidden" name="id" value="<?= $editUser ? (int)$editUser['id'] : 0 ?>">

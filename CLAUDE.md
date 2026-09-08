@@ -451,6 +451,9 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   Listede kullanıcı başına modül rozeti + O·G·D·N·R harfleri (yetkisiz harf üstü çizili), unvan, "siz" rozeti;
   matrisi olmayan kullanıcı **"Eski rol düzeni"** rozetiyle işaretlenir (üstte sayısı verilir) — düzenleme
   modalında matris rol şablonu + eski modül listesinden ÖNERİLİR, kaydedince devreye girer.
+  ⚠ Modal'da başlık/gövde/alt bilgi `<form>` içinde olduğundan Bootstrap `modal-dialog-scrollable` İŞLEMEZ (flex
+  zinciri form'da kopar, Kaydet düğmesi ekran dışına taşıyordu) — sayfa CSS'i flex sütununu FORM'a uygular
+  (`.modal-content > form`), gövde kendi içinde kayar, matris başlığı sticky; küçük ekranda `modal-fullscreen-md-down`.
 - **`moduller.php`** (admin, Araçlar → "Modüller (ad / gizle)") — **Modül Yönetimi**: her modülün
   **görünen adı** değiştirilir (boş = varsayılan), **gizlenir** (menülerde hiç görünmez, adresi elle
   yazılsa da 403 — yalnız admin girebilir; veri SİLİNMEZ) ve **sırası** verilir (küçük önce, 0 = doğal).
