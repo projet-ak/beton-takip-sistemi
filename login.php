@@ -291,11 +291,21 @@ body {
     text-transform:uppercase; color:#0D2E28; background:var(--ern-gold);
     padding:.05rem .4rem; border-radius:20px;
 }
-.feature-pill:nth-child(1) { animation-delay: .1s; }
-.feature-pill:nth-child(2) { animation-delay: .18s; }
-.feature-pill:nth-child(3) { animation-delay: .26s; }
-.feature-pill:nth-child(4) { animation-delay: .34s; }
-.feature-pill:nth-child(5) { animation-delay: .42s; }
+.feature-pill:nth-child(1) { animation-delay: .08s; }
+.feature-pill:nth-child(2) { animation-delay: .14s; }
+.feature-pill:nth-child(3) { animation-delay: .20s; }
+.feature-pill:nth-child(4) { animation-delay: .26s; }
+.feature-pill:nth-child(5) { animation-delay: .32s; }
+.feature-pill:nth-child(6) { animation-delay: .38s; }
+.feature-pill:nth-child(7) { animation-delay: .44s; }
+.feature-pill:nth-child(8) { animation-delay: .50s; }
+/* Yetki notu — kartların altında tek satır */
+.feature-note {
+    margin-top: .9rem; font-size: .72rem; color: rgba(255,255,255,.62); text-align: left;
+    line-height: 1.45; animation: slideInLeft .5s ease .58s backwards;
+}
+.feature-note i { color: var(--ern-teal, #00C9B1); font-size: .9rem; margin-right: .3rem; vertical-align: -1px; }
+.feature-note em { font-style: normal; color: rgba(255,255,255,.85); font-weight: 600; }
 @keyframes slideInLeft {
     from { opacity: 0; transform: translateX(-20px); }
     to   { opacity: 1; transform: none; }
@@ -327,6 +337,17 @@ body {
 }
 .feature-pill-text { font-size: .74rem; color: rgba(255,255,255,.7); font-weight: 500; line-height: 1.28; }
 .feature-pill-text strong { display: block; color: #fff; font-size: .82rem; margin-bottom: .05rem; }
+/* Kısa ekranlarda 8 kart sığsın: kartlar ve üst blok sıkışır */
+@media (max-height: 820px) {
+    .feature-pill { padding: .45rem .65rem; gap: .5rem; }
+    .feature-pill-text { font-size: .68rem; }
+    .feature-pill-text strong { font-size: .78rem; }
+}
+@media (max-height: 820px) {
+    .logo-lockup img { height: 56px; }
+    .brand-sub { margin-bottom: 1.4rem; }
+    .login-left { padding: 2rem 3rem; }
+}
 
 /* ── Sağ taraf — form ─── */
 .login-right {
@@ -566,54 +587,46 @@ body {
             Şantiye İş Takip <span>Sistemi</span>
         </div>
         <p class="brand-sub">
-            Sahadan ofise <strong style="color:rgba(255,255,255,.8)">tek platform</strong> — beton, demir, seramik, depo ve akaryakıt.<br>
-            QR/AI okuma, canlı stok &amp; zayiat, anlık raporlama ve rol tabanlı erişim.
+            Sahadan ofise <strong style="color:rgba(255,255,255,.8)">tek platform</strong> — beton, demir, seramik, depo, akaryakıt,
+            üretim arızaları (CRM), prekast ve saha takibi. QR/AI okuma, canlı stok &amp; zayiat, anlık raporlama.
         </p>
 
+        <?php
+        // Modül kartları sistemdeki modül listesinden üretilir (yöneticinin verdiği ad, gizleme ve sıra
+        // dahil — modul_listesi()); yeni modül eklendiğinde login kendiliğinden güncellenir.
+        $__pillAcik = [
+            'beton'     => 'QR + DataMatrix okuma, iki aşamalı onay, fatura mutabakatı, canlı zayiat',
+            'demir'     => 'Sipariş → sevkiyat → kantar → tutanak → taşeron bakiye zinciri',
+            'seramik'   => 'Giriş / çıkış, canlı stok, palet ve zayiat takibi',
+            'depo'      => 'Sarf, demirbaş &amp; el aletleri — hareket defteri, zimmet, mali değer',
+            'akaryakit' => 'Mazot stok, günlük hareket defteri, araç/makine bazında tüketim',
+            'crm'       => 'Üretim arızaları: günlük CRM raporu, açık / çözülen ve bekleme süresi',
+            'prekast'   => 'Cephe prekast montaj takibi, günlük ilerleme, blok icmali ve hakkediş',
+            'whatsapp'  => 'Saha grubundan araç giriş / çıkış ve evrak takibi',
+        ];
+        $__pillAd = [ // şeritteki kısa adlar; yönetici ad verdiyse o kullanılır
+            'beton' => 'Beton &amp; İrsaliye', 'demir' => 'İnşaat Demiri', 'seramik' => 'Seramik Ambarı',
+            'depo' => 'Depo Yönetimi', 'akaryakit' => 'Akaryakıt Takibi', 'crm' => 'CRM — Üretim Arızaları',
+            'prekast' => 'Prekast Takip', 'whatsapp' => 'Saha Takip',
+        ];
+        try { $__piller = function_exists('modul_listesi') ? modul_listesi() : []; } catch (Throwable $e) { $__piller = []; }
+        if (!$__piller) foreach (MODULLER as $k => [$ad, $ikon, $sayfa]) $__piller[$k] = ['ad' => $ad, 'ikon' => $ikon, 'varsayilan_ad' => $ad];
+        ?>
         <div class="feature-pills">
+            <?php foreach ($__piller as $__k => $__m):
+                $__ad = ($__m['ad'] === ($__m['varsayilan_ad'] ?? $__m['ad'])) ? ($__pillAd[$__k] ?? h($__m['ad'])) : h($__m['ad']); ?>
             <div class="feature-pill">
-                <div class="feature-pill-icon"><i class="bi bi-truck"></i></div>
+                <div class="feature-pill-icon"><i class="bi <?= h($__m['ikon']) ?>"></i></div>
                 <div class="feature-pill-text">
-                    <strong>Beton &amp; İrsaliye</strong>
-                    QR + KGS/THBB DataMatrix okuma, iki aşamalı onay, canlı zayiat
+                    <strong><?= $__ad ?></strong>
+                    <?= $__pillAcik[$__k] ?? 'Modül' ?>
                 </div>
             </div>
-            <div class="feature-pill">
-                <div class="feature-pill-icon"><i class="bi bi-rulers"></i></div>
-                <div class="feature-pill-text">
-                    <strong>İnşaat Demiri</strong>
-                    Sipariş → sevkiyat → kantar → tutanak → taşeron bakiye zinciri
-                </div>
-            </div>
-            <div class="feature-pill">
-                <div class="feature-pill-icon"><i class="bi bi-grid-1x2"></i></div>
-                <div class="feature-pill-text">
-                    <strong>Seramik Ambarı</strong>
-                    Giriş / çıkış, canlı stok ve palet takibi
-                </div>
-            </div>
-            <div class="feature-pill">
-                <div class="feature-pill-icon"><i class="bi bi-box-seam"></i></div>
-                <div class="feature-pill-text">
-                    <strong>Depo Yönetimi</strong>
-                    Sarf, demirbaş &amp; el aletleri — zimmet ve mali değer
-                </div>
-            </div>
-            <div class="feature-pill">
-                <div class="feature-pill-icon"><i class="bi bi-fuel-pump"></i></div>
-                <div class="feature-pill-text">
-                    <strong>Akaryakıt Takibi</strong>
-                    Mazot stok + araç/makine bazında aylık tüketim
-                </div>
-            </div>
-            <div class="feature-pill soon">
-                <div class="feature-pill-icon"><i class="bi bi-stars"></i></div>
-                <div class="feature-pill-text">
-                    <strong>Yeni Modül</strong>
-                    Mobil uygulama &amp; daha fazlası
-                    <span class="pill-soon-badge">Pek Yakında</span>
-                </div>
-            </div>
+            <?php endforeach; ?>
+        </div>
+        <div class="feature-note">
+            <i class="bi bi-shield-lock"></i>
+            Kullanıcı bazlı yetki: her modülde <em>okuma · veri girişi · değiştirme · onay · rapor</em> ayrı ayrı tanımlanır.
         </div>
     </div>
 
