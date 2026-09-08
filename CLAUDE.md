@@ -412,7 +412,10 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   QR/AI beton = GİB e-İrsaliye QR (JSON) + KGS/THBB DataMatrix (E1) + tesseract + AI.
 - **`site-kok/index.html`** — tanitim.php'nin **bağımsız statik kopyası**, `ernsaha.com.tr` KÖK dizini için
   (kullanıcı aaPanel'den elle yükler; deploy2 kapsamı dışında). PHP/DB yok: sayaçlar sabit, logo/giriş
-  bağlantıları `/beton/...` mutlak yollu. tanitim.php güncellenirse bu kopya da elle eşitlenmeli.
+  bağlantıları `/beton/...` mutlak yollu. tanitim.php güncellenince kopya scratchpad `site_kok_uret.php` ile
+  üretilir (PHP blokları sabit sayaç/yol/yıl-JS ile değiştirilir; kalan `<?` varsa hata verir) — elle eşitleme yapma.
+  2026-09-08: tanitim + kök sayfa 8 modül (CRM, Prekast eklendi; demir ikonu rulers) + dashed "Mobil Uygulama — Pek
+  Yakında" kartı (`.modul.yakinda`, altın rozet), sayaç 8, Kurumsal Güvence metni yetki matrisi + 6 DB.
 - **Tanım sayfaları** (`can_manage_definitions()`): beton_siniflari, katki_listesi, pompa_turleri,
   kivam_siniflari, parseller→bloklar→kotlar, imalat_gruplari→ana_is_kalemleri, firmalar, tedarikciler.
   **Parsel→Proje bağı**: `parseller.proje_id` (runtime ALTER + kurulum) — parsele proje (U030/U031…) atanır;
