@@ -36,11 +36,53 @@ const PK_ALAN = [
 /** Çizelge sayfasını bulur: başlık satırında BLOK + DAIRE geçen ilk sayfa. */
 function pk_sayfa(SimpleXLSX $x): ?int
 {
+    // İCMALLİ kitapta "İCMAL" (Blok / Kesim Yapılan Daire…) ve "HESAPLAMA" (Blok (Temiz) / Daire /
+    // Kesim Metrajı…) sayfaları da BLOK+DAİRE içerir; iş listesini ayıran şey HAKKEDİŞ sütunudur.
+    // Önce HAKKEDİŞ'li sayfa aranır (gizli olsa bile — kitapta Sayfa1 gizlenmiş durumda), yoksa eski kural.
+    $aday = null;
     foreach ($x->sheetNames() as $i => $n) {
         foreach (array_slice($x->rows((int)$i, 20), 0, 20) as $row) {
             $u = pk_norm(implode(' ', array_map('strval', $row)));
-            if (str_contains($u, 'BLOK') && str_contains($u, 'DAIRE')) return (int)$i;
+            if (!str_contains($u, 'BLOK') || !str_contains($u, 'DAIRE')) continue;
+            if (str_contains($u, 'HAKKEDIS')) return (int)$i;
+            if ($aday === null && !str_contains($u, 'ICMAL') && !str_contains($u, 'TEMIZ')) $aday = (int)$i;
         }
+    }
+    return $aday;
+}
+
+/**
+ * Kitaptaki "İCMAL" sayfasını okur (varsa): blok → [kesimDaire, kesimMt, silikonDaire, silikonMt, oran].
+ * Excel'in kendi hesabıdır; sistem icmaliyle KARŞILAŞTIRMAK için alınır, veri olarak yazılmaz.
+ */
+function pk_excel_icmal(SimpleXLSX $x): ?array
+{
+    foreach ($x->sheetNames() as $i => $n) {
+        if (!str_contains(pk_norm($n), 'ICMAL')) continue;
+        $rows = $x->rows((int)$i, 200);
+        $hr = -1; $h = [];
+        foreach ($rows as $ri => $row) {
+            $u = pk_norm(implode(' ', array_map('strval', $row)));
+            if (str_contains($u, 'BLOK') && str_contains($u, 'KESIM')) { $hr = $ri; break; }
+        }
+        if ($hr < 0) return null;
+        // Başlık → sütun (bir sütun tek alana): sıra önemli, "Silikon / Kesim" oranı en sona
+        $alan = ['kesimDaire'=>'KESIM YAPILAN', 'kesimMt'=>'KESIM (MT)', 'silikonDaire'=>'SILIKON YAPILAN',
+                 'silikonMt'=>'SILIKON (MT)', 'oran'=>'SILIKON / KESIM'];
+        foreach ($rows[$hr] as $ci => $c) {
+            $u = pk_norm((string)$c);
+            foreach ($alan as $k => $ara) if (!isset($h[$k]) && $u !== '' && str_contains($u, $ara)) { $h[$k] = $ci; break; }
+        }
+        if (!isset($h['kesimDaire'], $h['silikonDaire'])) return null;
+        $out = ['blok'=>[], 'toplam'=>null];
+        for ($ri = $hr + 1; $ri < count($rows); $ri++) {
+            $b = trim((string)($rows[$ri][0] ?? ''));
+            if ($b === '') continue;
+            $v = [];
+            foreach ($h as $k => $ci) $v[$k] = pk_sayi($rows[$ri][$ci] ?? '');
+            if (pk_norm($b) === 'TOPLAM') $out['toplam'] = $v; else $out['blok'][pk_norm($b)] = $v;
+        }
+        return $out;
     }
     return null;
 }
@@ -287,6 +329,30 @@ function pk_import(PDO $pdo, SimpleXLSX $x, array $opt = []): array
                                               'satirlar'=>$metrajsizSilikon];
     if ($silikonsuzMetraj) $s['kontrol'][] = ['tip'=>'bilgi', 'baslik'=>'Metraj var ama silikon işaretli değil',
                                               'mesaj'=>count($silikonsuzMetraj) . ' satır', 'satirlar'=>$silikonsuzMetraj];
+    // ——— Excel İCMAL sayfası ↔ sistem icmali (aynı mantık: benzersiz daire + ortalama metraj) ———
+    $xi = pk_excel_icmal($x);
+    if ($xi) {
+        $si2 = pk_icmal($pdo, $cizelge);
+        $fark = []; $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
+        foreach ($xi['blok'] as $b => $e) {
+            $g = $si2['blok'][$b] ?? null;
+            if (!$g) { $fark[] = "Blok $b Excel icmalinde var, çizelgede yok (kesim " . (int)$e['kesimDaire'] . ' daire)'; continue; }
+            if ((int)$e['kesimDaire'] !== $g['kesimDaire'])
+                $fark[] = "Blok $b kesim daire: Excel " . (int)$e['kesimDaire'] . ' / sistem ' . $g['kesimDaire'];
+            if ((int)$e['silikonDaire'] !== $g['silikonDaire'])
+                $fark[] = "Blok $b silikon daire: Excel " . (int)$e['silikonDaire'] . ' / sistem ' . $g['silikonDaire'];
+            if (isset($e['kesimMt']) && abs($e['kesimMt'] - $g['kesimMt']) > 0.05)
+                $fark[] = "Blok $b kesim mt: Excel " . $f2($e['kesimMt']) . ' / sistem ' . $f2($g['kesimMt']);
+        }
+        foreach ($si2['blok'] as $b => $g) if (!isset($xi['blok'][$b]))
+            $fark[] = "Blok $b çizelgede var, Excel icmalinde yok (kesim " . $g['kesimDaire'] . ' daire)';
+        $s['excelIcmal'] = $xi;
+        $s['kontrol'][] = ['tip'=>$fark ? 'uyari' : 'ok',
+            'baslik'=>'Excel İCMAL sayfası ↔ sistem icmali',
+            'mesaj'=>$fark ? count($fark) . ' farklılık — Excel\'in İCMAL/HESAPLAMA sayfası bayat olabilir (sayaç/metraj sütunları formül değil, elle yazılı); sistem icmali güncel iş satırlarından hesaplanır'
+                           : 'Blok bazında daire sayıları ve kesim metrajı Excel ile tutuyor',
+            'satirlar'=>$fark];
+    }
     if ($s['dusen']) $s['uyari'][] = $s['dusen'] . ' kayıt bu çizelgede var ama dosyada yok — silinmedi, "çizelgede yok" olarak işaretlendi.';
     // Hesap tutmalı: okunan = satır + atlanan
     $fark = $s['okunan'] - ($s['satir'] + count($s['atlanan']));

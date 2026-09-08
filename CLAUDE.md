@@ -197,17 +197,33 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   rozet — Excel esas) · **raporlar** (tarih aralığı **tamamlanma tarihine** uygulanır [dönem hakkedişi] +
   KPI + aylık tamamlanan iş & hakkediş + silikon bekleyenlerin yaş dağılımı + blok/çizelge/iş tipi/daire
   kırılımları [iş·kesim·tamamlanan·%·metraj·hakkediş] + günlük ilerleme; **ERN_RAPOR** ile Excel'e Aktar +
-  PDF İndir + Yazdır) · **import** (çoklu dosya, dosya adındaki tarih rapor tarihi sayılır; **her satırın
+  PDF İndir + Yazdır) · **icmal** ("Blok İcmali": Excel'in İCMAL sayfasının mantığı CANLI uygulanır —
+  `pk_icmal()`: **kesim/silikon yapılan daire benzersiz blok|daire üzerinden sayılır** (aynı dairedeki ikinci iş
+  ayrı daire değildir; HESAPLAMA'daki ikinci B|61 satırının sayacı 0'dır), kesim/silikon (mt) her satırdan toplanır,
+  **metrajı ölçülmemiş satırlara ölçülenlerin ortalaması yazılır** (Excel I2 = H2/ölçülen adet) ve bu tahmini
+  kısım tabloda "~x tahmini" alt satırı + rozetle ayrı gösterilir [hakkediş yalnız ölçülen metrajdan doğar];
+  blok bazında Kesim Yapılan Daire / Kesim (mt) / Silikon Yapılan Daire / Silikon (mt) / Silikon÷Kesim ilerleme
+  çubuğu + TOPLAM + 6 KPI + Chart.js bar; çizelge seçmeli; ERN_RAPOR Excel/PDF/Yazdır) · **import** (çoklu dosya, dosya adındaki tarih rapor tarihi sayılır; **her satırın
   hesabı verilir** [okunan = yeni + güncellenen + değişmeyen + atlanan], boş şablon satırları [blok+daire boş,
   yalnız No + birim fiyat dolu] tek sayaçta toplanır, **veri doğrulama** [hakkediş = metraj × birim fiyat
   çapraz kontrolü, birim fiyatı boş satır, silikon yapıldı ama metraj yok, metraj var ama silikon işaretsiz]
-  + "durumu ilerleyen işler" listesi) · kurulum_prekast. Çekirdek: `prekast/_ortak.php` (pk_norm, pk_sayi,
+  + "durumu ilerleyen işler" listesi + **"Excel İCMAL sayfası ↔ sistem icmali" kontrolü**: dosyada İCMAL
+  sayfası varsa `pk_excel_icmal()` ile okunur, blok bazında kesim/silikon daire + kesim mt sistem icmaliyle
+  karşılaştırılır, farklar satır satır listelenir) · kurulum_prekast. Çekirdek: `prekast/_ortak.php` (pk_norm, pk_sayi,
   pk_yapildi, pk_anahtar, PK_DURUM/pk_durum, pk_semasi_kur, pk_ozet, pk_son_import, pk_gunluk_seri, pk_filtre,
   pk_secenekler) + `prekast/_import.php` (PK_ALAN başlık haritası — **"Daire" EN SONA**, yoksa "Kesim/Silikon
-  Yapılan Daire" sütunlarını kapar; pk_sayfa/pk_baslik_satiri/pk_harita/pk_cizelge_adi/pk_is_tipi/
-  pk_dosya_tarihi/pk_import). İlk dosya (KARTAL BATIYAKASI C ve B PARSEL **T PROFİL** MONTAJ İŞİ) ile
+  Yapılan Daire" sütunlarını kapar; **pk_sayfa** [başlığında HAKKEDİŞ geçen sayfa tercih edilir — İCMAL ve
+  HESAPLAMA sayfaları da BLOK+DAİRE başlığı taşıdığından ilk eşleşen sayfa alınırsa yanlış sayfa okunur; iş
+  sayfası "Sayfa1 (2)" Excel'de GİZLİDİR, SimpleXLSX yine okur]/pk_baslik_satiri/pk_harita/pk_cizelge_adi/
+  pk_is_tipi/pk_dosya_tarihi/**pk_excel_icmal**/pk_import). İlk dosya (KARTAL BATIYAKASI C ve B PARSEL **T PROFİL** MONTAJ İŞİ) ile
   doğrulandı: 82 iş satırı, 5 blok (F42/C17/D11/B10/H2), kesim 82, silikon 47, metraj **250,50** ve hakkediş
   **473.445,00 TL** Excel'le birebir; birim fiyat sabit 1890, metraj×fiyat sağlamasında 0 sapma.
+  ⚠ **İCMALLİ kitap (2026-09-08)**: iş sayfası 64 satır (kesim 64, silikon 24, metraj 125,95, hakkediş
+  238.045,50 birebir); İCMAL sayfası HESAPLAMA üzerinden SUMIFS ile hesaplanır ama HESAPLAMA'nın **sayaç/metraj
+  sütunları (D–G) formül değil elle yazılıdır ve BAYATTIR** (35 artık satır F|6…F|63, Silikon(mt)=Kesim(mt)
+  kopyası 416,34; Excel İCMAL B9/C20/D18/F45/H5 derken güncel iş satırları B8/C17/D8/F26/H1 verir). Bu yüzden
+  sistem icmali Excel'in İCMAL hücrelerini KOPYALAMAZ, aynı mantığı güncel satırlara uygular; import raporunda
+  fark uyarı olarak listelenir (14 farklılık). Satır 65'te blok "D " sonda boşluklu — pk_al trim eder.
 - Geliştirici: **Tayyar Akbulut**. Sürüm: v3.0. Canlı: `https://ernsaha.com.tr/beton/` (eski: takbulut.com/beton/).
 
 > **⭐ TEMEL İLKE — Excel şablonu "kutsal kitap" (tek doğru kaynak).** Sistem, ilgili Excel

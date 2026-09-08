@@ -260,3 +260,67 @@ function pk_secenekler(PDO $pdo, string $kolon): array
         : "SELECT DISTINCT $kolon v FROM prekast_isler WHERE $kolon IS NOT NULL AND $kolon <> '' ORDER BY $kolon";
     return $pdo->query($sql)->fetchAll(PDO::FETCH_COLUMN);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   BLOK BAZINDA İCMAL  (icmal.php + import mutabakatı)
+   --------------------------------------------------------------------------
+   Kaynak dosyanın "İCMAL" sayfası "HESAPLAMA" sayfasından SUMIFS ile beslenir;
+   HESAPLAMA'nın sayaç/metraj sütunları (D–G) ise FORMÜL DEĞİL elle yazılmış
+   değerlerdir ve eski listeden kalan satırlar taşır — bu yüzden Excel'in icmali
+   bayat kalabiliyor. Sistem icmali her zaman güncel iş satırlarından CANLI
+   hesaplar; içe aktarmada Excel'in icmaliyle karşılaştırıp farkı raporlar.
+
+   Excel'in mantığı (aynen uygulanır):
+     • Daire sayıları BENZERSİZ blok|daire üzerinden (B/61 iki satır → 1 daire)
+     • Metraj ölçülmemiş satırlara ÖLÇÜLENLERİN ORTALAMASI yazılır (HESAPLAMA I2 =
+       ölçülen toplam / ölçülen adet). Sistem bunu "tahmini" olarak AYRI gösterir.
+     • Metraj toplamları her satırı sayar (her satır ayrı bir cephe işidir).
+   ⚠ Excel'de Silikon (mt) = Kesim (mt) çıkar (G sütunu F'nin kopyası) — sistemde
+     silikon metrajı yalnız silikonu yapılmış satırlardan toplanır (amaçlanan bu).
+   ══════════════════════════════════════════════════════════════════════════ */
+function pk_icmal(PDO $pdo, string $cizelge = ''): array
+{
+    pk_semasi_kur($pdo);
+    $w = ' WHERE dosyada = 1' . ($cizelge !== '' ? ' AND cizelge = ?' : '');
+    $st = $pdo->prepare("SELECT blok, daire, tekrar, kesim, silikon, metraj FROM prekast_isler $w ORDER BY blok, daire_sira, tekrar");
+    $st->execute($cizelge !== '' ? [$cizelge] : []);
+    $satirlar = $st->fetchAll();
+
+    // Ortalama metraj: ölçülen (metraj > 0) satırların ortalaması — Excel HESAPLAMA!I2
+    $olcToplam = 0.0; $olcAdet = 0;
+    foreach ($satirlar as $r) if ((float)$r['metraj'] > 0) { $olcToplam += (float)$r['metraj']; $olcAdet++; }
+    $ort = $olcAdet ? $olcToplam / $olcAdet : 0.0;
+
+    $blok = [];
+    $bos = fn() => ['kesimDaire'=>0, 'silikonDaire'=>0, 'kesimMt'=>0.0, 'kesimTahmini'=>0.0,
+                    'silikonMt'=>0.0, 'silikonTahmini'=>0.0, 'satir'=>0, 'tahminiSatir'=>0];
+    $daireGoruldu = [];   // blok|daire → kesim/silikon sayıldı mı
+    foreach ($satirlar as $r) {
+        $b = pk_norm((string)$r['blok']);
+        if ($b === '') continue;
+        $blok[$b] = $blok[$b] ?? $bos();
+        $g = &$blok[$b];
+        $g['satir']++;
+        $anahtar = $b . '|' . pk_norm((string)$r['daire']);
+        $olculen = (float)$r['metraj'] > 0;
+        $m = $olculen ? (float)$r['metraj'] : $ort;
+        if (!$olculen && ($r['kesim'] || $r['silikon'])) $g['tahminiSatir']++;
+        if ($r['kesim']) {
+            if (empty($daireGoruldu[$anahtar]['k'])) { $g['kesimDaire']++; $daireGoruldu[$anahtar]['k'] = true; }
+            $g['kesimMt'] += $m; if (!$olculen) $g['kesimTahmini'] += $m;
+        }
+        if ($r['silikon']) {
+            if (empty($daireGoruldu[$anahtar]['s'])) { $g['silikonDaire']++; $daireGoruldu[$anahtar]['s'] = true; }
+            $g['silikonMt'] += $m; if (!$olculen) $g['silikonTahmini'] += $m;
+        }
+        unset($g);
+    }
+    ksort($blok);
+    $toplam = $bos();
+    foreach ($blok as $b => $g) {
+        $blok[$b]['oran'] = $g['kesimDaire'] ? $g['silikonDaire'] / $g['kesimDaire'] : 0.0;
+        foreach ($toplam as $k => $v) $toplam[$k] += $g[$k];
+    }
+    $toplam['oran'] = $toplam['kesimDaire'] ? $toplam['silikonDaire'] / $toplam['kesimDaire'] : 0.0;
+    return ['blok'=>$blok, 'toplam'=>$toplam, 'ortMetraj'=>$ort, 'olculenAdet'=>$olcAdet, 'olculenToplam'=>$olcToplam];
+}

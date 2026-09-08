@@ -73,6 +73,7 @@ require_once __DIR__ . '/../includes/header.php';
             </select>
         </form>
         <?php endif; ?>
+        <a href="icmal.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-table me-1"></i>Blok İcmali</a>
         <a href="isler.php?durum=kesim" class="btn btn-outline-warning btn-sm"><i class="bi bi-hourglass-split me-1"></i>Silikon Bekleyen</a>
         <a href="raporlar.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-bar-chart-line me-1"></i>Raporlar</a>
         <?php if (has_role('admin','teknik_ofis_admin')): ?>

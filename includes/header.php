@@ -494,6 +494,9 @@ if ($__user) {
         <a class="sidebar-nav-link" href="<?= $__rootPath ?>prekast/isler.php?durum=kesim" data-label="Bekleyen"><i class="bi bi-hourglass-split"></i><span>Silikon Bekleyen</span></a>
       </li>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('icmal.php') ?>" href="<?= $__rootPath ?>prekast/icmal.php" data-label="İcmal"><i class="bi bi-table"></i><span>Blok İcmali</span></a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('raporlar.php') ?>" href="<?= $__rootPath ?>prekast/raporlar.php" data-label="Raporlar"><i class="bi bi-bar-chart-line"></i><span>Raporlar &amp; Hakkediş</span></a>
       </li>
       <?php if(has_role('admin','teknik_ofis_admin')): ?>
