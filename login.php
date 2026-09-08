@@ -286,8 +286,9 @@ body {
 /* "Pek yakında" kutusu */
 .feature-pill.soon { border-style: dashed; border-color: rgba(255,255,255,.22); background: rgba(255,255,255,.035); }
 .feature-pill.soon .feature-pill-icon { background: rgba(201,168,76,.16); color: var(--ern-gold); }
+.feature-pill.soon { grid-column: 1 / -1; animation-delay: .56s; }
 .pill-soon-badge {
-    display:inline-block; margin-top:.15rem; font-size:.6rem; font-weight:700; letter-spacing:.08em;
+    display:inline-block; margin-left:.4rem; vertical-align: 1px; font-size:.6rem; font-weight:700; letter-spacing:.08em;
     text-transform:uppercase; color:#0D2E28; background:var(--ern-gold);
     padding:.05rem .4rem; border-radius:20px;
 }
@@ -344,9 +345,11 @@ body {
     .feature-pill-text strong { font-size: .78rem; }
 }
 @media (max-height: 820px) {
-    .logo-lockup img { height: 56px; }
-    .brand-sub { margin-bottom: 1.4rem; }
-    .login-left { padding: 2rem 3rem; }
+    .logo-lockup img { height: 52px; }
+    .brand-sub { margin-bottom: 1.1rem; font-size: .9rem; }
+    .brand-tagline { margin-bottom: .6rem; }
+    .feature-pills { gap: .45rem; }
+    .login-left { padding: 1.5rem 3rem; }
 }
 
 /* ── Sağ taraf — form ─── */
@@ -609,7 +612,8 @@ body {
             'depo' => 'Depo Yönetimi', 'akaryakit' => 'Akaryakıt Takibi', 'crm' => 'CRM — Üretim Arızaları',
             'prekast' => 'Prekast Takip', 'whatsapp' => 'Saha Takip',
         ];
-        try { $__piller = function_exists('modul_listesi') ? modul_listesi() : []; } catch (Throwable $e) { $__piller = []; }
+        // Tanıtım amaçlı: yöneticinin GİZLEDİĞİ modüller de listelenir (gizleme yalnız uygulama içi menüleri kapatır)
+        try { $__piller = function_exists('modul_listesi') ? modul_listesi(true) : []; } catch (Throwable $e) { $__piller = []; }
         if (!$__piller) foreach (MODULLER as $k => [$ad, $ikon, $sayfa]) $__piller[$k] = ['ad' => $ad, 'ikon' => $ikon, 'varsayilan_ad' => $ad];
         ?>
         <div class="feature-pills">
@@ -623,6 +627,13 @@ body {
                 </div>
             </div>
             <?php endforeach; ?>
+            <div class="feature-pill soon">
+                <div class="feature-pill-icon"><i class="bi bi-phone"></i></div>
+                <div class="feature-pill-text">
+                    <strong>Mobil Uygulama <span class="pill-soon-badge">Pek Yakında</span></strong>
+                    iOS &amp; Android — sahada QR tarama, bildirimler ve tüm modüller cebinizde
+                </div>
+            </div>
         </div>
         <div class="feature-note">
             <i class="bi bi-shield-lock"></i>
