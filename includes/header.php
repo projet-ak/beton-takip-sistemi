@@ -526,7 +526,10 @@ if ($__user) {
       </li>
       <?php endif; ?>
       <li class="sidebar-nav-item">
-        <a class="sidebar-nav-link" href="<?= $__rootPath ?>it/cihazlar.php?durum=aktif" data-label="Zimmetler"><i class="bi bi-person-check"></i><span>Zimmetli Cihazlar</span></a>
+        <a class="sidebar-nav-link <?= __isActive('personel.php').__isActive('personel_detay.php').__isActive('personel_form.php') ?>" href="<?= $__rootPath ?>it/personel.php" data-label="Personel"><i class="bi bi-people"></i><span>Personel &amp; Zimmetler</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('lokasyonlar.php') ?>" href="<?= $__rootPath ?>it/lokasyonlar.php" data-label="Lokasyonlar"><i class="bi bi-diagram-3"></i><span>Lokasyonlar &amp; Projeler</span></a>
       </li>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link" href="<?= $__rootPath ?>it/cihazlar.php?durum=arizali" data-label="Arızalı"><i class="bi bi-wrench"></i><span>Serviste / Arızalı</span></a>

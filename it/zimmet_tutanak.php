@@ -16,11 +16,22 @@ it_semasi_kur($pdoIt);
 
 $id   = isset($_GET['id']) && ctype_digit($_GET['id']) ? (int)$_GET['id'] : 0;
 $kisi = trim((string)($_GET['kisi'] ?? ''));
-if ($id) {
+$pid  = (int)($_GET['personel_id'] ?? 0);
+$per  = null;
+if ($pid) {
+    $per = it_personel_bul($pdoIt, $pid);
+    if (!$per) die('Personel bulunamadı.');
+    $liste = it_personel_cihazlari($pdoIt, $pid);
+    if (!$liste) die('Bu personele zimmetli cihaz yok.');
+    $kisi = it_personel_ad($per);
+    $no = 'ZMT-P' . str_pad((string)$pid, 4, '0', STR_PAD_LEFT) . '-' . date('Ymd');
+    $geri = 'personel_detay.php?id=' . $pid;
+} elseif ($id) {
     $st = $pdoIt->prepare("SELECT * FROM it_cihazlar WHERE id=?"); $st->execute([$id]);
     $c = $st->fetch();
     if (!$c) die('Cihaz bulunamadı.');
     $kisi = (string)$c['zimmetli'];
+    $per  = it_personel_bul($pdoIt, (int)($c['personel_id'] ?? 0));
     $liste = [$c];
     $no = 'ZMT-' . $c['envanter_no'];
     $geri = 'cihaz_detay.php?id=' . $id;
@@ -33,8 +44,8 @@ if ($id) {
 } else { die('Cihaz ya da kişi belirtilmedi.'); }
 
 $ilk = $liste[0];
-$departman = $ilk['departman'] ?: '';
-$lokasyon  = $ilk['lokasyon'] ?: '';
+$departman = $per['birim'] ?? ($ilk['departman'] ?: '');
+$lokasyon  = $per && $per['lokasyon_id'] ? it_lokasyon_yol($pdoIt, (int)$per['lokasyon_id']) : ($ilk['lokasyon_id'] ? it_lokasyon_yol($pdoIt, (int)$ilk['lokasyon_id']) : ($ilk['lokasyon'] ?: ''));
 $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
 $toplam = array_sum(array_map(fn($r) => (float)($r['fiyat'] ?? 0), $liste));
 $teslimEden = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ?? '';
@@ -93,10 +104,13 @@ $teslimEden = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ??
   <div class="doc-no">Tutanak No: <?= h($no) ?></div>
 
   <table class="info">
-    <tr><td class="k">Zimmet Alan</td><td><strong><?= h($kisi ?: '—') ?></strong></td>
-        <td class="k">Departman</td><td><?= h($departman ?: '—') ?></td></tr>
-    <tr><td class="k">Lokasyon</td><td><?= h($lokasyon ?: '—') ?></td>
+    <tr><td class="k">Zimmet Alan</td><td><strong><?= h($kisi ?: '—') ?></strong><?= $per && $per['unvan'] ? ' — ' . h($per['unvan']) : '' ?></td>
+        <td class="k">Sicil No</td><td><?= h($per['sicil_no'] ?? '') ?: '—' ?></td></tr>
+    <tr><td class="k">Birim / Departman</td><td><?= h($departman ?: '—') ?></td>
+        <td class="k">Telefon</td><td><?= h($per['telefon'] ?? '') ?: '—' ?></td></tr>
+    <tr><td class="k">Lokasyon / Proje</td><td><?= h($lokasyon ?: '—') ?></td>
         <td class="k">Zimmet Tarihi</td><td><?= $ilk['zimmet_tarihi'] ? format_date($ilk['zimmet_tarihi']) : date('d.m.Y') ?></td></tr>
+    <?php if ($per && $per['ise_giris']): ?><tr><td class="k">İşe Giriş</td><td><?= format_date($per['ise_giris']) ?></td><td class="k">Cihaz adedi</td><td><?= count($liste) ?></td></tr><?php endif; ?>
   </table>
 
   <table class="items">

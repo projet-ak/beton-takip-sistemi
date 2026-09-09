@@ -33,18 +33,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $tur = $_POST['tur'] ?? '';
         switch ($tur) {
             case 'zimmet':
-                if (!$kisi) { flash('error', 'Zimmet için kişi adı gerekli.'); break; }
+                $pid = (int)($_POST['personel_id'] ?? 0);
+                $pp  = it_personel_bul($pdoIt, $pid);
+                if (!$pp) { flash('error', 'Zimmet için personel seçin (listede yoksa önce personel kaydı açın).'); break; }
+                if (!it_personel_aktif($pp)) { flash('error', 'İşten ayrılmış personele zimmet verilemez.'); break; }
+                $kisi = it_personel_ad($pp);
                 $dep = mb_substr(trim((string)($_POST['departman'] ?? '')), 0, 80) ?: null;
                 $lok = mb_substr(trim((string)($_POST['lokasyon'] ?? '')), 0, 120) ?: null;
                 if ($c['zimmetli'] && $c['zimmetli'] !== $kisi)
                     it_hareket_ekle($pdoIt, $id, 'iade', $c['zimmetli'], 'Zimmet devri: yeni zimmetli ' . $kisi, $tarih);
-                $pdoIt->prepare("UPDATE it_cihazlar SET zimmetli=?, departman=COALESCE(?,departman), lokasyon=COALESCE(?,lokasyon), zimmet_tarihi=?, durum='aktif' WHERE id=?")
-                      ->execute([$kisi, $dep, $lok, $tarih, $id]);
+                $lokId = (int)($_POST['lokasyon_id'] ?? 0) ?: ((int)($pp['lokasyon_id'] ?? 0) ?: null);
+                $lokYol = $lokId ? it_lokasyon_yol($pdoIt, $lokId) : $lok;
+                $pdoIt->prepare("UPDATE it_cihazlar SET personel_id=?, zimmetli=?, departman=COALESCE(?,departman), lokasyon_id=?, lokasyon=COALESCE(?,lokasyon), zimmet_tarihi=?, durum='aktif' WHERE id=?")
+                      ->execute([$pid, $kisi, $dep ?: ($pp['birim'] ?: null), $lokId ?: null, $lokYol ?: null, $tarih, $id]);
                 it_hareket_ekle($pdoIt, $id, 'zimmet', $kisi, $acik ?: ('Zimmet verildi' . ($dep ? ' (' . $dep . ')' : '')), $tarih);
                 flash('success', $kisi . ' adına zimmetlendi. Tutanağı yazdırıp imzalatabilirsiniz.');
                 break;
             case 'iade':
-                $pdoIt->prepare("UPDATE it_cihazlar SET zimmetli=NULL, zimmet_tarihi=NULL, durum=IF(durum='aktif','depoda',durum) WHERE id=?")->execute([$id]);
+                $pdoIt->prepare("UPDATE it_cihazlar SET personel_id=NULL, zimmetli=NULL, zimmet_tarihi=NULL, durum=IF(durum='aktif','depoda',durum) WHERE id=?")->execute([$id]);
                 it_hareket_ekle($pdoIt, $id, 'iade', $c['zimmetli'], $acik ?: 'Zimmet iade alındı, depoya girdi', $tarih);
                 flash('success', 'Zimmet iade alındı; cihaz depoda.');
                 break;
@@ -64,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash('success', 'Arıza kaydı eklendi.');
                 break;
             case 'hurda':
-                $pdoIt->prepare("UPDATE it_cihazlar SET durum='hurda', zimmetli=NULL, zimmet_tarihi=NULL WHERE id=?")->execute([$id]);
+                $pdoIt->prepare("UPDATE it_cihazlar SET durum='hurda', personel_id=NULL, zimmetli=NULL, zimmet_tarihi=NULL WHERE id=?")->execute([$id]);
                 it_hareket_ekle($pdoIt, $id, 'hurda', $kisi, $acik ?: 'Hurdaya ayrıldı', $tarih);
                 flash('success', 'Cihaz hurdaya ayrıldı (kayıt silinmez, listede gizlenir).');
                 break;
@@ -102,7 +108,10 @@ $gk = it_garanti_kalan($c['garanti_bitis']);
 
 // Aynı kişinin diğer cihazları (zimmet tutanağında bir arada çıkar)
 $digerleri = [];
-if ($c['zimmetli']) {
+if ($c['personel_id']) {
+    $q = $pdoIt->prepare("SELECT id, envanter_no, ad, kategori, durum FROM it_cihazlar WHERE personel_id=? AND id<>? AND durum<>'hurda' ORDER BY envanter_no");
+    $q->execute([(int)$c['personel_id'], $id]);
+} elseif ($c['zimmetli']) {
     $q = $pdoIt->prepare("SELECT id, envanter_no, ad, kategori, durum FROM it_cihazlar WHERE zimmetli=? AND id<>? AND durum<>'hurda' ORDER BY envanter_no");
     $q->execute([$c['zimmetli'], $id]);
     $digerleri = $q->fetchAll();
@@ -138,9 +147,9 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
             <?= $bilgi('Kategori', it_kategoriAd($c['kategori'])) ?>
             <?= $bilgi('Marka / Model', trim(($c['marka'] ?? '') . ' ' . ($c['model'] ?? ''))) ?>
             <?= $bilgi('Seri No', $c['seri_no'], true) ?>
-            <?= $bilgi('Zimmetli', $c['zimmetli']) ?>
+            <div class="col-sm-6 col-lg-4"><div class="small text-muted">Zimmetli</div><div class="fw-semibold"><?= $c['personel_id'] ? '<a href="personel_detay.php?id=' . (int)$c['personel_id'] . '">' . h($c['zimmetli']) . '</a>' : h($c['zimmetli'] ?: '—') ?></div></div>
             <?= $bilgi('Departman', $c['departman']) ?>
-            <?= $bilgi('Lokasyon', $c['lokasyon']) ?>
+            <?= $bilgi('Lokasyon / Proje', $c['lokasyon_id'] ? it_lokasyon_yol($pdoIt, (int)$c['lokasyon_id']) : $c['lokasyon']) ?>
             <?= $bilgi('Zimmet Tarihi', $c['zimmet_tarihi'] ? format_date($c['zimmet_tarihi']) : null) ?>
             <?= $bilgi('Alış Tarihi', $c['alis_tarihi'] ? format_date($c['alis_tarihi']) : null) ?>
             <?= $bilgi('Garanti Bitiş', $c['garanti_bitis'] ? format_date($c['garanti_bitis']) . ($gk !== null ? ($gk < 0 ? ' (bitti)' : ' (' . $gk . ' gün)') : '') : null) ?>
@@ -200,7 +209,7 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
     <?php if ($digerleri): ?>
     <div class="card border-0 shadow-sm">
       <div class="card-header bg-white small"><i class="bi bi-person me-1"></i><strong><?= h($c['zimmetli']) ?></strong> üzerindeki diğer cihazlar <span class="badge bg-secondary ms-1"><?= count($digerleri) ?></span>
-        <a href="zimmet_tutanak.php?kisi=<?= urlencode($c['zimmetli']) ?>" target="_blank" class="ms-2"><i class="bi bi-file-earmark-text"></i> Kişi bazlı toplu zimmet tutanağı</a></div>
+        <a href="<?= $c['personel_id'] ? 'zimmet_tutanak.php?personel_id=' . (int)$c['personel_id'] : 'zimmet_tutanak.php?kisi=' . urlencode($c['zimmetli']) ?>" target="_blank" class="ms-2"><i class="bi bi-file-earmark-text"></i> Kişi bazlı toplu zimmet tutanağı</a></div>
       <div class="table-responsive"><table class="table table-sm table-hover mb-0" style="font-size:.85rem">
         <tbody><?php foreach ($digerleri as $d): ?>
           <tr><td class="font-monospace"><a href="cihaz_detay.php?id=<?= (int)$d['id'] ?>"><?= h($d['envanter_no']) ?></a></td><td><?= h($d['ad']) ?></td><td><?= h(it_kategoriAd($d['kategori'])) ?></td><td><?= it_durumBadge($d['durum']) ?></td></tr>
@@ -228,11 +237,12 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
               <option value="not">Not ekle</option>
             </select>
           </div>
-          <div class="mb-2 kisi"><input name="kisi" list="dl_kisi" class="form-control form-control-sm" placeholder="Kişi / servis firması" value=""></div>
-          <datalist id="dl_kisi"><?php foreach (it_secenekler($pdoIt, 'zimmetli') as $x): ?><option value="<?= h($x) ?>"><?php endforeach; ?></datalist>
+          <div class="mb-2 zimmet-ek"><select name="personel_id" id="personel_id" class="form-select form-select-sm"><?= it_personel_options($pdoIt, 0) ?></select>
+            <div class="form-text">Listede yoksa <a href="personel_form.php" target="_blank">personel ekleyin</a>.</div></div>
+          <div class="mb-2 kisi"><input name="kisi" class="form-control form-control-sm" placeholder="Servis firması / kişi" value=""></div>
           <div class="row g-2 mb-2 zimmet-ek">
-            <div class="col-6"><input name="departman" class="form-control form-control-sm" placeholder="Departman" value="<?= h($c['departman'] ?? '') ?>"></div>
-            <div class="col-6"><input name="lokasyon" class="form-control form-control-sm" placeholder="Lokasyon" value="<?= h($c['lokasyon'] ?? '') ?>"></div>
+            <div class="col-6"><input name="departman" id="departman" class="form-control form-control-sm" placeholder="Departman (boş = kişinin birimi)" value=""></div>
+            <div class="col-6"><select name="lokasyon_id" id="lokasyon_id" class="form-select form-select-sm"><option value="">Lokasyon: kişininki</option><?= it_lokasyon_options($pdoIt, 0, false) ?></select></div>
           </div>
           <div class="mb-2"><input type="date" name="tarih" class="form-control form-control-sm" value="<?= date('Y-m-d') ?>"></div>
           <div class="mb-2"><textarea name="aciklama" rows="2" class="form-control form-control-sm" placeholder="Açıklama"></textarea></div>
@@ -284,9 +294,10 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
     function uygula() {
         var z = t.value === 'zimmet';
         document.querySelectorAll('.zimmet-ek').forEach(function (e) { e.classList.toggle('d-none', !z); });
+        document.querySelector('.kisi').classList.toggle('d-none', z);
         var k = document.querySelector('.kisi input');
-        k.placeholder = z ? 'Zimmet alan kişi (Ad Soyad)' : (t.value === 'servis' ? 'Servis firması' : 'Kişi / firma (isteğe bağlı)');
-        k.required = z;
+        k.placeholder = t.value === 'servis' ? 'Servis firması' : 'Kişi / firma (isteğe bağlı)';
+        document.getElementById('personel_id').required = z;
     }
     t.addEventListener('change', uygula); uygula();
 })();

@@ -15,6 +15,13 @@ it_semasi_kur($pdoIt);
 $pageTitle = 'Cihazlar — IT Envanter';
 
 [$wsql, $par, $etkin] = it_filtre($_GET);
+$lokId = (int)($_GET['lokasyon_id'] ?? 0); $perId = (int)($_GET['personel_id'] ?? 0);
+if ($lokId || $perId) {
+    $ek = [];
+    if ($lokId) { $ek[] = 'lokasyon_id IN (' . implode(',', array_map('intval', it_lokasyon_altlar($pdoIt, $lokId))) . ')'; $etkin['lokasyon_id'] = $lokId; }
+    if ($perId) { $ek[] = 'personel_id=' . $perId; $etkin['personel_id'] = $perId; }
+    $wsql = ($wsql ? $wsql . ' AND ' : ' WHERE ') . implode(' AND ', $ek);
+}
 
 $oz = $pdoIt->prepare("SELECT COUNT(*) adet, COALESCE(SUM(fiyat),0) mali, SUM(durum='aktif') aktif,
                               COUNT(DISTINCT CASE WHEN zimmetli<>'' THEN zimmetli END) kisi FROM it_cihazlar $wsql");
@@ -84,7 +91,7 @@ require_once __DIR__ . '/../includes/header.php';
 <form method="get" class="card border-0 shadow-sm mb-3">
   <div class="card-body py-2">
     <div class="row g-2 align-items-end">
-      <div class="col-md-3"><label class="form-label small mb-0">Ara</label>
+      <div class="col-md-2"><label class="form-label small mb-0">Ara</label>
         <input name="q" class="form-control form-control-sm" value="<?= h($etkin['q'] ?? '') ?>" placeholder="envanter no, ad, seri, kişi, IP…"></div>
       <div class="col-md-2"><label class="form-label small mb-0">Kategori</label>
         <select name="kategori" class="form-select form-select-sm"><option value="">Tümü</option>
@@ -95,6 +102,8 @@ require_once __DIR__ . '/../includes/header.php';
       <div class="col-md-2"><label class="form-label small mb-0">Zimmetli</label>
         <select name="zimmetli" class="form-select form-select-sm"><option value="">Tümü</option>
           <?php foreach ($sec['zimmetli'] as $x): ?><option value="<?= h($x) ?>" <?= ($etkin['zimmetli'] ?? '') === $x ? 'selected' : '' ?>><?= h($x) ?></option><?php endforeach; ?></select></div>
+      <div class="col-md-2"><label class="form-label small mb-0">Lokasyon / Proje</label>
+        <select name="lokasyon_id" class="form-select form-select-sm"><option value="">Tümü</option><?= it_lokasyon_options($pdoIt, $lokId, false) ?></select></div>
       <div class="col-md-1"><label class="form-label small mb-0">Departman</label>
         <select name="departman" class="form-select form-select-sm"><option value="">Tümü</option>
           <?php foreach ($sec['departman'] as $x): ?><option value="<?= h($x) ?>" <?= ($etkin['departman'] ?? '') === $x ? 'selected' : '' ?>><?= h($x) ?></option><?php endforeach; ?></select></div>
@@ -154,8 +163,8 @@ require_once __DIR__ . '/../includes/header.php';
           <td><i class="bi <?= h(it_kategoriIkon($r['kategori'])) ?> me-1 text-muted"></i><?= h(it_kategoriAd($r['kategori'])) ?></td>
           <td class="font-monospace small"><?= h($r['seri_no'] ?: '—') ?></td>
           <td><?= it_durumBadge($r['durum']) ?></td>
-          <td><?= $r['zimmetli'] ? '<i class="bi bi-person me-1 text-muted"></i>' . h($r['zimmetli']) . ($r['departman'] ? '<div class="small text-muted">' . h($r['departman']) . '</div>' : '') : '<span class="text-muted">—</span>' ?></td>
-          <td><?= h($r['lokasyon'] ?: '—') ?></td>
+          <td><?= $r['zimmetli'] ? '<i class="bi bi-person me-1 text-muted"></i>' . ($r['personel_id'] ? '<a href="personel_detay.php?id=' . (int)$r['personel_id'] . '" class="text-decoration-none">' . h($r['zimmetli']) . '</a>' : h($r['zimmetli'])) . ($r['departman'] ? '<div class="small text-muted">' . h($r['departman']) . '</div>' : '') : '<span class="text-muted">—</span>' ?></td>
+          <td class="small"><?= h($r['lokasyon_id'] ? it_lokasyon_etiket($pdoIt, (int)$r['lokasyon_id']) : ($r['lokasyon'] ?: '—')) ?></td>
           <td>
             <?php if ($gk === null): ?><span class="text-muted">—</span>
             <?php elseif ($gk < 0): ?><span class="badge bg-light text-danger border">bitti</span>

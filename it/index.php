@@ -19,13 +19,26 @@ $kat = $pdoIt->query("SELECT kategori, COUNT(*) adet, SUM(durum='aktif') aktif, 
                       FROM it_cihazlar WHERE durum<>'hurda' GROUP BY kategori ORDER BY adet DESC")->fetchAll();
 $dep = $pdoIt->query("SELECT COALESCE(NULLIF(departman,''),'(tanımsız)') departman, COUNT(*) adet
                       FROM it_cihazlar WHERE durum='aktif' GROUP BY departman ORDER BY adet DESC LIMIT 12")->fetchAll();
-$kisiler = $pdoIt->query("SELECT zimmetli, COUNT(*) adet, COALESCE(SUM(fiyat),0) mali, MAX(departman) departman
+$kisiler = $pdoIt->query("SELECT zimmetli, MAX(personel_id) personel_id, COUNT(*) adet, COALESCE(SUM(fiyat),0) mali, MAX(departman) departman
                           FROM it_cihazlar WHERE durum='aktif' AND zimmetli<>'' GROUP BY zimmetli ORDER BY adet DESC, mali DESC LIMIT 10")->fetchAll();
 $garanti = $pdoIt->query("SELECT id, envanter_no, ad, kategori, zimmetli, garanti_bitis FROM it_cihazlar
                           WHERE durum<>'hurda' AND garanti_bitis IS NOT NULL AND garanti_bitis <= DATE_ADD(CURDATE(), INTERVAL 60 DAY)
                           ORDER BY garanti_bitis LIMIT 12")->fetchAll();
 $sorunlu = $pdoIt->query("SELECT id, envanter_no, ad, kategori, durum, zimmetli, updated_at FROM it_cihazlar
                           WHERE durum IN ('serviste','arizali') ORDER BY updated_at DESC LIMIT 10")->fetchAll();
+$riskli = []; $lok = [];
+try {
+    $riskli = $pdoIt->query("SELECT p.id, p.ad, p.soyad, p.isten_cikis, COUNT(c.id) adet FROM it_personel p JOIN it_cihazlar c ON c.personel_id=p.id AND c.durum<>'hurda'
+                             WHERE p.isten_cikis IS NOT NULL AND p.isten_cikis <= CURDATE() GROUP BY p.id ORDER BY p.isten_cikis")->fetchAll();
+    // Kök lokasyon (proje / bina) bazında cihaz dağılımı — alt lokasyonlar köke toplanır
+    $hepsi = it_lokasyonlar($pdoIt); $kokOf = function (int $id) use ($hepsi) { $g = 0; while ($id && isset($hepsi[$id]) && (int)$hepsi[$id]['ust_id'] && $g++ < 10) $id = (int)$hepsi[$id]['ust_id']; return $id; };
+    foreach ($pdoIt->query("SELECT lokasyon_id, COUNT(*) n FROM it_cihazlar WHERE durum<>'hurda' GROUP BY lokasyon_id") as $r) {
+        $k = $r['lokasyon_id'] ? $kokOf((int)$r['lokasyon_id']) : 0;
+        $ad = $k ? it_lokasyon_etiket($pdoIt, $k) : '(lokasyonsuz)';
+        $lok[$ad] = ($lok[$ad] ?? 0) + (int)$r['n'];
+    }
+    arsort($lok);
+} catch (Throwable $e) {}
 $son = $pdoIt->query("SELECT h.*, c.envanter_no, c.ad FROM it_hareketler h JOIN it_cihazlar c ON c.id=h.cihaz_id
                       ORDER BY h.id DESC LIMIT 12")->fetchAll();
 $bos = $o['toplam'] === 0;
@@ -47,6 +60,11 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="alert alert-<?= $t==='error'?'danger':$t ?>"><?= h($m) ?></div>
 <?php endif; endforeach; ?>
 
+<?php if ($riskli): ?>
+<div class="alert alert-danger py-2"><i class="bi bi-exclamation-triangle me-1"></i><strong>İşten ayrılmış ama üzerinde zimmet duran personel:</strong>
+  <?php foreach ($riskli as $rk): ?><a href="personel_detay.php?id=<?= (int)$rk['id'] ?>" class="alert-link ms-2"><?= h($rk['ad'] . ' ' . $rk['soyad']) ?> (<?= (int)$rk['adet'] ?> cihaz, çıkış <?= format_date($rk['isten_cikis']) ?>)</a><?php endforeach; ?>
+</div>
+<?php endif; ?>
 <?php if ($bos): ?>
 <div class="alert alert-info"><i class="bi bi-info-circle me-1"></i>Henüz cihaz kaydı yok. <?php if ($yazabilir): ?><a href="cihaz_form.php" class="alert-link">İlk cihazı ekleyin</a> — envanter numarası otomatik verilir.<?php endif; ?></div>
 <?php endif; ?>
@@ -83,8 +101,8 @@ require_once __DIR__ . '/../includes/header.php';
       <div class="card-body"><div style="height:260px"><canvas id="chDurum"></canvas></div></div></div>
   </div>
   <div class="col-lg-4">
-    <div class="card border-0 shadow-sm h-100"><div class="card-header bg-white"><strong>Departman bazında zimmet</strong></div>
-      <div class="card-body"><div style="height:260px"><canvas id="chDep"></canvas></div></div></div>
+    <div class="card border-0 shadow-sm h-100"><div class="card-header bg-white"><strong>Proje / bina bazında cihaz</strong> <a href="lokasyonlar.php" class="small ms-1">lokasyonlar</a></div>
+      <div class="card-body"><div style="height:260px"><canvas id="chLok"></canvas></div></div></div>
   </div>
 </div>
 
@@ -124,10 +142,10 @@ require_once __DIR__ . '/../includes/header.php';
         <tbody>
         <?php if (!$kisiler): ?><tr><td class="text-muted text-center py-3">Zimmet yok.</td></tr><?php endif; ?>
         <?php foreach ($kisiler as $k): ?>
-          <tr><td><a href="cihazlar.php?zimmetli=<?= urlencode($k['zimmetli']) ?>" class="text-decoration-none fw-semibold"><?= h($k['zimmetli']) ?></a><div class="small text-muted"><?= h($k['departman'] ?: '') ?></div></td>
+          <tr><td><a href="<?= $k['personel_id'] ? 'personel_detay.php?id=' . (int)$k['personel_id'] : 'cihazlar.php?zimmetli=' . urlencode($k['zimmetli']) ?>" class="text-decoration-none fw-semibold"><?= h($k['zimmetli']) ?></a><div class="small text-muted"><?= h($k['departman'] ?: '') ?></div></td>
               <td class="text-end"><span class="badge bg-primary"><?= (int)$k['adet'] ?> cihaz</span></td>
               <td class="text-end small text-muted"><?= $f2($k['mali']) ?> TL</td>
-              <td class="text-end"><a href="zimmet_tutanak.php?kisi=<?= urlencode($k['zimmetli']) ?>" target="_blank" class="btn btn-sm btn-outline-secondary py-0" title="Toplu zimmet tutanağı"><i class="bi bi-file-earmark-text"></i></a></td></tr>
+              <td class="text-end"><a href="<?= $k['personel_id'] ? 'zimmet_tutanak.php?personel_id=' . (int)$k['personel_id'] : 'zimmet_tutanak.php?kisi=' . urlencode($k['zimmetli']) ?>" target="_blank" class="btn btn-sm btn-outline-secondary py-0" title="Toplu zimmet tutanağı"><i class="bi bi-file-earmark-text"></i></a></td></tr>
         <?php endforeach; ?>
         </tbody></table></div>
     </div>
@@ -155,7 +173,8 @@ require_once __DIR__ . '/../includes/header.php';
 const IT = {
   kat: <?= json_encode(array_map(fn($r) => ['ad'=>it_kategoriAd($r['kategori']), 'adet'=>(int)$r['adet']], $kat), JSON_UNESCAPED_UNICODE) ?>,
   durum: <?= json_encode(array_map(fn($k) => ['ad'=>IT_DURUM[$k][0], 'adet'=>(int)$o[$k]], ['aktif','depoda','serviste','arizali','hurda']), JSON_UNESCAPED_UNICODE) ?>,
-  dep: <?= json_encode(array_map(fn($r) => ['ad'=>$r['departman'], 'adet'=>(int)$r['adet']], $dep), JSON_UNESCAPED_UNICODE) ?>
+  dep: <?= json_encode(array_map(fn($r) => ['ad'=>$r['departman'], 'adet'=>(int)$r['adet']], $dep), JSON_UNESCAPED_UNICODE) ?>,
+  lok: <?= json_encode(array_map(fn($k, $v) => ['ad'=>$k, 'adet'=>$v], array_keys($lok), $lok), JSON_UNESCAPED_UNICODE) ?>
 };
 const PAL = ['#00584E','#007A6A','#00C9B1','#198754','#0d6efd','#6f42c1','#fd7e14','#ffc107','#dc3545','#6c757d','#20c997'];
 new Chart(document.getElementById('chKat'), { type:'doughnut',
@@ -164,8 +183,8 @@ new Chart(document.getElementById('chKat'), { type:'doughnut',
 new Chart(document.getElementById('chDurum'), { type:'bar',
   data:{ labels: IT.durum.map(d=>d.ad), datasets:[{ label:'Cihaz', data: IT.durum.map(d=>d.adet), backgroundColor:['#198754','#6c757d','#0dcaf0','#dc3545','#343a40'] }] },
   options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } } });
-new Chart(document.getElementById('chDep'), { type:'bar',
-  data:{ labels: IT.dep.map(d=>d.ad), datasets:[{ label:'Zimmetli cihaz', data: IT.dep.map(d=>d.adet), backgroundColor:'#00584E' }] },
+new Chart(document.getElementById('chLok'), { type:'bar',
+  data:{ labels: IT.lok.map(d=>d.ad), datasets:[{ label:'Cihaz', data: IT.lok.map(d=>d.adet), backgroundColor:'#00584E' }] },
   options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true, ticks:{ precision:0 } } } } });
 </script>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

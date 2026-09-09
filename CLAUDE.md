@@ -251,6 +251,32 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   belge olarak yüklenir) · **raporlar** (KPI + aylık hareket trendi [12 ay, yığılmış] + yaş dağılımı [alış tarihi
   <1/1-3/3-5/5+ yıl] + garanti durumu + **kategori × durum matrisi** + departman/lokasyon/marka kırılımları + en değerli
   cihazlar; **ERN_RAPOR** Excel/PDF/Yazdır) · **kurulum_it** (şema + uploads klasörü + DB rozeti; yalnız admin/toa).
+  **PERSONEL & LOKASYON (2026-09-09)**: `it_personel` (sicil_no [benzersiz, form denetimi], ad, soyad, unvan, birim,
+  lokasyon_id, telefon, eposta, ise_giris, **isten_cikis NULL = çalışıyor**, notlar) + `it_lokasyonlar` (**hiyerarşik**:
+  ust_id, tur proje/bina/birim/depo, kod [U030…], ad, sira, aktif; `IT_LOK_SEED` varsayılan ağaç: Kartal Batı Yakası
+  Projesi → 1. Etap U030 / 2. Etap U031 / Millet Bahçesi U039 / Şantiye Teknik Ofis / Şantiye Depo; ERN Holding
+  İstanbul Merkez Binası → Gayrimenkul Geliştirme Direktörlüğü / Satış Ofisi / Kurumsal İletişim Direktörlüğü /
+  Yönetim Kurulu / Yönetim (Patron) Ofisleri / Bilgi İşlem Deposu — `it_lokasyon_seed` kurulumda tablo boşsa ve
+  lokasyonlar.php düğmesiyle, aynı üst+ad varsa atlar) + `it_cihazlar.personel_id` / `lokasyon_id` (runtime ALTER;
+  eski `zimmetli`/`lokasyon` METİN alanları `it_cihaz_bag_esitle()` ile eş zamanlı tutulur — tutanak, liste ve
+  eski kayıtlar için; kişi adı/birimi değişince personel_form bağlı cihazları da günceller, lokasyon adı değişince
+  lokasyonlar.php yol metnini yeniler). Yardımcılar: it_lokasyonlar (istek önbelleği), it_lokasyon_duz (derinlikli
+  düz liste), it_lokasyon_yol ("Kartal Batı Yakası Projesi › U030 1. Etap"), it_lokasyon_etiket, **it_lokasyon_altlar**
+  (proje seçilince etapları da kapsayan filtre), it_lokasyon_options (girintili select), it_personel_liste/bul/ad/
+  aktif/options (data-birim/data-lok ile form otomatik dolar), it_personel_cihazlari. Sayfalar: **personel** (filtre
+  durum çalışan/ayrılan/hepsi · lokasyon [alt dahil] · birim · arama; sicil/ad/unvan/birim/lokasyon/telefon/giriş/çıkış
+  + zimmetli cihaz adedi ve değeri; **işten ayrılmış + açık zimmet** satırı kırmızı + üst uyarı; Excel) ·
+  **personel_form** (mükerrer sicil engeli; birim boşsa birim türündeki lokasyonun adı; **işten çıkış tarihi üzerinde
+  zimmet varken kaydedilmez**) · **personel_detay** (kart + üzerindeki cihazlar + zimmet geçmişi [personel_id VEYA eski
+  kisi metni] + **"Tümünü iade al"** [her cihaza iade hareketi, depoya] + **İşten çıkış** [açık zimmet varsa düğme
+  kapalı] / çıkışı geri al; kişi bazlı toplu tutanak) · **lokasyonlar** (ağaç tablosu: tür/kod/cihaz [alt dahil]/
+  kullanımda/personel sayıları + alt ekle/düzenle/sil [bağlı kayıt varsa silinmez, pasife alınır] + kendi altına
+  taşıma engeli + varsayılan yapıyı yükle). Cihaz formu ve detaydaki "Zimmet ver" artık **personel seçer** (serbest
+  metin yok; ayrılmış personele zimmet verilemez), lokasyon select; cihaz listesinde lokasyon [alt dahil] +
+  personel_id filtresi; zimmet tutanağı `?personel_id=` (sicil, unvan, birim, telefon, işe giriş) — `?kisi=` eski
+  metin kayıtları için kalır; dashboard'da **ayrılmış ama zimmetli** kırmızı bant + proje/bina bazlı cihaz grafiği
+  (alt lokasyonlar köke toplanır); raporlar proje/bina + etap/birim kırılımı. Smoke: itsm'de kurulum seed 13 satır,
+  mükerrer sicil, cikis engeli → tumunu_iade → cikis, lokasyon_id=1 (Kartal) filtresi etapları kapsıyor.
   Çekirdek `it/_ortak.php`: IT_KATEGORI / IT_DURUM / IT_HAREKET sabitleri, it_semasi_kur, it_envanter_no, it_filtre,
   it_secenekler (sütun whitelist), it_ozet, it_garanti_kalan, it_tarih, it_sayi, it_hareket_ekle, it_belgeler/
   it_belge_yukle/it_belge_sil, it_dosya_listesi. **Yetki**: sayfalar `require_auth([admin,toa,to,depo,it_sorumlusu])`;

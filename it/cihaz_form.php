@@ -30,7 +30,7 @@ if ($duzenleme ? !yetki_var('duzenle') : !yetki_var('giris')) {
 
 $error = '';
 $v = $c ?: ['envanter_no'=>'', 'kategori'=>'laptop', 'ad'=>'', 'marka'=>'', 'model'=>'', 'seri_no'=>'', 'durum'=>'depoda',
-            'zimmetli'=>'', 'departman'=>'', 'lokasyon'=>'', 'zimmet_tarihi'=>'', 'alis_tarihi'=>'', 'garanti_bitis'=>'',
+            'personel_id'=>'', 'zimmetli'=>'', 'departman'=>'', 'lokasyon_id'=>'', 'lokasyon'=>'', 'zimmet_tarihi'=>'', 'alis_tarihi'=>'', 'garanti_bitis'=>'',
             'fiyat'=>'', 'tedarikci'=>'', 'fatura_no'=>'', 'ip_adresi'=>'', 'mac_adresi'=>'', 'isletim_sistemi'=>'',
             'ozellikler'=>'', 'lisans_anahtari'=>'', 'lisans_adet'=>'', 'notlar'=>''];
 
@@ -43,8 +43,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'model'           => $al('model', 120),
         'seri_no'         => $al('seri_no', 120),
         'durum'           => isset(IT_DURUM[$_POST['durum'] ?? '']) ? $_POST['durum'] : 'depoda',
+        'personel_id'     => (int)($_POST['personel_id'] ?? 0) ?: null,
         'zimmetli'        => $al('zimmetli', 120),
         'departman'       => $al('departman', 80),
+        'lokasyon_id'     => (int)($_POST['lokasyon_id'] ?? 0) ?: null,
         'lokasyon'        => $al('lokasyon', 120),
         'zimmet_tarihi'   => it_tarih($_POST['zimmet_tarihi'] ?? ''),
         'alis_tarihi'     => it_tarih($_POST['alis_tarihi'] ?? ''),
@@ -60,6 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'lisans_adet'     => ($_POST['lisans_adet'] ?? '') !== '' ? max(0, (int)$_POST['lisans_adet']) : null,
         'notlar'          => trim((string)($_POST['notlar'] ?? '')) ?: null,
     ];
+    it_cihaz_bag_esitle($pdoIt, $y);   // personel seçildiyse zimmetli/departman, lokasyon seçildiyse yol metni dolar
     // Zimmetli kişi doluysa durum otomatik "kullanımda", boşsa "kullanımda" olamaz
     if ($y['zimmetli'] && in_array($y['durum'], ['depoda'], true)) $y['durum'] = 'aktif';
     if (!$y['zimmetli'] && $y['durum'] === 'aktif' && $y['kategori'] !== 'yazilim') $y['durum'] = 'depoda';   // lisans kişisiz de kullanımda olabilir
@@ -159,9 +162,14 @@ $tv = fn($k) => h($v[$k] ?? '');
       <div class="col-md-5"><label class="form-label">Seri No</label><input name="seri_no" class="form-control font-monospace" value="<?= $tv('seri_no') ?>" maxlength="120"></div>
 
       <div class="col-12"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-person-check me-1"></i>ZİMMET</div></div>
-      <div class="col-md-4"><label class="form-label">Zimmetli Kişi</label><input name="zimmetli" list="dl_zimmetli" class="form-control" value="<?= $tv('zimmetli') ?>" maxlength="120" placeholder="Ad Soyad"><?= $dl('zimmetli') ?></div>
-      <div class="col-md-3"><label class="form-label">Departman</label><input name="departman" list="dl_departman" class="form-control" value="<?= $tv('departman') ?>" maxlength="80"><?= $dl('departman') ?></div>
-      <div class="col-md-3"><label class="form-label">Lokasyon</label><input name="lokasyon" list="dl_lokasyon" class="form-control" value="<?= $tv('lokasyon') ?>" maxlength="120" placeholder="Şantiye ofisi / Merkez"><?= $dl('lokasyon') ?></div>
+      <div class="col-md-4"><label class="form-label">Zimmetli Personel</label>
+        <select name="personel_id" id="personel_id" class="form-select"><?= it_personel_options($pdoIt, (int)($v['personel_id'] ?? 0), !empty($v['personel_id'])) ?></select>
+        <div class="form-text">Listede yoksa önce <a href="personel_form.php" target="_blank">personel ekleyin</a>.<?php if (!empty($v['zimmetli']) && empty($v['personel_id'])): ?> Eski kayıt: <strong><?= $tv('zimmetli') ?></strong> (kişi kartına bağlı değil).<?php endif; ?></div>
+        <input type="hidden" name="zimmetli" value="<?= $tv('zimmetli') ?>"></div>
+      <div class="col-md-3"><label class="form-label">Departman</label><input name="departman" id="departman" list="dl_departman" class="form-control" value="<?= $tv('departman') ?>" maxlength="80"><?= $dl('departman') ?></div>
+      <div class="col-md-3"><label class="form-label">Lokasyon / Proje</label>
+        <select name="lokasyon_id" id="lokasyon_id" class="form-select"><?= it_lokasyon_options($pdoIt, (int)($v['lokasyon_id'] ?? 0)) ?></select>
+        <input type="hidden" name="lokasyon" value="<?= $tv('lokasyon') ?>"><?php if (!empty($v['lokasyon']) && empty($v['lokasyon_id'])): ?><div class="form-text">Eski kayıt: <?= $tv('lokasyon') ?></div><?php endif; ?></div>
       <div class="col-md-2"><label class="form-label">Zimmet Tarihi</label><input type="date" name="zimmet_tarihi" class="form-control" value="<?= $tv('zimmet_tarihi') ?>"></div>
 
       <div class="col-12"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-receipt me-1"></i>SATIN ALMA &amp; GARANTİ</div></div>
@@ -205,6 +213,14 @@ $tv = fn($k) => h($v[$k] ?? '');
         document.querySelectorAll('.teknik').forEach(function (e) { e.classList.toggle('d-none', yaz || sel.value === 'aksesuar'); });
     }
     sel.addEventListener('change', uygula); uygula();
+    // Personel seçilince birim ve lokasyon kişinin kartından dolar
+    var ps = document.getElementById('personel_id');
+    ps.addEventListener('change', function () {
+        var o = ps.options[ps.selectedIndex]; if (!o || !o.value) return;
+        var dep = document.getElementById('departman'), lok = document.getElementById('lokasyon_id');
+        if (o.dataset.birim && !dep.value) dep.value = o.dataset.birim;
+        if (o.dataset.lok && o.dataset.lok !== '0' && !lok.value) lok.value = o.dataset.lok;
+    });
 })();
 </script>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

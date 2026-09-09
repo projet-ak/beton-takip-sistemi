@@ -85,6 +85,7 @@ function it_semasi_kur(PDO $pdo): void
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         KEY ix_cihaz (cihaz_id), KEY ix_tarih (tarih), KEY ix_tur (tur)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    it_personel_semasi_kur($pdo);
     $pdo->exec("CREATE TABLE IF NOT EXISTS it_belgeler (
         id INT AUTO_INCREMENT PRIMARY KEY,
         cihaz_id INT NOT NULL,
@@ -279,4 +280,251 @@ function it_dosya_listesi(array $f): array
     return is_array($f['name'] ?? null)
         ? array_map(fn($i) => ['name'=>$f['name'][$i], 'tmp_name'=>$f['tmp_name'][$i], 'error'=>$f['error'][$i], 'size'=>$f['size'][$i]], array_keys($f['name']))
         : [$f];
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * PERSONEL + LOKASYON (2026-09-09)
+ *   it_lokasyonlar — hiyerarşik yer ağacı: Proje (Kartal) → Etap/kod (U030, U031, U039) ·
+ *                    Bina (ERN Holding İstanbul Merkez) → birim/alan (direktörlükler, satış ofisi…)
+ *   it_personel    — kime zimmetledik: sicil, ad soyad, unvan, birim, lokasyon, telefon, işe giriş / çıkış
+ *   it_cihazlar    — personel_id + lokasyon_id bağı (eski `zimmetli`/`lokasyon` metinleri eş zamanlı tutulur:
+ *                    tutanak, filtre ve eski kayıtlar için)
+ * ══════════════════════════════════════════════════════════════════════════════ */
+
+/** Lokasyon türleri: anahtar => [ad, ikon] */
+const IT_LOK_TUR = [
+    'proje' => ['Proje / Etap',  'bi-buildings'],
+    'bina'  => ['Bina',          'bi-building'],
+    'birim' => ['Birim / Alan',  'bi-door-open'],
+    'depo'  => ['Depo',          'bi-box-seam'],
+];
+
+/** Varsayılan lokasyon ağacı (kurulumda tablo boşsa yüklenir; lokasyonlar.php'den de tek tıkla). */
+const IT_LOK_SEED = [
+    ['Kartal Batı Yakası Projesi', null, 'proje', [
+        ['1. Etap',                 'U030', 'proje', []],
+        ['2. Etap',                 'U031', 'proje', []],
+        ['Millet Bahçesi Projesi',  'U039', 'proje', []],
+        ['Şantiye Teknik Ofis',     null,   'birim', []],
+        ['Şantiye Depo',            null,   'depo',  []],
+    ]],
+    ['ERN Holding İstanbul Merkez Binası', null, 'bina', [
+        ['Gayrimenkul Geliştirme Direktörlüğü', null, 'birim', []],
+        ['Satış Ofisi',                          null, 'birim', []],
+        ['Kurumsal İletişim Direktörlüğü',       null, 'birim', []],
+        ['Yönetim Kurulu',                       null, 'birim', []],
+        ['Yönetim (Patron) Ofisleri',            null, 'birim', []],
+        ['Bilgi İşlem Deposu',                   null, 'depo',  []],
+    ]],
+];
+
+/** Personel + lokasyon şeması (it_semasi_kur'dan da çağrılır). İdempotent. */
+function it_personel_semasi_kur(PDO $pdo): void
+{
+    static $yapildi = false;
+    if ($yapildi) return;
+    $yapildi = true;
+    $pdo->exec("CREATE TABLE IF NOT EXISTS it_lokasyonlar (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ust_id INT NULL COMMENT 'üst lokasyon (NULL = kök)',
+        tur VARCHAR(10) NOT NULL DEFAULT 'birim',
+        kod VARCHAR(20) NULL COMMENT 'proje kodu (U030) vb.',
+        ad VARCHAR(120) NOT NULL,
+        aciklama VARCHAR(255) NULL,
+        sira INT NOT NULL DEFAULT 0,
+        aktif TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY ix_ust (ust_id), KEY ix_kod (kod)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS it_personel (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        sicil_no VARCHAR(30) NULL,
+        ad VARCHAR(80) NOT NULL,
+        soyad VARCHAR(80) NOT NULL,
+        unvan VARCHAR(100) NULL,
+        birim VARCHAR(100) NULL COMMENT 'departman / direktörlük',
+        lokasyon_id INT NULL,
+        telefon VARCHAR(30) NULL,
+        eposta VARCHAR(120) NULL,
+        ise_giris DATE NULL,
+        isten_cikis DATE NULL COMMENT 'NULL = çalışıyor',
+        notlar TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+        KEY ix_sicil (sicil_no), KEY ix_ad (soyad, ad), KEY ix_lok (lokasyon_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    foreach (['personel_id' => "INT NULL", 'lokasyon_id' => "INT NULL"] as $kol => $tip) {
+        try { $pdo->query("SELECT $kol FROM it_cihazlar LIMIT 1"); }
+        catch (Throwable $e) { try { $pdo->exec("ALTER TABLE it_cihazlar ADD COLUMN $kol $tip"); } catch (Throwable $e2) {} }
+    }
+}
+
+/** Varsayılan ağacı yükler; var olan (aynı üst + aynı ad) satırları atlar. Eklenen adedi döner. */
+function it_lokasyon_seed(PDO $pdo): int
+{
+    $eklenen = 0;
+    $ekle = function (array $liste, ?int $ust) use (&$ekle, &$eklenen, $pdo) {
+        $sira = 0;
+        foreach ($liste as [$ad, $kod, $tur, $alt]) {
+            $sira++;
+            $st = $pdo->prepare("SELECT id FROM it_lokasyonlar WHERE ad=? AND " . ($ust === null ? "ust_id IS NULL" : "ust_id=?"));
+            $st->execute($ust === null ? [$ad] : [$ad, $ust]);
+            $id = (int)$st->fetchColumn();
+            if (!$id) {
+                $pdo->prepare("INSERT INTO it_lokasyonlar (ust_id, tur, kod, ad, sira) VALUES (?,?,?,?,?)")->execute([$ust, $tur, $kod, $ad, $sira]);
+                $id = (int)$pdo->lastInsertId();
+                $eklenen++;
+            }
+            if ($alt) $ekle($alt, $id);
+        }
+    };
+    $ekle(IT_LOK_SEED, null);
+    return $eklenen;
+}
+
+/** Tüm lokasyonlar (id => satır), sira/ad sıralı. İstek başına bir kez okunur. */
+function it_lokasyonlar(PDO $pdo, bool $yenile = false): array
+{
+    static $cache = null;
+    if ($cache !== null && !$yenile) return $cache;
+    $cache = [];
+    try {
+        foreach ($pdo->query("SELECT * FROM it_lokasyonlar ORDER BY sira, ad") as $r) $cache[(int)$r['id']] = $r;
+    } catch (Throwable $e) {}
+    return $cache;
+}
+
+/**
+ * Ağacı derinlik sırasıyla düzleştirir: [id, satır, derinlik] listesi (select/ağaç görünümü için).
+ * @param bool $aktifYalniz pasifler atlanır (formlar); yönetim ekranı hepsini görür
+ */
+function it_lokasyon_duz(PDO $pdo, bool $aktifYalniz = true): array
+{
+    $hepsi = it_lokasyonlar($pdo);
+    $cocuk = [];
+    foreach ($hepsi as $id => $r) $cocuk[(int)($r['ust_id'] ?? 0)][] = $id;
+    $out = [];
+    $gez = function (int $ust, int $d) use (&$gez, &$out, $cocuk, $hepsi, $aktifYalniz) {
+        foreach ($cocuk[$ust] ?? [] as $id) {
+            if ($aktifYalniz && !(int)$hepsi[$id]['aktif']) continue;
+            $out[] = ['id' => $id, 'r' => $hepsi[$id], 'd' => $d];
+            $gez($id, $d + 1);
+        }
+    };
+    $gez(0, 0);
+    return $out;
+}
+
+/** Lokasyonun tam yolu: "Kartal Batı Yakası Projesi › U030 1. Etap". */
+function it_lokasyon_yol(PDO $pdo, ?int $id, string $ayrac = ' › '): string
+{
+    if (!$id) return '';
+    $hepsi = it_lokasyonlar($pdo);
+    $parcalar = []; $guard = 0;
+    while ($id && isset($hepsi[$id]) && $guard++ < 10) {
+        $r = $hepsi[$id];
+        array_unshift($parcalar, trim(($r['kod'] ? $r['kod'] . ' ' : '') . $r['ad']));
+        $id = (int)($r['ust_id'] ?? 0);
+    }
+    return implode($ayrac, $parcalar);
+}
+
+/** Kısa etiket: "U030 1. Etap" (kod + ad). */
+function it_lokasyon_etiket(PDO $pdo, ?int $id): string
+{
+    $r = it_lokasyonlar($pdo)[$id ?? 0] ?? null;
+    return $r ? trim(($r['kod'] ? $r['kod'] . ' ' : '') . $r['ad']) : '';
+}
+
+/** Lokasyon + tüm alt lokasyon id'leri (filtrelerde "proje seçilince etapları da kapsa"). */
+function it_lokasyon_altlar(PDO $pdo, int $id): array
+{
+    $hepsi = it_lokasyonlar($pdo);
+    $out = [$id]; $kuyruk = [$id];
+    while ($kuyruk) {
+        $u = array_shift($kuyruk);
+        foreach ($hepsi as $cid => $r) if ((int)($r['ust_id'] ?? 0) === $u && !in_array($cid, $out, true)) { $out[] = $cid; $kuyruk[] = $cid; }
+    }
+    return $out;
+}
+
+/** <select> için lokasyon seçenekleri (girintili). */
+function it_lokasyon_options(PDO $pdo, ?int $secili, bool $bosSecenek = true): string
+{
+    $o = $bosSecenek ? '<option value="">— seçilmedi —</option>' : '';
+    foreach (it_lokasyon_duz($pdo) as $x) {
+        $r = $x['r'];
+        $o .= '<option value="' . (int)$x['id'] . '"' . ((int)$secili === (int)$x['id'] ? ' selected' : '') . '>'
+            . str_repeat('&nbsp;&nbsp;&nbsp;', $x['d']) . ($x['d'] ? '↳ ' : '') . h(trim(($r['kod'] ? $r['kod'] . ' — ' : '') . $r['ad'])) . '</option>';
+    }
+    return $o;
+}
+
+/** Personelin görünen adı. */
+function it_personel_ad(?array $p): string
+{
+    return $p ? trim(($p['ad'] ?? '') . ' ' . ($p['soyad'] ?? '')) : '';
+}
+
+/** Personel çalışıyor mu? (isten_cikis boş ya da gelecekte) */
+function it_personel_aktif(array $p): bool
+{
+    return empty($p['isten_cikis']) || $p['isten_cikis'] > date('Y-m-d');
+}
+
+/** Personel listesi (soyad/ad sıralı). $aktifYalniz=true → ayrılanlar hariç. */
+function it_personel_liste(PDO $pdo, bool $aktifYalniz = true): array
+{
+    try {
+        $w = $aktifYalniz ? "WHERE isten_cikis IS NULL OR isten_cikis > CURDATE()" : "";
+        return $pdo->query("SELECT * FROM it_personel $w ORDER BY soyad, ad")->fetchAll();
+    } catch (Throwable $e) { return []; }
+}
+
+function it_personel_bul(PDO $pdo, ?int $id): ?array
+{
+    if (!$id) return null;
+    $st = $pdo->prepare("SELECT * FROM it_personel WHERE id=?"); $st->execute([$id]);
+    return $st->fetch() ?: null;
+}
+
+/** <select> için personel seçenekleri; data-birim / data-lok ile form otomatik dolar. */
+function it_personel_options(PDO $pdo, ?int $secili, bool $ayrilanlarDahil = false): string
+{
+    $o = '<option value="">— zimmetsiz / seçilmedi —</option>';
+    foreach (it_personel_liste($pdo, !$ayrilanlarDahil) as $p) {
+        $o .= '<option value="' . (int)$p['id'] . '"' . ((int)$secili === (int)$p['id'] ? ' selected' : '')
+            . ' data-birim="' . h($p['birim'] ?? '') . '" data-lok="' . (int)($p['lokasyon_id'] ?? 0) . '">'
+            . h(it_personel_ad($p)) . ($p['sicil_no'] ? ' (' . h($p['sicil_no']) . ')' : '') . ($p['unvan'] ? ' — ' . h($p['unvan']) : '')
+            . (!it_personel_aktif($p) ? ' [ayrıldı]' : '') . '</option>';
+    }
+    return $o;
+}
+
+/**
+ * Cihazın kişi/lokasyon bağını metin alanlarıyla eşitler (tutanak/liste/eski filtreler için).
+ * Personel seçiliyse zimmetli=Ad Soyad, departman boşsa birim, lokasyon_id boşsa personelinki.
+ */
+function it_cihaz_bag_esitle(PDO $pdo, array &$y): void
+{
+    $p = it_personel_bul($pdo, (int)($y['personel_id'] ?? 0));
+    if ($p) {
+        $y['zimmetli'] = it_personel_ad($p);
+        if (empty($y['departman']) && $p['birim']) $y['departman'] = $p['birim'];
+        if (empty($y['lokasyon_id']) && $p['lokasyon_id']) $y['lokasyon_id'] = (int)$p['lokasyon_id'];
+    } else {
+        $y['personel_id'] = null;
+    }
+    if (!empty($y['lokasyon_id'])) {
+        $yol = it_lokasyon_yol($pdo, (int)$y['lokasyon_id']);
+        if ($yol !== '') $y['lokasyon'] = $yol;
+    } else { $y['lokasyon_id'] = null; }
+}
+
+/** Personelin üzerindeki aktif (hurda hariç, zimmetli) cihazlar. */
+function it_personel_cihazlari(PDO $pdo, int $personelId): array
+{
+    $st = $pdo->prepare("SELECT * FROM it_cihazlar WHERE personel_id=? AND durum<>'hurda' ORDER BY envanter_no");
+    $st->execute([$personelId]);
+    return $st->fetchAll();
 }

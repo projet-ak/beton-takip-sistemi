@@ -32,7 +32,27 @@ $kirilim = function (string $sutun) use ($pdoIt): array {
                                  COALESCE(SUM(fiyat),0) mali
                           FROM it_cihazlar WHERE durum<>'hurda' GROUP BY $sutun ORDER BY adet DESC LIMIT 40")->fetchAll();
 };
-$dep = $kirilim('departman'); $lok = $kirilim('lokasyon'); $marka = $kirilim('marka');
+$dep = $kirilim('departman'); $marka = $kirilim('marka');
+// Lokasyon kırılımı: kök proje / bina bazında (alt lokasyonlar köke toplanır), lokasyonsuzlar ayrı satır
+$lok = [];
+try {
+    $hepsi = it_lokasyonlar($pdoIt);
+    $kokOf = function (int $id) use ($hepsi) { $g = 0; while ($id && isset($hepsi[$id]) && (int)$hepsi[$id]['ust_id'] && $g++ < 10) $id = (int)$hepsi[$id]['ust_id']; return $id; };
+    $tmp = [];
+    foreach ($pdoIt->query("SELECT lokasyon_id, COUNT(*) adet, SUM(durum='aktif') aktif, COALESCE(SUM(fiyat),0) mali FROM it_cihazlar WHERE durum<>'hurda' GROUP BY lokasyon_id") as $r) {
+        $k = $r['lokasyon_id'] ? $kokOf((int)$r['lokasyon_id']) : 0;
+        $ad = $k ? it_lokasyon_etiket($pdoIt, $k) : '(lokasyonsuz)';
+        $tmp[$ad] ??= ['ad'=>$ad,'adet'=>0,'aktif'=>0,'mali'=>0.0];
+        $tmp[$ad]['adet'] += (int)$r['adet']; $tmp[$ad]['aktif'] += (int)$r['aktif']; $tmp[$ad]['mali'] += (float)$r['mali'];
+    }
+    usort($tmp, fn($a, $b) => $b['adet'] <=> $a['adet']); $lok = $tmp;
+} catch (Throwable $e) {}
+// Etap / birim düzeyi (alt lokasyon) kırılımı
+$etap = [];
+try {
+    foreach ($pdoIt->query("SELECT lokasyon_id, COUNT(*) adet, SUM(durum='aktif') aktif, COALESCE(SUM(fiyat),0) mali FROM it_cihazlar WHERE durum<>'hurda' AND lokasyon_id IS NOT NULL GROUP BY lokasyon_id ORDER BY adet DESC") as $r)
+        $etap[] = ['ad'=>it_lokasyon_yol($pdoIt, (int)$r['lokasyon_id']), 'adet'=>(int)$r['adet'], 'aktif'=>(int)$r['aktif'], 'mali'=>(float)$r['mali']];
+} catch (Throwable $e) {}
 
 // Yaş dağılımı (alış tarihine göre)
 $yas = $pdoIt->query("SELECT
@@ -113,7 +133,10 @@ $tablo = function (string $baslik, string $ikon, array $l, string $ilk) use ($f0
 };
 ?>
 <div class="row g-3 mb-3">
-  <?php $tablo('Departman bazında', 'bi-diagram-3', $dep, 'Departman'); $tablo('Lokasyon bazında', 'bi-geo-alt', $lok, 'Lokasyon'); $tablo('Marka bazında', 'bi-tag', $marka, 'Marka'); ?>
+  <?php $tablo('Proje / bina bazında', 'bi-buildings', $lok, 'Proje / Bina'); $tablo('Etap / birim bazında', 'bi-geo-alt', $etap, 'Lokasyon'); $tablo('Departman bazında', 'bi-diagram-3', $dep, 'Departman'); ?>
+</div>
+<div class="row g-3 mb-3">
+  <?php $tablo('Marka bazında', 'bi-tag', $marka, 'Marka'); ?>
 </div>
 
 <?php if ($degerli): ?>
@@ -134,7 +157,7 @@ const IT = {
     kpi: <?= json_encode(['cihaz'=>$o['toplam']-$o['hurda'],'aktif'=>$o['aktif'],'depoda'=>$o['depoda'],'sorun'=>$o['serviste']+$o['arizali'],'hurda'=>$o['hurda'],'mali'=>$o['mali'],'kisi'=>$o['zimmetliKisi'],'garantiBitiyor'=>$o['garantiBitiyor']]) ?>,
     durumlar: <?= json_encode(array_map(fn($x) => $x[0], IT_DURUM), JSON_UNESCAPED_UNICODE) ?>,
     matris: <?= json_encode($matris, JSON_UNESCAPED_UNICODE) ?>,
-    dep: <?= json_encode($dep, JSON_UNESCAPED_UNICODE) ?>, lok: <?= json_encode($lok, JSON_UNESCAPED_UNICODE) ?>, marka: <?= json_encode($marka, JSON_UNESCAPED_UNICODE) ?>,
+    dep: <?= json_encode($dep, JSON_UNESCAPED_UNICODE) ?>, lok: <?= json_encode($lok, JSON_UNESCAPED_UNICODE) ?>, etap: <?= json_encode($etap, JSON_UNESCAPED_UNICODE) ?>, marka: <?= json_encode($marka, JSON_UNESCAPED_UNICODE) ?>,
     yas: <?= json_encode(array_map('intval', $yas)) ?>, garanti: <?= json_encode(array_map('intval', $garanti)) ?>,
     seri: <?= json_encode($seri) ?>, degerli: <?= json_encode($degerli, JSON_UNESCAPED_UNICODE) ?>
 };
@@ -166,7 +189,7 @@ function itPdf(mode){
         + '<div><b>' + f2(IT.kpi.mali) + ' TL</b>Mali Değer</div></div>'
         + '<h2>Kategori × Durum</h2>' + tbl(['Kategori', ...IT.durumlar, 'Toplam', 'Mali (TL)'],
             IT.matris.map(m => [m.ad, ...Object.keys(IT.durumlar).map(d => f0(m[d])), f0(m.toplam), f2(m.mali)]))
-        + kir('Departman Bazında', IT.dep, 'Departman') + kir('Lokasyon Bazında', IT.lok, 'Lokasyon') + kir('Marka Bazında', IT.marka, 'Marka')
+        + kir('Proje / Bina Bazında', IT.lok, 'Proje / Bina') + kir('Etap / Birim Bazında', IT.etap, 'Lokasyon') + kir('Departman Bazında', IT.dep, 'Departman') + kir('Marka Bazında', IT.marka, 'Marka')
         + (IT.degerli.length ? '<h2>En Değerli Cihazlar</h2>' + tbl(['Envanter No','Cihaz','Zimmetli','Fiyat (TL)'], IT.degerli.map(r => [r.envanter_no, r.ad, r.zimmetli || '—', f2(r.fiyat)])) : '');
     ERN_RAPOR.popup({title:'IT ENVANTER RAPORU', body:html, mode:mode, filename:'ERN_IT_Envanter'});
 }
@@ -182,7 +205,7 @@ async function itExcel(){
     IT.matris.forEach(m => ws.addRow([m.ad, ...dk.map(d => +m[d]), +m.toplam, +m.mali]));
     const kir = (adi, baslik, l, ilk) => { if (!l.length) return; const w = wb.addWorksheet(adi); w.columns = [{width:34},{width:10},{width:12},{width:16}];
         ERN_RAPOR.title(wb, w, baslik, 4); ERN_RAPOR.hdr(w.addRow([ilk,'Cihaz','Kullanımda','Mali (TL)'])); l.forEach(r => w.addRow([r.ad, +r.adet, +r.aktif, +r.mali])); };
-    kir('Departman', 'DEPARTMAN BAZINDA', IT.dep, 'Departman'); kir('Lokasyon', 'LOKASYON BAZINDA', IT.lok, 'Lokasyon'); kir('Marka', 'MARKA BAZINDA', IT.marka, 'Marka');
+    kir('Proje-Bina', 'PROJE / BİNA BAZINDA', IT.lok, 'Proje / Bina'); kir('Etap-Birim', 'ETAP / BİRİM BAZINDA', IT.etap, 'Lokasyon'); kir('Departman', 'DEPARTMAN BAZINDA', IT.dep, 'Departman'); kir('Marka', 'MARKA BAZINDA', IT.marka, 'Marka');
     ws = wb.addWorksheet('Aylık Hareket'); ws.columns = [{width:12},{width:10},{width:10},{width:10},{width:16},{width:10}];
     ERN_RAPOR.title(wb, ws, 'AYLIK HAREKET TRENDİ', 6); ERN_RAPOR.hdr(ws.addRow(['Ay','Giriş','Zimmet','İade','Servis / Arıza','Hurda']));
     IT.seri.forEach(s => ws.addRow([ayEt(s.ay), s.giris, s.zimmet, s.iade, s.sorun, s.hurda]));

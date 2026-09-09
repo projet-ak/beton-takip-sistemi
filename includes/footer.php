@@ -39,7 +39,7 @@ $__navSetler = [
   'akaryakit' => [['index.php','Dashboard','bi-speedometer2'],['hareketler.php','Hareket','bi-arrow-left-right'],['aylik.php','Aylık','bi-calendar3'],['stok.php','Stok','bi-fuel-pump']],
   'crm'       => [['index.php','Dashboard','bi-speedometer2'],['arizalar.php','Arızalar','bi-tools'],['raporlar.php','Rapor','bi-bar-chart-line']],
   'prekast'   => [['index.php','Dashboard','bi-speedometer2'],['isler.php','İşler','bi-list-check'],['icmal.php','İcmal','bi-table'],['raporlar.php','Rapor','bi-bar-chart-line']],
-  'it'        => [['index.php','Dashboard','bi-speedometer2'],['cihazlar.php','Cihazlar','bi-pc-display'],['cihaz_form.php','Yeni','bi-plus-circle'],['raporlar.php','Rapor','bi-bar-chart-line']],
+  'it'        => [['index.php','Dashboard','bi-speedometer2'],['cihazlar.php','Cihazlar','bi-pc-display'],['personel.php','Personel','bi-people'],['raporlar.php','Rapor','bi-bar-chart-line']],
 ];
 $__navItems = $__navSetler[$__navMod] ?? $__navSetler['beton'];
 ?>
