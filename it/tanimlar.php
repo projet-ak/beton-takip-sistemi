@@ -263,7 +263,14 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="card border-0 shadow-sm"><div class="table-responsive"><table class="table table-hover align-middle mb-0" style="font-size:.88rem">
   <thead class="table-light"><tr><th>Ad</th><th>Anahtar</th><th class="text-end">Cihaz</th><th></th></tr></thead>
   <tbody>
-  <?php foreach ($sistem as $k => $bilgi): $ad = $bilgi[0]; $n = $say[$k] ?? 0; ?>
+  <?php $sonGrup = null;
+        foreach ($sistem as $k => $bilgi): $ad = $bilgi[0]; $n = $say[$k] ?? 0;
+        // Kategoriler grup başlıkları altında listelenir (BT / Ağ / İletişim / Güvenlik…)
+        if ($t === 'kategori' && ($g = it_grup($k)) !== $sonGrup): $sonGrup = $g; ?>
+    <tr class="table-light"><td colspan="4" class="fw-semibold small py-1">
+        <i class="bi <?= h(IT_GRUP[$g][1] ?? 'bi-box') ?> me-1"></i><?= h(IT_GRUP[$g][0] ?? $g) ?>
+        <a href="varliklar.php?grup=<?= h($g) ?>" class="ms-2 small text-decoration-none">merkezi izlemede aç →</a></td></tr>
+  <?php endif; ?>
     <tr>
       <td><i class="bi <?= h($t === 'kategori' ? ($bilgi[1] ?? 'bi-box') : ($bilgi[2] ?? 'bi-circle')) ?> me-2 text-<?= $t === 'durum' ? h($bilgi[1] ?? 'secondary') : 'primary' ?>"></i><strong><?= h($ad) ?></strong></td>
       <td class="font-monospace text-muted"><?= h($k) ?></td>

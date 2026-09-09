@@ -521,6 +521,20 @@ if ($__user) {
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('index.php') ?>" href="<?= $__rootPath ?>it/index.php" data-label="Dashboard"><i class="bi bi-speedometer2"></i><span>Dashboard</span></a>
       </li>
+      <?php $__vgA = in_array($__page,['varliklar.php'],true); ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= $__vgA?'active':'' ?>" href="#subVarlik" data-bs-toggle="collapse" role="button" aria-expanded="<?= $__vgA?'true':'false' ?>" data-label="Varlıklar">
+          <i class="bi bi-diagram-3"></i><span>Merkezi Varlık İzleme</span><i class="bi bi-chevron-right chev"></i>
+        </a>
+        <div class="collapse <?= $__vgA?'show':'' ?>" id="subVarlik">
+          <ul class="list-unstyled sidebar-sub">
+            <li><a class="sidebar-sub-link <?= ($__vgA && ($_GET['grup'] ?? '')==='')?'active':'' ?>" href="<?= $__rootPath ?>it/varliklar.php"><i class="bi bi-grid-3x3-gap me-1"></i>Tüm varlıklar</a></li>
+            <?php foreach (defined('IT_GRUP') ? IT_GRUP : [] as $__gk => $__gv): /* sabit it/_ortak.php'de tanımlı */ ?>
+            <li><a class="sidebar-sub-link <?= ($__vgA && ($_GET['grup'] ?? '')===$__gk)?'active':'' ?>" href="<?= $__rootPath ?>it/varliklar.php?grup=<?= $__gk ?>"><i class="bi <?= $__gv[1] ?> me-1"></i><?= h($__gv[0]) ?></a></li>
+            <?php endforeach; ?>
+          </ul>
+        </div>
+      </li>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('cihazlar.php').__isActive('cihaz_detay.php').__isActive('cihaz_form.php') ?>" href="<?= $__rootPath ?>it/cihazlar.php" data-label="Cihazlar"><i class="bi bi-pc-display"></i><span>Cihazlar &amp; Lisanslar</span></a>
       </li>
@@ -535,9 +549,6 @@ if ($__user) {
       <?php if(can_edit()): ?>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('cihaz_import.php') ?>" href="<?= $__rootPath ?>it/cihaz_import.php" data-label="Cihaz Aktar"><i class="bi bi-box-arrow-in-down"></i><span>Cihaz İçe Aktar</span></a>
-      </li>
-      <li class="sidebar-nav-item">
-        <a class="sidebar-nav-link <?= __isActive('import.php') ?>" href="<?= $__rootPath ?>it/import.php" data-label="İçe Aktar"><i class="bi bi-cloud-arrow-up"></i><span>Personel İçe Aktar</span></a>
       </li>
       <?php endif; ?>
       <li class="sidebar-nav-item">

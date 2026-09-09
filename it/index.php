@@ -21,6 +21,18 @@ $dep = $pdoIt->query("SELECT COALESCE(NULLIF(departman,''),'(tanımsız)') depar
                       FROM it_cihazlar WHERE durum='aktif' GROUP BY departman ORDER BY adet DESC LIMIT 12")->fetchAll();
 $kisiler = $pdoIt->query("SELECT zimmetli, MAX(personel_id) personel_id, COUNT(*) adet, COALESCE(SUM(fiyat),0) mali, MAX(departman) departman
                           FROM it_cihazlar WHERE durum='aktif' AND zimmetli<>'' GROUP BY zimmetli ORDER BY adet DESC, mali DESC LIMIT 10")->fetchAll();
+// Varlık grupları (BT / ağ / iletişim / güvenlik / multimedya / yazılım / sarf) — kategori
+// sayımından türetilir, ek sorgu gerekmez; merkezi izleme ekranına giriş kapısıdır.
+$grupSayim = [];
+foreach ($kat as $r) {
+    $g = it_grup((string)$r['kategori']);
+    $grupSayim[$g] ??= ['adet'=>0, 'aktif'=>0, 'mali'=>0.0];
+    $grupSayim[$g]['adet']  += (int)$r['adet'];
+    $grupSayim[$g]['aktif'] += (int)$r['aktif'];
+    $grupSayim[$g]['mali']  += (float)$r['mali'];
+}
+uasort($grupSayim, fn($a, $b) => $b['adet'] <=> $a['adet']);
+
 $garanti = $pdoIt->query("SELECT id, envanter_no, ad, kategori, zimmetli, garanti_bitis FROM it_cihazlar
                           WHERE durum<>'hurda' AND garanti_bitis IS NOT NULL AND garanti_bitis <= DATE_ADD(CURDATE(), INTERVAL 60 DAY)
                           ORDER BY garanti_bitis LIMIT 12")->fetchAll();
@@ -90,6 +102,29 @@ require_once __DIR__ . '/../includes/header.php';
   </div>
   <?php endforeach; ?>
 </div>
+
+<?php if ($grupSayim): ?>
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-white d-flex flex-wrap align-items-center gap-2">
+    <strong><i class="bi bi-diagram-3 me-1"></i>Varlık grupları</strong>
+    <span class="small text-muted">BT envanteri, ağ ve güvenlik, iletişim, kamera sistemleri, multimedya, sarf…</span>
+    <a href="varliklar.php" class="btn btn-sm btn-outline-primary ms-auto">Merkezi varlık izleme <i class="bi bi-arrow-right ms-1"></i></a>
+  </div>
+  <div class="card-body py-2"><div class="row g-2">
+    <?php foreach ($grupSayim as $__g => $__gs): ?>
+    <div class="col-6 col-md-4 col-xl-3">
+      <a href="varliklar.php?grup=<?= h($__g) ?>" class="d-flex align-items-center gap-2 p-2 rounded text-decoration-none border">
+        <i class="bi <?= h(IT_GRUP[$__g][1] ?? 'bi-box') ?> fs-5 text-primary"></i>
+        <div class="flex-grow-1">
+          <div class="small fw-semibold text-dark"><?= h(IT_GRUP[$__g][0] ?? $__g) ?></div>
+          <div class="small text-muted"><?= $f0($__gs['adet']) ?> varlık · <?= $f0($__gs['aktif']) ?> kullanımda</div>
+        </div>
+      </a>
+    </div>
+    <?php endforeach; ?>
+  </div></div>
+</div>
+<?php endif; ?>
 
 <div class="row g-3 mb-3">
   <div class="col-lg-4">

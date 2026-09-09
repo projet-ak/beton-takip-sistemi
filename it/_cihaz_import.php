@@ -50,17 +50,34 @@ function cim_kategori(string $s): string
 {
     $n = pim_norm($s);
     if ($n === '') return 'diger';
+    // ⚠ SIRA ÖNEMLİ: özel tipler önce denenir — "IP KAMERA" genel 'kamera' aksesuarına değil
+    // güvenlik kategorisine, "IP TELEFON" cep telefonuna değil iletişim kategorisine düşmeli.
     $harita = [
-        'laptop'     => ['DIZUSTU','NOTEBOOK','LAPTOP','TASINABILIR BILGISAYAR'],
-        'bilgisayar' => ['MASAUSTU','DESKTOP','KASA','PC','BILGISAYAR','IS ISTASYONU','WORKSTATION','ALL IN ONE'],
-        'monitor'    => ['MONITOR','EKRAN','DISPLAY','LCD','LED EKRAN'],
-        'yazici'     => ['YAZICI','PRINTER','TARAYICI','SCANNER','FOTOKOPI','COK FONKSIYONLU'],
-        'telefon'    => ['TELEFON','PHONE','CEP','IP TELEFON','SANTRAL'],
-        'tablet'     => ['TABLET','IPAD'],
-        'ag'         => ['SWITCH','ROUTER','MODEM','ACCESS POINT','FIREWALL','AG CIHAZI','NETWORK'],
-        'sunucu'     => ['SUNUCU','SERVER','NAS','DEPOLAMA UNITESI','STORAGE'],
-        'yazilim'    => ['LISANS','LICENSE','YAZILIM','SOFTWARE','OFFICE','WINDOWS LISANS'],
-        'aksesuar'   => ['KLAVYE','MOUSE','FARE','KULAKLIK','DOCK','ADAPTOR','KAMERA','WEBCAM','HOPARLOR','CANTA','HARICI DISK','UPS','PROJEKSIYON','BARKOD'],
+        'ip_telefon'   => ['IP TELEFON','MASA TELEFONU','VOIP','SIP TELEFON','DAHILI TELEFON'],
+        'santral'      => ['SANTRAL','PBX','IP SANTRAL','TELEFON SANTRALI'],
+        'hat'          => ['TELEFON HATTI','GSM HAT','SABIT HAT','DATA HAT','HAT NUMARASI'],
+        'nvr'          => ['NVR','DVR','KAYIT CIHAZI','KAMERA KAYIT'],
+        'kamera'       => ['IP KAMERA','GUVENLIK KAMERASI','KAMERA SISTEMI','DOME KAMERA','BULLET KAMERA','PTZ'],
+        'kartli_gecis' => ['KARTLI GECIS','GECIS KONTROL','ACCESS CONTROL','KART OKUYUCU','PDKS'],
+        'turnike'      => ['TURNIKE','BARIYER','TURNSTILE'],
+        'firewall'     => ['FIREWALL','GUVENLIK DUVARI','UTM','FORTIGATE','SOPHOS','PALO ALTO'],
+        'switch'       => ['SWITCH','OMURGA','ANAHTAR CIHAZ','POE SWITCH'],
+        'access_point' => ['ACCESS POINT','ERISIM NOKTASI','KABLOSUZ AP','WIFI AP'],
+        'superbox'     => ['SUPERBOX','SUPER BOX','MOBIL MODEM','4.5G MODEM','LTE MODEM'],
+        'tv'           => ['TELEVIZYON','TV','SMART TV','LED TV','EKRAN PANEL','DIGITAL SIGNAGE'],
+        'projeksiyon'  => ['PROJEKSIYON','PROJECTOR','BEAMER'],
+        'bilesen'      => ['RAM','BELLEK MODULU','ISLEMCI','CPU','GUC KAYNAGI','POWER SUPPLY','ANAKART','SSD','HARDDISK','HARD DISK','EKRAN KARTI'],
+        'sarf'         => ['TONER','KARTUS','KARTUS','DRUM','SARF','KAGIT','PIL','BATARYA','ETIKET SERIT'],
+        'laptop'       => ['DIZUSTU','NOTEBOOK','LAPTOP','TASINABILIR BILGISAYAR'],
+        'bilgisayar'   => ['MASAUSTU','DESKTOP','KASA','PC','BILGISAYAR','IS ISTASYONU','WORKSTATION','ALL IN ONE'],
+        'monitor'      => ['MONITOR','EKRAN','DISPLAY','LCD','LED EKRAN'],
+        'yazici'       => ['YAZICI','PRINTER','TARAYICI','SCANNER','FOTOKOPI','COK FONKSIYONLU'],
+        'telefon'      => ['TELEFON','PHONE','CEP'],
+        'tablet'       => ['TABLET','IPAD'],
+        'ag'           => ['ROUTER','MODEM','AG CIHAZI','NETWORK'],
+        'sunucu'       => ['SUNUCU','SERVER','NAS','DEPOLAMA UNITESI','STORAGE'],
+        'yazilim'      => ['LISANS','LICENSE','YAZILIM','SOFTWARE','OFFICE','WINDOWS LISANS','ANTIVIRUS'],
+        'aksesuar'     => ['KLAVYE','MOUSE','FARE','KULAKLIK','DOCK','ADAPTOR','WEBCAM','HOPARLOR','CANTA','HARICI DISK','UPS','BARKOD','KABLO'],
     ];
     foreach ($harita as $anahtar => $kelimeler) foreach ($kelimeler as $k) if (str_contains($n, $k)) return $anahtar;
     return 'diger';

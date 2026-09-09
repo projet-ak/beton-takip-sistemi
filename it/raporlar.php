@@ -27,6 +27,17 @@ foreach ($pdoIt->query("SELECT kategori, durum, COUNT(*) adet, COALESCE(SUM(fiya
 uasort($matris, fn($a, $b) => $b['toplam'] <=> $a['toplam']);
 $matris = array_values($matris);
 
+// Varlık grubu × durum (BT / Ağ / İletişim / Güvenlik / Multimedya / Yazılım / Sarf)
+$grupMatris = [];
+foreach ($pdoIt->query("SELECT kategori, durum, COUNT(*) adet, COALESCE(SUM(fiyat),0) mali FROM it_cihazlar GROUP BY kategori, durum") as $r) {
+    $g = it_grup((string)$r['kategori']);
+    $grupMatris[$g] ??= ['ad'=>IT_GRUP[$g][0] ?? $g, 'ikon'=>IT_GRUP[$g][1] ?? 'bi-box', 'kod'=>$g, 'toplam'=>0, 'mali'=>0.0]
+                        + array_fill_keys(array_keys(IT_DURUM), 0);
+    $grupMatris[$g][$r['durum']] += (int)$r['adet'];
+    if ($r['durum'] !== 'hurda') { $grupMatris[$g]['toplam'] += (int)$r['adet']; $grupMatris[$g]['mali'] += (float)$r['mali']; }
+}
+uasort($grupMatris, fn($a, $b) => $b['toplam'] <=> $a['toplam']);
+
 $kirilim = function (string $sutun) use ($pdoIt): array {
     return $pdoIt->query("SELECT COALESCE(NULLIF($sutun,''),'(tanımsız)') ad, COUNT(*) adet, SUM(durum='aktif') aktif,
                                  COALESCE(SUM(fiyat),0) mali
@@ -107,6 +118,25 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="card-body"><div style="height:280px"><canvas id="chYas"></canvas></div></div></div></div>
   <div class="col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-header bg-white"><strong>Garanti durumu</strong></div>
     <div class="card-body"><div style="height:280px"><canvas id="chGar"></canvas></div></div></div></div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-white d-flex flex-wrap align-items-center gap-2">
+    <strong><i class="bi bi-diagram-3 me-1"></i>Varlık Grubu × Durum</strong>
+    <span class="small text-muted">BT envanteri · ağ ve güvenlik · iletişim · güvenlik sistemleri · multimedya · yazılım · sarf</span>
+    <a href="varliklar.php" class="btn btn-sm btn-outline-secondary ms-auto"><i class="bi bi-diagram-3 me-1"></i>Merkezi izleme</a>
+  </div>
+  <div class="table-responsive"><table class="table table-sm table-hover mb-0" style="font-size:.85rem">
+    <thead class="table-light"><tr><th>Grup</th><?php foreach (IT_DURUM as $d => [$ad]): ?><th class="text-end"><?= h($ad) ?></th><?php endforeach; ?><th class="text-end">Toplam*</th><th class="text-end">Mali değer (TL)</th></tr></thead>
+    <tbody>
+    <?php foreach ($grupMatris as $m): ?>
+      <tr><td><i class="bi <?= h($m['ikon']) ?> me-1 text-muted"></i><a href="varliklar.php?grup=<?= h($m['kod']) ?>" class="text-decoration-none"><?= h($m['ad']) ?></a></td>
+          <?php foreach (array_keys(IT_DURUM) as $d): ?><td class="text-end"><?= $m[$d] ?: '<span class="text-muted">—</span>' ?></td><?php endforeach; ?>
+          <td class="text-end fw-semibold"><?= $f0($m['toplam']) ?></td><td class="text-end"><?= $f2($m['mali']) ?></td></tr>
+    <?php endforeach; ?>
+    <?php if (!$grupMatris): ?><tr><td colspan="8" class="text-center text-muted py-3">Kayıt yok.</td></tr><?php endif; ?>
+    </tbody></table></div>
+  <div class="card-footer bg-white small text-muted">* Toplam ve mali değer hurdalar hariçtir. Grup adına tıklayınca o grubun varlıkları merkezi izleme ekranında açılır.</div>
 </div>
 
 <div class="card border-0 shadow-sm mb-3">

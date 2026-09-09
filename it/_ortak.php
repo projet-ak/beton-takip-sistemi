@@ -9,20 +9,108 @@
  * Görseller DOSYA olarak tutulur; DB'de yalnız göreli URL. Kayıt silinmez, `hurda` durumuna alınır.
  */
 
-/** Kategoriler: anahtar => [ad, ikon] */
-const IT_KATEGORI = [
-    'bilgisayar' => ['Masaüstü Bilgisayar', 'bi-pc-display'],
-    'laptop'     => ['Dizüstü Bilgisayar',  'bi-laptop'],
-    'monitor'    => ['Monitör',              'bi-display'],
-    'yazici'     => ['Yazıcı / Tarayıcı',    'bi-printer'],
-    'telefon'    => ['Telefon',              'bi-phone'],
-    'tablet'     => ['Tablet',               'bi-tablet'],
-    'ag'         => ['Ağ Cihazı',            'bi-router'],
-    'sunucu'     => ['Sunucu / Depolama',    'bi-hdd-rack'],
-    'yazilim'    => ['Yazılım / Lisans',     'bi-key'],
-    'aksesuar'   => ['Aksesuar',             'bi-mouse'],
-    'diger'      => ['Diğer',                'bi-box'],
+/**
+ * Varlık grupları: anahtar => [ad, ikon].
+ * Envanter tek tabloda (`it_cihazlar`) durur; grup yalnız KATEGORİYİ toplayan üst başlıktır —
+ * menü, merkezi izleme ekranı ve raporlar bunun üzerinden çalışır (yeni cihaz tipi eklemek
+ * IT_KATEGORI'ye bir satır yazmak demektir, yeni tablo/ekran gerekmez).
+ */
+const IT_GRUP = [
+    'bt'         => ['BT Envanteri',        'bi-pc-display'],
+    'network'    => ['Ağ ve Güvenlik',      'bi-diagram-3'],
+    'iletisim'   => ['İletişim Sistemleri', 'bi-telephone'],
+    'guvenlik'   => ['Güvenlik Sistemleri', 'bi-shield-lock'],
+    'multimedya' => ['Multimedya',          'bi-tv'],
+    'yazilim'    => ['Yazılım ve Lisans',   'bi-key'],
+    'sarf'       => ['Sarf ve Aksesuar',    'bi-box-seam'],
+    'diger'      => ['Diğer',               'bi-three-dots'],
 ];
+
+/** Kategoriler: anahtar => [ad, ikon, grup]. ⚠ Anahtarlar VERİDİR — mevcutları asla yeniden adlandırma. */
+const IT_KATEGORI = [
+    // BT envanteri
+    'bilgisayar'   => ['Masaüstü Bilgisayar', 'bi-pc-display',  'bt'],
+    'laptop'       => ['Dizüstü Bilgisayar',  'bi-laptop',      'bt'],
+    'monitor'      => ['Monitör',             'bi-display',     'bt'],
+    'yazici'       => ['Yazıcı / Tarayıcı',   'bi-printer',     'bt'],
+    'sunucu'       => ['Sunucu / Depolama',   'bi-hdd-rack',    'bt'],
+    'tablet'       => ['Tablet',              'bi-tablet',      'bt'],
+    'telefon'      => ['Cep Telefonu',        'bi-phone',       'bt'],
+    // Ağ ve güvenlik altyapısı
+    'switch'       => ['Switch (omurga/kenar)', 'bi-hdd-network', 'network'],
+    'firewall'     => ['Firewall',            'bi-shield-check','network'],
+    'access_point' => ['Access Point',        'bi-wifi',        'network'],
+    'superbox'     => ['Superbox / Mobil Modem', 'bi-broadcast','network'],
+    'ag'           => ['Ağ Cihazı (diğer)',   'bi-router',      'network'],
+    // İletişim
+    'ip_telefon'   => ['IP Telefon',          'bi-telephone-inbound', 'iletisim'],
+    'santral'      => ['Santral',             'bi-pc-horizontal','iletisim'],
+    'hat'          => ['Telefon Hattı',       'bi-telephone-plus','iletisim'],
+    // Fiziksel güvenlik
+    'kamera'       => ['IP Kamera',           'bi-camera-video','guvenlik'],
+    'nvr'          => ['NVR Kayıt Cihazı',    'bi-record-circle','guvenlik'],
+    'kartli_gecis' => ['Kartlı Geçiş Sistemi','bi-credit-card-2-front','guvenlik'],
+    'turnike'      => ['Turnike',             'bi-door-open',   'guvenlik'],
+    // Multimedya
+    'tv'           => ['TV / Ekran',          'bi-tv',          'multimedya'],
+    'projeksiyon'  => ['Projeksiyon',         'bi-projector',   'multimedya'],
+    // Yazılım
+    'yazilim'      => ['Yazılım / Lisans',    'bi-key',         'yazilim'],
+    // Sarf ve aksesuar
+    'aksesuar'     => ['Aksesuar',            'bi-mouse',       'sarf'],
+    'sarf'         => ['Sarf Malzeme',        'bi-droplet-half','sarf'],
+    'bilesen'      => ['Bileşen (RAM/disk/işlemci)', 'bi-cpu',  'sarf'],
+    'diger'        => ['Diğer',               'bi-box',         'diger'],
+];
+
+/**
+ * Kategoriye özel EK ALANLAR: alan => [etiket, [kategoriler], tip, ipucu].
+ * Cihaz formu bu haritaya göre alan gösterir/gizler; merkezi izleme ekranı sütun seçer.
+ * Kolonlar `it_semasi_kur` içinde runtime ALTER ile eklenir (eski kayıtlar etkilenmez).
+ */
+const IT_EK_ALAN = [
+    'dahili_no'         => ['Dahili No',            ['ip_telefon','santral'], 'text', ''],
+    'telefon_no'        => ['Telefon Numarası',     ['ip_telefon','santral','hat','superbox','telefon'], 'text', ''],
+    'imei'              => ['IMEI',                 ['superbox','telefon','tablet'], 'text', ''],
+    'operator'          => ['Operatör',             ['superbox','hat','telefon'], 'text', 'Turkcell / Vodafone / Türk Telekom'],
+    'firmware'          => ['Firmware Sürümü',      ['firewall','switch','access_point','nvr','kamera','kartli_gecis','turnike','santral'], 'text', ''],
+    'lisans_durumu'     => ['Lisans Durumu',        ['firewall','yazilim','santral','nvr'], 'text', 'ör. UTM lisansı 2027-05-01\'e kadar'],
+    'yonetim_kullanici' => ['Yönetim Kullanıcısı',  ['firewall','switch','access_point','nvr','kamera','kartli_gecis','turnike','santral'], 'text', ''],
+    'yonetim_sifre'     => ['Yönetim Şifresi',      ['firewall','switch','access_point','nvr','kamera','kartli_gecis','turnike','santral'], 'sifre', 'yalnız değiştirme yetkisi olanlara gösterilir'],
+    'bagli_id'          => ['Bağlı olduğu cihaz',   ['kamera','turnike','ip_telefon','access_point'], 'cihaz', 'NVR / santral / geçiş kontrol ünitesi'],
+    'kapasite'          => ['Disk Kapasitesi / Port', ['nvr','sunucu','switch'], 'text', 'ör. 4×4 TB · 48 port'],
+    'kullanim_amaci'    => ['Kullanım Amacı',       ['tv','projeksiyon','kamera'], 'text', 'ör. toplantı odası · lobi bilgilendirme'],
+    'adet'              => ['Adet (stok)',          ['sarf','aksesuar','bilesen'], 'sayi', ''],
+];
+
+/** Bir kategorinin grubu. */
+function it_grup(string $kat): string { return IT_KATEGORI[$kat][2] ?? 'diger'; }
+
+/** Bir gruptaki kategori anahtarları. */
+function it_grup_kategorileri(string $grup): array
+{
+    $k = [];
+    foreach (IT_KATEGORI as $anahtar => $t) if (($t[2] ?? 'diger') === $grup) $k[] = $anahtar;
+    return $k;
+}
+
+/** Kategoriler grup grup: grup => [anahtar => ad]. */
+function it_kategori_agaci(): array
+{
+    $a = [];
+    foreach (IT_GRUP as $g => $_) $a[$g] = [];
+    foreach (IT_KATEGORI as $anahtar => $t) $a[$t[2] ?? 'diger'][$anahtar] = $t[0];
+    return array_filter($a);
+}
+
+/** Bir kategoride gösterilecek ek alanlar: alan => [etiket, tip, ipucu]. */
+function it_ek_alanlar(string $kat): array
+{
+    $r = [];
+    foreach (IT_EK_ALAN as $alan => [$etiket, $katlar, $tip, $ipucu])
+        if (in_array($kat, $katlar, true)) $r[$alan] = [$etiket, $tip, $ipucu];
+    return $r;
+}
 
 /** Durumlar: anahtar => [ad, bootstrap rengi, ikon] */
 const IT_DURUM = [
@@ -169,6 +257,12 @@ function it_hareket_ekle(PDO $pdo, int $cihazId, string $tur, ?string $kisi, ?st
 function it_filtre(array $g): array
 {
     $w = []; $p = []; $etkin = [];
+    // Grup = kategori üst başlığı (BT / Ağ / İletişim / Güvenlik …) — kategori seçiliyse o önceliklidir
+    if (!empty($g['grup']) && isset(IT_GRUP[$g['grup']]) && empty($g['kategori'])) {
+        $katlar = it_grup_kategorileri($g['grup']);
+        if ($katlar) { $w[] = 'kategori IN (' . implode(',', array_fill(0, count($katlar), '?')) . ')'; foreach ($katlar as $kk) $p[] = $kk; }
+        $etkin['grup'] = $g['grup'];
+    }
     if (!empty($g['kategori']) && isset(IT_KATEGORI[$g['kategori']])) { $w[] = 'kategori=?'; $p[] = $g['kategori']; $etkin['kategori'] = $g['kategori']; }
     if (!empty($g['durum']) && isset(IT_DURUM[$g['durum']]))          { $w[] = 'durum=?';    $p[] = $g['durum'];    $etkin['durum'] = $g['durum']; }
     elseif (($g['durum'] ?? '') === '') { $w[] = "durum <> 'hurda'"; }   // varsayılan: hurdalar gizli
@@ -182,9 +276,13 @@ function it_filtre(array $g): array
         $etkin['garanti'] = $g['garanti'];
     }
     if (!empty($g['q'])) {
+        // Tek kutudan IP / MAC / seri no / envanter no / dahili / telefon araması
         $q = '%' . trim($g['q']) . '%';
-        $w[] = '(envanter_no LIKE ? OR ad LIKE ? OR marka LIKE ? OR model LIKE ? OR seri_no LIKE ? OR zimmetli LIKE ? OR lokasyon LIKE ? OR ip_adresi LIKE ? OR notlar LIKE ?)';
-        for ($i = 0; $i < 9; $i++) $p[] = $q;
+        // Kolonların hepsi it_semasi_kur() tarafından garanti edilir (yoksa runtime ALTER ile eklenir)
+        $alan = ['envanter_no','ad','marka','model','seri_no','zimmetli','departman','lokasyon','notlar',
+                 'ip_adresi','mac_adresi','varlik_kodu','dahili_no','telefon_no','imei'];
+        $w[] = '(' . implode(' LIKE ? OR ', $alan) . ' LIKE ?)';
+        foreach ($alan as $_) $p[] = $q;
         $etkin['q'] = trim($g['q']);
     }
     return [$w ? ' WHERE ' . implode(' AND ', $w) : '', $p, $etkin];
@@ -472,6 +570,37 @@ function it_tanim_semasi_kur(PDO $pdo): void
     }
     try { $pdo->query("SELECT sirket FROM it_cihazlar LIMIT 1"); }
     catch (Throwable $e) { try { $pdo->exec("ALTER TABLE it_cihazlar ADD COLUMN sirket VARCHAR(120) NULL"); } catch (Throwable $e2) {} }
+    it_ek_alan_semasi_kur($pdo);
+}
+
+/**
+ * Kategoriye özel ek alanların kolonları (IP telefon dahilisi, superbox IMEI'si, NVR disk kapasitesi…).
+ * Runtime ALTER — kolon varsa dokunulmaz, eski kayıtlar etkilenmez. Transaction DIŞINDA çağrılmalı (DDL).
+ */
+function it_ek_alan_semasi_kur(PDO $pdo): void
+{
+    static $yapildi = false;
+    if ($yapildi) return;
+    $yapildi = true;
+    $kolonlar = [
+        'varlik_kodu'       => 'VARCHAR(60) NULL',   // ERP demirbaş kodu (cihaz içe aktarma eşleşmesi)
+        'dahili_no'         => 'VARCHAR(20) NULL',
+        'telefon_no'        => 'VARCHAR(40) NULL',
+        'imei'              => 'VARCHAR(32) NULL',
+        'operator'          => 'VARCHAR(60) NULL',
+        'firmware'          => 'VARCHAR(80) NULL',
+        'lisans_durumu'     => 'VARCHAR(120) NULL',
+        'yonetim_kullanici' => 'VARCHAR(60) NULL',
+        'yonetim_sifre'     => 'VARCHAR(255) NULL',
+        'bagli_id'          => 'INT NULL',
+        'kapasite'          => 'VARCHAR(80) NULL',
+        'kullanim_amaci'    => 'VARCHAR(150) NULL',
+        'adet'              => 'INT NULL',
+    ];
+    foreach ($kolonlar as $kol => $tip) {
+        try { $pdo->query("SELECT $kol FROM it_cihazlar LIMIT 1"); }
+        catch (Throwable $e) { try { $pdo->exec("ALTER TABLE it_cihazlar ADD COLUMN $kol $tip"); } catch (Throwable $e2) {} }
+    }
 }
 
 /** Bir türün tanım listesi (aktifler önce ada göre). */

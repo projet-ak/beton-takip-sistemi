@@ -374,6 +374,39 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   seçeneğiyle 2. yükleme 0 yeni / 185 güncellenen (yalnız zimmetli adı düzeldi) + 116 personel kartı, 3. yükleme
   **0 yeni / 0 güncellenen / 189 değişmeyen** (mükerrer cihaz oluşmuyor, sahte zimmet hareketi yazılmıyor);
   `?sablon=mevcut` round-trip 192 satır → 0 yeni / 192 değişmeyen.
+  **VARLIK GRUPLARI + YENİ KATEGORİLER + MERKEZİ İZLEME (2026-09-09)** — envanter artık yalnız BT cihazı değil;
+  ağ/güvenlik altyapısı, IP telefon/santral, kamera/NVR/turnike, TV, sarf ve bileşenler de aynı tabloda
+  (`it_cihazlar`) tutulur. **Yeni tablo/ekran açılmaz**: `IT_KATEGORI` satırı + `IT_GRUP` üst başlığı yeterlidir.
+  • **`IT_GRUP`** (8): BT Envanteri · Ağ ve Güvenlik · İletişim Sistemleri · Güvenlik Sistemleri · Multimedya ·
+  Yazılım ve Lisans · Sarf ve Aksesuar · Diğer. `IT_KATEGORI` artık `[ad, ikon, grup]` — ⚠ **anahtarlar VERİDİR**,
+  mevcutları yeniden adlandırma; eski 11 anahtar korundu, 15 yenisi eklendi (26): switch · firewall ·
+  access_point · superbox · ip_telefon · santral · hat · kamera · nvr · kartli_gecis · turnike · tv ·
+  projeksiyon · sarf · bilesen. Yardımcılar `it_grup()`, `it_grup_kategorileri()`, `it_kategori_agaci()`.
+  • **`IT_EK_ALAN` — cihaz tipine özel alanlar** (runtime ALTER `it_ek_alan_semasi_kur`, transaction DIŞINDA;
+  `varlik_kodu` da buraya taşındı ki cihaz içe aktarma yüklenmese de kolon var olsun): dahili_no · telefon_no ·
+  imei · operator · firmware · lisans_durumu · yonetim_kullanici · **yonetim_sifre** · bagli_id · kapasite ·
+  kullanim_amaci · adet. Her alan yalnız kendi kategorilerinde görünür (IP telefonda dahili, superbox'ta
+  IMEI/operatör, NVR'de disk kapasitesi + yönetim bilgisi, kamerada bağlı NVR, TV'de kullanım amacı, sarfta adet).
+  **Kategori değişirse o kategoride görünmeyen alanlar TEMİZLENİR** — monitöre dönüşen kayıtta "dahili no" hayalet
+  veri olarak kalmasın. **Yönetim şifresi** yalnız `yetki_var('duzenle')` olana gösterilir/yazılır, formda boş
+  bırakılırsa mevcut şifre KORUNUR, detayda "göster" bağlantısıyla açılır.
+  • **`it/varliklar.php` — MERKEZİ VARLIK İZLEME**: grup şeridi (sayaçlı) + KPI (listelenen/kullanımda/serviste-
+  arızalı/IP adresli/lokasyon/mali değer) + filtreler [arama · cihaz tipi (gruplu optgroup) · lokasyon (alt dahil) ·
+  durum · garanti] + gruba göre başlıklı tablo. Sütunlar cihaz tipine göre ANLAMLI doldurulur: "Ağ / Hat" =
+  IP·MAC·dahili·telefon·IMEI, "Teknik" = operatör·firmware·kapasite·lisans durumu·kullanım amacı·**bağlı cihaz**
+  (kamera→NVR bağlantılı link)·adet. Envanter no yanında **arıza/servis rozeti** (`it_hareketler`'den). Excel
+  dışa aktarma 26 sütun. `it_filtre()` **grup** süzgecini ve genişletilmiş aramayı destekler: tek kutudan
+  IP · MAC · seri no · envanter no · varlık kodu · dahili · telefon · IMEI (gerçek veriyle doğrulandı — her biri
+  tek sonuç döndürür).
+  • Dashboard'a **varlık grupları şeridi** (kategori sorgusundan türetilir, ek sorgu yok → merkezi izlemeye giriş),
+  raporlara **Varlık Grubu × Durum** tablosu (grup adı tıklanınca o grup merkezi izlemede açılır), Tanımlar'ın
+  Kategoriler sekmesine grup başlıkları eklendi. Cihaz formunda kategori select'i **optgroup**'lu.
+  • Cihaz içe aktarmada `cim_kategori()` yeni tipleri tanır — ⚠ **sıra önemli**: "IP KAMERA" genel aksesuar
+  'kamera'sına değil güvenlik kategorisine, "IP TELEFON" cep telefonuna değil iletişime düşmeli, bu yüzden özel
+  tipler haritada önce denenir.
+  • **Sidebar'dan "Personel İçe Aktar" KALDIRILDI** (kullanıcı isteği); `it/import.php` duruyor ve
+  `personel.php`'deki "İçe Aktar" düğmesinden açılıyor. Yerine "Merkezi Varlık İzleme" açılır menüsü geldi
+  (Tüm varlıklar + 8 grup). `IT_GRUP` header'da `defined()` ile korumalı okunur.
   **TANIMLAR EKRANI `it/tanimlar.php` (2026-09-09)** — tek sayfa, sekmeli (Snipe-IT'deki "tanım tablosu seç"
   düzeni): **Lokasyonlar · Kategoriler · Üreticiler · Modeller · Tedarikçiler · Şirketler · Durumlar · Personel**.
   • *Lokasyonlar* = `it_lokasyonlar` (hiyerarşi korunur) + yeni **sehir / adres / renk** kolonları; satırda ad
@@ -533,6 +566,25 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   - Yetki fonksiyonları: `can_edit()`, `can_edit_irsaliye($row)` (durum bazlı), `can_approve_saha()`,
     `can_approve_teknik()`, `can_view_reports()`, `can_manage_definitions()` (admin+teknik_ofis_admin),
     `can_manage_users()` (admin), `has_role(...)`, `is_admin()`.
+- **`mukerrer.php` + `includes/mukerrer.php` (mk_*)** — **MÜKERRER KAYIT MERKEZİ, TÜM MODÜLLER** (2026-09-09,
+  admin, Araçlar → "Mükerrer Kayıtlar"). Aynı tedarikçi/firma/personel/araç iki kez açılınca raporlar bölünür,
+  bakiyeler yanlış çıkar. **`MK_KURAL` kayıt defteri** modül => tablo => [anahtarlar, etiket, bağlı FK'ler,
+  birleştirilebilir mi] tutar; beton (13 tablo) · demir (8) · seramik (3) · depo · akaryakıt · crm · prekast ·
+  it (4) kapsanır. **Tespit** `mk_gruplar()`: her tablo kendi anahtarlarıyla (ör. tedarikçide *Ad* ve *VKN*)
+  `mk_norm()` ile Türkçe harf duyarsız + noktalama atılarak normalize edilir ("SAFİ BETON A.Ş." = "Safi Beton AS")
+  ve **birleşim-bul (union-find)** ile gruplanır — A ile B *addan*, B ile C *VKN'den* eşleşirse üçü TEK grup olur.
+  Yalnız gereken kolonlar okunur (irsaliyeler gibi büyük tablolarda `SELECT *` belleği şişirirdi).
+  **Birleştirme** `mk_birlestir()` tek transaction: bağlı hareketler korunan kayda TAŞINIR, hedefte **BOŞ olan**
+  alanlar kaynaklardan tamamlanır (dolu alan asla ezilmez), kaynaklar silinir; bir adım patlarsa hiçbir şey
+  değişmez, `audit_log`'a MERGE olarak yazılır. Olmayan bağlı tablo (kurulmamış modül) atlanır, gerçek hata
+  işlemi durdurur. ASIL (korunacak) kayıt = en dolu kart (anahtar alanı dolu olan ağır basar, eşitlikte daha
+  açıklayıcı etiket) — ekranda değiştirilebilir; seçim değişince o satırın birleştirme kutusu kapanır (kayıt hem
+  hedef hem kaynak olamaz). **Hareket/belge tabloları** (irsaliye, sevkiyat, tutanak, fatura, arıza, iş satırı,
+  depo stok kartı, kullanıcı) `birlestir=false` ile **yalnız raporlanır** — temizlikleri kendi ekranlarında
+  (beton: `veri_kontrol.php`), depo kartları Excel tam yenilemesinden geldiği için düzeltme Excel tarafında.
+  IT personelinde cihaz zimmetlerini de taşıyan `pim_personel_birlestir` devralır (`ozel` kancası).
+  `mk_pdo()` modül bağlantısını istek başına önbellekler ve **sayfa zaten kurmuşsa onu kullanır**
+  (config.php yoksa db.php login'e yönlendirip çıkar, buradan tetiklenmemeli). `MODUL_MUAF`'a eklendi.
 - **`functions.php`** — `h()` (XSS), `flash()/get_flash()`, `format_date/number()`, `role_label()`,
   `redirect()`, `audit_log()`, `current_user_id()`.
 - **`header.php`** — layout + **modül algılama** (`$__module` = PHP_SELF `/demir/` içeriyorsa 'demir').

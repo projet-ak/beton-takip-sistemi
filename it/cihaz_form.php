@@ -32,7 +32,8 @@ $error = '';
 $v = $c ?: ['envanter_no'=>'', 'kategori'=>'laptop', 'ad'=>'', 'marka'=>'', 'model'=>'', 'seri_no'=>'', 'sirket'=>'', 'durum'=>'depoda',
             'personel_id'=>'', 'zimmetli'=>'', 'departman'=>'', 'lokasyon_id'=>'', 'lokasyon'=>'', 'zimmet_tarihi'=>'', 'alis_tarihi'=>'', 'garanti_bitis'=>'',
             'fiyat'=>'', 'tedarikci'=>'', 'fatura_no'=>'', 'ip_adresi'=>'', 'mac_adresi'=>'', 'isletim_sistemi'=>'',
-            'ozellikler'=>'', 'lisans_anahtari'=>'', 'lisans_adet'=>'', 'notlar'=>''];
+            'ozellikler'=>'', 'lisans_anahtari'=>'', 'lisans_adet'=>'', 'notlar'=>'']
+     + array_fill_keys(array_keys(IT_EK_ALAN), '');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $al = fn($k, $max = 255) => mb_substr(trim((string)($_POST[$k] ?? '')), 0, $max) ?: null;
@@ -63,6 +64,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'lisans_adet'     => ($_POST['lisans_adet'] ?? '') !== '' ? max(0, (int)$_POST['lisans_adet']) : null,
         'notlar'          => trim((string)($_POST['notlar'] ?? '')) ?: null,
     ];
+    // Kategoriye özel alanlar (IP telefon dahilisi, superbox IMEI'si, NVR disk kapasitesi…).
+    // Yalnız o kategoride GÖSTERİLEN alanlar yazılır; kategori değişirse eskiler temizlenir —
+    // aksi halde monitöre dönüşen bir kayıtta "dahili no" hayalet veri olarak kalırdı.
+    $gorunen = it_ek_alanlar($y['kategori']);
+    foreach (IT_EK_ALAN as $alan => [$_e, $_k, $tip, $_i]) {
+        if (!isset($gorunen[$alan])) { $y[$alan] = null; continue; }
+        $ham = trim((string)($_POST[$alan] ?? ''));
+        $y[$alan] = match ($tip) {
+            'sayi'  => $ham !== '' ? max(0, (int)$ham) : null,
+            'cihaz' => (int)$ham ?: null,
+            default => mb_substr($ham, 0, 250) ?: null,
+        };
+    }
+    // Yönetim şifresi yalnız "değiştirme" yetkisiyle güncellenir; boş bırakılırsa mevcut şifre KORUNUR
+    if (array_key_exists('yonetim_sifre', $y)) {
+        if (!yetki_var('duzenle') || (trim((string)($_POST['yonetim_sifre'] ?? '')) === '' && $duzenleme && isset($gorunen['yonetim_sifre'])))
+            $y['yonetim_sifre'] = $c['yonetim_sifre'] ?? null;
+    }
     it_cihaz_bag_esitle($pdoIt, $y);   // personel seçildiyse zimmetli/departman, lokasyon seçildiyse yol metni dolar
     // Zimmetli kişi doluysa durum otomatik "kullanımda", boşsa "kullanımda" olamaz
     if ($y['zimmetli'] && in_array($y['durum'], ['depoda'], true)) $y['durum'] = 'aktif';
@@ -113,6 +132,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pageTitle = ($duzenleme ? 'Cihaz Düzenle — ' . $c['envanter_no'] : 'Yeni Cihaz') . ' — IT Envanter';
+// "Bağlı olduğu cihaz" adayları: kamera→NVR, turnike→geçiş ünitesi, IP telefon→santral, AP→switch
+$bagliAdaylar = [];
+try {
+    $bagliAdaylar = $pdoIt->query("SELECT id, envanter_no, ad, kategori FROM it_cihazlar
+        WHERE kategori IN ('nvr','santral','kartli_gecis','switch','firewall') AND durum<>'hurda'
+        ORDER BY kategori, envanter_no")->fetchAll();
+} catch (Throwable $e) {}
+
 require_once __DIR__ . '/../includes/header.php';
 // Öneri listeleri: Tanımlar ekranındaki kayıtlar + cihazlarda geçen mevcut değerler (it_tanim_oneri birleştirir)
 $sec = ['zimmetli' => it_secenekler($pdoIt, 'zimmetli'), 'departman' => it_secenekler($pdoIt, 'departman'),
@@ -142,8 +169,12 @@ $tv = fn($k) => h($v[$k] ?? '');
       <div class="col-md-3">
         <label class="form-label">Kategori <span class="text-danger">*</span></label>
         <select name="kategori" id="kategori" class="form-select" required>
-          <?php foreach (IT_KATEGORI as $k => [$ad, $ik]): ?>
-          <option value="<?= $k ?>" <?= ($v['kategori'] ?? '') === $k ? 'selected' : '' ?>><?= h($ad) ?></option>
+          <?php foreach (it_kategori_agaci() as $__g => $__kats): ?>
+          <optgroup label="<?= h(IT_GRUP[$__g][0] ?? $__g) ?>">
+            <?php foreach ($__kats as $k => $ad): ?>
+            <option value="<?= $k ?>" <?= ($v['kategori'] ?? '') === $k ? 'selected' : '' ?>><?= h($ad) ?></option>
+            <?php endforeach; ?>
+          </optgroup>
           <?php endforeach; ?>
         </select>
       </div>
@@ -190,6 +221,31 @@ $tv = fn($k) => h($v[$k] ?? '');
       <div class="col-md-3 teknik"><label class="form-label">İşletim Sistemi</label><input name="isletim_sistemi" class="form-control" value="<?= $tv('isletim_sistemi') ?>" maxlength="80" placeholder="Windows 11 Pro"></div>
       <div class="col-md-3 teknik"><label class="form-label">Özellikler</label><input name="ozellikler" class="form-control" value="<?= $tv('ozellikler') ?>" maxlength="255" placeholder="i7 / 16 GB / 512 SSD"></div>
 
+      <?php /* Kategoriye özel alanlar: her biri kendi kategorilerinde görünür (JS ile), diğerlerinde gizlenir */ ?>
+      <div class="col-12 ekalan"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-sliders me-1"></i>CİHAZ TİPİNE ÖZEL</div></div>
+      <?php foreach (IT_EK_ALAN as $__ea => [$__eEt, $__eKat, $__eTip, $__eIp]):
+          if ($__eTip === 'sifre' && !yetki_var('duzenle')) continue;   // şifreyi yalnız yetkili görür/yazar ?>
+      <div class="col-md-3 ekalan ek-<?= h($__ea) ?>" data-kat="<?= h(implode(',', $__eKat)) ?>">
+        <label class="form-label"><?= h($__eEt) ?></label>
+        <?php if ($__eTip === 'cihaz'): ?>
+          <select name="<?= h($__ea) ?>" class="form-select">
+            <option value="">— seçilmedi —</option>
+            <?php foreach ($bagliAdaylar as $__b): ?>
+              <option value="<?= (int)$__b['id'] ?>" <?= (int)($v[$__ea] ?? 0) === (int)$__b['id'] ? 'selected' : '' ?>>
+                <?= h(trim(($__b['envanter_no'] ?? '') . ' · ' . ($__b['ad'] ?? ''))) ?></option>
+            <?php endforeach; ?>
+          </select>
+        <?php elseif ($__eTip === 'sifre'): ?>
+          <input name="<?= h($__ea) ?>" class="form-control font-monospace" value="<?= $tv($__ea) ?>" maxlength="250" autocomplete="new-password">
+        <?php elseif ($__eTip === 'sayi'): ?>
+          <input type="number" min="0" name="<?= h($__ea) ?>" class="form-control" value="<?= $tv($__ea) ?>">
+        <?php else: ?>
+          <input name="<?= h($__ea) ?>" class="form-control<?= in_array($__ea, ['imei','dahili_no','telefon_no'], true) ? ' font-monospace' : '' ?>" value="<?= $tv($__ea) ?>" maxlength="250" placeholder="<?= h($__eIp) ?>">
+        <?php endif; ?>
+        <?php if ($__eIp && $__eTip !== 'text'): ?><div class="form-text"><?= h($__eIp) ?></div><?php endif; ?>
+      </div>
+      <?php endforeach; ?>
+
       <div class="col-12 lisans"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-key me-1"></i>LİSANS</div></div>
       <div class="col-md-8 lisans"><label class="form-label">Lisans Anahtarı</label><input name="lisans_anahtari" class="form-control font-monospace" value="<?= $tv('lisans_anahtari') ?>" maxlength="160"></div>
       <div class="col-md-4 lisans"><label class="form-label">Lisans Adedi (kullanıcı/cihaz)</label><input type="number" min="0" name="lisans_adet" class="form-control" value="<?= $tv('lisans_adet') ?>"></div>
@@ -216,6 +272,14 @@ $tv = fn($k) => h($v[$k] ?? '');
         var yaz = sel.value === 'yazilim';
         document.querySelectorAll('.lisans').forEach(function (e) { e.classList.toggle('d-none', !yaz); });
         document.querySelectorAll('.teknik').forEach(function (e) { e.classList.toggle('d-none', yaz || sel.value === 'aksesuar'); });
+        // Cihaz tipine özel alanlar: data-kat listesinde bu kategori varsa görünür
+        var acik = 0;
+        document.querySelectorAll('.ekalan[data-kat]').forEach(function (e) {
+            var goster = e.dataset.kat.split(',').indexOf(sel.value) >= 0;
+            e.classList.toggle('d-none', !goster);
+            if (goster) acik++;
+        });
+        document.querySelectorAll('.ekalan:not([data-kat])').forEach(function (e) { e.classList.toggle('d-none', acik === 0); });
     }
     sel.addEventListener('change', uygula); uygula();
     // Personel seçilince birim ve lokasyon kişinin kartından dolar

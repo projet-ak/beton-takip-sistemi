@@ -165,6 +165,31 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
             <?= $bilgi('İşletim Sistemi', $c['isletim_sistemi']) ?>
             <?= $bilgi('Özellikler', $c['ozellikler']) ?>
             <?php endif; ?>
+            <?php
+            // Cihaz tipine özel alanlar (IP telefon dahilisi, superbox IMEI'si, NVR disk kapasitesi,
+            // kameranın bağlı olduğu NVR…) — yalnız DOLU olanlar gösterilir.
+            foreach (it_ek_alanlar((string)$c['kategori']) as $__ea => [$__eEt, $__eTip, $__eIp]):
+                $__ev = $c[$__ea] ?? null;
+                if ($__ev === null || $__ev === '') continue;
+                if ($__eTip === 'sifre') {
+                    // Yönetim şifresi yalnız "değiştirme" yetkisi olana, tıklayınca açılan alanda
+                    if (!yetki_var('duzenle')) continue;
+                    echo '<div class="col-sm-6 col-lg-4"><div class="small text-muted">' . h($__eEt) . '</div>'
+                       . '<div class="fw-semibold font-monospace"><span class="it-sifre" data-s="' . h((string)$__ev) . '">'
+                       . '<a href="#" class="text-decoration-none small" onclick="this.parentNode.textContent=this.parentNode.dataset.s;return false">'
+                       . '<i class="bi bi-eye me-1"></i>göster</a></span></div></div>';
+                    continue;
+                }
+                if ($__eTip === 'cihaz') {
+                    $__b = null;
+                    try { $__q = $pdoIt->prepare("SELECT id, envanter_no, ad FROM it_cihazlar WHERE id=?"); $__q->execute([(int)$__ev]); $__b = $__q->fetch(); } catch (Throwable $e) {}
+                    echo '<div class="col-sm-6 col-lg-4"><div class="small text-muted">' . h($__eEt) . '</div><div class="fw-semibold">'
+                       . ($__b ? '<a href="cihaz_detay.php?id=' . (int)$__b['id'] . '">' . h(trim($__b['envanter_no'] . ' · ' . $__b['ad'])) . '</a>' : '—')
+                       . '</div></div>';
+                    continue;
+                }
+                echo $bilgi($__eEt, $__ev, in_array($__ea, ['imei','dahili_no','telefon_no'], true));
+            endforeach; ?>
             <?= $bilgi('Kaydeden', $c['olusturan']) ?>
             <?= $bilgi('Kayıt', $c['created_at'] ? date('d.m.Y H:i', strtotime($c['created_at'])) : null) ?>
         </div>
