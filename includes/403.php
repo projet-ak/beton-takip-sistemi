@@ -12,8 +12,8 @@ $__izin  = function_exists('modul_erisimi') ? modul_erisimi() : null;
 $__liste = [];
 if (function_exists('modul_listesi')) {
     // Gizlenen modüller listelenmez; adlar yöneticinin verdiği adlardır
-    foreach (modul_listesi() as $k => $m) {
-        if ($__izin === null || in_array($k, $__izin, true)) $__liste[] = [$m['ad'], $m['ikon'], $m['sayfa']];
+    foreach (modul_listesi() as $__mk => $__mv) {
+        if ($__izin === null || in_array($__mk, $__izin, true)) $__liste[] = [$__mv['ad'], $__mv['ikon'], $__mv['sayfa']];
     }
 }
 ?>

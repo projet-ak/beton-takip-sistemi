@@ -40,8 +40,11 @@ function __isActive(string $page): string {
 }
 $__initials = '';
 if ($__user) {
-    $parts = explode(' ', trim($__user['full_name'] ?? $__user['username'] ?? 'U'));
-    foreach (array_slice($parts, 0, 2) as $p) $__initials .= mb_strtoupper(mb_substr($p, 0, 1));
+    // ⚠ Değişken adları `$__` önekli olmalı: header her sayfaya dahil edilir, önekisiz bir ad
+    // sayfanın kendi değişkenini EZER (ör. personel_detay.php'deki $p satırı string'e dönüp
+    // "Cannot access offset of type string on string" hatası veriyordu).
+    $__parts = explode(' ', trim($__user['full_name'] ?? $__user['username'] ?? 'U'));
+    foreach (array_slice($__parts, 0, 2) as $__ph) $__initials .= mb_strtoupper(mb_substr($__ph, 0, 1));
 }
 ?>
 <!DOCTYPE html>

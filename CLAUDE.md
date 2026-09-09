@@ -352,6 +352,12 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   • *Personel* sekmesi = KPI (çalışan/ayrılan/zimmeti olan) + son 10 kişi + tam listeye / yeni personele /
   Excel içe aktarmaya kısayol. ⚠ `mb_strtoupper` Türkçe 'i'yi 'I' yapar ("ÜRETICILER") — başlıklar PHP'de
   büyütülmez, CSS `text-uppercase` kullanılır.
+  ⚠⚠ **`includes/header.php` DEĞİŞKEN SIZINTISI (2026-09-09, canlıda fatal)**: header her sayfaya dahil edilir;
+  içindeki `foreach (… as $p)` satırı sayfanın kendi `$p` değişkenini (personel_detay.php'de personel satırı)
+  STRING'e çeviriyordu → "Fatal error: Cannot access offset of type string on string ... personel_detay.php:62".
+  Header/footer/403 içindeki tüm geçici değişkenler artık **`$__` önekli** (`$__parts`, `$__ph`, `$__mk`, `$__mv`) —
+  **bu dosyalara önekisiz değişken yazma**. Regresyon testi: itsm header stub'ı da aynı sızıntıyı taklit eder;
+  personel_detay/personel/tanimlar/cihazlar/index/raporlar sayfaları fatal vermeden render oluyor.
   Çekirdek `it/_ortak.php`: IT_KATEGORI / IT_DURUM / IT_HAREKET sabitleri, it_semasi_kur, it_envanter_no, it_filtre,
   it_secenekler (sütun whitelist), it_ozet, it_garanti_kalan, it_tarih, it_sayi, it_hareket_ekle, it_belgeler/
   it_belge_yukle/it_belge_sil, it_dosya_listesi. **Yetki**: sayfalar `require_auth([admin,toa,to,depo,it_sorumlusu])`;
