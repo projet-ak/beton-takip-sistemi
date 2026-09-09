@@ -16,13 +16,79 @@ it_semasi_kur($pdoIt);
 $pageTitle = 'Personel İçe Aktar — IT Envanter';
 $kisi = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ?? null;
 
-// Örnek şablon
+/** Şablonun sütun düzeni = içe aktarmanın tanıdığı başlıklar (pim_harita bu adlarla eşleştirir). */
+const PIM_SABLON_BASLIK = ['Sicil No','Ad','Soyad','Unvan','Birim','Lokasyon','Telefon','E-posta','İşe Giriş','İşten Çıkış','Durum','Notlar'];
+
+/** Bir personel satırını şablon düzenine çevirir. */
+function pim_sablon_satiri(PDO $pdo, array $r): array
+{
+    $lok = (int)($r['lokasyon_id'] ?? 0);
+    $lokAd = '';
+    if ($lok && ($l = it_lokasyonlar($pdo)[$lok] ?? null)) $lokAd = trim(($l['kod'] ?? '') !== '' ? $l['kod'] . ' — ' . $l['ad'] : $l['ad']);
+    return [
+        ['v'=>(string)($r['sicil_no'] ?? '')], ['v'=>(string)($r['ad'] ?? '')], ['v'=>(string)($r['soyad'] ?? '')],
+        ['v'=>(string)($r['unvan'] ?? '')], ['v'=>(string)($r['birim'] ?? '')], ['v'=>$lokAd],
+        ['v'=>(string)($r['telefon'] ?? '')], ['v'=>(string)($r['eposta'] ?? '')],
+        ['v'=>(string)($r['ise_giris'] ?? ''), 't'=>'date'], ['v'=>(string)($r['isten_cikis'] ?? ''), 't'=>'date'],
+        ['v'=>it_personel_aktif($r) ? 'Aktif' : 'Pasif'], ['v'=>(string)($r['notlar'] ?? '')],
+    ];
+}
+
+// ── Örnek şablon (?sablon=1) ve mevcut listenin şablon biçimi (?sablon=mevcut) ──
+// Örnek satırlar SİSTEMDEKİ gerçek lokasyon / birim / unvan değerleriyle üretilir; kullanıcı ne
+// yazacağını tahmin etmek zorunda kalmasın, yazdığı lokasyon ağaçta karşılık bulsun.
 if (isset($_GET['sablon'])) {
     require_once __DIR__ . '/../includes/XlsxWriter.php';
-    $xl = new \XlsxWriter('Personel');
-    $xl->header(['Sicil No','Ad','Soyad','Unvan','Birim','Lokasyon','Telefon','E-posta','İşe Giriş','İşten Çıkış','Durum','Notlar']);
-    $xl->row([['v'=>'1001'],['v'=>'Ahmet'],['v'=>'Yılmaz'],['v'=>'Şantiye Şefi'],['v'=>'Teknik Ofis'],['v'=>'U030'],['v'=>'0532 123 45 67'],['v'=>'ahmet.yilmaz@ernholding.com'],['v'=>'2024-03-01','t'=>'date'],['v'=>''],['v'=>'Aktif'],['v'=>'']]);
-    $xl->row([['v'=>'1002'],['v'=>'Ayşe'],['v'=>'Kaya'],['v'=>'Satış Uzmanı'],['v'=>'Satış Ofisi'],['v'=>'ERN Holding İstanbul Merkez Binası'],['v'=>'0533 987 65 43'],['v'=>'ayse.kaya@ernholding.com'],['v'=>'2025-01-15','t'=>'date'],['v'=>''],['v'=>'Aktif'],['v'=>'']]);
+    $mevcutMu = ($_GET['sablon'] === 'mevcut');
+    $xl = new \XlsxWriter($mevcutMu ? 'Personel Listesi' : 'Personel Şablonu');
+    $xl->header(PIM_SABLON_BASLIK);
+
+    if ($mevcutMu) {
+        $st = $pdoIt->query("SELECT * FROM it_personel ORDER BY soyad, ad");
+        $n = 0;
+        foreach ($st as $r) { $xl->row(pim_sablon_satiri($pdoIt, $r)); $n++; }
+        if (!$n) $xl->row(array_fill(0, count(PIM_SABLON_BASLIK), ['v'=>'']));
+        $xl->download('it_personel_listesi_' . date('Ymd') . '.xlsx');
+    }
+
+    // Sistemdeki lokasyonlar; örnek satırlarda **proje kodu olanlar** öne alınır ("U030 — 1. Etap")
+    $lokKodlu = []; $lokDiger = [];
+    foreach (it_lokasyon_duz($pdoIt) as $x) {
+        $r = $x['r'];
+        if (($r['kod'] ?? '') !== '') $lokKodlu[] = $r['kod'] . ' — ' . $r['ad'];
+        else $lokDiger[] = $r['ad'];
+    }
+    $lokAdlar = array_merge($lokKodlu, $lokDiger);
+    if (!$lokAdlar) $lokAdlar = ['U030 — 1. Etap', 'ERN Holding İstanbul Merkez Binası'];
+    // Sistemde kullanılan birim / unvan örnekleri (yoksa makul varsayılan)
+    $birimler = []; $unvanlar = [];
+    try {
+        $birimler = $pdoIt->query("SELECT DISTINCT birim FROM it_personel WHERE birim IS NOT NULL AND birim<>'' ORDER BY birim")->fetchAll(PDO::FETCH_COLUMN);
+        $unvanlar = $pdoIt->query("SELECT DISTINCT unvan FROM it_personel WHERE unvan IS NOT NULL AND unvan<>'' ORDER BY unvan")->fetchAll(PDO::FETCH_COLUMN);
+    } catch (Throwable $e) {}
+    foreach (it_lokasyonlar($pdoIt) as $l) if (($l['tur'] ?? '') === 'birim' && !in_array($l['ad'], $birimler, true)) $birimler[] = $l['ad'];
+    if (!$birimler) $birimler = ['Teknik Ofis', 'Satış Ofisi', 'Bilgi İşlem'];
+    if (!$unvanlar) $unvanlar = ['Şantiye Şefi', 'Satış Uzmanı', 'Bilgi İşlem Destek Uzmanı'];
+
+    $ornek = [
+        ['1001', 'Ahmet', 'Yılmaz',  '0532 123 45 67', 'ahmet.yilmaz@ernholding.com', '2024-03-01', '',           'Aktif'],
+        ['1002', 'Ayşe',  'Kaya',    '0533 987 65 43', 'ayse.kaya@ernholding.com',    '2025-01-15', '',           'Aktif'],
+        ['1003', 'Mehmet','Demir',   '',               '',                             '2022-06-10', '2026-04-30', 'Pasif'],
+    ];
+    foreach ($ornek as $i => $o) {
+        $xl->row([
+            ['v'=>$o[0]], ['v'=>$o[1]], ['v'=>$o[2]],
+            ['v'=>(string)($unvanlar[$i % count($unvanlar)] ?? '')],
+            ['v'=>(string)($birimler[$i % count($birimler)] ?? '')],
+            ['v'=>(string)($lokAdlar[$i % count($lokAdlar)] ?? '')],
+            ['v'=>$o[3]], ['v'=>$o[4]],
+            ['v'=>$o[5], 't'=>'date'], ['v'=>$o[6], 't'=>'date'],
+            ['v'=>$o[7]],
+            ['v'=>$i === 2 ? 'İşten çıkış tarihi dolu olduğu için "ayrıldı" sayılır' : ''],
+        ]);
+    }
+    // Boş doldurma satırları (biçim korunur, aktarımda "ad ve soyad boş" diye atlanır)
+    for ($i = 0; $i < 5; $i++) $xl->row(array_fill(0, count(PIM_SABLON_BASLIK), ['v'=>'']));
     $xl->download('it_personel_sablon.xlsx');
 }
 
@@ -136,6 +202,7 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="d-flex gap-2">
         <a href="personel.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-people me-1"></i>Personel Listesi</a>
         <a href="import.php?sablon=1" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Örnek Şablon</a>
+        <a href="import.php?sablon=mevcut" class="btn btn-outline-secondary btn-sm" title="Kayıtlı personeli şablon biçiminde indirir; düzenleyip tekrar yükleyebilirsiniz"><i class="bi bi-download me-1"></i>Mevcut Liste</a>
     </div>
 </div>
 
@@ -160,6 +227,21 @@ require_once __DIR__ . '/../includes/header.php';
           Kabul edilen biçimler: <strong>.xlsx</strong> · <strong>.csv</strong> (; veya , ayraçlı) · Excel <strong>"Web Sayfası" .xls/.htm</strong> (HTML tablo).
           Sütun başlıkları Türkçe ya da İngilizce olabilir (Ad / First Name, Soyad / Last Name, Display Name, Title, Department, Mobile, Email, Office…);
           eşleme bir sonraki adımda gösterilir, dilerseniz düzeltirsiniz.
+        </div>
+        <?php
+          $lokEtiket = [];
+          foreach (it_lokasyon_duz($pdoIt) as $x) { $r0 = $x['r']; $lokEtiket[] = trim(($r0['kod'] ?? '') !== '' ? $r0['kod'] . ' — ' . $r0['ad'] : $r0['ad']); }
+        ?>
+        <div class="alert alert-success small py-2 mt-3 mb-0">
+          <i class="bi bi-file-earmark-excel me-1"></i><strong>Şablon sisteme göre üretilir.</strong>
+          <strong>Örnek Şablon</strong> içe aktarmanın tanıdığı 12 sütunu ve sizdeki gerçek lokasyon / birim / unvan değerleriyle 3 örnek satır içerir.
+          <strong>Mevcut Liste</strong> ise kayıtlı personeli aynı sütun düzeninde indirir: Excel'de düzeltip geri yüklersiniz, eşleşme sicil numarasından yapılır, mükerrer kayıt oluşmaz.
+          <?php if ($lokEtiket): ?>
+          <div class="mt-1">Lokasyon sütununa yazabilecekleriniz (<a href="tanimlar.php?t=lokasyon">Tanımlar</a>'dan çoğaltılır):
+            <?php foreach (array_slice($lokEtiket, 0, 14) as $le): ?><span class="badge bg-light text-dark border ms-1"><?= h($le) ?></span><?php endforeach; ?>
+            <?php if (count($lokEtiket) > 14): ?><span class="text-muted"> +<?= count($lokEtiket) - 14 ?> lokasyon</span><?php endif; ?>
+          </div>
+          <?php endif; ?>
         </div>
         <div class="alert alert-warning small py-2 mt-3 mb-0">
           <i class="bi bi-exclamation-triangle me-1"></i><strong>"Web Sayfası" (.xls/.htm) dikkat:</strong> Excel bu biçimde iki parça üretir — kısa bir çerçeve dosyası ve

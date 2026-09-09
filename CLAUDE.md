@@ -309,7 +309,12 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   alınır: Merkez + "Satış Ofisi" → Merkez › Satış Ofisi; eşleşmeyen lokasyon metni raporda rozet + kişinin notuna
   "Lokasyon (dosyadan): …"). Rapor: okunan = yeni + güncellenen + değişmeyen + atlanan sağlaması + listeler (atlanan
   sebepli, yeni, güncellenen [değişen alanlar eski → yeni], dosyada olmayanlar). Log `it_import_log` (pim_log_kur;
-  kurulum + runtime), sayfada "Son yüklemeler". `?sablon=1` örnek .xlsx. Yetki: `import.php` adı `sayfa_islemi` ile
+  kurulum + runtime), sayfada "Son yüklemeler". **ŞABLON SİSTEME GÖRE ÜRETİLİR (2026-09-09)**: `?sablon=1`
+  içe aktarmanın tanıdığı 12 sütunu (`PIM_SABLON_BASLIK`) + **sizdeki gerçek lokasyon (proje kodlular önce,
+  "U030 — 1. Etap"), birim ve unvan** değerleriyle 3 örnek satır + 5 boş satır yazar; `?sablon=mevcut`
+  kayıtlı personeli aynı düzende indirir (`pim_sablon_satiri`) → Excel'de düzelt, geri yükle: sütunlar
+  otomatik eşleşir, eşleşme sicilden yapılır, mükerrer oluşmaz (round-trip testi: 179 satır → 0 yeni /
+  178 değişmeyen). Dosya yükleme kartında geçerli lokasyon etiketleri rozet olarak listelenir. Yetki: `import.php` adı `sayfa_islemi` ile
   **giris**; sidebar "Personel İçe Aktar" `can_edit()`. Test: itsm `run2.php` (oturum sess.json'da adımlar arası
   taşınır, `$_FILES` simülasyonu; db_it.php `SqlitePatch` MySQL DDL'yi SQLite'a çevirir) — xlsx TR başlık + "Adı
   Soyadı" tek sütun, HTML win-1254 M365 başlıkları, CSV ; ayraçlı, çerçeve-yalnız .xls mesajı, çakışma/zimmet engeli.
