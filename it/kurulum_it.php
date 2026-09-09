@@ -17,7 +17,8 @@ $hata = null; $log = [];
 try {
     it_semasi_kur($pdoIt);
     pim_log_kur($pdoIt);
-    $log = ['it_cihazlar', 'it_hareketler', 'it_belgeler', 'it_lokasyonlar', 'it_personel', 'it_import_log'];
+    it_tanim_semasi_kur($pdoIt);
+    $log = ['it_cihazlar', 'it_hareketler', 'it_belgeler', 'it_lokasyonlar', 'it_personel', 'it_tanimlar', 'it_import_log'];
     if (!(int)$pdoIt->query("SELECT COUNT(*) FROM it_lokasyonlar")->fetchColumn()) { $n = it_lokasyon_seed($pdoIt); $log[] = "varsayılan lokasyon ağacı ($n satır: Kartal Batı Yakası U030/U031/U039 + ERN Holding Merkez)"; }
     $dir = __DIR__ . '/../uploads/it_envanter';
     if (!is_dir($dir)) @mkdir($dir, 0755, true);
@@ -25,7 +26,7 @@ try {
 } catch (Throwable $e) { $hata = $e->getMessage(); }
 
 $durum = [];
-foreach (['it_cihazlar','it_hareketler','it_belgeler','it_lokasyonlar','it_personel','it_import_log'] as $t) {
+foreach (['it_cihazlar','it_hareketler','it_belgeler','it_lokasyonlar','it_personel','it_tanimlar','it_import_log'] as $t) {
     try { $durum[$t] = (int)$pdoIt->query("SELECT COUNT(*) FROM {$t}")->fetchColumn(); }
     catch (Throwable $e) { $durum[$t] = '—'; }
 }

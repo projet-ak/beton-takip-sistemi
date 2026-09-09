@@ -196,8 +196,11 @@ function pim_harita(array $baslik, array $ornekler = []): array
             else { $h[$i] = 'notlar'; continue; }
         }
         if ($k === 'eposta' && $ornekler) {
-            $var = false; foreach ($ornekler as $r) if (str_contains((string)($r[$i] ?? ''), '@')) { $var = true; break; }
-            if (!$var) { $h[$i] = 'notlar'; continue; }
+            // Sütunda DEĞER varsa ama hiçbirinde '@' yoksa bu bir e-posta sütunu değildir (UPN yerine kullanıcı adı vb.).
+            // Sütun tamamen boşsa başlığa güvenilir — "E-posta" sütunu boş diye nota düşülmesin.
+            $dolu = false; $var = false;
+            foreach ($ornekler as $r) { $c = trim((string)($r[$i] ?? '')); if ($c === '') continue; $dolu = true; if (str_contains($c, '@')) { $var = true; break; } }
+            if ($dolu && !$var) { $h[$i] = 'notlar'; continue; }
         }
         $h[$i] = $k; $kul[$k] = $i;
     }
@@ -290,6 +293,26 @@ function pim_lokasyon_bul(PDO $pdo, string $s): ?int
     }
     if (!$bul) foreach ($lok as $l) { if (pim_norm($l['ad']) === $n) { $bul = (int)$l['id']; break; } }
     if (!$bul) { $enIyi = -1; foreach ($lok as $l) { $la = pim_norm($l['ad']); if (strlen($la) >= 4 && (str_contains($n, $la) || str_contains($la, $n) && strlen($n) >= 5)) { $skor = $derinlik((int)$l['id']) * 100 + strlen($la); if ($skor > $enIyi) { $enIyi = $skor; $bul = (int)$l['id']; } } } }
+    // Boşluksuz içerme: "Batıyakası" ↔ "Kartal Batı Yakası Projesi" (dosyada bitişik yazılmış)
+    if (!$bul) {
+        $nb = str_replace(' ', '', $n); $enIyi = -1;
+        if (strlen($nb) >= 6) foreach ($lok as $l) {
+            $lb = str_replace(' ', '', pim_norm($l['ad']));
+            if (strlen($lb) >= 6 && (str_contains($lb, $nb) || str_contains($nb, $lb))) { $skor = $derinlik((int)$l['id']) * 100 + strlen($lb); if ($skor > $enIyi) { $enIyi = $skor; $bul = (int)$l['id']; } }
+        }
+    }
+    // Kelime eşleşmesi (yazım hatası toleranslı): dosyadaki her anlamlı kelime lokasyon adında var mı?
+    // "Gayrimenkul Drektörlüğü" → "Gayrimenkul Geliştirme Direktörlüğü" (DIREKTORLUGU'ya 1 harf uzaklıkta)
+    if (!$bul) {
+        $kelime = array_values(array_filter(explode(' ', $n), fn($w) => strlen($w) >= 4));
+        if ($kelime) { $enIyi = -1; foreach ($lok as $l) {
+            $lk = array_values(array_filter(explode(' ', pim_norm($l['ad'])), fn($w) => strlen($w) >= 4));
+            if (!$lk) continue;
+            $es = 0;
+            foreach ($kelime as $w) foreach ($lk as $x) { if ($w === $x || (strlen($w) >= 6 && abs(strlen($w) - strlen($x)) <= 2 && levenshtein($w, $x) <= 2)) { $es++; break; } }
+            if ($es === count($kelime)) { $skor = $es * 1000 + $derinlik((int)$l['id']) * 100 + strlen($l['ad']); if ($skor > $enIyi) { $enIyi = $skor; $bul = (int)$l['id']; } }
+        } }
+    }
     return $cache[$n] = $bul;
 }
 
@@ -315,6 +338,83 @@ function pim_satir_cozumle(array $satir, array $harita, array $baslik, array $op
     return $v;
 }
 
+/**
+ * MÜKERRER PERSONEL BULUCU — aynı kişinin iki kartı: (1) aynı sicil no, (2) aynı e-posta,
+ * (3) aynı normalize ad+soyad. Dönüş: her grup ['anahtar','tur','kayitlar'=>[satır + cihaz]].
+ * Zimmetli cihazı olan kayıt gruptaki ASIL adaydır (birleştirmede o korunur).
+ */
+function pim_mukerrer_gruplar(PDO $pdo): array
+{
+    try { $liste = $pdo->query("SELECT * FROM it_personel")->fetchAll(); } catch (Throwable $e) { return []; }
+    $cihaz = [];
+    try { foreach ($pdo->query("SELECT personel_id, COUNT(*) n FROM it_cihazlar WHERE personel_id IS NOT NULL AND durum<>'hurda' GROUP BY personel_id") as $c) $cihaz[(int)$c['personel_id']] = (int)$c['n']; }
+    catch (Throwable $e) {}
+    $gruplar = [];
+    $ekle = function (string $tur, string $anahtar, array $kayitlar) use (&$gruplar, $cihaz) {
+        if (count($kayitlar) < 2) return;
+        $ids = array_map(fn($k) => (int)$k['id'], $kayitlar); sort($ids);
+        $imza = implode('-', $ids);
+        if (isset($gruplar[$imza])) return;
+        foreach ($kayitlar as &$k) $k['cihaz'] = $cihaz[(int)$k['id']] ?? 0;
+        unset($k);
+        // Gruptaki ASIL kayıt = en dolu kart (sicil no ağır basar). Cihazlar zaten birleştirmede taşınır,
+        // bu yüzden zimmet sahibi olmak tek başına belirleyici değildir.
+        $puan = function (array $k): int {
+            $p = trim((string)($k['sicil_no'] ?? '')) !== '' ? 100 : 0;
+            foreach (['unvan','birim','lokasyon_id','telefon','eposta','ise_giris','notlar'] as $kol) if (trim((string)($k[$kol] ?? '')) !== '') $p += 5;
+            return $p + (($k['cihaz'] ?? 0) > 0 ? 1 : 0);
+        };
+        usort($kayitlar, fn($a, $b) => ($puan($b) <=> $puan($a)) ?: ((int)$a['id'] <=> (int)$b['id']));
+        $gruplar[$imza] = ['tur'=>$tur, 'anahtar'=>$anahtar, 'kayitlar'=>$kayitlar];
+    };
+    foreach (['sicil_no'=>'sicil no', 'eposta'=>'e-posta'] as $kol => $et) {
+        $k = [];
+        foreach ($liste as $p) { $v = pim_norm((string)($p[$kol] ?? '')); if ($v !== '') $k[$v][] = $p; }
+        foreach ($k as $anahtar => $kayitlar) $ekle($et, $anahtar, $kayitlar);
+    }
+    $k = [];
+    foreach ($liste as $p) $k[pim_norm($p['ad'] . ' ' . $p['soyad'])][] = $p;
+    foreach ($k as $anahtar => $kayitlar) $ekle('ad soyad', $anahtar, $kayitlar);
+    return array_values($gruplar);
+}
+
+/**
+ * İki personel kartını birleştirir: $hedefId korunur, $kaynakId silinir.
+ * Cihaz zimmetleri hedefe taşınır; hedefte BOŞ olan alanlar kaynaktan tamamlanır; notlar birleştirilir.
+ */
+function pim_personel_birlestir(PDO $pdo, int $hedefId, int $kaynakId): array
+{
+    if ($hedefId === $kaynakId) throw new RuntimeException('Aynı kayıt birleştirilemez.');
+    $al = function (int $id) use ($pdo) { $st = $pdo->prepare("SELECT * FROM it_personel WHERE id=?"); $st->execute([$id]); return $st->fetch() ?: null; };
+    $h = $al($hedefId); $k = $al($kaynakId);
+    if (!$h || !$k) throw new RuntimeException('Kayıt bulunamadı.');
+    $pdo->beginTransaction();
+    try {
+        $set = []; $par = [];
+        foreach (['sicil_no','unvan','birim','lokasyon_id','telefon','eposta','ise_giris'] as $kol) {
+            if ((string)($h[$kol] ?? '') === '' && (string)($k[$kol] ?? '') !== '') { $set[] = "$kol=?"; $par[] = $k[$kol]; }
+        }
+        // Çıkış tarihi: ikisinde de varsa GEÇ olan (kişi geri dönmüş olabilir), hedefte yoksa kaynaktan
+        if (!empty($k['isten_cikis']) && (empty($h['isten_cikis']) || $k['isten_cikis'] > $h['isten_cikis'])) { $set[] = "isten_cikis=?"; $par[] = $k['isten_cikis']; }
+        $not = trim((string)($h['notlar'] ?? ''));
+        if (trim((string)($k['notlar'] ?? '')) !== '' && !str_contains($not, trim((string)$k['notlar']))) {
+            $set[] = "notlar=?"; $par[] = trim($not . "\n" . $k['notlar']);
+        }
+        if ($set) { $par[] = $hedefId; $pdo->prepare("UPDATE it_personel SET " . implode(', ', $set) . " WHERE id=?")->execute($par); }
+        $st = $pdo->prepare("UPDATE it_cihazlar SET personel_id=? WHERE personel_id=?"); $st->execute([$hedefId, $kaynakId]);
+        $tasinan = $st->rowCount();
+        $pdo->prepare("DELETE FROM it_personel WHERE id=?")->execute([$kaynakId]);
+        $y = $al($hedefId);
+        $pdo->prepare("UPDATE it_cihazlar SET zimmetli=?, departman=COALESCE(NULLIF(?,''),departman) WHERE personel_id=?")
+            ->execute([trim($y['ad'] . ' ' . $y['soyad']), $y['birim'] ?? '', $hedefId]);
+        if ($pdo->inTransaction()) $pdo->commit();
+        return ['tasinan'=>$tasinan, 'hedef'=>it_personel_ad($y), 'kaynak'=>it_personel_ad($k)];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+}
+
 function pim_log_kur(PDO $pdo): void
 {
     try {
@@ -336,9 +436,10 @@ function pim_import(PDO $pdo, array $satirlar, array $opt): array
 {
     $harita = $opt['harita']; $bIdx = (int)$opt['baslik_idx']; $baslik = $satirlar[$bIdx] ?? [];
     $bugun = $opt['rapor_tarihi'] ?? date('Y-m-d');
-    $r = ['okunan'=>0, 'yeni'=>[], 'guncellenen'=>[], 'degismeyen'=>0, 'atlanan'=>[], 'ayrilan'=>[], 'lokasyon_yok'=>[], 'gorulen'=>[]];
+    $r = ['okunan'=>0, 'yeni'=>[], 'guncellenen'=>[], 'degismeyen'=>0, 'atlanan'=>[], 'ayrilan'=>[], 'lokasyon_yok'=>[], 'gorulen'=>[], 'eksik'=>[], 'silinen'=>[], 'korunan'=>[]];
     $alanlar = ['sicil_no','ad','soyad','unvan','birim','lokasyon_id','telefon','eposta','ise_giris','isten_cikis'];
 
+    pim_log_kur($pdo); // ⚠ CREATE TABLE transaction'ı örtük commit eder — MUTLAKA beginTransaction ÖNCESİ
     $mevcut = $pdo->query("SELECT * FROM it_personel")->fetchAll();
     $bySicil = []; $byMail = []; $byAd = [];
     $adAnahtar = fn($a, $s) => pim_norm($a) . '|' . pim_norm($s);
@@ -351,16 +452,36 @@ function pim_import(PDO $pdo, array $satirlar, array $opt): array
 
     $pdo->beginTransaction();
     try {
+        // TAM YENİLEME ("sil ve ekle"): Excel tek doğru kaynak. Üzerinde ZİMMET olan kişi SİLİNMEZ
+        // (silinseydi cihazların zimmet bağı kopardı) — o kayıt korunur ve dosyadan gelen veriyle güncellenir.
+        if (!empty($opt['tam_yenileme'])) {
+            foreach ($mevcut as $m) {
+                $z = count(it_personel_cihazlari($pdo, (int)$m['id']));
+                if ($z) { $r['korunan'][] = ['id'=>(int)$m['id'], 'kim'=>it_personel_ad($m), 'cihaz'=>$z]; continue; }
+                $pdo->prepare("DELETE FROM it_personel WHERE id=?")->execute([(int)$m['id']]);
+                $r['silinen'][] = ['id'=>(int)$m['id'], 'kim'=>it_personel_ad($m), 'sicil'=>$m['sicil_no']];
+            }
+            $silinenId = array_column($r['silinen'], 'id');
+            $mevcut = array_values(array_filter($mevcut, fn($m) => !in_array((int)$m['id'], $silinenId, true)));
+            $bySicil = []; $byMail = []; $byAd = [];
+            foreach ($mevcut as $m) {
+                if ($m['sicil_no'] !== null && trim($m['sicil_no']) !== '') $bySicil[pim_norm($m['sicil_no'])] = $m;
+                if ($m['eposta']) $byMail[mb_strtolower(trim($m['eposta']), 'UTF-8')] = $m;
+                $byAd[$adAnahtar($m['ad'], $m['soyad'])][] = $m;
+            }
+        }
         $ins = $pdo->prepare("INSERT INTO it_personel (sicil_no,ad,soyad,unvan,birim,lokasyon_id,telefon,eposta,ise_giris,isten_cikis,notlar) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
         foreach ($satirlar as $i => $sat) {
             if ($i <= $bIdx) continue;
             if (!array_filter($sat, fn($c) => trim((string)$c) !== '')) continue;
             $r['okunan']++;
             $v = pim_satir_cozumle($sat, $harita, $baslik, $opt);
-            $exNo = $i + 1;
+            $exNo = (int)($opt['satir_no'][$i] ?? ($i + 1));   // dosyadaki gerçek satır no (boş satırlar süzülmüş olabilir)
             $etiket = trim($v['ad'] . ' ' . $v['soyad']) ?: ($v['sicil_no'] ?: ($v['eposta'] ?: "satır $exNo"));
-            if ($v['ad'] === '' && $v['soyad'] === '') { $r['atlanan'][] = ['satir'=>$exNo, 'kim'=>$etiket, 'neden'=>'ad / soyad boş']; continue; }
-            if ($v['soyad'] === '') { $r['atlanan'][] = ['satir'=>$exNo, 'kim'=>$etiket, 'neden'=>'soyad okunamadı (tek kelimelik ad)']; continue; }
+            // Bilgisi olan işlenir, olmayan alan BOŞ kalır. Yalnız ad+soyadın İKİSİ de boşsa satır kişi değildir.
+            if ($v['ad'] === '' && $v['soyad'] === '') { $r['atlanan'][] = ['satir'=>$exNo, 'kim'=>$etiket, 'neden'=>'ad ve soyad boş — kişi satırı değil']; continue; }
+            if ($v['soyad'] === '') $r['eksik'][] = ['satir'=>$exNo, 'kim'=>$etiket, 'alan'=>'soyad'];
+            if ($v['ad'] === '') { $v['ad'] = $v['soyad']; $v['soyad'] = ''; $r['eksik'][] = ['satir'=>$exNo, 'kim'=>$etiket, 'alan'=>'ad']; }
             // Dosya içi tekrar
             $dk = $v['sicil_no'] !== '' ? 'S:' . pim_norm($v['sicil_no']) : ($v['eposta'] !== '' ? 'M:' . $v['eposta'] : 'A:' . $adAnahtar($v['ad'], $v['soyad']));
             if (isset($dosyaIci[$dk])) { $r['atlanan'][] = ['satir'=>$exNo, 'kim'=>$etiket, 'neden'=>'aynı dosyada tekrar (satır ' . $dosyaIci[$dk] . ')']; continue; }
@@ -455,14 +576,13 @@ function pim_import(PDO $pdo, array $satirlar, array $opt): array
                 $r['ayrilan'][] = ['id'=>(int)$m['id'], 'kim'=>it_personel_ad($m), 'ok'=>true, 'not'=>"çıkış $bugun"];
             }
         }
-        pim_log_kur($pdo);
         try {
             $pdo->prepare("INSERT INTO it_import_log (dosya,bicim,okunan,yeni,guncellenen,degismeyen,atlanan,ayrilan,kullanici) VALUES (?,?,?,?,?,?,?,?,?)")
-                ->execute([$opt['dosya'] ?? null, $opt['bicim'] ?? null, $r['okunan'], count($r['yeni']), count($r['guncellenen']), $r['degismeyen'], count($r['atlanan']), count(array_filter($r['ayrilan'], fn($a) => $a['ok'])), $opt['kullanici'] ?? null]);
+                ->execute([($opt['dosya'] ?? null) . (!empty($opt['tam_yenileme']) ? ' [tam yenileme]' : ''), $opt['bicim'] ?? null, $r['okunan'], count($r['yeni']), count($r['guncellenen']), $r['degismeyen'], count($r['atlanan']), count(array_filter($r['ayrilan'], fn($a) => $a['ok'])), $opt['kullanici'] ?? null]);
         } catch (Throwable $e) {}
-        $pdo->commit();
+        if ($pdo->inTransaction()) $pdo->commit();
     } catch (Throwable $e) {
-        $pdo->rollBack();
+        if ($pdo->inTransaction()) $pdo->rollBack();   // DDL örtük commit ettiyse rollBack da patlar, mesajı gizlemesin
         throw $e;
     }
     return $r;

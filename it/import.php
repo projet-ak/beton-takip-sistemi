@@ -35,6 +35,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!yetki_var('giris')) { flash('error', 'Bu işlem için yetkiniz yok.'); redirect('personel.php'); }
     $islem = $_POST['islem'] ?? '';
 
+    if ($islem === 'lok_ekle') {
+        // Rapordaki "lokasyon ağacında bulunamayan" adları kök lokasyon olarak açar; dosya tekrar
+        // yüklendiğinde kişiler bu lokasyonlara bağlanır (aktarım mükerrer kayıt oluşturmaz).
+        if (!yetki_var('duzenle')) { flash('error', 'Lokasyon eklemek için değiştirme yetkisi gerekir.'); redirect('import.php?rapor=1'); }
+        $eklendi = 0;
+        foreach ((array)($_POST['lok'] ?? []) as $ad) {
+            $ad = mb_substr(trim((string)$ad), 0, 120);
+            if ($ad === '' || pim_lokasyon_bul($pdoIt, $ad)) continue;
+            $pdoIt->prepare("INSERT INTO it_lokasyonlar (ust_id, tur, ad, aktif) VALUES (NULL, 'proje', ?, 1)")->execute([$ad]);
+            $eklendi++;
+        }
+        it_lokasyonlar($pdoIt, true);
+        flash($eklendi ? 'success' : 'warning', $eklendi ? "$eklendi lokasyon eklendi. Kişilere bağlanması için dosyayı tekrar yükleyin (mükerrer kayıt oluşmaz)." : 'Eklenecek yeni lokasyon bulunamadı.');
+        redirect('tanimlar.php?t=lokasyon');
+    }
+
     if ($islem === 'yukle') {
         $f = $_FILES['dosya'] ?? null;
         if (!$f || ($f['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) $hata = 'Dosya seçilmedi.';
@@ -48,12 +64,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             else {
                 try {
                     $g = pim_oku($f['tmp_name'], $ad);
-                    $satirlar = array_values(array_filter($g['satirlar'], fn($r) => (bool)array_filter($r, fn($c) => trim((string)$c) !== '')));
+                    $satirlar = []; $satirNo = [];
+                    foreach ($g['satirlar'] as $no => $rw) {
+                        if (!array_filter($rw, fn($c) => trim((string)$c) !== '')) continue;   // tamamen boş satır atlanır
+                        $satirNo[count($satirlar)] = $no + 1;                                   // dosyadaki gerçek satır no korunur
+                        $satirlar[] = $rw;
+                    }
                     if (count($satirlar) < 2) throw new RuntimeException('Dosyada başlık dışında veri satırı yok.');
                     $bIdx = pim_baslik_satiri($satirlar);
                     $ornek = array_slice($satirlar, $bIdx + 1, 20);
-                    $_SESSION['it_pim'] = ['dosya'=>$ad, 'bicim'=>$g['bicim'], 'sayfa'=>$g['sayfa'], 'satirlar'=>$satirlar, 'baslik_idx'=>$bIdx,
-                                           'harita'=>pim_harita($satirlar[$bIdx], $ornek), 'opt'=>['bas_harf'=>1, 'pasif_ayrilmis'=>1, 'dosyada_olmayan_ayrilmis'=>0]];
+                    $_SESSION['it_pim'] = ['dosya'=>$ad, 'bicim'=>$g['bicim'], 'sayfa'=>$g['sayfa'], 'satirlar'=>$satirlar, 'satir_no'=>$satirNo, 'baslik_idx'=>$bIdx,
+                                           'harita'=>pim_harita($satirlar[$bIdx], $ornek), 'opt'=>['bas_harf'=>1, 'pasif_ayrilmis'=>1, 'dosyada_olmayan_ayrilmis'=>0, 'tam_yenileme'=>0]];
                     unset($_SESSION['it_pim_rapor']);
                     redirect('import.php?adim=2');
                 } catch (Throwable $e) { $hata = $e->getMessage(); }
@@ -74,7 +95,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($h as $i => $k) { if ($k === '' || $k === 'notlar') continue; if (isset($kul[$k])) $h[$i] = ''; else $kul[$k] = $i; }
             $s['harita'] = $h;
         }
-        $s['opt'] = ['bas_harf'=>!empty($_POST['bas_harf']) ? 1 : 0, 'pasif_ayrilmis'=>!empty($_POST['pasif_ayrilmis']) ? 1 : 0, 'dosyada_olmayan_ayrilmis'=>!empty($_POST['dosyada_olmayan_ayrilmis']) ? 1 : 0];
+        $tamYenileme = !empty($_POST['tam_yenileme']) && yetki_var('duzenle') ? 1 : 0;   // silme işlemi → "değiştirme" yetkisi şart
+        $s['opt'] = ['bas_harf'=>!empty($_POST['bas_harf']) ? 1 : 0, 'pasif_ayrilmis'=>!empty($_POST['pasif_ayrilmis']) ? 1 : 0,
+                     'dosyada_olmayan_ayrilmis'=>(!empty($_POST['dosyada_olmayan_ayrilmis']) && !$tamYenileme) ? 1 : 0, 'tam_yenileme'=>$tamYenileme];
         unset($s);
         if ($islem === 'aktar') {
             $s = $_SESSION['it_pim'];
@@ -84,10 +107,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $rap = null;
                 try {
-                    $rap = pim_import($pdoIt, $s['satirlar'], $s['opt'] + ['harita'=>$s['harita'], 'baslik_idx'=>$s['baslik_idx'], 'dosya'=>$s['dosya'], 'bicim'=>$s['bicim'], 'kullanici'=>$kisi, 'rapor_tarihi'=>date('Y-m-d')]);
+                    $rap = pim_import($pdoIt, $s['satirlar'], $s['opt'] + ['harita'=>$s['harita'], 'baslik_idx'=>$s['baslik_idx'], 'satir_no'=>($s['satir_no'] ?? []),
+                                                                            'dosya'=>$s['dosya'], 'bicim'=>$s['bicim'], 'kullanici'=>$kisi, 'rapor_tarihi'=>date('Y-m-d')]);
                 } catch (Throwable $e) { $hata = 'Aktarım geri alındı: ' . $e->getMessage(); }
                 if ($rap !== null) {
-                    $_SESSION['it_pim_rapor'] = $rap + ['dosya'=>$s['dosya']];
+                    $_SESSION['it_pim_rapor'] = $rap + ['dosya'=>$s['dosya'], 'tam_yenileme'=>!empty($s['opt']['tam_yenileme']), 'mukerrer'=>count(pim_mukerrer_gruplar($pdoIt))];
                     unset($_SESSION['it_pim']);
                     redirect('import.php?rapor=1');
                 }
@@ -153,7 +177,7 @@ require_once __DIR__ . '/../includes/header.php';
         <li><strong>Birleştirme</strong>, tam yenileme değil: kişi <em>sicil no → e-posta → ad soyad</em> sırasıyla aranır; bulunursa yalnız dosyada <em>dolu</em> gelen alanlar güncellenir, bulunmazsa yeni personel açılır.</li>
         <li>Dosyadaki boş hücre mevcut veriyi <strong>silmez</strong>; sistemde yazdığınız notlar korunur.</li>
         <li>"Ad Soyad" tek sütunsa son kelime soyad sayılır ("Ayşe Nur Kaya" → Ayşe Nur / Kaya).</li>
-        <li>Lokasyon metni <em>proje kodu</em> (U030…) ya da lokasyon adıyla <a href="lokasyonlar.php">lokasyon ağacına</a> bağlanır; eşleşmeyenler raporda listelenir, kişinin notuna yazılır.</li>
+        <li>Lokasyon metni <em>proje kodu</em> (U030…) ya da lokasyon adıyla <a href="tanimlar.php?t=lokasyon">lokasyon ağacına</a> bağlanır; eşleşmeyenler raporda listelenir, kişinin notuna yazılır.</li>
         <li>Durum sütunu <em>pasif / disabled</em> ise kişi işten ayrılmış sayılabilir (seçenek). Üzerinde zimmet olan kişi hiçbir koşulda otomatik ayrılmış işaretlenmez.</li>
         <li>Mevcut zimmetler etkilenmez; ad/birim değişirse bağlı cihazların görünen adı güncellenir.</li>
       </ul>
@@ -198,6 +222,12 @@ require_once __DIR__ . '/../includes/header.php';
       <div class="form-check"><input class="form-check-input" type="checkbox" name="bas_harf" id="bas_harf" value="1" <?= !empty($s['opt']['bas_harf'])?'checked':'' ?>><label class="form-check-label" for="bas_harf">BÜYÜK HARFLİ ad / soyad / unvan / birimi baş harfi büyük yaz (AHMET YILMAZ → Ahmet Yılmaz)</label></div>
       <div class="form-check"><input class="form-check-input" type="checkbox" name="pasif_ayrilmis" id="pasif_ayrilmis" value="1" <?= !empty($s['opt']['pasif_ayrilmis'])?'checked':'' ?>><label class="form-check-label" for="pasif_ayrilmis">Durum sütunu <em>pasif / disabled</em> olan kişileri işten ayrılmış say (çıkış tarihi bugün; çıkış tarihi sütunu doluysa o esas)</label></div>
       <div class="form-check"><input class="form-check-input" type="checkbox" name="dosyada_olmayan_ayrilmis" id="dosyada_olmayan_ayrilmis" value="1" <?= !empty($s['opt']['dosyada_olmayan_ayrilmis'])?'checked':'' ?>><label class="form-check-label" for="dosyada_olmayan_ayrilmis"><strong>Dosyada olmayan</strong> çalışanları işten ayrılmış say <span class="text-danger">(yalnız dosya TÜM personeli içeriyorsa işaretleyin; üzerinde zimmet olanlar atlanır)</span></label></div>
+      <?php if (yetki_var('duzenle')): ?>
+      <hr class="my-2">
+      <div class="form-check"><input class="form-check-input" type="checkbox" name="tam_yenileme" id="tam_yenileme" value="1" <?= !empty($s['opt']['tam_yenileme'])?'checked':'' ?>>
+        <label class="form-check-label" for="tam_yenileme"><strong class="text-danger">TAM YENİLEME — sil ve ekle:</strong> mevcut personel listesi silinir, yalnız bu dosyadakiler kalır.
+        <span class="text-muted">Üzerinde <strong>zimmetli cihaz olan kişiler SİLİNMEZ</strong> (zimmet bağı kopmasın diye korunur, dosyadaki bilgiyle güncellenir). Dosya tüm personeli içermiyorsa kullanmayın.</span></label></div>
+      <?php endif; ?>
     </div></div>
 
     <?php $onizle = []; foreach (array_slice($veri, 0, 12) as $r) $onizle[] = pim_satir_cozumle($r, $s['harita'], $baslik, $s['opt']); ?>
@@ -217,11 +247,18 @@ require_once __DIR__ . '/../includes/header.php';
       </tbody></table></div>
     <div class="card-footer bg-white d-flex flex-wrap gap-2">
       <button class="btn btn-outline-primary" onclick="document.getElementById('islem').value='onizle'"><i class="bi bi-arrow-repeat me-1"></i>Ön izlemeyi yenile</button>
-      <button class="btn btn-success" onclick="document.getElementById('islem').value='aktar'; return confirm('<?= $f0(count($veri)) ?> satır personel listesiyle birleştirilecek. Devam?')" <?= $adTamam ? '' : 'disabled' ?>><i class="bi bi-check2-circle me-1"></i>İçe Aktar (<?= $f0(count($veri)) ?> satır)</button>
+      <button class="btn btn-success" onclick="document.getElementById('islem').value='aktar'; return itAktarOnay()" <?= $adTamam ? '' : 'disabled' ?>><i class="bi bi-check2-circle me-1"></i>İçe Aktar (<?= $f0(count($veri)) ?> satır)</button>
     </div></div>
   </div>
 </div>
 </form>
+<script>
+function itAktarOnay(){
+  var tam = document.getElementById('tam_yenileme');
+  if (tam && tam.checked) return confirm('TAM YENİLEME\n\nMevcut personel listesi SİLİNECEK, yerine dosyadaki <?= $f0(count($veri)) ?> satır yazılacak.\nÜzerinde zimmetli cihaz olan kişiler silinmez, güncellenir.\n\nDevam edilsin mi?');
+  return confirm('<?= $f0(count($veri)) ?> satır mevcut personel listesiyle birleştirilecek. Devam?');
+}
+</script>
 
 <?php elseif ($adim === 3 && $rap): $nY = count($rap['yeni']); $nG = count($rap['guncellenen']); $nA = count($rap['atlanan']); $nAy = count(array_filter($rap['ayrilan'], fn($a) => $a['ok'])); ?>
 <div class="alert alert-success py-2"><i class="bi bi-check-circle me-1"></i><strong><?= h($rap['dosya']) ?></strong> aktarıldı:
@@ -234,9 +271,39 @@ require_once __DIR__ . '/../includes/header.php';
   <?php endforeach; ?>
 </div>
 
+<?php if (!empty($rap['tam_yenileme'])): ?>
+<div class="alert alert-info py-2 small"><i class="bi bi-arrow-repeat me-1"></i><strong>Tam yenileme yapıldı</strong> — eski liste silindi, yerine dosyadaki kayıtlar yazıldı:
+  <strong><?= count($rap['silinen'] ?? []) ?></strong> kayıt silindi<?php if (!empty($rap['korunan'])): ?>,
+  <strong><?= count($rap['korunan']) ?></strong> kişi <em>üzerinde zimmet olduğu için korundu</em> (silinmedi, güncellendi):
+  <?php foreach (array_slice($rap['korunan'], 0, 20) as $k): ?><span class="badge bg-light text-dark border ms-1"><?= h($k['kim']) ?> · <?= (int)$k['cihaz'] ?> cihaz</span><?php endforeach; ?>
+  <?php if (count($rap['korunan']) > 20): ?><span class="text-muted"> +<?= count($rap['korunan']) - 20 ?> kişi</span><?php endif; endif; ?>
+</div>
+<?php endif; ?>
+
+<?php if (!empty($rap['eksik'])): ?>
+<div class="alert alert-secondary py-2 small"><i class="bi bi-info-circle me-1"></i><strong><?= count($rap['eksik']) ?> satırda ad ya da soyad eksikti</strong> — satırlar yine de aktarıldı, eksik alan boş bırakıldı:
+  <?php foreach (array_slice($rap['eksik'], 0, 25) as $e): ?><span class="badge bg-light text-dark border ms-1">satır <?= (int)$e['satir'] ?>: <?= h($e['kim']) ?> (<?= h($e['alan']) ?> yok)</span><?php endforeach; ?>
+  <?php if (count($rap['eksik']) > 25): ?><span class="text-muted"> +<?= count($rap['eksik']) - 25 ?> satır</span><?php endif; ?>
+</div>
+<?php endif; ?>
+
+<?php if (!empty($rap['mukerrer'])): ?>
+<div class="alert alert-warning py-2 small d-flex flex-wrap align-items-center gap-2">
+  <span><i class="bi bi-people me-1"></i><strong><?= (int)$rap['mukerrer'] ?> mükerrer kayıt grubu</strong> var (aynı sicil / e-posta / ad soyad iki kez).</span>
+  <a href="personel.php?mukerrer=1" class="btn btn-warning btn-sm"><i class="bi bi-union me-1"></i>Mükerrerleri incele ve birleştir</a>
+</div>
+<?php endif; ?>
+
 <?php if ($rap['lokasyon_yok']): ?>
-<div class="alert alert-warning py-2 small"><i class="bi bi-geo-alt me-1"></i><strong>Lokasyon ağacında bulunamayan <?= count($rap['lokasyon_yok']) ?> ad</strong> (kişinin notuna yazıldı; <a href="lokasyonlar.php">Lokasyonlar</a> ekranında ekleyip kişileri düzenleyebilirsiniz):
-  <?php foreach ($rap['lokasyon_yok'] as $ad => $n): ?><span class="badge bg-warning text-dark ms-1"><?= h($ad) ?> ×<?= $n ?></span><?php endforeach; ?></div>
+<div class="alert alert-warning py-2 small"><i class="bi bi-geo-alt me-1"></i><strong>Lokasyon ağacında bulunamayan <?= count($rap['lokasyon_yok']) ?> ad</strong> (kişinin notuna yazıldı; <a href="tanimlar.php?t=lokasyon">Lokasyonlar</a> ekranında ekleyip kişileri düzenleyebilirsiniz):
+  <?php foreach ($rap['lokasyon_yok'] as $ad => $n): ?><span class="badge bg-warning text-dark ms-1"><?= h($ad) ?> ×<?= $n ?></span><?php endforeach; ?>
+  <?php if (yetki_var('duzenle')): ?>
+  <form method="post" class="d-inline ms-2" onsubmit="return confirm('Bu adlar yeni lokasyon olarak eklenecek. Devam?')">
+    <input type="hidden" name="islem" value="lok_ekle">
+    <?php foreach (array_keys($rap['lokasyon_yok']) as $ad): ?><input type="hidden" name="lok[]" value="<?= h($ad) ?>"><?php endforeach; ?>
+    <button class="btn btn-warning btn-sm"><i class="bi bi-plus-circle me-1"></i>Hepsini lokasyon olarak ekle</button>
+  </form>
+  <?php endif; ?></div>
 <?php endif; ?>
 
 <?php if ($rap['atlanan']): ?>

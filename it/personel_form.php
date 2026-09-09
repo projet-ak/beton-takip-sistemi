@@ -93,7 +93,7 @@ $tv = fn($k) => h($v[$k] ?? '');
 
     <div class="col-md-6"><label class="form-label">Lokasyon / Proje</label>
       <select name="lokasyon_id" class="form-select"><?= it_lokasyon_options($pdoIt, (int)($v['lokasyon_id'] ?? 0)) ?></select>
-      <div class="form-text">Kartal projesi etapları (U030 / U031 / U039) ya da Merkez binadaki direktörlük. Ağacı <a href="lokasyonlar.php">Lokasyonlar</a> ekranından düzenleyin.</div></div>
+      <div class="form-text">Kartal projesi etapları (U030 / U031 / U039) ya da Merkez binadaki direktörlük. Ağacı <a href="tanimlar.php?t=lokasyon">Lokasyonlar</a> ekranından düzenleyin.</div></div>
     <div class="col-md-6"><label class="form-label">Birim / Departman</label><input name="birim" list="dl_birim" class="form-control" value="<?= $tv('birim') ?>" maxlength="100" placeholder="Teknik Ofis, Muhasebe, Satış Ofisi…">
       <datalist id="dl_birim"><?php foreach ($birimler as $x): ?><option value="<?= h($x) ?>"><?php endforeach; ?></datalist>
       <div class="form-text">Boş bırakılırsa lokasyon bir birimse (direktörlük vb.) onun adı yazılır.</div></div>

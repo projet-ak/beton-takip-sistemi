@@ -313,6 +313,45 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   **giris**; sidebar "Personel İçe Aktar" `can_edit()`. Test: itsm `run2.php` (oturum sess.json'da adımlar arası
   taşınır, `$_FILES` simülasyonu; db_it.php `SqlitePatch` MySQL DDL'yi SQLite'a çevirir) — xlsx TR başlık + "Adı
   Soyadı" tek sütun, HTML win-1254 M365 başlıkları, CSV ; ayraçlı, çerçeve-yalnız .xls mesajı, çakışma/zimmet engeli.
+  **2026-09-09 ikinci tur (gerçek 183 satırlık İK listesiyle)**: ⚠ **"There is no active transaction" hatası** —
+  `pim_log_kur()` (CREATE TABLE) transaction'ın İÇİNDE çağrılıyordu; MySQL'de DDL **örtük commit** yapar, sonraki
+  `commit()` patlıyor ve aktarım "geri alındı" görünüyordu. Şema kurulumu artık `beginTransaction`'dan ÖNCE,
+  commit/rollBack `inTransaction()` ile korumalı — **şema kuran her fonksiyon transaction dışında çağrılmalı**.
+  **Eksik bilgili satır artık ATLANMAZ** ("bilgisi olan işlensin, olmayan boş kalsın"): yalnız ad ya da yalnız soyad
+  varsa kayıt açılır, eksik alan boş kalır ve raporda "eksik alan" bandında listelenir; satır ancak ad+soyadın İKİSİ
+  de boşsa atlanır. Rapordaki satır numarası artık **dosyadaki gerçek satır** (boş satırlar süzüldüğü için kayıyordu;
+  `satir_no` haritası oturumda taşınır — gerçek dosyada başlık 4. satırda). **TAM YENİLEME (sil ve ekle)** kutusu
+  (`yetki_var('duzenle')`, ayrı onay diyaloğu): mevcut personel silinir, yalnız dosyadakiler kalır — ama **üzerinde
+  zimmet olan kişi SİLİNMEZ** (cihaz bağı kopmasın), korunur + güncellenir ve raporda "korundu" rozetiyle listelenir;
+  tam yenilemede "dosyada olmayan → ayrıldı" seçeneği kapatılır. **Lokasyon eşleştirme** üç kademe daha kazandı:
+  boşluksuz içerme ("Batıyakası" → Kartal Batı Yakası Projesi), **kelime bazlı yazım hatası toleransı**
+  (levenshtein ≤2: "Gayrimenkul Drektörlüğü" → Gayrimenkul Geliştirme Direktörlüğü) ve birim adının ağaçtaki alt
+  düğümle inceltilmesi. Boş E-posta sütunu artık nota düşmez (yalnız DEĞER varken '@' yoksa e-posta sayılmaz).
+  Eşleşmeyen lokasyonlar rapordan **tek tıkla kök lokasyon olarak eklenir** (`islem=lok_ekle`) → dosya tekrar
+  yüklenince kişiler bağlanır. **MÜKERRER KAYIT ÖNLEMİ (DB tarafı)**: `pim_mukerrer_gruplar()` aynı sicil / aynı
+  e-posta / aynı normalize ad+soyad kartlarını gruplar (grup içi ASIL kayıt = en dolu kart, sicil no ağır basar);
+  `personel.php?mukerrer=1` panelinde grup grup gösterilir ve `pim_personel_birlestir()` ile birleştirilir —
+  cihaz zimmetleri hedefe TAŞINIR, hedefte boş olan alanlar kaynaktan tamamlanır, notlar birleşir, kaynak silinir
+  (transaction'lı). İçe aktarma bittiğinde mükerrer grup varsa rapor bandında uyarı + panele bağlantı çıkar.
+  Gerçek dosyayla doğrulandı: 183 satır → 178 kişi (tam yenilemede 3 silindi, 1 zimmetli korundu), **aynı dosya
+  ikinci kez yüklendiğinde 0 yeni / 140 değişmeyen** (mükerrer oluşmuyor).
+  **TANIMLAR EKRANI `it/tanimlar.php` (2026-09-09)** — tek sayfa, sekmeli (Snipe-IT'deki "tanım tablosu seç"
+  düzeni): **Lokasyonlar · Kategoriler · Üreticiler · Modeller · Tedarikçiler · Şirketler · Durumlar · Personel**.
+  • *Lokasyonlar* = `it_lokasyonlar` (hiyerarşi korunur) + yeni **sehir / adres / renk** kolonları; satırda ad
+  (girintili ağaç, renk noktası), proje kodu, şehir, adres, tür, **cihaz [alt lokasyonlar dahil]**, **kişi** sayıları;
+  ekle/düzenle tek satırlık form, mükerrer ad engeli (aynı üst altında), kendi altına taşıma engeli, silmede bağlı
+  kayıt varsa **pasife alınır**, boş tabloda "varsayılan yapıyı yükle". `it/lokasyonlar.php` artık buraya
+  **yönlendirir** (eski bağlantılar kırılmasın; sidebar "Tanımlar (lokasyon, marka…)").
+  • *Üretici / Model / Tedarikçi / Şirket* = yeni tablo **`it_tanimlar`** (tur, ad, kod, aciklama, renk, sira, aktif;
+  `it_tanim_semasi_kur` + kurulum): cihaz kartındaki alanlar **serbest METİN kalır** (eski kayıtlar bozulmaz), bu
+  liste formdaki **datalist önerisinin kaynağıdır** (`it_tanim_oneri` = tanımlar + cihazlarda geçen değerler birleşik)
+  ve "Kullanım" sütunu tanımın kaç cihazda geçtiğini gösterir (`it_tanim_kullanim`, it_norm ile eşleşir).
+  Cihaz formuna **Şirket** alanı eklendi (`it_cihazlar.sirket`, runtime ALTER) + Model alanına datalist.
+  • *Kategoriler / Durumlar* = sistem sabiti (IT_KATEGORI / IT_DURUM: ikon, renk ve iş kuralları koda bağlı) —
+  eklenmez/silinmez, yalnız cihaz sayımlarıyla listelenir.
+  • *Personel* sekmesi = KPI (çalışan/ayrılan/zimmeti olan) + son 10 kişi + tam listeye / yeni personele /
+  Excel içe aktarmaya kısayol. ⚠ `mb_strtoupper` Türkçe 'i'yi 'I' yapar ("ÜRETICILER") — başlıklar PHP'de
+  büyütülmez, CSS `text-uppercase` kullanılır.
   Çekirdek `it/_ortak.php`: IT_KATEGORI / IT_DURUM / IT_HAREKET sabitleri, it_semasi_kur, it_envanter_no, it_filtre,
   it_secenekler (sütun whitelist), it_ozet, it_garanti_kalan, it_tarih, it_sayi, it_hareket_ekle, it_belgeler/
   it_belge_yukle/it_belge_sil, it_dosya_listesi. **Yetki**: sayfalar `require_auth([admin,toa,to,depo,it_sorumlusu])`;

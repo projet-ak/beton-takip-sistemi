@@ -12,8 +12,21 @@ require_auth(['admin','teknik_ofis_admin','teknik_ofis','depo','it_sorumlusu']);
 require_once __DIR__ . '/../includes/db_it.php';
 require_once __DIR__ . '/_ortak.php';
 
+require_once __DIR__ . '/_import.php';
 it_semasi_kur($pdoIt);
 $pageTitle = 'Personel — IT Envanter';
+
+// ── Mükerrer kayıt birleştirme (aynı kişinin iki kartı) ──
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['islem'] ?? '') === 'birlestir') {
+    if (!yetki_var('duzenle')) { flash('error', 'Birleştirme için değiştirme yetkisi gerekir.'); redirect('personel.php?mukerrer=1'); }
+    try {
+        $son = pim_personel_birlestir($pdoIt, (int)($_POST['hedef'] ?? 0), (int)($_POST['kaynak'] ?? 0));
+        flash('success', $son['kaynak'] . ' kaydı ' . $son['hedef'] . ' ile birleştirildi' . ($son['tasinan'] ? ' (' . $son['tasinan'] . ' cihaz zimmeti taşındı)' : '') . '.');
+    } catch (Throwable $e) { flash('error', 'Birleştirilemedi: ' . $e->getMessage()); }
+    redirect('personel.php?mukerrer=1');
+}
+$mukerrerler = pim_mukerrer_gruplar($pdoIt);
+$mukerrerGoster = isset($_GET['mukerrer']);
 
 $durum = $_GET['durum'] ?? 'aktif';               // aktif | ayrilan | hepsi
 $lokId = (int)($_GET['lokasyon_id'] ?? 0);
@@ -64,7 +77,7 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <h4 class="mb-0"><i class="bi bi-people text-primary me-2"></i>Personel &amp; Zimmet Sahipleri</h4>
     <div class="d-flex gap-2">
-        <a href="lokasyonlar.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-diagram-3 me-1"></i>Lokasyonlar</a>
+        <a href="tanimlar.php?t=lokasyon" class="btn btn-outline-secondary btn-sm"><i class="bi bi-diagram-3 me-1"></i>Lokasyonlar</a>
         <a href="personel.php?<?= h(http_build_query(array_merge($_GET, ['export'=>'xlsx']))) ?>" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Excel</a>
         <?php if ($yazabilir): ?><a href="import.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-cloud-arrow-up me-1"></i>İçe Aktar</a><a href="personel_form.php" class="btn btn-primary btn-sm"><i class="bi bi-person-plus me-1"></i>Yeni Personel</a><?php endif; ?>
     </div>
@@ -73,6 +86,57 @@ require_once __DIR__ . '/../includes/header.php';
 <?php foreach(['success','error','warning'] as $t): if($m=get_flash($t)): ?>
 <div class="alert alert-<?= $t==='error'?'danger':$t ?>"><?= h($m) ?></div>
 <?php endif; endforeach; ?>
+
+<?php if ($mukerrerler && !$mukerrerGoster): ?>
+<div class="alert alert-warning py-2 d-flex flex-wrap align-items-center gap-2">
+  <span><i class="bi bi-people me-1"></i><strong><?= count($mukerrerler) ?> mükerrer kayıt grubu</strong> bulundu — aynı kişi birden çok kez kayıtlı görünüyor (aynı sicil no, e-posta ya da ad soyad).</span>
+  <a href="personel.php?mukerrer=1" class="btn btn-warning btn-sm ms-auto"><i class="bi bi-union me-1"></i>İncele ve birleştir</a>
+</div>
+<?php endif; ?>
+
+<?php if ($mukerrerGoster): ?>
+<div class="card border-warning shadow-sm mb-3">
+  <div class="card-header bg-white d-flex flex-wrap align-items-center gap-2">
+    <strong><i class="bi bi-union text-warning me-1"></i>Mükerrer Kayıtlar</strong>
+    <span class="text-muted small">Birleştirmede <strong>korunan</strong> kayıt kalır; diğerinin cihaz zimmetleri ona taşınır, boş alanları tamamlanır, sonra silinir.</span>
+    <a href="personel.php" class="btn btn-outline-secondary btn-sm ms-auto"><i class="bi bi-x-lg me-1"></i>Kapat</a>
+  </div>
+  <div class="card-body">
+    <?php if (!$mukerrerler): ?><div class="text-success mb-0"><i class="bi bi-check-circle me-1"></i>Mükerrer kayıt yok.</div><?php endif; ?>
+    <?php foreach ($mukerrerler as $gi => $g): $asil = $g['kayitlar'][0]; ?>
+    <div class="border rounded p-2 mb-2">
+      <div class="small text-muted mb-1">Eşleşme: <strong><?= h($g['tur']) ?></strong> — <code><?= h($g['anahtar']) ?></code></div>
+      <table class="table table-sm mb-0 align-middle" style="font-size:.84rem">
+        <thead class="table-light"><tr><th>Kayıt</th><th>Sicil</th><th>Unvan / Birim</th><th>Lokasyon</th><th>Telefon</th><th>E-posta</th><th class="text-end">Cihaz</th><th></th></tr></thead>
+        <tbody>
+        <?php foreach ($g['kayitlar'] as $ki => $k): ?>
+          <tr class="<?= $ki === 0 ? 'table-success' : '' ?>">
+            <td><a href="personel_detay.php?id=<?= (int)$k['id'] ?>"><?= h(it_personel_ad($k)) ?></a> <span class="text-muted">#<?= (int)$k['id'] ?></span>
+                <?= $ki === 0 ? '<span class="badge bg-success ms-1">korunacak</span>' : '' ?></td>
+            <td class="font-monospace"><?= h($k['sicil_no']) ?></td>
+            <td><?= h($k['unvan']) ?><?= $k['birim'] ? ' <span class="text-muted">/ ' . h($k['birim']) . '</span>' : '' ?></td>
+            <td class="small"><?= h(it_lokasyon_yol($pdoIt, (int)$k['lokasyon_id'])) ?></td>
+            <td class="text-nowrap"><?= h($k['telefon']) ?></td><td class="small"><?= h($k['eposta']) ?></td>
+            <td class="text-end"><?= (int)$k['cihaz'] ?></td>
+            <td class="text-end">
+              <?php if ($ki > 0 && yetki_var('duzenle')): ?>
+              <form method="post" class="d-inline" onsubmit="return confirm('#<?= (int)$k['id'] ?> kaydı #<?= (int)$asil['id'] ?> ile birleştirilecek. Cihaz zimmetleri taşınacak ve bu kayıt SİLİNECEK. Devam?')">
+                <input type="hidden" name="islem" value="birlestir">
+                <input type="hidden" name="hedef" value="<?= (int)$asil['id'] ?>">
+                <input type="hidden" name="kaynak" value="<?= (int)$k['id'] ?>">
+                <button class="btn btn-warning btn-sm"><i class="bi bi-union me-1"></i>Bununla birleştir</button>
+              </form>
+              <?php endif; ?>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+    <?php endforeach; ?>
+  </div>
+</div>
+<?php endif; ?>
 
 <?php if ($riskli): ?>
 <div class="alert alert-danger py-2"><i class="bi bi-exclamation-triangle me-1"></i><strong><?= $riskli ?> kişi</strong> işten ayrılmış görünüyor ama üzerinde hâlâ zimmetli cihaz var. Kişi kartından zimmetleri iade alın.</div>

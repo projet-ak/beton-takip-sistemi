@@ -86,6 +86,7 @@ function it_semasi_kur(PDO $pdo): void
         KEY ix_cihaz (cihaz_id), KEY ix_tarih (tarih), KEY ix_tur (tur)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     it_personel_semasi_kur($pdo);
+    it_tanim_semasi_kur($pdo);
     $pdo->exec("CREATE TABLE IF NOT EXISTS it_belgeler (
         id INT AUTO_INCREMENT PRIMARY KEY,
         cihaz_id INT NOT NULL,
@@ -434,6 +435,80 @@ function it_lokasyon_etiket(PDO $pdo, ?int $id): string
 {
     $r = it_lokasyonlar($pdo)[$id ?? 0] ?? null;
     return $r ? trim(($r['kod'] ? $r['kod'] . ' ' : '') . $r['ad']) : '';
+}
+
+/* ═══════════ TANIMLAR (it_tanimlar): üretici / model / tedarikçi / şirket ═══════════
+ * Cihaz kartındaki marka / model / tedarikçi / şirket alanları serbest METİN kalır (eski kayıtlar bozulmasın);
+ * bu tablo o alanların ÖNERİ LİSTESİDİR — Tanımlar ekranından yönetilir, formda datalist olarak çıkar.
+ * Kategori ve Durum ise sistem sabitidir (IT_KATEGORI / IT_DURUM), Tanımlar'da yalnız sayımlarıyla gösterilir. */
+const IT_TANIM_TUR = [
+    'uretici'   => ['Üreticiler',  'marka',     'bi-tags'],
+    'model'     => ['Modeller',    'model',     'bi-cpu'],
+    'tedarikci' => ['Tedarikçiler','tedarikci', 'bi-truck'],
+    'sirket'    => ['Şirketler',   'sirket',    'bi-building'],
+];
+
+/** Tanım tablosu + lokasyon ek alanları (şehir/adres/renk) + cihazlarda şirket alanı. İdempotent. */
+function it_tanim_semasi_kur(PDO $pdo): void
+{
+    static $yapildi = false;
+    if ($yapildi) return;
+    $yapildi = true;
+    $pdo->exec("CREATE TABLE IF NOT EXISTS it_tanimlar (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        tur VARCHAR(20) NOT NULL,
+        ad VARCHAR(150) NOT NULL,
+        kod VARCHAR(40) NULL,
+        aciklama VARCHAR(255) NULL,
+        renk VARCHAR(20) NULL,
+        sira INT NOT NULL DEFAULT 0,
+        aktif TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY ix_tur (tur, ad)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    foreach (['sehir' => "VARCHAR(60) NULL", 'adres' => "VARCHAR(255) NULL", 'renk' => "VARCHAR(20) NULL"] as $kol => $tip) {
+        try { $pdo->query("SELECT $kol FROM it_lokasyonlar LIMIT 1"); }
+        catch (Throwable $e) { try { $pdo->exec("ALTER TABLE it_lokasyonlar ADD COLUMN $kol $tip"); } catch (Throwable $e2) {} }
+    }
+    try { $pdo->query("SELECT sirket FROM it_cihazlar LIMIT 1"); }
+    catch (Throwable $e) { try { $pdo->exec("ALTER TABLE it_cihazlar ADD COLUMN sirket VARCHAR(120) NULL"); } catch (Throwable $e2) {} }
+}
+
+/** Bir türün tanım listesi (aktifler önce ada göre). */
+function it_tanim_liste(PDO $pdo, string $tur, bool $aktifYalniz = false): array
+{
+    it_tanim_semasi_kur($pdo);
+    try {
+        $st = $pdo->prepare("SELECT * FROM it_tanimlar WHERE tur=?" . ($aktifYalniz ? " AND aktif=1" : "") . " ORDER BY sira, ad");
+        $st->execute([$tur]);
+        return $st->fetchAll();
+    } catch (Throwable $e) { return []; }
+}
+
+/** Cihaz kartındaki serbest metin alanında bu tanım kaç kez kullanılmış? (ad → adet) */
+function it_tanim_kullanim(PDO $pdo, string $kolon): array
+{
+    $out = [];
+    try {
+        foreach ($pdo->query("SELECT `$kolon` d, COUNT(*) n FROM it_cihazlar WHERE `$kolon` IS NOT NULL AND `$kolon`<>'' AND durum<>'hurda' GROUP BY `$kolon`") as $r)
+            $out[it_norm((string)$r['d'])] = (int)$r['n'];
+    } catch (Throwable $e) {}
+    return $out;
+}
+
+/** Form datalist'i: tanım tablosu + cihazlarda geçen mevcut değerler birleşik (tekrarsız, sıralı). */
+function it_tanim_oneri(PDO $pdo, string $tur): array
+{
+    $kolon = IT_TANIM_TUR[$tur][1] ?? null;
+    $ad = array_map(fn($r) => $r['ad'], it_tanim_liste($pdo, $tur, true));
+    if ($kolon) {
+        try { foreach ($pdo->query("SELECT DISTINCT `$kolon` d FROM it_cihazlar WHERE `$kolon` IS NOT NULL AND `$kolon`<>''") as $r) $ad[] = $r['d']; }
+        catch (Throwable $e) {}
+    }
+    $var = []; $out = [];
+    foreach ($ad as $a) { $n = it_norm((string)$a); if ($n === '' || isset($var[$n])) continue; $var[$n] = 1; $out[] = $a; }
+    sort($out, SORT_NATURAL | SORT_FLAG_CASE);
+    return $out;
 }
 
 /** Lokasyon + tüm alt lokasyon id'leri (filtrelerde "proje seçilince etapları da kapsa"). */

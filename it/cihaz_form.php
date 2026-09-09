@@ -29,7 +29,7 @@ if ($duzenleme ? !yetki_var('duzenle') : !yetki_var('giris')) {
 }
 
 $error = '';
-$v = $c ?: ['envanter_no'=>'', 'kategori'=>'laptop', 'ad'=>'', 'marka'=>'', 'model'=>'', 'seri_no'=>'', 'durum'=>'depoda',
+$v = $c ?: ['envanter_no'=>'', 'kategori'=>'laptop', 'ad'=>'', 'marka'=>'', 'model'=>'', 'seri_no'=>'', 'sirket'=>'', 'durum'=>'depoda',
             'personel_id'=>'', 'zimmetli'=>'', 'departman'=>'', 'lokasyon_id'=>'', 'lokasyon'=>'', 'zimmet_tarihi'=>'', 'alis_tarihi'=>'', 'garanti_bitis'=>'',
             'fiyat'=>'', 'tedarikci'=>'', 'fatura_no'=>'', 'ip_adresi'=>'', 'mac_adresi'=>'', 'isletim_sistemi'=>'',
             'ozellikler'=>'', 'lisans_anahtari'=>'', 'lisans_adet'=>'', 'notlar'=>''];
@@ -40,6 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'kategori'        => isset(IT_KATEGORI[$_POST['kategori'] ?? '']) ? $_POST['kategori'] : 'diger',
         'ad'              => $al('ad', 150),
         'marka'           => $al('marka', 80),
+        'sirket'          => $al('sirket', 120),
         'model'           => $al('model', 120),
         'seri_no'         => $al('seri_no', 120),
         'durum'           => isset(IT_DURUM[$_POST['durum'] ?? '']) ? $_POST['durum'] : 'depoda',
@@ -113,8 +114,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $pageTitle = ($duzenleme ? 'Cihaz Düzenle — ' . $c['envanter_no'] : 'Yeni Cihaz') . ' — IT Envanter';
 require_once __DIR__ . '/../includes/header.php';
+// Öneri listeleri: Tanımlar ekranındaki kayıtlar + cihazlarda geçen mevcut değerler (it_tanim_oneri birleştirir)
 $sec = ['zimmetli' => it_secenekler($pdoIt, 'zimmetli'), 'departman' => it_secenekler($pdoIt, 'departman'),
-        'lokasyon' => it_secenekler($pdoIt, 'lokasyon'), 'marka' => it_secenekler($pdoIt, 'marka'), 'tedarikci' => it_secenekler($pdoIt, 'tedarikci')];
+        'lokasyon' => it_secenekler($pdoIt, 'lokasyon'),
+        'marka' => it_tanim_oneri($pdoIt, 'uretici'), 'model' => it_tanim_oneri($pdoIt, 'model'),
+        'tedarikci' => it_tanim_oneri($pdoIt, 'tedarikci'), 'sirket' => it_tanim_oneri($pdoIt, 'sirket')];
 $dl = function (string $k) use ($sec) {
     if (empty($sec[$k])) return '';
     $o = '<datalist id="dl_' . $k . '">';
@@ -158,8 +162,9 @@ $tv = fn($k) => h($v[$k] ?? '');
       </div>
 
       <div class="col-md-3"><label class="form-label">Marka</label><input name="marka" list="dl_marka" class="form-control" value="<?= $tv('marka') ?>" maxlength="80"><?= $dl('marka') ?></div>
-      <div class="col-md-4"><label class="form-label">Model</label><input name="model" class="form-control" value="<?= $tv('model') ?>" maxlength="120"></div>
-      <div class="col-md-5"><label class="form-label">Seri No</label><input name="seri_no" class="form-control font-monospace" value="<?= $tv('seri_no') ?>" maxlength="120"></div>
+      <div class="col-md-4"><label class="form-label">Model</label><input name="model" list="dl_model" class="form-control" value="<?= $tv('model') ?>" maxlength="120"><?= $dl('model') ?></div>
+      <div class="col-md-2"><label class="form-label">Seri No</label><input name="seri_no" class="form-control font-monospace" value="<?= $tv('seri_no') ?>" maxlength="120"></div>
+      <div class="col-md-3"><label class="form-label">Şirket</label><input name="sirket" list="dl_sirket" class="form-control" value="<?= $tv('sirket') ?>" maxlength="120" placeholder="ERN Holding / ERN Taahhüt…"><?= $dl('sirket') ?></div>
 
       <div class="col-12"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-person-check me-1"></i>ZİMMET</div></div>
       <div class="col-md-4"><label class="form-label">Zimmetli Personel</label>

@@ -101,7 +101,7 @@ require_once __DIR__ . '/../includes/header.php';
       <div class="card-body"><div style="height:260px"><canvas id="chDurum"></canvas></div></div></div>
   </div>
   <div class="col-lg-4">
-    <div class="card border-0 shadow-sm h-100"><div class="card-header bg-white"><strong>Proje / bina bazında cihaz</strong> <a href="lokasyonlar.php" class="small ms-1">lokasyonlar</a></div>
+    <div class="card border-0 shadow-sm h-100"><div class="card-header bg-white"><strong>Proje / bina bazında cihaz</strong> <a href="tanimlar.php?t=lokasyon" class="small ms-1">lokasyonlar</a></div>
       <div class="card-body"><div style="height:260px"><canvas id="chLok"></canvas></div></div></div>
   </div>
 </div>
