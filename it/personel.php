@@ -66,7 +66,7 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="d-flex gap-2">
         <a href="lokasyonlar.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-diagram-3 me-1"></i>Lokasyonlar</a>
         <a href="personel.php?<?= h(http_build_query(array_merge($_GET, ['export'=>'xlsx']))) ?>" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Excel</a>
-        <?php if ($yazabilir): ?><a href="personel_form.php" class="btn btn-primary btn-sm"><i class="bi bi-person-plus me-1"></i>Yeni Personel</a><?php endif; ?>
+        <?php if ($yazabilir): ?><a href="import.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-cloud-arrow-up me-1"></i>İçe Aktar</a><a href="personel_form.php" class="btn btn-primary btn-sm"><i class="bi bi-person-plus me-1"></i>Yeni Personel</a><?php endif; ?>
     </div>
 </div>
 

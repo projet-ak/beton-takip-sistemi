@@ -277,6 +277,42 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   metin kayıtları için kalır; dashboard'da **ayrılmış ama zimmetli** kırmızı bant + proje/bina bazlı cihaz grafiği
   (alt lokasyonlar köke toplanır); raporlar proje/bina + etap/birim kırılımı. Smoke: itsm'de kurulum seed 13 satır,
   mükerrer sicil, cikis engeli → tumunu_iade → cikis, lokasyon_id=1 (Kartal) filtresi etapları kapsıyor.
+  **PERSONEL İÇE AKTARMA (2026-09-09)** `it/import.php` + çekirdek `it/_import.php` (pim_*): İK / Active Directory /
+  Microsoft 365 "export users" dosyası → personel listesi. **Üç biçim**: .xlsx (SimpleXLSX, en dolu sayfa seçilir) ·
+  .csv (ayraç ; , sekme | sezilir, BOM + Windows-1254 → UTF-8) · **Excel "Web Sayfası" .xls/.htm = HTML tablo**
+  (DOMDocument; meta charset'e göre iconv, sonra meta charset UTF-8'e YAZILIR — libxml meta'ya bakıp dönüştürülmüş
+  metni ikinci kez çözüyordu; `<script>` blokları atılır — çerçeve dosyasının JS'inde "<table" metni geçer).
+  ⚠ Excel bu biçimde İKİ parça üretir: kısa **çerçeve** (frameset) + `…_dosyalar/sheet001.htm` (asıl veri). Kullanıcının
+  ilk gönderdiği `exportusers20260909.xls` yalnız çerçeveydi → `pim_html_oku` bunu tanır, "sheet001.htm'i ya da .xlsx
+  yükle" der. İkili BIFF .xls (D0CF11E0) desteklenmez → ".xlsx olarak kaydet" mesajı. **3 adım**: yükle → oturumda
+  grid (`$_SESSION['it_pim']`, ≤5000 satır) + `pim_baslik_satiri` (ilk 15 satırda bilinen başlıkla en çok eşleşen) +
+  `pim_harita` otomatik sütun→alan eşleme (`PIM_ALAN` TR/EN eş anlamlılar: Ad/First Name/Given Name, Soyad/Last Name/SN,
+  Display Name→ad_soyad [ayrı Ad+Soyad varsa atlanır; "NAME" yalnız SURNAME yoksa ad_soyad], Title/Job Title→unvan,
+  Department/OU→birim, Office/Location/Proje→lokasyon, Mobile>Office phone→telefon, Email/UPN→eposta [örnekte '@' yoksa
+  nota], Hire Date→ise_giris, Account enabled/Status→durum, username/manager/company/city→**notlar** [birden çok sütun
+  "Başlık: değer" satırı olarak birikir]) → ön izleme ekranı (her sütun için select, başlık satırı seçici, ilk 12 satırın
+  çözümlenmiş hali, lokasyon eşleşmesi yeşil/sarı) → **BİRLEŞTİRME** `pim_import` (transaction): eşleşme **sicil →
+  e-posta → normalize ad+soyad** (aynı ad soyadlı 2+ kayıt → atlanır "elle eşleyin"); yeni → INSERT, mevcut → yalnız
+  dosyada DOLU alanlar güncellenir (boş hücre silmez; ad/birim değişince bağlı cihazların zimmetli/departman metni de
+  güncellenir), `notlar` KORUNUR (yeni not satırları eklenir), zaten ayrılmış kişinin çıkış tarihi ezilmez.
+  **Çakışma koruması**: sicil eşleşti ama ad VE soyad bambaşka → atlanır ("sicil başka kişiye kayıtlı"); e-posta/ad ile
+  eşleşti ama iki tarafta da dolu ve farklı sicil → atlanır ("sicil çakışması"); e-posta eşleşti ama ad+soyad farklı →
+  atlanır. Çakışan kişi yine "dosyada görüldü" sayılır (aksi halde "dosyada yok → ayrıldı" kuralına düşüyordu).
+  Dosya içi tekrar (aynı sicil/e-posta/ad) atlanır. Seçenekler: **baş harf büyütme** `pim_bas_harf` (yalnız TAMAMEN
+  BÜYÜK metinde; İ/I Türkçe: "İSMAİL"→"İsmail" — mb_strtolower 'İ'yi bozar, elle) · **pasif hesap = ayrılmış** (durum
+  sütunu false/disabled/pasif → isten_cikis bugün, çıkış sütunu doluysa o) · **dosyada olmayan çalışan = ayrılmış**
+  (varsayılan KAPALI; **üzerinde zimmet olan kişi ATLANIR** ve raporda kırmızı). Yardımcılar: pim_norm (TR→ASCII),
+  pim_tarih (Y-m-d[ H:i:s] · d.m.Y · d/m/Y · Excel seri; <1950 boş), **pim_tarih_bos** ("1.01.0001"/"01.01.1900" boş
+  sayılır, not düşülmez), pim_durum, pim_telefon (+90/5xx → "0532 123 45 67"), pim_ad_ayir (son kelime soyad; "Soyad,
+  Ad" tanınır), **pim_lokasyon_bul** (kod token → ad eşit → ad içerir; birden çok kod eşleşirse **en derin düğüm**
+  kazanır: "Kartal U031 2. Etap" → U031, KARTAL kökü değil; birim adı ağaçta seçili lokasyonun altında bir düğümse o
+  alınır: Merkez + "Satış Ofisi" → Merkez › Satış Ofisi; eşleşmeyen lokasyon metni raporda rozet + kişinin notuna
+  "Lokasyon (dosyadan): …"). Rapor: okunan = yeni + güncellenen + değişmeyen + atlanan sağlaması + listeler (atlanan
+  sebepli, yeni, güncellenen [değişen alanlar eski → yeni], dosyada olmayanlar). Log `it_import_log` (pim_log_kur;
+  kurulum + runtime), sayfada "Son yüklemeler". `?sablon=1` örnek .xlsx. Yetki: `import.php` adı `sayfa_islemi` ile
+  **giris**; sidebar "Personel İçe Aktar" `can_edit()`. Test: itsm `run2.php` (oturum sess.json'da adımlar arası
+  taşınır, `$_FILES` simülasyonu; db_it.php `SqlitePatch` MySQL DDL'yi SQLite'a çevirir) — xlsx TR başlık + "Adı
+  Soyadı" tek sütun, HTML win-1254 M365 başlıkları, CSV ; ayraçlı, çerçeve-yalnız .xls mesajı, çakışma/zimmet engeli.
   Çekirdek `it/_ortak.php`: IT_KATEGORI / IT_DURUM / IT_HAREKET sabitleri, it_semasi_kur, it_envanter_no, it_filtre,
   it_secenekler (sütun whitelist), it_ozet, it_garanti_kalan, it_tarih, it_sayi, it_hareket_ekle, it_belgeler/
   it_belge_yukle/it_belge_sil, it_dosya_listesi. **Yetki**: sayfalar `require_auth([admin,toa,to,depo,it_sorumlusu])`;
