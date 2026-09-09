@@ -25,6 +25,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['islem'] ?? '') === 'birles
     } catch (Throwable $e) { flash('error', 'Birleştirilemedi: ' . $e->getMessage()); }
     redirect('personel.php?mukerrer=1');
 }
+// ── Listeyi temizle: tüm personeli sil (yeniden yüklemeden önce sıfırlama) ──
+// ⚠ Üzerinde ZİMMETLİ CİHAZ olan kişi SİLİNMEZ — silinse cihazın zimmet bağı kopardı.
+// Onlar korunur; yeniden yüklemede sicil/e-posta ile eşleşip güncellenirler.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['islem'] ?? '') === 'tumunu_sil') {
+    if (!yetki_var('duzenle')) { flash('error', 'Personel silmek için değiştirme yetkisi gerekir.'); redirect('personel.php'); }
+    if (trim((string)($_POST['onay'] ?? '')) !== 'SIL') { flash('error', 'Silme iptal edildi: onay kutusuna SIL yazılmadı.'); redirect('personel.php'); }
+    $silinen = 0; $korunan = [];
+    try {
+        $pdoIt->beginTransaction();
+        foreach ($pdoIt->query("SELECT * FROM it_personel")->fetchAll() as $kayit) {
+            $z = count(it_personel_cihazlari($pdoIt, (int)$kayit['id']));
+            if ($z) { $korunan[] = it_personel_ad($kayit) . " ($z cihaz)"; continue; }
+            $pdoIt->prepare("DELETE FROM it_personel WHERE id=?")->execute([(int)$kayit['id']]);
+            $silinen++;
+        }
+        if ($pdoIt->inTransaction()) $pdoIt->commit();
+        flash($korunan ? 'warning' : 'success', "$silinen personel kaydı silindi."
+            . ($korunan ? ' Üzerinde zimmet olan ' . count($korunan) . ' kişi KORUNDU: ' . implode(', ', array_slice($korunan, 0, 10)) . (count($korunan) > 10 ? '…' : '') . ' — cihazları iade alındıktan sonra silinebilir.' : '')
+            . ' Yeni listeyi Personel İçe Aktar ekranından yükleyebilirsiniz.');
+    } catch (Throwable $e) {
+        if ($pdoIt->inTransaction()) $pdoIt->rollBack();
+        flash('error', 'Silinemedi: ' . $e->getMessage());
+    }
+    redirect('personel.php');
+}
+
 $mukerrerler = pim_mukerrer_gruplar($pdoIt);
 $mukerrerGoster = isset($_GET['mukerrer']);
 
@@ -156,6 +182,28 @@ require_once __DIR__ . '/../includes/header.php';
   <div class="col-4"><div class="card border-0 shadow-sm"><div class="card-body py-2"><div class="small text-muted">Üzerlerindeki cihaz</div><div class="fs-5 fw-bold"><?= $f0($acikZimmet) ?></div></div></div></div>
   <div class="col-4"><div class="card border-0 shadow-sm"><div class="card-body py-2"><div class="small text-muted">Ayrılmış + açık zimmet</div><div class="fs-5 fw-bold <?= $riskli ? 'text-danger' : '' ?>"><?= $f0($riskli) ?></div></div></div></div>
 </div>
+
+<?php if ($yazabilir && yetki_var('duzenle') && $toplam): ?>
+<div class="text-end mb-2">
+  <button class="btn btn-outline-danger btn-sm" data-bs-toggle="collapse" data-bs-target="#pnlTemizle"><i class="bi bi-trash me-1"></i>Listeyi Temizle</button>
+</div>
+<div class="collapse mb-3" id="pnlTemizle">
+  <form method="post" class="card border-danger shadow-sm" onsubmit="return confirm('Personel listesi silinecek. Üzerinde zimmetli cihaz olanlar korunur. Devam?')">
+    <input type="hidden" name="islem" value="tumunu_sil">
+    <div class="card-body">
+      <div class="fw-semibold text-danger mb-1"><i class="bi bi-exclamation-octagon me-1"></i>Tüm personel kayıtlarını sil</div>
+      <div class="small text-muted mb-2">
+        Yeniden yükleme öncesi listeyi sıfırlar. <strong>Üzerinde zimmetli cihaz olan kişiler silinmez</strong> (cihaz bağı kopmasın diye korunur, yeniden yüklemede sicilden eşleşip güncellenir).
+        Cihazlar, hareket geçmişi ve tanımlar etkilenmez. <strong>Alternatif:</strong> yeni dosyayı <a href="import.php">Personel İçe Aktar</a> ekranından "TAM YENİLEME (sil ve ekle)" kutusuyla yüklerseniz silme ve ekleme tek adımda olur.
+      </div>
+      <div class="row g-2 align-items-center">
+        <div class="col-md-4"><input name="onay" class="form-control form-control-sm" placeholder="Onaylamak için SIL yazın" autocomplete="off" required></div>
+        <div class="col-md-4"><button class="btn btn-danger btn-sm"><i class="bi bi-trash me-1"></i><?= $f0($toplam) ?> kaydı sil</button></div>
+      </div>
+    </div>
+  </form>
+</div>
+<?php endif; ?>
 
 <div class="card border-0 shadow-sm"><div class="table-responsive">
 <table class="table table-hover table-sm align-middle mb-0" style="font-size:.86rem">

@@ -335,6 +335,11 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   Eşleşmeyen lokasyonlar rapordan **tek tıkla kök lokasyon olarak eklenir** (`islem=lok_ekle`) → dosya tekrar
   yüklenince kişiler bağlanır. **MÜKERRER KAYIT ÖNLEMİ (DB tarafı)**: `pim_mukerrer_gruplar()` aynı sicil / aynı
   e-posta / aynı normalize ad+soyad kartlarını gruplar (grup içi ASIL kayıt = en dolu kart, sicil no ağır basar);
+  **LİSTEYİ TEMİZLE** (`personel.php`, `islem=tumunu_sil`, `yetki_var('duzenle')` + kutuya "SIL" yazma onayı):
+  yeniden yüklemeden önce personel listesini sıfırlar; **üzerinde zimmetli cihaz olan kişi SİLİNMEZ**
+  (cihaz bağı kopmasın diye korunur, yeniden yüklemede sicilden eşleşir) ve flash mesajında adlarıyla
+  raporlanır. Cihaz/hareket/tanım kayıtları etkilenmez. Tek adımda yapmak isteyen import ekranındaki
+  "TAM YENİLEME (sil ve ekle)" kutusunu kullanır.
   `personel.php?mukerrer=1` panelinde grup grup gösterilir ve `pim_personel_birlestir()` ile birleştirilir —
   cihaz zimmetleri hedefe TAŞINIR, hedefte boş olan alanlar kaynaktan tamamlanır, notlar birleşir, kaynak silinir
   (transaction'lı). İçe aktarma bittiğinde mükerrer grup varsa rapor bandında uyarı + panele bağlantı çıkar.
