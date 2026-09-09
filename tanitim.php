@@ -36,7 +36,7 @@ $fmt0 = fn($n) => number_format((float)$n, 0, ',', '.');
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Şantiye İş Takip Sistemi — Batı Yakası Projesi | ERN Taahhüt</title>
-<meta name="description" content="ERN Taahhüt Batı Yakası Projesi dijital şantiye yönetimi: beton, demir, seramik, depo, akaryakıt, üretim arızaları (CRM), prekast ve saha takibi tek sistemde. QR + yapay zekâ destekli irsaliye okuma, fatura mutabakatı, canlı stok, kullanıcı bazlı yetki.">
+<meta name="description" content="ERN Taahhüt Batı Yakası Projesi dijital şantiye yönetimi: beton, demir, seramik, depo, akaryakıt, üretim arızaları (CRM), prekast, saha ve IT envanter takibi tek sistemde. QR + yapay zekâ destekli irsaliye okuma, fatura mutabakatı, canlı stok, kullanıcı bazlı yetki.">
 <link rel="icon" type="image/png" href="https://ern.com.tr/favicon.png">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -211,7 +211,7 @@ footer .gelistirici { margin-top:8px; color:rgba(232,244,241,.4); }
         <div class="sayac"><div class="deger" data-hedef="<?= (int)$say['m3'] ?>" data-ek=" m³">0</div><div class="etiket">Dökülen Beton</div></div>
         <div class="sayac"><div class="deger" data-hedef="<?= (int)$say['demir_ton'] ?>" data-ek=" t">0</div><div class="etiket">Takip Edilen Demir</div></div>
         <div class="sayac"><div class="deger" data-hedef="<?= (int)$say['hareket'] ?>">0</div><div class="etiket">Depo Hareketi</div></div>
-        <div class="sayac"><div class="deger" data-hedef="8">0</div><div class="etiket">Entegre Modül</div></div>
+        <div class="sayac"><div class="deger" data-hedef="9">0</div><div class="etiket">Entegre Modül</div></div>
     </div>
 </section>
 
@@ -219,7 +219,7 @@ footer .gelistirici { margin-top:8px; color:rgba(232,244,241,.4); }
 <section class="bolum acik" id="moduller">
     <div class="icerik">
         <div class="bolum-baslik">
-            <span class="ust">Tek Sistem · Sekiz Modül</span>
+            <span class="ust">Tek Sistem · Dokuz Modül</span>
             <h2>Şantiyenin Her Kalemi Kayıt Altında</h2>
         </div>
         <div class="moduller">
@@ -255,6 +255,10 @@ footer .gelistirici { margin-top:8px; color:rgba(232,244,241,.4); }
                 <h3>Prekast Takip</h3>
                 <p>Cephe prekast montajı iş takip çizelgesinden gün gün ilerler: kesim → silikon → metraj → hakkediş; blok icmali ve tamamlanma trendi canlı hesaplanır.</p>
                 <div class="etiketler"><span>Günlük İlerleme</span><span>Blok İcmali</span><span>Hakkediş</span></div></div>
+            <div class="modul"><div class="mi"><i class="bi bi-pc-display"></i></div>
+                <h3>IT Envanter</h3>
+                <p>Bilgisayar, telefon, yazıcı, ağ cihazı ve yazılım lisansları tek envanterde: otomatik envanter no, kişi bazlı zimmet tutanağı, servis/arıza günlüğü, garanti ve mali değer takibi.</p>
+                <div class="etiketler"><span>Zimmet Tutanağı</span><span>Garanti Takibi</span><span>Lisanslar</span></div></div>
             <div class="modul yakinda"><div class="mi"><i class="bi bi-phone"></i></div>
                 <h3>Mobil Uygulama <span class="rozet-yakinda">Pek Yakında</span></h3>
                 <p>iOS ve Android uygulaması: sahada karekod tarama, anlık bildirimler ve tüm modüller cebinizde.</p>

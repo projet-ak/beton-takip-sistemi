@@ -287,6 +287,12 @@ body {
 .feature-pill.soon { border-style: dashed; border-color: rgba(255,255,255,.22); background: rgba(255,255,255,.035); }
 .feature-pill.soon .feature-pill-icon { background: rgba(201,168,76,.16); color: var(--ern-gold); }
 .feature-pill.soon { grid-column: 1 / -1; animation-delay: .56s; }
+/* 9+ modülde üç sütun — aksi halde 1366×768'de sol panel taşıyordu */
+.feature-pills.cok { grid-template-columns: 1fr 1fr 1fr; }
+.feature-pills.cok .feature-pill-text { font-size: .68rem; }
+.feature-pills.cok .feature-pill-text strong { font-size: .76rem; }
+.feature-pills.cok .feature-pill { padding: .45rem .6rem; gap: .45rem; }
+.feature-pills.cok .feature-pill-icon { width: 30px; height: 30px; font-size: .95rem; }
 .pill-soon-badge {
     display:inline-block; margin-left:.4rem; vertical-align: 1px; font-size:.6rem; font-weight:700; letter-spacing:.08em;
     text-transform:uppercase; color:#0D2E28; background:var(--ern-gold);
@@ -300,6 +306,7 @@ body {
 .feature-pill:nth-child(6) { animation-delay: .38s; }
 .feature-pill:nth-child(7) { animation-delay: .44s; }
 .feature-pill:nth-child(8) { animation-delay: .50s; }
+.feature-pill:nth-child(9) { animation-delay: .56s; }
 /* Yetki notu — kartların altında tek satır */
 .feature-note {
     margin-top: .9rem; font-size: .72rem; color: rgba(255,255,255,.62); text-align: left;
@@ -351,6 +358,8 @@ body {
     .feature-pills { gap: .45rem; }
     .login-left { padding: 1.5rem 3rem; }
 }
+/* 760px altı: not gizlenir, boşluklar daralır (sonra gelir ki 820 kuralını ezsin) */
+@media (max-height: 760px) { .feature-note { display: none; } .proje-badge { margin-bottom: .6rem; } .brand-sub { font-size: .84rem; margin-bottom: .8rem; } .login-left { padding: 1rem 2.5rem; } .logo-lockup { margin-bottom: .8rem; } }
 
 /* ── Sağ taraf — form ─── */
 .login-right {
@@ -591,7 +600,7 @@ body {
         </div>
         <p class="brand-sub">
             Sahadan ofise <strong style="color:rgba(255,255,255,.8)">tek platform</strong> — beton, demir, seramik, depo, akaryakıt,
-            üretim arızaları (CRM), prekast ve saha takibi. QR/AI okuma, canlı stok &amp; zayiat, anlık raporlama.
+            üretim arızaları (CRM), prekast, saha ve IT envanter takibi. QR/AI okuma, canlı stok &amp; zayiat, anlık raporlama.
         </p>
 
         <?php
@@ -606,17 +615,18 @@ body {
             'crm'       => 'Üretim arızaları: günlük CRM raporu, açık / çözülen ve bekleme süresi',
             'prekast'   => 'Cephe prekast montaj takibi, günlük ilerleme, blok icmali ve hakkediş',
             'whatsapp'  => 'Saha grubundan araç giriş / çıkış ve evrak takibi',
+            'it'        => 'Bilgisayar, telefon, yazıcı, lisans — zimmet tutanağı, servis ve garanti takibi',
         ];
         $__pillAd = [ // şeritteki kısa adlar; yönetici ad verdiyse o kullanılır
             'beton' => 'Beton &amp; İrsaliye', 'demir' => 'İnşaat Demiri', 'seramik' => 'Seramik Ambarı',
             'depo' => 'Depo Yönetimi', 'akaryakit' => 'Akaryakıt Takibi', 'crm' => 'CRM — Üretim Arızaları',
-            'prekast' => 'Prekast Takip', 'whatsapp' => 'Saha Takip',
+            'prekast' => 'Prekast Takip', 'whatsapp' => 'Saha Takip', 'it' => 'IT Envanter',
         ];
         // Tanıtım amaçlı: yöneticinin GİZLEDİĞİ modüller de listelenir (gizleme yalnız uygulama içi menüleri kapatır)
         try { $__piller = function_exists('modul_listesi') ? modul_listesi(true) : []; } catch (Throwable $e) { $__piller = []; }
         if (!$__piller) foreach (MODULLER as $k => [$ad, $ikon, $sayfa]) $__piller[$k] = ['ad' => $ad, 'ikon' => $ikon, 'varsayilan_ad' => $ad];
         ?>
-        <div class="feature-pills">
+        <div class="feature-pills<?= count($__piller) >= 9 ? ' cok' : '' ?>">
             <?php foreach ($__piller as $__k => $__m):
                 $__ad = ($__m['ad'] === ($__m['varsayilan_ad'] ?? $__m['ad'])) ? ($__pillAd[$__k] ?? h($__m['ad'])) : h($__m['ad']); ?>
             <div class="feature-pill">

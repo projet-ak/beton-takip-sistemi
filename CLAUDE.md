@@ -224,6 +224,40 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   kopyası 416,34; Excel İCMAL B9/C20/D18/F45/H5 derken güncel iş satırları B8/C17/D8/F26/H1 verir). Bu yüzden
   sistem icmali Excel'in İCMAL hücrelerini KOPYALAMAZ, aynı mantığı güncel satırlara uygular; import raporunda
   fark uyarı olarak listelenir (14 farklılık). Satır 65'te blok "D " sonda boşluklu — pk_al trim eder.
+- **IT Envanter modülü** = `it/` alt klasörü (MODULLER anahtarı `it`, şeritte "IT"). Bilgi işlem varlıkları:
+  bilgisayar / laptop / monitör / yazıcı / telefon / tablet / ağ cihazı / sunucu / **yazılım lisansı** / aksesuar.
+  **Ayrı veritabanı** (`takbulut_it`, `IT_DB_NAME`; `includes/db_it.php` → `$pdoIt`), tablolar `it_` önekli:
+  `it_cihazlar` (envanter_no UNIQUE **otomatik IT-00001**, kategori, ad, marka/model/seri_no, durum
+  [aktif=kullanımda·depoda·serviste·arizali·hurda], zimmetli/departman/lokasyon/zimmet_tarihi, alış/garanti/fiyat/
+  tedarikçi/fatura no, ip/mac/işletim sistemi/özellikler, lisans_anahtari/lisans_adet, foto_url [en yeni görsel],
+  notlar) · `it_hareketler` (cihazın YAŞAM GÜNLÜĞÜ: giris/zimmet/iade/servis/donus/ariza/hurda/not/guncelleme;
+  tarih, kişi, açıklama, kullanıcı) · `it_belgeler` (cihaz başına sınırsız fotoğraf/fatura/garanti belgesi →
+  **`uploads/it_envanter/{cihaz_id}/`**, DB'de yalnız göreli URL; görsel yüklenince `foto_url` güncellenir, silmede
+  kalan en yeni görsele döner). **Kayıt silinmez, hurdaya alınır** (listede varsayılan gizli, durum filtresiyle görünür).
+  Sayfalar: **index** (KPI: toplam/kullanımda/depoda/serviste+arızalı/garantisi 60 günde bitecek/mali değer + kategori
+  doughnut + durum bar + departman bazlı zimmet + garantisi bitenler + serviste/arızalı + en çok cihazı olan kişiler
+  [kişi bazlı toplu tutanak linki] + son hareketler) · **cihazlar** (filtre: arama [envanter no/ad/marka/model/seri/kişi/
+  lokasyon/IP/not LIKE] · kategori · durum · zimmetli · departman · garanti [60 günde bitiyor/bitti/devam]; whitelist
+  sıralama, sayfalama 100, **Excel** `?export=xlsx` XlsxWriter 22 sütun; küçük foto/kategori ikonu; garanti rozeti) ·
+  **cihaz_form** (ekle/düzenle; datalist önerileri [kişi/departman/lokasyon/marka/tedarikçi]; **zimmetli girilince durum
+  otomatik kullanımda**, kişisiz "kullanımda" yalnız yazılım lisansında kalır; fiyat `it_sayi` Türkçe binlik/virgül;
+  kategori yazılımsa lisans alanları, değilse teknik alanlar [JS]; düzenlemede zimmet değişimi zimmet/iade hareketi,
+  diğer kritik alan değişimleri "guncelleme" hareketi olarak günlüğe yazılır; tek dosya yükleme) ·
+  **cihaz_detay** (tüm alanlar + yaşam günlüğü + belgeler; sağ panel İŞLEM formu: zimmet ver/devret [devirde eski
+  kişiye iade satırı], zimmet iade [durum depoda], servise gönder / servisten döndü [zimmetliyse aktif'e döner],
+  arıza bildir, hurdaya ayır [zimmet düşer], not; çoklu belge yükleme; aynı kişinin diğer cihazları) ·
+  **zimmet_tutanak** (A4 ERN Taahhüt logolu **BİLGİ İŞLEM DEMİRBAŞ ZİMMET TUTANAĞI**: `?id=` tek cihaz [no ZMT-IT-00001]
+  ya da `?kisi=` kişinin TÜM aktif cihazları tek tutanakta; taahhüt maddeleri + teslim eden/alan imza; imzalı kopya
+  belge olarak yüklenir) · **raporlar** (KPI + aylık hareket trendi [12 ay, yığılmış] + yaş dağılımı [alış tarihi
+  <1/1-3/3-5/5+ yıl] + garanti durumu + **kategori × durum matrisi** + departman/lokasyon/marka kırılımları + en değerli
+  cihazlar; **ERN_RAPOR** Excel/PDF/Yazdır) · **kurulum_it** (şema + uploads klasörü + DB rozeti; yalnız admin/toa).
+  Çekirdek `it/_ortak.php`: IT_KATEGORI / IT_DURUM / IT_HAREKET sabitleri, it_semasi_kur, it_envanter_no, it_filtre,
+  it_secenekler (sütun whitelist), it_ozet, it_garanti_kalan, it_tarih, it_sayi, it_hareket_ekle, it_belgeler/
+  it_belge_yukle/it_belge_sil, it_dosya_listesi. **Yetki**: sayfalar `require_auth([admin,toa,to,depo,it_sorumlusu])`;
+  yazma `yetki_var('giris'/'duzenle')` ile; yeni rol **`it_sorumlusu`** (IT Sorumlusu) şablonu: it tam + beton/depo oku;
+  `depo` şablonuna it oku+giriş eklendi. Header'da Kurulum linki GERÇEK role bakar (matris eşlemesi duzenle→toa sayar,
+  kurulum sayfası ise rol bazlı → 403 olurdu). Test: scratchpad `itsm/` (SQLite; `it_patch.php` DATE_ADD/CURDATE/IF
+  eşlemeleri, `run.php` sayfa/POST koşucusu) — form/liste/detay işlemleri/tutanak/dashboard/rapor doğrulandı.
 - Geliştirici: **Tayyar Akbulut**. Sürüm: v3.0. Canlı: `https://ernsaha.com.tr/beton/` (eski: takbulut.com/beton/).
 
 > **⭐ TEMEL İLKE — Excel şablonu "kutsal kitap" (tek doğru kaynak).** Sistem, ilgili Excel
@@ -289,7 +323,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   - **Roller ENUM**: `admin`, `teknik_ofis_admin`, `teknik_ofis`, `saha_sefi`, `depo`.
   - **KULLANICI BAZLI MODÜL ERİŞİMİ** (rolden bağımsız, 2026-09): `users.modul_erisim` (VARCHAR, virgüllü
     liste; **boş/NULL = sınırsız** — eski kullanıcılar etkilenmez). Sabitler/fonksiyonlar auth.php'de:
-    `MODULLER` (anahtar → [ad, ikon, giriş sayfası]; beton/demir/seramik/depo/akaryakit/crm/prekast/whatsapp),
+    `MODULLER` (anahtar → [ad, ikon, giriş sayfası]; beton/demir/seramik/depo/akaryakit/crm/prekast/whatsapp/it),
     `MODUL_MUAF` (login/logout/kurulum/kullanicilar/yedek/aktivite… — denetimden muaf kök sayfalar),
     `aktif_modul()` (PHP_SELF klasöründen), `modul_erisimi()` (izin listesi; **admin her zaman sınırsız**;
     değer her istekte DB'den okunur — static önbellekli, config.php gerekirse yüklenir — böylece admin
@@ -321,8 +355,10 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
     açma/liste/detay) · **giris** (yeni kayıt, import, tarama) · **duzenle** (mevcut kaydı değiştirme/silme,
     tanımlar) · **onay** (saha/teknik onay, toplu onay) · **rapor** (raporlar, icmal/zayiat ekranları,
     `?export=`/`?indir=`). Roller `ROLLER` (ad, rozet rengi, açıklama): eski 5 rol + **kalite** (Kalite Birimi),
-    **proje_muduru**, **direktor** (Direktör/Üst Yönetim), **izleyici** (salt okuma); `yetki_sablon($rol)` her
-    rolün varsayılan matrisi (kullanıcı ekranında "Rol şablonunu uygula"). `yetki_normalize()` bilinmeyen
+    **proje_muduru**, **direktor** (Direktör/Üst Yönetim), **izleyici** (salt okuma), **it_sorumlusu** (IT Sorumlusu);
+    `yetki_sablon($rol)` her rolün varsayılan matrisi (kullanıcı ekranında "Rol şablonunu uygula"). ⚠ Matrissiz
+    (eski) kullanıcı klasik 5 rol dışında bir roldeyse `yetki_var` ŞABLONUNU uygular (rol listesi kapıları ise
+    in_array kalır). `yetki_normalize()` bilinmeyen
     modül/işlemi düşürür ve oku dışındaki her işleme **oku'yu otomatik ekler**.
     ⚠ **Matris NULL olan eski kullanıcılar rol bazlı ESKİ davranışla aynen çalışır** (geriye uyumluluk);
     admin her zaman sınırsız (matris kaydedilse de yok sayılır). Matrisi olan kullanıcıda:
@@ -407,14 +443,14 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 - **`veri_kontrol.php`** (admin+teknik_ofis_admin, Araçlar menüsü) — **Veri Kontrol & Mutabakat**: DB özetleri, **mükerrer irsaliye grupları** (UPPER/TRIM normalize) + tümünü/grup bazlı temizlik (en eski kayıt korunur, audit_log), no'suz şüpheli tekrarlar (yalnız liste), **Excel mutabakatı** (toplam farkı + DB'de fazla / Excel'de eksik no listeleri). Dashboard toplamları `durum<>'reddedildi'` filtreli.
 - **`import.php` (beton)** — **tüm sayfalar otomatik taranır** (sayfa seçimi yok): başlığı algılanan sayfalar veri sayılır, adında İADE geçen sayfa `tip='iade'`; VERİ/KOT/Kaşe atlanır. Mükerrer kontrolü **fat_irs_norm ile normalize** (SKB2026-12047 ↔ SKB2026000012047 aynı belge). `[FATURADAN]` etiketli taslaklar (fatura_eslestir'den açılmış) mükerrer sayılıp atlanmaz — Excel satırı taslağı **UPDATE eder** (id sabit → fatura bağı + ekler korunur; Excel fatura no boşsa taslağınki ezilmez). Admin için **"tam yenileme"** kutusu: önce TÜM irsaliyeleri siler (transaction + audit_log), sonra aktarır — Excel ile birebir eşitler. **Bağlı ek koruma (tam yenilemede)**: silmeden önce `irsaliye_fotolar` (tur/okunan dahil) ve `irsaliyeler.fatura_id` `irsaliye_no` ile snapshot alınır, import sonrası aynı **normalize** no'lu yeni kayda yeniden bağlanır (dosyalar diskte kalır; eşleşmeyen sayılar raporlanır).
 - **`kotlar.php`** — **blok → kot akordeon görünümü** (her blok bir akordeon başlığı: parsel + kot adedi + toplam dökülen m³/irsaliye; açınca o bloğun kot listesi sıra no ile). Kot **detay/kat etiketi** (`kotlar.aciklama`, runtime ALTER + kurulum) + **VERİ sekmesinden kat etiketi doldurma** (kot→KAT haritası; yalnız boş detaylar) + **KOT sekmesinden blok+kot içe aktarma** (`action=kot_yukle`: her sütun=blok, altındaki değerler=kot; hedef parsel seç/yeni ad; blok+kot get-or-create UPPER-normalize, idempotent, sıra Excel'den) + kot başına **döküm özeti** (m³/irsaliye/imalat kalemleri), m³'e tıklayınca o kottaki irsaliyeler popup — "hangi blok hangi kot ne yapılmış".
-- **`login.php`** — **Şantiye İş Takip Sistemi / Batı Yakası Projesi** markası; iki beyaz ERN logolu koyu yeşil panel + Batı Yakası proje rozeti (dış SVG, onerror fallback) + **modül tanıtım kartları `modul_listesi(true)`'den DİNAMİK** (8 modül; yöneticinin verdiği ad/sıra login'e yansır, GİZLİ modüller de listelenir — tanıtım amaçlı; sonda tam satır "Mobil Uygulama — Pek Yakında" kartı; kısa ad `$__pillAd`, açıklama `$__pillAcik` — yeni modül eklenince iki diziye satır ekle; 820px'ten kısa ekranda kartlar/logo sıkışır, 1280×700'de bile kırpılmaz) + altta "kullanıcı bazlı yetki: okuma·veri girişi·değiştirme·onay·rapor" notu + dalga animasyonu + geliştirici kredisi + **"Sistemi Tanıyın" → tanitim.php** bağlantısı.
+- **`login.php`** — **Şantiye İş Takip Sistemi / Batı Yakası Projesi** markası; iki beyaz ERN logolu koyu yeşil panel + Batı Yakası proje rozeti (dış SVG, onerror fallback) + **modül tanıtım kartları `modul_listesi(true)`'den DİNAMİK** (9 modül; **9+ kartta 3 sütun** `.feature-pills.cok`, 760px altında yetki notu gizlenir; yöneticinin verdiği ad/sıra login'e yansır, GİZLİ modüller de listelenir — tanıtım amaçlı; sonda tam satır "Mobil Uygulama — Pek Yakında" kartı; kısa ad `$__pillAd`, açıklama `$__pillAcik` — yeni modül eklenince iki diziye satır ekle; 820px'ten kısa ekranda kartlar/logo sıkışır, 1280×700'de bile kırpılmaz) + altta "kullanıcı bazlı yetki: okuma·veri girişi·değiştirme·onay·rapor" notu + dalga animasyonu + geliştirici kredisi + **"Sistemi Tanıyın" → tanitim.php** bağlantısı.
 - **`tanitim.php`** — **halka açık tanıtım/show sayfası** (auth YOK): login ile aynı marka dili (--ern yeşil paleti, Outfit, dalga SVG). Hero'da ERN Holding + ERN Taahhüt beyaz logoları, Batı Yakası rozeti, CTA→login.php. **Canlı yuvarlanmış sayaçlar** (irsaliye/m³/demir ton/belge/modül; DB'ler try/catch korumalı — `config.php` yoksa `file_exists` guard'ı ile atlanır çünkü db.php redirect+exit yapar, try yakalayamaz; sayılar 100'e yuvarlanır "1.200+" hissi için). 6 modül kartı + 8 özellik kartı (QR/AI/fatura mutabakatı/zayiat/evrak arşivi/rapor/PWA) + 3 adımlı akış + IntersectionObserver count-up animasyonu + çift logolu footer.
   QR/AI beton = GİB e-İrsaliye QR (JSON) + KGS/THBB DataMatrix (E1) + tesseract + AI.
 - **`site-kok/index.html`** — tanitim.php'nin **bağımsız statik kopyası**, `ernsaha.com.tr` KÖK dizini için
   (kullanıcı aaPanel'den elle yükler; deploy2 kapsamı dışında). PHP/DB yok: sayaçlar sabit, logo/giriş
   bağlantıları `/beton/...` mutlak yollu. tanitim.php güncellenince kopya scratchpad `site_kok_uret.php` ile
   üretilir (PHP blokları sabit sayaç/yol/yıl-JS ile değiştirilir; kalan `<?` varsa hata verir) — elle eşitleme yapma.
-  2026-09-08: tanitim + kök sayfa 8 modül (CRM, Prekast eklendi; demir ikonu rulers) + dashed "Mobil Uygulama — Pek
+  2026-09-08: tanitim + kök sayfa 8 modül (CRM, Prekast eklendi; demir ikonu rulers), 2026-09-09: 9. modül IT Envanter (sayaç 9, "Dokuz Modül") + dashed "Mobil Uygulama — Pek
   Yakında" kartı (`.modul.yakinda`, altın rozet), sayaç 8, Kurumsal Güvence metni yetki matrisi + 6 DB.
 - **Tanım sayfaları** (`can_manage_definitions()`): beton_siniflari, katki_listesi, pompa_turleri,
   kivam_siniflari, parseller→bloklar→kotlar, imalat_gruplari→ana_is_kalemleri, firmalar, tedarikciler.
@@ -515,15 +551,16 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · **Sipariş Talepleri** · **
 
 ## 6. Veritabanları
 
-> **Canlıda 6 AYRI veritabanı vardır** (2026-08 ayrıştırması + 2026-09 CRM). Her modül kendi DB'sinde:
+> **Canlıda 7 AYRI veritabanı vardır** (2026-08 ayrıştırması + 2026-09 CRM + IT). Her modül kendi DB'sinde:
 > `takbulut_beton` (beton) · `takbulut_demir` · `takbulut_seramik` · `takbulut_depo` ·
 > `takbulut_akaryakit` · `takbulut_crm` (**CRM + Prekast birlikte** — `prekast_` önekli tablolar
-> aynı DB'de durur, ayırmak istenirse `PREKAST_DB_NAME`). Tümü `config.php`'deki `DEMIR_DB_NAME`/`SERAMIK_DB_NAME`/
-> `DEPO_DB_NAME`/`AKARYAKIT_DB_NAME`/`CRM_DB_NAME` sabitleriyle etkinleştirilir; tek DB kullanıcısı hepsine yetkili.
+> aynı DB'de durur, ayırmak istenirse `PREKAST_DB_NAME`) · **`takbulut_it`** (IT Envanter, `it_` önekli).
+> Tümü `config.php`'deki `DEMIR_DB_NAME`/`SERAMIK_DB_NAME`/`DEPO_DB_NAME`/`AKARYAKIT_DB_NAME`/`CRM_DB_NAME`/
+> **`IT_DB_NAME`** sabitleriyle etkinleştirilir; tek DB kullanıcısı hepsine yetkili.
 > ⚠️ Bu sabitlerden biri **tanımsız kalırsa** ilgili modül sessizce **ana DB'ye** düşer ve veriler
 > "kaybolmuş" görünür (tablolar önekli olduğu için çakışma olmaz, ama modül boş açılır).
 > Aktif DB'yi ilgili modülün `kurulum_*.php` sayfasındaki **rozetten** görebilirsin
-> (yeşil = ayrı DB, sarı = ana DB). Yedekleme artık **6 DB'yi birden** kapsamalıdır.
+> (yeşil = ayrı DB, sarı = ana DB). Yedekleme artık **7 DB'yi birden** kapsamalıdır.
 
 ### Beton (`kurulum.php`)
 Tanım tabloları (id/ad/aktif): beton_siniflari, katki_listesi, pompa_turleri, firmalar,
@@ -599,6 +636,7 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 - Görseller **dosya olarak** tutulur; DB'ye yalnızca göreli URL yazılır (DB boyutu şişmez).
 - **CRM**: `uploads/crm_ariza/{ariza_id}/` (arıza başına çoklu belge/fotoğraf; kayıtlar `crm_ariza_belgeler`).
 - **Akaryakıt**: `uploads/akaryakit_cikis/{id}/` (imzalı çıkış fişi) · `uploads/akaryakit_giris/{id}/` (mazot giriş irsaliyesi/faturası).
+- **IT Envanter**: `uploads/it_envanter/{cihaz_id}/` (cihaz fotoğrafı, fatura, garanti belgesi, imzalı zimmet tutanağı; kayıtlar `it_belgeler`).
 - `uploads/.htaccess` PHP çalıştırmayı engeller (alt klasörlere de uygulanır).
 
 ---

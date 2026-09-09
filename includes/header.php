@@ -16,14 +16,15 @@ $__module   = (strpos($__self,'/demir/')!==false) ? 'demir'
             : ((strpos($__self,'/akaryakit/')!==false) ? 'akaryakit'
             : ((strpos($__self,'/crm/')!==false) ? 'crm'
             : ((strpos($__self,'/prekast/')!==false) ? 'prekast'
-            : ((strpos($__self,'/whatsapp/')!==false) ? 'whatsapp' : 'beton'))))));
+            : ((strpos($__self,'/it/')!==false) ? 'it'
+            : ((strpos($__self,'/whatsapp/')!==false) ? 'whatsapp' : 'beton')))))));
 // Modül adı yöneticinin verdiği addır (moduller.php); verilmemişse MODULLER varsayılanı
 $__modAd    = function_exists('modul_ad') ? modul_ad($__module) : ($__module ?: 'Beton Takip');
 // Saha Takip girişi yetkiye göre: onay kuyruğu yetkisi yoksa doğrudan analiz sayfası
 // Saha Takip giriş sayfası: onay kuyruğu yazma yetkisi isteyene, diğerlerine analiz (matrisli kullanıcıda whatsapp modülünün kendi yetkisi)
 $__waHome   = (function_exists('yetki_matris') && yetki_matris() !== null ? yetki_yazma('whatsapp') : (function_exists('can_edit') && can_edit()))
               ? 'whatsapp/mesajlar.php' : 'whatsapp/saha_analiz.php';
-$__modHome  = ['beton'=>'index.php','demir'=>'demir/index.php','seramik'=>'seramik/index.php','depo'=>'depo/index.php','akaryakit'=>'akaryakit/index.php','crm'=>'crm/index.php','prekast'=>'prekast/index.php','whatsapp'=>$__waHome][$__module];
+$__modHome  = ['beton'=>'index.php','demir'=>'demir/index.php','seramik'=>'seramik/index.php','depo'=>'depo/index.php','akaryakit'=>'akaryakit/index.php','crm'=>'crm/index.php','prekast'=>'prekast/index.php','it'=>'it/index.php','whatsapp'=>$__waHome][$__module];
 
 // ── Aktivite izleme (oturum süresi + sayfa gezinme) ──────────────────────────
 // Ana (beton) DB'de tutulur; $pdo varsa onu, yoksa kendi bağlantısını kullanır.
@@ -511,6 +512,38 @@ if ($__user) {
     </ul>
     <?php endif; ?>
 
+    <?php if($__module==='it'): /* ── IT ENVANTER MENÜSÜ ── */ ?>
+    <ul class="list-unstyled mb-0">
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('index.php') ?>" href="<?= $__rootPath ?>it/index.php" data-label="Dashboard"><i class="bi bi-speedometer2"></i><span>Dashboard</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('cihazlar.php').__isActive('cihaz_detay.php').__isActive('cihaz_form.php') ?>" href="<?= $__rootPath ?>it/cihazlar.php" data-label="Cihazlar"><i class="bi bi-pc-display"></i><span>Cihazlar &amp; Lisanslar</span></a>
+      </li>
+      <?php if(can_edit()): ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link" href="<?= $__rootPath ?>it/cihaz_form.php" data-label="Yeni Cihaz"><i class="bi bi-plus-circle"></i><span>Yeni Cihaz</span></a>
+      </li>
+      <?php endif; ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link" href="<?= $__rootPath ?>it/cihazlar.php?durum=aktif" data-label="Zimmetler"><i class="bi bi-person-check"></i><span>Zimmetli Cihazlar</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link" href="<?= $__rootPath ?>it/cihazlar.php?durum=arizali" data-label="Arızalı"><i class="bi bi-wrench"></i><span>Serviste / Arızalı</span></a>
+      </li>
+      <?php if(can_view_reports()): ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('raporlar.php') ?>" href="<?= $__rootPath ?>it/raporlar.php" data-label="Raporlar"><i class="bi bi-bar-chart-line"></i><span>Raporlar</span></a>
+      </li>
+      <?php endif; ?>
+      <?php if(in_array($__user['role'] ?? '', ['admin','teknik_ofis_admin'], true)): /* kurulum sayfaları her zaman rol bazlı */ ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('kurulum_it.php') ?>" href="<?= $__rootPath ?>it/kurulum_it.php" data-label="Kurulum"><i class="bi bi-gear"></i><span>Kurulum</span></a>
+      </li>
+      <?php endif; ?>
+    </ul>
+    <?php endif; ?>
+
     <?php if($__module==='whatsapp'): /* ── SAHA TAKİP (WhatsApp) MENÜSÜ ── */ ?>
     <ul class="sidebar-nav">
       <?php if(can_edit()):
@@ -615,7 +648,7 @@ if ($__user) {
           if ($__mk === 'whatsapp' && yetki_matris() === null && !(can_edit() || can_view_reports())) continue;
           $__mHref = $__mk === 'whatsapp' ? $__waHome : $__mSayfa;
           // Varsayılan adlar şeritte uzun kalıyor; yönetici kendi adını verdiyse ona dokunulmaz
-          $__mEt   = ($__m['ad'] === $__m['varsayilan_ad']) ? (['crm'=>'CRM','prekast'=>'Prekast'][$__mk] ?? $__mAd) : $__mAd;
+          $__mEt   = ($__m['ad'] === $__m['varsayilan_ad']) ? (['crm'=>'CRM','prekast'=>'Prekast','it'=>'IT'][$__mk] ?? $__mAd) : $__mAd;
       ?>
       <a href="<?= $__rootPath . $__mHref ?>" class="module-switch-item <?= $__module===$__mk?'active':'' ?>">
         <i class="bi <?= h($__mIkon) ?>"></i><span><?= h($__mEt) ?></span>

@@ -62,3 +62,6 @@ define('DB_PASS', 'sifre');
 // define('AKTIVITE_SAKLAMA_GUN', 90);   // aktivite kayıtları kaç gün saklansın (otomatik temizlik)
 // define('AI_PROVIDER', 'claude');
 // define('CLAUDE_API_KEY', '');
+
+// IT Envanter modülü ayrı veritabanı (isteğe bağlı; tanımsızsa ana DB'de it_ önekli tablolar)
+// define('IT_DB_NAME', 'takbulut_it');

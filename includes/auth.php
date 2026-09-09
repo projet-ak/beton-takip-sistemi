@@ -112,6 +112,7 @@ const MODULLER = [
     'crm'       => ['CRM — Üretim Arızaları',   'bi-headset',    'crm/index.php'],
     'prekast'   => ['Prekast Takip',            'bi-bricks',     'prekast/index.php'],
     'whatsapp'  => ['Saha Takip',               'bi-chat-dots',  'whatsapp/mesajlar.php'],
+    'it'        => ['IT Envanter',              'bi-pc-display', 'it/index.php'],
 ];
 
 /** Modül erişim denetiminden MUAF kök sayfalar (giriş/çıkış, kurulum, yönetim, tanıtım). */
@@ -144,6 +145,7 @@ const ROLLER = [
     'proje_muduru'      => ['Proje Müdürü',             'dark',                'Tüm modülleri görür, raporları alır, onay verir; veri girmez'],
     'direktor'          => ['Direktör / Üst Yönetim',   'dark',                'Tüm modüllerde görüntüleme + rapor (veri değiştirmez)'],
     'izleyici'          => ['Görüntüleyici',            'light text-dark border', 'Yalnız okuma — hiçbir veri değiştiremez, rapor alamaz'],
+    'it_sorumlusu'      => ['IT Sorumlusu',             'primary',             'IT Envanter\'de tam yetki (cihaz, zimmet, servis, rapor); diğer modüllerde görüntüleme'],
 ];
 
 /** İşlem türleri: anahtar => [ad, ikon, açıklama]. Sıra matris ekranındaki sütun sırasıdır. */
@@ -171,9 +173,12 @@ function yetki_sablon(string $rol): array
             return $doldur($tum, $hepsi);
         case 'saha_sefi':
             return $doldur(['beton','demir','depo','crm','prekast','whatsapp'], ['oku','giris','onay']);
+        case 'it_sorumlusu':
+            return ['it' => $hepsi] + $doldur(['beton','depo'], ['oku']);
         case 'depo':
             return ['beton' => ['oku','giris']]
-                 + $doldur(['seramik','depo','akaryakit'], ['oku','giris','duzenle','rapor']);
+                 + $doldur(['seramik','depo','akaryakit'], ['oku','giris','duzenle','rapor'])
+                 + ['it' => ['oku','giris']];
         case 'kalite':
             return ['crm' => ['oku','giris','duzenle','rapor']]
                  + $doldur(['beton','demir','seramik','prekast'], ['oku','rapor']);
@@ -282,8 +287,10 @@ function yetki_var(string $islem, ?string $mod = null): bool
     $mod = $mod ?: aktif_modul();
     $m = yetki_matris();
     if ($m !== null) return in_array($islem, $m[$mod] ?? [], true);
-    // Rol bazlı eski eşdeğerler
+    // Rol bazlı eski eşdeğerler; klasik olmayan roller (kalite, proje_muduru, it_sorumlusu…) matrissiz de olsa şablonuyla çalışır
     $rol = $u['role'] ?? '';
+    if (!in_array($rol, ['teknik_ofis_admin','teknik_ofis','saha_sefi','depo'], true))
+        return in_array($islem, yetki_sablon($rol)[$mod] ?? [], true);
     switch ($islem) {
         case 'oku':     return true;
         case 'giris':   return in_array($rol, ['teknik_ofis_admin','teknik_ofis','saha_sefi','depo'], true);
