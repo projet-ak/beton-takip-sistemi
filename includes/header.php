@@ -237,7 +237,7 @@ if ($__user) {
       <?php endif; ?>
 
       <?php if(is_admin()): ?>
-      <?php $__araA = in_array($__page,['yedek.php','import.php','ai_ayarlar.php','veri_kontrol.php','aktivite.php','moduller.php'],true); ?>
+      <?php $__araA = in_array($__page,['yedek.php','import.php','ai_ayarlar.php','veri_kontrol.php','aktivite.php','moduller.php','mukerrer.php'],true); ?>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= $__araA?'active':'' ?>" href="#subAra" data-bs-toggle="collapse" role="button" aria-expanded="<?= $__araA?'true':'false' ?>">
           <i class="bi bi-tools"></i><span>Araçlar</span><i class="bi bi-chevron-right chev"></i>
@@ -250,6 +250,7 @@ if ($__user) {
             <li><a class="sidebar-sub-link <?= __isActive('aktivite.php') ?>" href="<?= $__rootPath ?>aktivite.php"><i class="bi bi-activity me-1"></i>Aktivite Raporu</a></li>
             <li><a class="sidebar-sub-link <?= __isActive('onbellek_temizle.php') ?>" href="<?= $__rootPath ?>onbellek_temizle.php"><i class="bi bi-arrow-clockwise me-1"></i>Önbellek Temizle</a></li>
             <li><a class="sidebar-sub-link <?= __isActive('moduller.php') ?>" href="<?= $__rootPath ?>moduller.php"><i class="bi bi-grid-3x3-gap me-1"></i>Modüller (ad / gizle)</a></li>
+            <li><a class="sidebar-sub-link <?= __isActive('mukerrer.php') ?>" href="<?= $__rootPath ?>mukerrer.php"><i class="bi bi-union me-1"></i>Mükerrer Kayıtlar</a></li>
             <li><a class="sidebar-sub-link <?= __isActive('ai_ayarlar.php') ?>" href="<?= $__rootPath ?>ai_ayarlar.php"><i class="bi bi-stars me-1"></i>AI Ayarları</a></li>
           </ul>
         </div>
