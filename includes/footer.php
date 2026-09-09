@@ -57,9 +57,11 @@ $__navItems = $__navSetler[$__navMod] ?? $__navSetler['beton'];
   <a href="<?= $__rp ?>raporlar.php" class="bottom-nav-item <?= $__page==='raporlar.php'?'active':'' ?>">
     <i class="bi bi-bar-chart-line"></i><span>Raporlar</span>
   </a>
-<?php else: foreach($__navItems as [$sf,$et,$ik]): ?>
-  <a href="<?= $__rp . $__navKlasor . $sf ?>" class="bottom-nav-item <?= $__page===$sf?'active':'' ?>">
-    <i class="bi <?= $ik ?>"></i><span><?= $et ?></span>
+<?php /* ⚠ Döngü değişkenleri `$__` önekli olmalı — footer her sayfaya dahil edilir, önekisiz ad
+         sayfanın kendi değişkenini EZER (header.php'deki $p sızıntısı canlıda fatal hataya yol açmıştı). */ ?>
+<?php else: foreach($__navItems as [$__nSf, $__nEt, $__nIk]): ?>
+  <a href="<?= $__rp . $__navKlasor . $__nSf ?>" class="bottom-nav-item <?= $__page===$__nSf?'active':'' ?>">
+    <i class="bi <?= $__nIk ?>"></i><span><?= $__nEt ?></span>
   </a>
 <?php endforeach; endif; ?>
   <a href="#" class="bottom-nav-item" onclick="document.getElementById('ernSidebar').classList.toggle('open');document.getElementById('sidebarOverlay').classList.toggle('active');return false;">

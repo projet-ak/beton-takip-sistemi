@@ -80,7 +80,8 @@ require_once __DIR__ . '/../includes/header.php';
     <h4 class="mb-0"><i class="bi bi-pc-display text-primary me-2"></i>Cihazlar &amp; Lisanslar</h4>
     <div class="d-flex gap-2">
         <a href="cihazlar.php?<?= h(http_build_query(array_merge($_GET, ['export'=>'xlsx']))) ?>" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Excel</a>
-        <?php if ($yazabilir): ?><a href="cihaz_form.php" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Yeni Cihaz</a><?php endif; ?>
+        <?php if ($yazabilir): ?><a href="cihaz_import.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-box-arrow-in-down me-1"></i>İçe Aktar</a>
+        <a href="cihaz_form.php" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Yeni Cihaz</a><?php endif; ?>
     </div>
 </div>
 

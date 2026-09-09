@@ -345,6 +345,35 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   (transaction'lı). İçe aktarma bittiğinde mükerrer grup varsa rapor bandında uyarı + panele bağlantı çıkar.
   Gerçek dosyayla doğrulandı: 183 satır → 178 kişi (tam yenilemede 3 silindi, 1 zimmetli korundu), **aynı dosya
   ikinci kez yüklendiğinde 0 yeni / 140 değişmeyen** (mükerrer oluşmuyor).
+  **CİHAZ İÇE AKTARMA (2026-09-09)** `it/cihaz_import.php` + çekirdek `it/_cihaz_import.php` (cim_*): kurumsal
+  envanter/ERP çıktısı ("Hızlı Rapor — Zimmet Edilen Demirbaş Listesi": Cıhaz Kodu · Serı Nesne Kodu · Serı Nesne
+  Adı · Ilk/Mevcut Proje · Kısı · Marka · Model · Sası No · Serı No · İşlemci/RAM/Ekran kartı/HDD) → cihaz envanteri.
+  **Dosya okuma, başlık satırı bulma, normalize ve lokasyon eşleştirme personel aktarımıyla ORTAK** (`_import.php`:
+  pim_oku/pim_baslik_satiri/pim_norm/pim_tarih/pim_lokasyon_bul) — iki içe aktarma aynı davranır, tek yerde düzeltilir;
+  aynı 3 adım (yükle → sütun eşleme ön izlemesi → birleştirme + rapor), aynı `it_import_log` (dosya adına ` [cihaz]`
+  eklenir, sayfa yalnız kendi kayıtlarını listeler). **TAM YENİLEME YOKTUR** (cihazın yaşam günlüğü, belgeleri ve
+  fotoğrafları silinmemeli): eşleşme **varlık kodu → envanter no → seri no**; yeni satır INSERT + "giris" (zimmetliyse
+  + "zimmet") hareketi, mevcut satırda yalnız dosyada DOLU gelen alanlar güncellenir (boş hücre mevcut veriyi silmez),
+  notlar birikir. `CIM_ALAN` TR/EN eş anlamlı başlık haritası; `ozellik` ve `notlar` ÇOK sütuna bağlanabilir
+  (İşlemci Marka/Model, RAM, RAM Tipi, Ekran Kartı, HDD… tek "Başlık: değer" dizisinde birleşir), diğer alanlar tek
+  sütun. `cim_kategori()` cihaz ADINDAN kategori çıkarır ("Monitör"→monitor, "Dizüstü"→laptop; Kategori sütunu varsa
+  o esas), `cim_marka()` kurum kodu önekini atar ("M0026-AOC"→AOC), `cim_durum()` metinden IT_DURUM anahtarı üretir
+  (yoksa kişi varsa aktif, yoksa depoda). **Seri no boşsa Şasi No seri sayılır**, ikisi de doluysa şasi teknik nota
+  gider; "İlk Proje" cihazın notuna yazılır. Envanter no yoksa **veya başka cihazdayken** `it_envanter_no()` ile
+  otomatik IT-00001 üretilir. **Kişi** `cim_personel_bul()` ile normalize ad+soyaddan personel kartına bağlanır
+  (aynı adlı 2+ kişi → bağlanmaz, raporda listelenir); zimmet gerçekten değişirse günlüğe **iade + zimmet** yazılır —
+  yalnızca BÜYÜK HARF → Baş Harf farkı hareket saymaz (pim_norm ile karşılaştırılır). Seçenek: **"eşleşmeyen kişiler
+  için personel kartı aç"** (`cim_personel_ekle`, `duzenle` yetkisi) — açılınca cihazlar doğrudan o kartlara zimmetlenir;
+  rapordan sonradan tek tıkla da yapılır. Eşleşmeyen lokasyonlar rapordan kök lokasyon olarak eklenir (`islem=lok_ekle`).
+  Şablon **sisteme göre üretilir**: `?sablon=1` tanınan 21 sütun + gerçek lokasyon/personel değerleriyle örnek satırlar,
+  `?sablon=mevcut` kayıtlı envanteri aynı düzende indirir (`cim_sablon_satiri`) → Excel'de düzelt, geri yükle.
+  ⚠ `IT_KATEGORI`/`IT_DURUM` değerleri **konumsal dizidir** (`[ad, ikon]` / `[ad, renk, ikon]`) — `['ad']` ile
+  okunmaz, `[0]` ile okunur. Yetki: `sayfa_islemi()` regex'ine `cihaz_import` eklendi → **giris**; sidebar
+  "Cihaz İçe Aktar" + cihazlar.php'de "İçe Aktar" düğmesi `can_edit()`. Gerçek dosyayla doğrulandı (189 satır):
+  1. yükleme 189 yeni / 0 atlanan (okunan = yeni + güncellenen + değişmeyen + atlanan tutar), kişi kartı açma
+  seçeneğiyle 2. yükleme 0 yeni / 185 güncellenen (yalnız zimmetli adı düzeldi) + 116 personel kartı, 3. yükleme
+  **0 yeni / 0 güncellenen / 189 değişmeyen** (mükerrer cihaz oluşmuyor, sahte zimmet hareketi yazılmıyor);
+  `?sablon=mevcut` round-trip 192 satır → 0 yeni / 192 değişmeyen.
   **TANIMLAR EKRANI `it/tanimlar.php` (2026-09-09)** — tek sayfa, sekmeli (Snipe-IT'deki "tanım tablosu seç"
   düzeni): **Lokasyonlar · Kategoriler · Üreticiler · Modeller · Tedarikçiler · Şirketler · Durumlar · Personel**.
   • *Lokasyonlar* = `it_lokasyonlar` (hiyerarşi korunur) + yeni **sehir / adres / renk** kolonları; satırda ad
@@ -366,8 +395,12 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   içindeki `foreach (… as $p)` satırı sayfanın kendi `$p` değişkenini (personel_detay.php'de personel satırı)
   STRING'e çeviriyordu → "Fatal error: Cannot access offset of type string on string ... personel_detay.php:62".
   Header/footer/403 içindeki tüm geçici değişkenler artık **`$__` önekli** (`$__parts`, `$__ph`, `$__mk`, `$__mv`) —
-  **bu dosyalara önekisiz değişken yazma**. Regresyon testi: itsm header stub'ı da aynı sızıntıyı taklit eder;
-  personel_detay/personel/tanimlar/cihazlar/index/raporlar sayfaları fatal vermeden render oluyor.
+  **bu dosyalara önekisiz değişken yazma**. Aynı sınıftan ikinci sızıntı `includes/footer.php`'deki mobil alt
+  menüde bulundu (`foreach ($__navItems as [$sf,$et,$ik])` → `$__nSf`/`$__nEt`/`$__nIk`); footer sayfanın SONUNDA
+  dahil edildiğinden çıktıyı bozmuyordu ama sayfanın `$sf`/`$et`/`$ik` değişkenlerini eziyordu (itsm koşucusunun
+  oturum dosyası yolu `$sf` böyle "raporlar.php" oluyordu). Regresyon testi: itsm artık **gerçek** header/footer
+  ile koşar (stub değil); personel_detay/personel/tanimlar/cihazlar/cihaz_detay/cihaz_import/index/raporlar
+  sayfaları fatal vermeden render oluyor.
   Çekirdek `it/_ortak.php`: IT_KATEGORI / IT_DURUM / IT_HAREKET sabitleri, it_semasi_kur, it_envanter_no, it_filtre,
   it_secenekler (sütun whitelist), it_ozet, it_garanti_kalan, it_tarih, it_sayi, it_hareket_ekle, it_belgeler/
   it_belge_yukle/it_belge_sil, it_dosya_listesi. **Yetki**: sayfalar `require_auth([admin,toa,to,depo,it_sorumlusu])`;
@@ -604,6 +637,12 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   matris kilitli ("her şeye yetkili"). Kayıt: `y[modül][]` → `yetki_normalize` → JSON `users.yetkiler`;
   `modul_erisim` matrisle senkron (tüm modüller ise NULL). Güvenlik: en az bir modülde okuma zorunlu,
   kendi hesabının admin rolü kaldırılamaz / pasife alınamaz / silinemez; değişiklikler `audit_log`.
+  **Aktif / pasif yönetimi (2026-09-09)**: liste üstünde **Hepsi · Aktif · Pasif** süzgeci (sayaçlar her zaman TÜM
+  kullanıcılardan, süzgeç yalnız görünümü daraltır) + kullanıcı adı / ad soyad / görev / rol üzerinde **arama**
+  (`?durum=`, `?q=`); satırda tek tıkla **aktif↔pasif** düğmesi (`action=durum`, onay diyaloğu, `audit_log`'a yazılır,
+  süzgeç korunarak geri dönülür), pasif satır soluk gösterilir. Kendi hesabını pasife alma hem düğmede hem POST'ta
+  engellidir. Pasif kullanıcı **giriş yapamaz** (login.php "Hesabınız devre dışı bırakılmış" der) ama kaydı,
+  yetkileri ve geçmişi silinmez — modal'daki "Hesap aktif" anahtarı da bunu açıklar.
   Listede kullanıcı başına modül rozeti + O·G·D·N·R harfleri (yetkisiz harf üstü çizili), unvan, "siz" rozeti;
   matrisi olmayan kullanıcı **"Eski rol düzeni"** rozetiyle işaretlenir (üstte sayısı verilir) — düzenleme
   modalında matris rol şablonu + eski modül listesinden ÖNERİLİR, kaydedince devreye girer.

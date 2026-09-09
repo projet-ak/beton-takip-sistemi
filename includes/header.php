@@ -533,6 +533,9 @@ if ($__user) {
       </li>
       <?php if(can_edit()): ?>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('cihaz_import.php') ?>" href="<?= $__rootPath ?>it/cihaz_import.php" data-label="Cihaz Aktar"><i class="bi bi-box-arrow-in-down"></i><span>Cihaz İçe Aktar</span></a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('import.php') ?>" href="<?= $__rootPath ?>it/import.php" data-label="İçe Aktar"><i class="bi bi-cloud-arrow-up"></i><span>Personel İçe Aktar</span></a>
       </li>
       <?php endif; ?>

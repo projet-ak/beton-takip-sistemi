@@ -53,6 +53,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $modulStr = ($matris && count($matris) < count(MODULLER)) ? implode(',', array_keys($matris)) : null;
     $yetkiJson = $role === 'admin' ? null : ($matris ? json_encode($matris, JSON_UNESCAPED_UNICODE) : null);
 
+    // Listeden tek tıkla aktif/pasif (hesabı silmeden erişimi kapatmanın yolu)
+    if ($action === 'durum' && $editId) {
+        if ($editId === $currentUid) {
+            flash('error', 'Kendi hesabınızı pasife alamazsınız.');
+        } else {
+            $st = $pdo->prepare("SELECT username, aktif FROM users WHERE id=?"); $st->execute([$editId]);
+            $eski = $st->fetch();
+            if (!$eski) flash('error', 'Kullanıcı bulunamadı.');
+            else {
+                $yeniDurum = (int)!$eski['aktif'];
+                $pdo->prepare("UPDATE users SET aktif=? WHERE id=?")->execute([$yeniDurum, $editId]);
+                audit_log($pdo, 'users', $editId, 'UPDATE', ['aktif' => (int)$eski['aktif']], ['aktif' => $yeniDurum], $currentUid);
+                flash('success', $eski['username'] . ($yeniDurum ? ' aktif edildi — sisteme giriş yapabilir.' : ' pasife alındı — artık giriş yapamaz.'));
+            }
+        }
+        redirect('kullanicilar.php' . (($_POST['q'] ?? '') !== '' || ($_POST['durum'] ?? '') !== '' ? '?' . http_build_query(array_filter(['durum' => $_POST['durum'] ?? '', 'q' => $_POST['q'] ?? ''])) : ''));
+    }
+
     if ($action === 'delete' && $editId) {
         if ($editId === $currentUid) {
             flash('error', 'Kendi hesabınızı silemezsiniz.');
@@ -125,10 +143,27 @@ if ($error && $_SERVER['REQUEST_METHOD'] === 'POST') {
                  'aktif' => $aktif, 'modul_erisim' => $modulStr, 'yetkiler' => $yetkiJson];
 }
 
-// ── Kullanıcı listesi ────────────────────────────────────────────────────────
-$users = $pdo->query("SELECT id,username,full_name,unvan,role,aktif,modul_erisim,yetkiler,created_at FROM users ORDER BY id")->fetchAll();
+// ── Kullanıcı listesi (durum süzgeci + arama) ───────────────────────────────
+// Süzgeç yalnız GÖRÜNÜMÜ daraltır; sayaçlar her zaman TÜM kullanıcılar üzerinden verilir.
+$fDurum = $_GET['durum'] ?? '';
+if (!in_array($fDurum, ['aktif', 'pasif'], true)) $fDurum = '';
+$fQ = trim((string)($_GET['q'] ?? ''));
+
+$tumUsers = $pdo->query("SELECT id,username,full_name,unvan,role,aktif,modul_erisim,yetkiler,created_at FROM users ORDER BY id")->fetchAll();
+$nAktif = 0; $nPasif = 0;
+foreach ($tumUsers as $u) { if ($u['aktif']) $nAktif++; else $nPasif++; }
+
+$users = array_values(array_filter($tumUsers, function ($u) use ($fDurum, $fQ) {
+    if ($fDurum === 'aktif' && !$u['aktif']) return false;
+    if ($fDurum === 'pasif' && $u['aktif'])  return false;
+    if ($fQ !== '') {
+        $hedef = mb_strtolower($u['username'] . ' ' . ($u['full_name'] ?? '') . ' ' . ($u['unvan'] ?? '') . ' ' . role_label($u['role']));
+        if (!str_contains($hedef, mb_strtolower($fQ))) return false;
+    }
+    return true;
+}));
 $eskiDuzen = 0;
-foreach ($users as $u) if ($u['role'] !== 'admin' && !yetki_normalize($u['yetkiler'] ?? null)) $eskiDuzen++;
+foreach ($tumUsers as $u) if ($u['role'] !== 'admin' && !yetki_normalize($u['yetkiler'] ?? null)) $eskiDuzen++;
 
 $seciliMatris = $matrisHazirla($editUser);
 $sablonJson   = [];
@@ -143,6 +178,9 @@ require_once __DIR__ . '/includes/header.php';
 .ymatris .form-check-input { margin: 0; cursor: pointer; }
 .ymatris tr.pasif td:not(:first-child) { opacity: .45; }
 .yozet .badge { font-weight: 500; }
+/* Pasif kullanıcı satırı: silinmedi, yalnız erişimi kapalı — listede soluk görünür */
+tr.urow-pasif td { opacity: .58; }
+tr.urow-pasif td:last-child, tr.urow-pasif td:nth-last-child(3) { opacity: 1; }
 .yharf { display:inline-block; min-width:1.15em; padding:0 .2em; border-radius:.3em; font-size:.66rem; font-weight:700; line-height:1.5;
          background: rgba(var(--ern-rgb), .12); color: var(--ern-dark); margin-left:1px; }
 .yharf.yok { background: transparent; color: var(--bt-text-muted); opacity:.35; text-decoration: line-through; }
@@ -185,6 +223,25 @@ require_once __DIR__ . '/includes/header.php';
     <?php endif; ?>
 </div>
 
+<form method="get" class="card border-0 shadow-sm mb-3"><div class="card-body py-2 d-flex flex-wrap align-items-center gap-2 small">
+    <div class="btn-group btn-group-sm" role="group">
+        <a href="kullanicilar.php<?= $fQ !== '' ? '?q=' . urlencode($fQ) : '' ?>" class="btn btn-outline-secondary <?= $fDurum === '' ? 'active' : '' ?>">Hepsi <span class="badge bg-secondary ms-1"><?= count($tumUsers) ?></span></a>
+        <a href="kullanicilar.php?<?= h(http_build_query(array_filter(['durum' => 'aktif', 'q' => $fQ]))) ?>" class="btn btn-outline-success <?= $fDurum === 'aktif' ? 'active' : '' ?>">Aktif <span class="badge bg-success ms-1"><?= $nAktif ?></span></a>
+        <a href="kullanicilar.php?<?= h(http_build_query(array_filter(['durum' => 'pasif', 'q' => $fQ]))) ?>" class="btn btn-outline-secondary <?= $fDurum === 'pasif' ? 'active' : '' ?>">Pasif <span class="badge bg-secondary ms-1"><?= $nPasif ?></span></a>
+    </div>
+    <?php if ($fDurum !== ''): ?><input type="hidden" name="durum" value="<?= h($fDurum) ?>"><?php endif; ?>
+    <div class="input-group input-group-sm" style="width:280px">
+        <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+        <input type="text" name="q" class="form-control" placeholder="Kullanıcı adı, ad soyad, görev…" value="<?= h($fQ) ?>">
+        <button class="btn btn-outline-primary">Ara</button>
+    </div>
+    <?php if ($fDurum !== '' || $fQ !== ''): ?>
+        <a href="kullanicilar.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-x-lg me-1"></i>Süzgeci temizle</a>
+        <span class="text-muted"><?= count($users) ?> / <?= count($tumUsers) ?> kullanıcı gösteriliyor</span>
+    <?php endif; ?>
+    <span class="text-muted ms-auto"><i class="bi bi-info-circle me-1"></i>Pasif kullanıcı sisteme <strong>giriş yapamaz</strong>; kayıtları ve geçmişi korunur.</span>
+</div></form>
+
 <div class="card">
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -201,12 +258,15 @@ require_once __DIR__ . '/includes/header.php';
                     </tr>
                 </thead>
                 <tbody>
+                <?php if (!$users): ?>
+                    <tr><td colspan="7" class="text-center text-muted py-4">Süzgece uyan kullanıcı yok.</td></tr>
+                <?php endif; ?>
                 <?php foreach ($users as $u):
                     $rc  = ROLLER[$u['role']][1] ?? 'secondary';
                     $uM  = yetki_normalize($u['yetkiler'] ?? null);
                     $uL  = array_values(array_filter(array_map('trim', explode(',', (string)($u['modul_erisim'] ?? '')))));
                 ?>
-                    <tr>
+                    <tr class="<?= $u['aktif'] ? '' : 'urow-pasif' ?>">
                         <td class="text-muted"><?= (int)$u['id'] ?></td>
                         <td>
                             <div class="fw-semibold"><i class="bi bi-person me-1 text-muted"></i><?= h($u['username']) ?>
@@ -231,11 +291,22 @@ require_once __DIR__ . '/includes/header.php';
                                 </span>
                             <?php endforeach; endif; ?>
                         </td>
-                        <td>
+                        <td class="text-nowrap">
                             <?php if ($u['aktif']): ?>
                                 <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Aktif</span>
                             <?php else: ?>
                                 <span class="badge bg-secondary"><i class="bi bi-x-circle me-1"></i>Pasif</span>
+                            <?php endif; ?>
+                            <?php if ((int)$u['id'] !== $currentUid): ?>
+                            <form method="post" class="d-inline" onsubmit="return confirm('<?= h($u['username']) ?> <?= $u['aktif'] ? 'PASİFE alınacak — artık sisteme giriş yapamaz' : 'AKTİF edilecek — sisteme giriş yapabilir' ?>. Devam?')">
+                                <input type="hidden" name="action" value="durum">
+                                <input type="hidden" name="id" value="<?= $u['id'] ?>">
+                                <input type="hidden" name="durum" value="<?= h($fDurum) ?>">
+                                <input type="hidden" name="q" value="<?= h($fQ) ?>">
+                                <button class="btn btn-sm btn-link p-0 ms-1 text-decoration-none" title="<?= $u['aktif'] ? 'Pasife al' : 'Aktif et' ?>">
+                                    <i class="bi <?= $u['aktif'] ? 'bi-toggle-on text-success' : 'bi-toggle-off text-muted' ?>" style="font-size:1.15rem"></i>
+                                </button>
+                            </form>
                             <?php endif; ?>
                         </td>
                         <td class="text-muted small"><?= format_date($u['created_at']) ?></td>
@@ -308,7 +379,8 @@ require_once __DIR__ . '/includes/header.php';
                             <div class="form-check form-switch mb-2">
                                 <input class="form-check-input" type="checkbox" name="aktif" id="chkAktif" value="1"
                                        <?= (!$editUser || !empty($editUser['aktif'])) ? 'checked' : '' ?>>
-                                <label class="form-check-label" for="chkAktif">Hesap aktif</label>
+                                <label class="form-check-label" for="chkAktif">Hesap <strong>aktif</strong>
+                                    <span class="text-muted d-block small" style="font-size:.75rem">Kapatılırsa kullanıcı sisteme giriş yapamaz; kaydı ve geçmişi silinmez.</span></label>
                             </div>
                         </div>
                     </div>
