@@ -113,7 +113,10 @@ require_once __DIR__ . '/../includes/header.php';
           <?php foreach (IT_KATEGORI as $k => [$ad]): ?><option value="<?= $k ?>" <?= ($etkin['kategori'] ?? '') === $k ? 'selected' : '' ?>><?= h($ad) ?></option><?php endforeach; ?></select></div>
       <div class="col-md-2"><label class="form-label small mb-0">Durum</label>
         <select name="durum" class="form-select form-select-sm"><option value="">Hurda hariç tümü</option>
-          <?php foreach (IT_DURUM as $k => [$ad]): ?><option value="<?= $k ?>" <?= ($etkin['durum'] ?? '') === $k ? 'selected' : '' ?>><?= h($ad) ?></option><?php endforeach; ?></select></div>
+          <?php foreach (IT_DURUM as $k => [$ad]): ?><option value="<?= $k ?>" <?= ($etkin['durum'] ?? '') === $k ? 'selected' : '' ?>><?= h($ad) ?></option><?php endforeach; ?>
+          <optgroup label="Gruplu">
+            <?php foreach (IT_DURUM_SANAL as $k => $ad): ?><option value="<?= h($k) ?>" <?= ($etkin['durum'] ?? '') === $k ? 'selected' : '' ?>><?= h($ad) ?></option><?php endforeach; ?>
+          </optgroup></select></div>
       <div class="col-md-2"><label class="form-label small mb-0">Zimmetli</label>
         <select name="zimmetli" class="form-select form-select-sm"><option value="">Tümü</option>
           <?php foreach ($sec['zimmetli'] as $x): ?><option value="<?= h($x) ?>" <?= ($etkin['zimmetli'] ?? '') === $x ? 'selected' : '' ?>><?= h($x) ?></option><?php endforeach; ?></select></div>

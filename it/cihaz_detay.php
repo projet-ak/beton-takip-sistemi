@@ -311,7 +311,7 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
 
   <div class="col-lg-4">
     <?php if ($duzenleyebilir): ?>
-    <div class="card border-0 shadow-sm mb-3">
+    <div class="card border-0 shadow-sm mb-3" id="islem">
       <div class="card-header bg-white"><strong><i class="bi bi-lightning-charge me-1"></i>İşlem</strong></div>
       <div class="card-body">
         <form method="post">
@@ -323,7 +323,7 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
               <?php if ($c['zimmetli']): ?><option value="iade">Zimmet iade al (depoya)</option><?php endif; ?>
               <?php if ($c['durum'] !== 'serviste'): ?><option value="servis">Servise gönder</option><?php else: ?><option value="donus">Servisten döndü</option><?php endif; ?>
               <option value="ariza">Arıza bildir</option>
-              <?php if ($c['durum'] === 'transfer'): ?><option value="transfer_bitti">Transfer teslim alındı (depoya)</option>
+              <?php if ($c['durum'] === 'transfer'): ?><option value="transfer_bitti">Transfer YAPILDI (karşı taraf teslim aldı → depoda)</option>
               <?php else: ?><option value="transfer">Transfere çıkar (başka lokasyona)</option><?php endif; ?>
               <option value="kayip">Kayıp / çalıntı bildir</option>
               <option value="hibe">Hibe et / devret</option>
@@ -339,7 +339,8 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
               <option value="">Gönderilecek proje / lokasyon</option><?= it_lokasyon_options($pdoIt, 0, false) ?></select>
             <input name="isteyen" class="form-control form-control-sm transfer-yeni" placeholder="İsteyen / teslim alacak kişi (hedef projede)">
             <div class="form-text">Cihaz <strong><?= h($c['lokasyon_id'] ? it_lokasyon_yol($pdoIt, (int)$c['lokasyon_id']) : ($c['lokasyon'] ?: '—')) ?></strong>
-              projesinden çıkar, "yolda" sayılır. Karşı taraf teslim alınca aynı menüden <em>Transfer teslim alındı</em> seçilir.</div></div>
+              projesinden çıkar, "yolda" sayılır. Karşı taraf teslim alınca aynı menüden <em>Transfer YAPILDI</em> seçilir
+              (dashboard'daki "Yolda olan cihazlar" listesinden tek tıkla da açılır).</div></div>
           <div class="mb-2 kisi"><input name="kisi" class="form-control form-control-sm" placeholder="Servis firması / kişi" value=""></div>
           <div class="row g-2 mb-2 zimmet-ek">
             <div class="col-6"><input name="departman" id="departman" class="form-control form-control-sm" placeholder="Departman (boş = kişinin birimi)" value=""></div>
@@ -412,6 +413,13 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
 <script>
 (function () {
     var t = document.getElementById('tur'); if (!t) return;
+    // ?islem=… ile gelindiyse (dashboard "Transfer yapıldı" düğmesi) işlem hazır seçili gelsin
+    var ist = <?= json_encode((string)($_GET['islem'] ?? '')) ?>;
+    if (ist && [].some.call(t.options, function (o) { return o.value === ist; })) {
+        t.value = ist;
+        var kart = document.getElementById('islem');
+        if (kart) { kart.classList.add('border', 'border-primary'); kart.scrollIntoView({ block: 'center' }); }
+    }
     function uygula() {
         var z = t.value === 'zimmet', tr = t.value === 'transfer', trBit = t.value === 'transfer_bitti';
         document.querySelectorAll('.zimmet-ek').forEach(function (e) { e.classList.toggle('d-none', !z); });

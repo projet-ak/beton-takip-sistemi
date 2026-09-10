@@ -602,6 +602,31 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   (yazdırmada gizli): form önceden yazdırılabilir ama gerekçe/tarih ancak cihaz kartındaki işlem
   uygulanınca dolar. Giriş noktaları: cihaz kartı başlığı + Belgeler kutusu, cihaz listesinde satır
   düğmesi ve Evrak rozeti (sidebar'a satır eklenmedi). Yetki: `sayfa_islemi()` → GET **oku**, POST **yaz**.
+  **DASHBOARD ELDEN GEÇİRME (2026-09-10, kullanıcı isteği)** — üç somut şikâyet + genel geliştirme:
+  • ⚠⚠ **KPI kartı ile açtığı liste TUTMUYORDU**: "Serviste + Arızalı 1" kartı `?durum=arizali`ye
+  gidiyordu, cihaz *serviste* olduğu için liste BOŞ açılıyor ve "serviste arızalı yok" görünüyordu.
+  Çözüm **sanal durum süzgeçleri** (`IT_DURUM_SANAL` + `it_durum_kume()`, `it_filtre` içinde):
+  **`?durum=sorunlu`** (serviste+arızalı) · **`?durum=dusen`** (hurda+kayıp+hibe) · **`?durum=hepsi`**
+  (süzgeç yok, düşenler dahil). Cihaz listesi ve merkezi izlemedeki durum menüsüne "Gruplu" optgroup'u
+  olarak da eklendi. **Kural: her KPI kartının linki KENDİ sayısını veren listeyi açmalı.**
+  • **Toplam Cihaz artık hurda dahil** (`$o['toplam']`, `?durum=hepsi`), kartın altında
+  "N envanterde · M düşen" yazar. Kartlara **alt açıklama satırı** geldi (6. alan): kullanımda→kaç kişide,
+  transfer→en uzun kaç gündür yolda, serviste→"N serviste · M arızalı", düşen→"hurda/kayıp/hibe" kırılımı.
+  Yeni kart: **Envanterden düşen**. Mali gizliyken "İmzalı evrakı eksik zimmet" kartı artık
+  **`?evrak=eksik`** süzgecine gider (it_filtre'ye eklendi: zimmetli ama `tur='zimmet'` belgesi yok).
+  • **"Yolda olan cihazlar" paneli** — transfer varsa dashboard'da tablo: cihaz · hedef lokasyon ·
+  kaç gündür yolda (14 günü aşan kırmızı) · sevk tutanağı + **"Transfer yapıldı"** düğmesi. Düğme
+  `cihaz_detay.php?id=…&islem=transfer_bitti#islem`e gider; **cihaz kartındaki işlem menüsü `?islem=` ile
+  ÖNCEDEN SEÇİLİ gelir** (JS, kart mavi çerçeveyle işaretlenir ve ekrana kaydırılır). Menüdeki seçenek
+  "Transfer teslim alındı" → **"Transfer YAPILDI (karşı taraf teslim aldı → depoda)"** olarak adlandırıldı.
+  • **Grafikler**: durum dağılımı **yatay çubuk** oldu (8 durumun etiketi dikey eksende okunuyor; eskiden
+  x ekseninde kırpılıyordu) ve **her çubuk kendi IT_DURUM rozet rengini** alır — renk dizisi 5 elemanlıydı,
+  8 duruma yetmiyordu. Kategori doughnut'ı **ilk 8 + "Diğer (n tip)"** (26 kategoride efsane taşıyordu).
+  **Üç grafik de tıklanabilir**: dilim/çubuk → o süzgeçle liste (`chGit(els, url)`; Chart.js tıklanan
+  öğeyi onClick'in **2. argümanında** verir — `getElementsAtEventForMode` gerekmez).
+  • Mali gizliyken garanti panelinin yerine **"İmzalı evrakı eksik zimmet" listesi** (en eski zimmetten
+  başlar, satırdan tutanak yazdırılır); "Serviste / arızalı" paneli cihaz adını öne alır ve
+  "…'ten beri" tarihini gösterir.
   • **SÜTUN GİZLE / GÖSTER (2026-09-10, kullanıcı isteği)** — ortak bileşen **`assets/js/kolon_sec.js`**
   (`ERN_KOLON.kur({tablo, menu, anahtar, dugme, varsayilan})`): başlıktaki her `<th data-kol="…" data-kol-ad="…">`
   menüde bir kutucuk olur, işaretsiz sütun `d-none` alır. **Hücrelere ayrıca işaret konmaz** — gövde hücreleri

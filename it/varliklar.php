@@ -176,6 +176,9 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="col-md-2"><label class="form-label small mb-1">Durum</label>
             <select name="durum" class="form-select form-select-sm"><option value="">Envanterdekiler (hurda/kayıp/hibe hariç)</option>
                 <?php foreach (IT_DURUM as $k => [$ad]): ?><option value="<?= h($k) ?>" <?= ($etkin['durum'] ?? '') === $k ? 'selected' : '' ?>><?= h($ad) ?></option><?php endforeach; ?>
+                <optgroup label="Gruplu">
+                  <?php foreach (IT_DURUM_SANAL as $k => $ad): ?><option value="<?= h($k) ?>" <?= ($etkin['durum'] ?? '') === $k ? 'selected' : '' ?>><?= h($ad) ?></option><?php endforeach; ?>
+                </optgroup>
             </select></div>
         <?php if ($maliGoster): ?>
         <div class="col-md-2"><label class="form-label small mb-1">Garanti</label>

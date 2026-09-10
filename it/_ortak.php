@@ -322,10 +322,19 @@ function it_filtre(array $g): array
         $etkin['grup'] = $g['grup'];
     }
     if (!empty($g['kategori']) && isset(IT_KATEGORI[$g['kategori']])) { $w[] = 'kategori=?'; $p[] = $g['kategori']; $etkin['kategori'] = $g['kategori']; }
-    if (!empty($g['durum']) && isset(IT_DURUM[$g['durum']]))          { $w[] = 'durum=?';    $p[] = $g['durum'];    $etkin['durum'] = $g['durum']; }
-    elseif (($g['durum'] ?? '') === '') { $w[] = it_envanterde(); }   // varsayılan: hurda/kayıp/hibe gizli
+    $__d = (string)($g['durum'] ?? '');
+    if ($__d !== '' && isset(IT_DURUM[$__d]))        { $w[] = 'durum=?'; $p[] = $__d; $etkin['durum'] = $__d; }
+    elseif ($__d === 'hepsi')                        { $etkin['durum'] = 'hepsi'; }          // süzgeç yok: düşenler de listelenir
+    elseif (($__k = it_durum_kume($__d)) !== [])     { $w[] = 'durum IN (' . implode(',', array_fill(0, count($__k), '?')) . ')';
+                                                       foreach ($__k as $__x) $p[] = $__x; $etkin['durum'] = $__d; }
+    elseif ($__d === '')                             { $w[] = it_envanterde(); }             // varsayılan: hurda/kayıp/hibe gizli
     foreach (['zimmetli', 'departman', 'lokasyon', 'marka'] as $k) {
         if (!empty($g[$k])) { $w[] = "$k=?"; $p[] = $g[$k]; $etkin[$k] = $g[$k]; }
+    }
+    // İmzalı zimmet tutanağı eksik olanlar — dashboard'daki "İmzalı evrakı eksik zimmet" kartının listesi
+    if (($g['evrak'] ?? '') === 'eksik') {
+        $w[] = "zimmetli<>'' AND NOT EXISTS (SELECT 1 FROM it_belgeler b WHERE b.cihaz_id=it_cihazlar.id AND b.tur='zimmet')";
+        $etkin['evrak'] = 'eksik';
     }
     if (!empty($g['garanti'])) {
         if ($g['garanti'] === 'bitiyor')  { $w[] = 'garanti_bitis BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 60 DAY)'; }
@@ -344,6 +353,27 @@ function it_filtre(array $g): array
         $etkin['q'] = trim($g['q']);
     }
     return [$w ? ' WHERE ' . implode(' AND ', $w) : '', $p, $etkin];
+}
+
+/**
+ * **Sanal durum süzgeçleri** — KPI kartları çoğu zaman tek bir duruma değil bir KÜMEye işaret eder
+ * ("Serviste + Arızalı", "Envanterden düşen"). Kart tek duruma bağlanırsa sayı ile liste tutmaz
+ * (dashboard "1" derken liste boş açılırdı). `?durum=` bu anahtarları da kabul eder.
+ */
+const IT_DURUM_SANAL = [
+    'hepsi'   => 'Tümü (düşenler dahil)',
+    'sorunlu' => 'Serviste + Arızalı',
+    'dusen'   => 'Envanterden düşen (hurda / kayıp / hibe)',
+];
+
+/** Sanal süzgecin kapsadığı gerçek durumlar ('hepsi' → boş: süzgeç uygulanmaz). */
+function it_durum_kume(string $anahtar): array
+{
+    return match ($anahtar) {
+        'sorunlu' => ['serviste', 'arizali'],
+        'dusen'   => IT_DURUM_DUSEN,
+        default   => [],
+    };
 }
 
 /** Bir sütunun dolu, benzersiz değerleri (filtre menüleri). Sütun whitelist'lidir. */
