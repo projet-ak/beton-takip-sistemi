@@ -41,9 +41,27 @@ const CIM_ALAN = [
     'ip_adresi'    => ['etiket' => 'IP Adresi',                'es' => ['IP','IP ADRESI','IP ADDRESS']],
     'mac_adresi'   => ['etiket' => 'MAC Adresi',               'es' => ['MAC','MAC ADRESI','MAC ADDRESS']],
     'isletim'      => ['etiket' => 'İşletim Sistemi',          'es' => ['ISLETIM SISTEMI','ISLETIM','OS','OPERATING SYSTEM','WINDOWS']],
-    'ozellik'      => ['etiket' => 'Teknik özellik (birleşir)','es' => ['TEKNIK OZELLIK','TEKNIK OZELLIKLER','OZELLIK','OZELLIKLER','ISLEMCI MARKA','ISLEMCI MODEL','ISLEMCI','CPU','PROCESSOR','RAM','RAM TIPI','BELLEK','EKRAN KARTI','EKRAN KARTI MODELI','GPU','HDD','HDD MODELI','DISK','SSD','DEPOLAMA','EKRAN','COZUNURLUK','SPECS','SPECIFICATION']],
+    // ⚠ Donanım sütunları AYRI alanlara gider (zimmet formundaki "Özellikler" bloğu); her biri
+    // ÇOK sütuna bağlanabilir — "Islemcı Marka" + "Islemcı Model" tek alanda " · " ile birleşir.
+    'islemci'      => ['etiket' => 'İşlemci (birleşir)', 'es' => ['ISLEMCI MARKA','ISLEMCI MODEL','ISLEMCI','CPU','PROCESSOR']],
+    'ram'          => ['etiket' => 'RAM (birleşir)',     'es' => ['RAM','RAM TIPI','RAM MARKA','BELLEK','BELLEK TIPI']],
+    'ekran_karti'  => ['etiket' => 'Ekran Kartı (birleşir)', 'es' => ['EKRAN KARTI','EKRAN KARTI MODELI','GPU','GRAFIK KARTI']],
+    'disk'         => ['etiket' => 'Disk / HDD (birleşir)',  'es' => ['HDD','HDD MODELI','HDD BILGISI','DISK','SSD','DEPOLAMA','SABIT DISK']],
+    'anakart'      => ['etiket' => 'Anakart',            'es' => ['ANAKART','MAINBOARD','MOTHERBOARD']],
+    'ekran_boyutu' => ['etiket' => 'Ekran Boyutu',       'es' => ['EKRAN BOYUTU','EKRAN','COZUNURLUK','SCREEN SIZE']],
+    'imei'         => ['etiket' => 'IMEI',               'es' => ['IMEI','IMEI NO','IMEI NUMARASI']],
+    'kapasite'     => ['etiket' => 'Kapasite',           'es' => ['KAPASITE','KAPASITESI','CAPACITY']],
+    'kiralik_firma'=> ['etiket' => 'Kiralanan Firma',    'es' => ['KIRALANAN FIRMA','KIRALIK FIRMA','KIRALAYAN FIRMA']],
+    'ozellik'      => ['etiket' => 'Diğer teknik özellik (birleşir)','es' => ['TEKNIK OZELLIK','TEKNIK OZELLIKLER','OZELLIK','OZELLIKLER','SPECS','SPECIFICATION']],
     'notlar'       => ['etiket' => 'Not (nota eklenir)',       'es' => ['NOT','NOTLAR','ACIKLAMA','DESCRIPTION','REMARKS','COMMENT','INFO','DEMIRBAS DURUMU','ZIMMET TARIHI']],
 ];
+
+/** Birden çok sütundan beslenebilen alanlar (değerler " · " ile birleşir). */
+const CIM_COKLU = ['ozellik', 'notlar', 'islemci', 'ram', 'ekran_karti', 'disk'];
+
+/** Alanın KENDİSİNİ taşıyan genel başlıklar — bunlarda "Başlık: değer" öneki kullanılmaz. */
+const CIM_GENEL_BASLIK = ['NOT', 'NOTLAR', 'ACIKLAMA', 'ACIKLAMALAR', 'DESCRIPTION', 'REMARKS', 'COMMENT',
+                          'TEKNIK OZELLIK', 'TEKNIK OZELLIKLER', 'OZELLIK', 'OZELLIKLER', 'SPECS', 'SPECIFICATION'];
 
 /** "Serı Nesne Adı" / kategori metni → IT_KATEGORI anahtarı (bulunamazsa 'diger'). */
 function cim_kategori(string $s): string
@@ -121,7 +139,7 @@ function cim_harita(array $baslik): array
             }
         }
         if ($bul === null) { $h[$i] = ''; continue; }
-        if (!in_array($bul, ['ozellik','notlar'], true) && isset($kul[$bul])) { $h[$i] = 'ozellik'; continue; }
+        if (!in_array($bul, CIM_COKLU, true) && isset($kul[$bul])) { $h[$i] = 'ozellik'; continue; }
         $h[$i] = $bul; $kul[$bul] = $i;
     }
     return $h;
@@ -131,18 +149,27 @@ function cim_harita(array $baslik): array
 function cim_satir_cozumle(array $satir, array $harita, array $baslik): array
 {
     $v = array_fill_keys(array_keys(CIM_ALAN), '');
-    $v['ozellik'] = []; $v['notlar'] = [];
+    foreach (CIM_COKLU as $k) $v[$k] = [];
     foreach ($harita as $i => $k) {
         if ($k === '' || $k === null) continue;
         $c = trim((string)($satir[$i] ?? ''));
         if ($c === '') continue;
-        if ($k === 'ozellik' || $k === 'notlar') { $v[$k][] = trim((string)($baslik[$i] ?? '')) . ': ' . $c; continue; }
+        if (in_array($k, CIM_COKLU, true)) {
+            // ozellik/notlar birden çok sütundan beslenebildiği için "Başlık: değer" olarak birikir —
+            // ⚠ ama sütunun kendisi zaten "Not"/"Açıklama"/"Teknik Özellik" ise BAŞLIK EKLENMEZ:
+            // aksi halde `?sablon=mevcut` ile indirilip geri yüklenen dosyada not her turda
+            // "Not: <eski not>" diye kendi üstüne sarılıyordu.
+            $bas = trim((string)($baslik[$i] ?? ''));
+            $v[$k][] = (in_array($k, ['ozellik', 'notlar'], true) && $bas !== '' && !in_array(pim_norm($bas), CIM_GENEL_BASLIK, true))
+                ? $bas . ': ' . $c : $c;
+            continue;
+        }
         if ($v[$k] === '') $v[$k] = $c;
     }
     $v['marka'] = cim_marka($v['marka']);
-    // Seri no boşsa şasi no seri sayılır; ikisi de doluysa şasi teknik nota gider
-    if ($v['seri_no'] === '' && $v['sasi_no'] !== '') { $v['seri_no'] = $v['sasi_no']; $v['sasi_no'] = ''; }
-    if ($v['sasi_no'] !== '') $v['ozellik'][] = 'Şasi No: ' . $v['sasi_no'];
+    // ⚠ Şasi no artık KENDİ kolonunda durur (eskiden seri boşsa seriye taşınıp yoksa nota gömülüyordu).
+    // Seri no boşken şasi varsa seri olarak da kullanılır — cihaz seri numarasıyla aranabilsin.
+    if ($v['seri_no'] === '' && $v['sasi_no'] !== '') $v['seri_no'] = $v['sasi_no'];
     if ($v['ilk_lokasyon'] !== '') $v['notlar'][] = 'İlk proje: ' . $v['ilk_lokasyon'];
     return $v;
 }
@@ -169,8 +196,9 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
 {
     $harita = $opt['harita']; $bIdx = (int)$opt['baslik_idx']; $baslik = $satirlar[$bIdx] ?? [];
     $r = ['okunan'=>0, 'yeni'=>[], 'guncellenen'=>[], 'degismeyen'=>0, 'atlanan'=>[], 'kisi_yok'=>[], 'lokasyon_yok'=>[], 'kisi_eklenen'=>[]];
-    $alanlar = ['varlik_kodu','envanter_no','kategori','ad','marka','model','seri_no','durum','zimmetli','personel_id','departman','lokasyon','lokasyon_id',
-                'zimmet_tarihi','alis_tarihi','garanti_bitis','fiyat','tedarikci','fatura_no','ip_adresi','mac_adresi','isletim_sistemi','ozellikler'];
+    $alanlar = ['varlik_kodu','envanter_no','kategori','ad','marka','model','seri_no','sasi_no','imei','durum','zimmetli','personel_id','departman','lokasyon','lokasyon_id',
+                'zimmet_tarihi','alis_tarihi','garanti_bitis','fiyat','tedarikci','fatura_no','ip_adresi','mac_adresi','isletim_sistemi',
+                'islemci','ram','ekran_karti','disk','anakart','ekran_boyutu','kapasite','kiralik_firma','ozellikler'];
 
     cim_semasi_kur($pdo);                       // ⚠ DDL transaction'ı örtük commit eder → ÖNCE
     $mevcut = $pdo->query("SELECT * FROM it_cihazlar")->fetchAll();
@@ -229,6 +257,7 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
                 else $r['kisi_yok'][] = ['satir'=>$exNo, 'kisi'=>$kisiAd, 'neden'=>'personel kartı yok'];
             }
 
+            $birlesik = fn(string $k, int $max) => ($v[$k] ?? []) ? mb_substr(implode(' · ', array_unique(array_filter($v[$k]))), 0, $max) : null;
             $durum = pim_norm($v['durum']) !== '' ? cim_durum($v['durum']) : null;
             if ($durum === null) $durum = $kisiAd !== '' ? 'aktif' : 'depoda';
             $yeni = [
@@ -247,8 +276,17 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
                 'tedarikci'   => $v['tedarikci'] ?: null, 'fatura_no' => $v['fatura_no'] ?: null,
                 'ip_adresi'   => $v['ip_adresi'] ?: null, 'mac_adresi' => $v['mac_adresi'] ?: null,
                 'isletim_sistemi' => $v['isletim'] ?: null,
-                'ozellikler'  => $v['ozellik'] ? mb_substr(implode(' · ', array_unique($v['ozellik'])), 0, 255) : null,
+                'sasi_no'     => $v['sasi_no'] ?: null, 'imei' => $v['imei'] ?: null,
+                'islemci'     => $birlesik('islemci', 160), 'ram' => $birlesik('ram', 120),
+                'ekran_karti' => $birlesik('ekran_karti', 160), 'disk' => $birlesik('disk', 160),
+                'anakart'     => $v['anakart'] ?: null, 'ekran_boyutu' => $v['ekran_boyutu'] ?: null,
+                'kapasite'    => $v['kapasite'] ?: null, 'kiralik_firma' => $v['kiralik_firma'] ?: null,
+                'ozellikler'  => null,   // aşağıda künyeden ya da serbest sütunlardan doldurulur
             ];
+            // Serbest "özellik" sütunları varsa onlar, yoksa donanım künyesinin özeti
+            $yeni['ozellikler'] = $v['ozellik']
+                ? mb_substr(implode(' · ', array_unique($v['ozellik'])), 0, 255)
+                : (it_ozellik_ozet($yeni) ?: null);
             $notSatiri = $v['notlar'] ? implode("\n", array_unique($v['notlar'])) : '';
 
             // Eşleşme: varlık kodu → envanter no → seri no

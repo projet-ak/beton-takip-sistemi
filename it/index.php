@@ -81,6 +81,27 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="alert alert-info"><i class="bi bi-info-circle me-1"></i>Henüz cihaz kaydı yok. <?php if ($yazabilir): ?><a href="cihaz_form.php" class="alert-link">İlk cihazı ekleyin</a> — envanter numarası otomatik verilir.<?php endif; ?></div>
 <?php endif; ?>
 
+<?php /* Sahadan gelen en sık soru: "şu seri no kimde, nerede?" — tek kutudan cevap */ ?>
+<form method="get" action="varliklar.php" class="card border-0 shadow-sm mb-3">
+  <div class="card-body py-3">
+    <div class="row g-2 align-items-center">
+      <div class="col-lg-8">
+        <div class="input-group input-group-lg">
+          <span class="input-group-text bg-white"><i class="bi bi-search text-primary"></i></span>
+          <input name="q" class="form-control" autofocus
+                 placeholder="Seri no · IFS nesne no · IMEI · envanter no · MAC · IP · dahili · ad soyad…">
+          <button class="btn btn-primary px-4">Bul</button>
+        </div>
+        <div class="form-text">Cihazı, <strong>kimde olduğunu</strong>, lokasyonunu ve durumunu tek ekranda gösterir.</div>
+      </div>
+      <div class="col-lg-4 small text-muted">
+        <i class="bi bi-lightbulb me-1"></i>Kişi adı yazarsanız o kişideki tüm cihazlar listelenir;
+        <a href="varliklar.php">merkezi varlık izleme</a> ekranında lokasyon ve cihaz tipine göre süzebilirsiniz.
+      </div>
+    </div>
+  </div>
+</form>
+
 <div class="row g-3 mb-3">
   <?php
   $kpi = [

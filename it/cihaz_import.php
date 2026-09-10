@@ -19,9 +19,10 @@ $pageTitle = 'Cihaz İçe Aktar — IT Envanter';
 $kisi = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ?? null;
 
 /** Şablonun sütun düzeni = içe aktarmanın tanıdığı başlıklar (cim_harita bu adlarla eşleştirir). */
-const CIM_SABLON_BASLIK = ['Cihaz Kodu','Seri Nesne Kodu','Seri Nesne Adı','Kategori','Marka','Model','Seri No',
-                           'Durum','Kişi','Departman','Mevcut Proje','Alış Tarihi','Garanti Bitiş','Fiyat',
-                           'Tedarikçi','Fatura No','IP Adresi','MAC Adresi','İşletim Sistemi','Teknik Özellik','Not'];
+const CIM_SABLON_BASLIK = ['Cihaz Kodu','Seri Nesne Kodu','Seri Nesne Adı','Kategori','Marka','Model','Seri No','Şasi No','IMEI',
+                           'Durum','Kişi','Departman','Mevcut Proje','Kiralanan Firma','Alış Tarihi','Garanti Bitiş','Fiyat',
+                           'Tedarikçi','Fatura No','IP Adresi','MAC Adresi','İşletim Sistemi',
+                           'İşlemci','Ram','Ekran Kartı','Hdd','Anakart','Ekran Boyutu','Kapasite','Teknik Özellik','Not'];
 
 /** Bir cihaz kaydını şablon düzenine çevirir. */
 function cim_sablon_satiri(PDO $pdo, array $r): array
@@ -33,12 +34,17 @@ function cim_sablon_satiri(PDO $pdo, array $r): array
         ['v'=>(string)($r['envanter_no'] ?? '')], ['v'=>(string)($r['varlik_kodu'] ?? '')], ['v'=>(string)($r['ad'] ?? '')],
         ['v'=>IT_KATEGORI[$r['kategori'] ?? 'diger'][0] ?? ''],
         ['v'=>(string)($r['marka'] ?? '')], ['v'=>(string)($r['model'] ?? '')], ['v'=>(string)($r['seri_no'] ?? '')],
+        ['v'=>(string)($r['sasi_no'] ?? '')], ['v'=>(string)($r['imei'] ?? '')],
         ['v'=>IT_DURUM[$r['durum'] ?? 'depoda'][0] ?? ''],
         ['v'=>(string)($r['zimmetli'] ?? '')], ['v'=>(string)($r['departman'] ?? '')], ['v'=>$lokAd],
+        ['v'=>(string)($r['kiralik_firma'] ?? '')],
         ['v'=>(string)($r['alis_tarihi'] ?? ''), 't'=>'date'], ['v'=>(string)($r['garanti_bitis'] ?? ''), 't'=>'date'],
         ['v'=>($r['fiyat'] !== null && $r['fiyat'] !== '') ? (float)$r['fiyat'] : '', 't'=>'number'],
         ['v'=>(string)($r['tedarikci'] ?? '')], ['v'=>(string)($r['fatura_no'] ?? '')],
         ['v'=>(string)($r['ip_adresi'] ?? '')], ['v'=>(string)($r['mac_adresi'] ?? '')], ['v'=>(string)($r['isletim_sistemi'] ?? '')],
+        ['v'=>(string)($r['islemci'] ?? '')], ['v'=>(string)($r['ram'] ?? '')], ['v'=>(string)($r['ekran_karti'] ?? '')],
+        ['v'=>(string)($r['disk'] ?? '')], ['v'=>(string)($r['anakart'] ?? '')], ['v'=>(string)($r['ekran_boyutu'] ?? '')],
+        ['v'=>(string)($r['kapasite'] ?? '')],
         ['v'=>(string)($r['ozellikler'] ?? '')], ['v'=>mb_substr((string)($r['notlar'] ?? ''), 0, 400)],
     ];
 }
@@ -65,18 +71,27 @@ if (isset($_GET['sablon'])) {
     foreach (array_slice(it_personel_liste($pdoIt), 0, 3) as $p) $kisiler[] = it_personel_ad($p);
     while (count($kisiler) < 3) $kisiler[] = ['Ahmet Yılmaz', 'Ayşe Kaya', ''][count($kisiler)];
 
+    // Örnek satırlar başlık sırasıyla birebir eşleşir (CIM_SABLON_BASLIK); kişi/lokasyon sistemden gelir
     $ornek = [
-        ['IT-00001','FRM-0002-DVR-2551900702','Dizüstü Bilgisayar','Dizüstü','Lenovo','ThinkPad E14','PF3ABCDE','Kullanımda',0,'2025-02-10','2027-02-10',28500,'Bilgi İşlem A.Ş.','FTR2025000123','','','Windows 11 Pro','i7 / 16 GB RAM / 512 GB SSD',''],
-        ['IT-00002','FRM-0002-MON-2551900855','Monitör','Monitör','AOC','24B2XH','FUAE1HA035655','Kullanımda',1,'2025-02-10','2027-02-10',3250,'Bilgi İşlem A.Ş.','FTR2025000123','','','','24" IPS Full HD',''],
-        ['IT-00003','FRM-0002-YZC-2551901004','Yazıcı','Yazıcı','HP','LaserJet M404dn','VNC3K12345','Depoda',2,'2024-11-05','2026-11-05',9750,'Ofis Market','FTR2024000987','192.168.1.45','A4:BB:6D:11:22:33','','Mono lazer, ağ bağlantılı','Depoda yedek olarak bekliyor'],
+        ['IT-00001','FRM-0002-82026-2552600167','Dizüstü Bilgisayar','Dizüstü','Lenovo','ThinkPad E14','PF3ABCDE','TCNXCV00V025494','356938035643809',
+         'Kullanımda',0,'','2025-02-10','2027-02-10',28500,'Bilgi İşlem A.Ş.','FTR2025000123','','','Windows 11 Pro',
+         'İntel i7 · Intel(R) Core(TM) 7 240H','DDR5 16 GB · Samsung','Intel Raptor Lake-H','NVMe 512 GB','ThinkPad E14 · Lenovo','14"','512 GB','',''],
+        ['IT-00002','FRM-0002-MON-2551900855','Monitör','Monitör','AOC','24B2XH','FUAE1HA035655','','',
+         'Kullanımda',1,'','2025-02-10','2027-02-10',3250,'Bilgi İşlem A.Ş.','FTR2025000123','','','',
+         '','','','','','24"','','IPS Full HD',''],
+        ['IT-00003','FRM-0002-YZC-2551901004','Yazıcı','Yazıcı','HP','LaserJet M404dn','VNC3K12345','','',
+         'Depoda',2,'','2024-11-05','2026-11-05',9750,'Ofis Market','FTR2024000987','192.168.1.45','A4:BB:6D:11:22:33','',
+         '','','','','','','','Mono lazer, ağ bağlantılı','Depoda yedek olarak bekliyor'],
     ];
     foreach ($ornek as $i => $o) {
         $xl->row([
-            ['v'=>$o[0]], ['v'=>$o[1]], ['v'=>$o[2]], ['v'=>$o[3]], ['v'=>$o[4]], ['v'=>$o[5]], ['v'=>$o[6]], ['v'=>$o[7]],
-            ['v'=>(string)($kisiler[(int)$o[8]] ?? '')], ['v'=>''],
-            ['v'=>(string)($lokAdlar[$i % count($lokAdlar)] ?? '')],
-            ['v'=>$o[9], 't'=>'date'], ['v'=>$o[10], 't'=>'date'], ['v'=>(float)$o[11], 't'=>'number'],
-            ['v'=>$o[12]], ['v'=>$o[13]], ['v'=>$o[14]], ['v'=>$o[15]], ['v'=>$o[16]], ['v'=>$o[17]], ['v'=>$o[18]],
+            ['v'=>$o[0]], ['v'=>$o[1]], ['v'=>$o[2]], ['v'=>$o[3]], ['v'=>$o[4]], ['v'=>$o[5]], ['v'=>$o[6]], ['v'=>$o[7]], ['v'=>$o[8]],
+            ['v'=>$o[9]], ['v'=>(string)($kisiler[(int)$o[10]] ?? '')], ['v'=>$o[11]],
+            ['v'=>(string)($lokAdlar[$i % count($lokAdlar)] ?? '')], ['v'=>''],
+            ['v'=>$o[12], 't'=>'date'], ['v'=>$o[13], 't'=>'date'], ['v'=>(float)$o[14], 't'=>'number'],
+            ['v'=>$o[15]], ['v'=>$o[16]], ['v'=>$o[17]], ['v'=>$o[18]], ['v'=>$o[19]],
+            ['v'=>$o[20]], ['v'=>$o[21]], ['v'=>$o[22]], ['v'=>$o[23]], ['v'=>$o[24]], ['v'=>$o[25]], ['v'=>$o[26]],
+            ['v'=>$o[27]], ['v'=>$o[28]],
         ]);
     }
     for ($i = 0; $i < 5; $i++) $xl->row(array_fill(0, count(CIM_SABLON_BASLIK), ['v'=>'']));
@@ -149,9 +164,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         else {
             $h = [];
             foreach ($s['satirlar'][$bIdx] as $i => $_) { $k = (string)($_POST['m'][$i] ?? ''); $h[$i] = array_key_exists($k, $alanSecenek) ? $k : ''; }
-            // Aynı alan iki sütuna verildiyse ilk sütun kalır (ozellik/notlar birleşen alanlar — hepsi kalır)
+            // Aynı alan iki sütuna verildiyse ilk sütun kalır (CIM_COKLU alanları birleşir — hepsi kalır)
             $kul = [];
-            foreach ($h as $i => $k) { if ($k === '' || $k === 'ozellik' || $k === 'notlar') continue; if (isset($kul[$k])) $h[$i] = ''; else $kul[$k] = $i; }
+            foreach ($h as $i => $k) { if ($k === '' || in_array($k, CIM_COKLU, true)) continue; if (isset($kul[$k])) $h[$i] = ''; else $kul[$k] = $i; }
             $s['harita'] = $h;
         }
         $s['opt'] = ['kisi_ekle' => (!empty($_POST['kisi_ekle']) && yetki_var('duzenle')) ? 1 : 0];
@@ -311,7 +326,15 @@ require_once __DIR__ . '/../includes/header.php';
         <td><?= h(trim($v['marka'] . ' ' . $v['model'])) ?></td><td><?= h($v['seri_no']) ?></td>
         <td><?php if ($v['kisi'] !== ''): ?><?= $pp ? '<span class="text-success">' . h(it_personel_ad($pp)) . '</span>' : '<span class="text-warning" title="' . ($pnasil === 'coklu' ? 'aynı adlı birden çok personel' : 'personel kartı yok') . '">' . h($v['kisi']) . ' <i class="bi bi-question-circle"></i></span>' ?><?php endif; ?></td>
         <td><?php if ($v['lokasyon'] !== ''): ?><?= $lokId ? '<span class="text-success">' . h(it_lokasyon_yol($pdoIt, $lokId)) . '</span>' : '<span class="text-warning">' . h($v['lokasyon']) . ' <i class="bi bi-question-circle"></i></span>' ?><?php endif; ?></td>
-        <td class="text-truncate text-muted" style="max-width:180px" title="<?= h(implode(' · ', $v['ozellik'])) ?>"><?= h(mb_substr(implode(' · ', $v['ozellik']), 0, 50)) ?></td>
+        <?php
+          // Donanım künyesi: çoklu sütunlar birleşmiş haliyle
+          $tek = [];
+          foreach (['islemci','ram','ekran_karti','disk'] as $__k) if (!empty($v[$__k])) $tek[] = implode(' · ', $v[$__k]);
+          foreach (['anakart','ekran_boyutu','kapasite'] as $__k) if (!empty($v[$__k])) $tek[] = $v[$__k];
+          if (!empty($v['ozellik'])) $tek[] = implode(' · ', $v['ozellik']);
+          $tekMetin = implode(' · ', $tek);
+        ?>
+        <td class="text-truncate text-muted" style="max-width:180px" title="<?= h($tekMetin) ?>"><?= h(mb_substr($tekMetin, 0, 50)) ?></td>
       </tr>
       <?php endforeach; ?>
       </tbody></table></div>

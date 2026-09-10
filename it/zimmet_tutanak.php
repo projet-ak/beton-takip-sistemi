@@ -49,6 +49,38 @@ $lokasyon  = $per && $per['lokasyon_id'] ? it_lokasyon_yol($pdoIt, (int)$per['lo
 $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
 $toplam = array_sum(array_map(fn($r) => (float)($r['fiyat'] ?? 0), $liste));
 $teslimEden = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ?? '';
+
+/**
+ * Cihazın KÜNYESİ — kurumsal zimmet formundaki "Özellikler" bloğunun birebir karşılığı
+ * (Marka · Model · Şasi/Seri No · Kullanım Durumu · Zimmetlenen Personel · Lokasyon · Kiralanan Firma ·
+ *  Kapasite · İşlemci · RAM · Ekran Kartı · HDD · Anakart · Ekran Boyutu · IMEI · Cihaz Kodu).
+ * Yalnız DOLU alanlar döner; boş satırlarla form şişmez.
+ */
+function zt_kunye(PDO $pdo, array $r): array
+{
+    $lok = !empty($r['lokasyon_id']) ? it_lokasyon_yol($pdo, (int)$r['lokasyon_id']) : (string)($r['lokasyon'] ?? '');
+    $alanlar = [
+        'MARKA'                => $r['marka'] ?? '',
+        'MODEL'                => $r['model'] ?? '',
+        'ŞASİ NO / SERİ NO'    => trim((string)($r['seri_no'] ?? '') . (($r['sasi_no'] ?? '') && ($r['sasi_no'] !== ($r['seri_no'] ?? '')) ? ' / ' . $r['sasi_no'] : '')),
+        'KULLANIM DURUMU'      => it_durumAd((string)$r['durum']),
+        'ZİMMETLENEN PERSONEL' => $r['zimmetli'] ?? '',
+        'LOKASYON'             => $lok,
+        'KİRALANAN FİRMA'      => $r['kiralik_firma'] ?? '',
+        'KAPASİTE'             => $r['kapasite'] ?? '',
+        'İŞLEMCİ MARKA / MODEL'=> $r['islemci'] ?? '',
+        'RAM TİPİ'             => $r['ram'] ?? '',
+        'EKRAN KARTI'          => $r['ekran_karti'] ?? '',
+        'HDD BİLGİSİ'          => $r['disk'] ?? '',
+        'ANAKART'              => $r['anakart'] ?? '',
+        'EKRAN BOYUTU'         => $r['ekran_boyutu'] ?? '',
+        'IMEI'                 => $r['imei'] ?? '',
+        'IP / MAC'             => trim((string)($r['ip_adresi'] ?? '') . (($r['mac_adresi'] ?? '') ? ' / ' . $r['mac_adresi'] : ''), ' /'),
+        'İŞLETİM SİSTEMİ'      => $r['isletim_sistemi'] ?? '',
+        'CİHAZ KODU'           => $r['envanter_no'] ?? '',
+    ];
+    return array_filter($alanlar, fn($x) => trim((string)$x) !== '');
+}
 ?>
 <!DOCTYPE html>
 <html lang="tr"><head>
@@ -71,6 +103,10 @@ $teslimEden = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ??
   table.items td.r, table.items th.r { text-align:right; }
   table.items tfoot td { background:#f5f7f7; font-weight:700; }
   .mono { font-family: Consolas, monospace; font-size:11.5px; }
+  table.kunye { width:100%; border-collapse:collapse; font-size:11.5px; margin:0 0 10px; }
+  table.kunye td { border:1px solid #cfcfcf; padding:4px 8px; }
+  table.kunye td.k { background:#f5f7f7; font-weight:600; width:23%; white-space:nowrap; }
+  .kunye-basi { font-size:12px; font-weight:700; color:#00584E; margin:14px 0 5px; letter-spacing:.5px; }
   .note { font-size:11.5px; color:#333; margin:16px 0; line-height:1.65; text-align:justify; }
   .note ol { margin:6px 0 0 18px; padding:0; }
   .signs { display:flex; justify-content:space-between; margin-top:40px; }
@@ -128,6 +164,35 @@ $teslimEden = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ??
     <?php endforeach; ?>
     </tbody>
     <tfoot><tr><td colspan="5" class="r">TOPLAM (<?= count($liste) ?> kalem)</td><td class="r"><?= $f2($toplam) ?></td></tr></tfoot>
+  </table>
+
+  <?php /* Kurumsal formdaki "Özellikler" bloğu — her cihaz için nesne kimliği + donanım künyesi */ ?>
+  <?php foreach ($liste as $i => $r): $ky = zt_kunye($pdoIt, $r); if (!$ky) continue; ?>
+  <div class="kunye-basi"><?= count($liste) > 1 ? ($i + 1) . '. ' : '' ?>ÖZELLİKLER — <?= h($r['ad']) ?>
+    <span style="font-weight:600;color:#555">(<?= h($r['envanter_no']) ?><?= !empty($r['varlik_kodu']) ? ' · Nesne No: ' . h($r['varlik_kodu']) : '' ?>)</span></div>
+  <table class="kunye">
+    <tr><td class="k">NESNE AÇIKLAMA</td><td><?= h($r['ad']) ?></td>
+        <td class="k">NESNE TÜRÜ / KATEGORİ</td><td><?= h(IT_GRUP[it_grup((string)$r['kategori'])][0] ?? '') ?> / <?= h(it_kategoriAd((string)$r['kategori'])) ?></td></tr>
+    <?php $ck = array_chunk($ky, 2, true); foreach ($ck as $cift): ?>
+    <tr>
+      <?php foreach ($cift as $et => $dg): ?>
+        <td class="k"><?= h($et) ?></td><td class="<?= in_array($et, ['ŞASİ NO / SERİ NO','IMEI','IP / MAC','CİHAZ KODU'], true) ? 'mono' : '' ?>"><?= h($dg) ?></td>
+      <?php endforeach; ?>
+      <?php if (count($cift) === 1): ?><td class="k"></td><td></td><?php endif; ?>
+    </tr>
+    <?php endforeach; ?>
+    <?php if (!empty($r['notlar'])): ?><tr><td class="k">NOTLAR</td><td colspan="3" style="white-space:pre-wrap"><?= h(mb_substr((string)$r['notlar'], 0, 400)) ?></td></tr><?php endif; ?>
+  </table>
+  <?php endforeach; ?>
+
+  <div class="kunye-basi">KULLANICI BİLGİLERİ</div>
+  <table class="kunye">
+    <tr><td class="k">AD SOYAD</td><td><strong><?= h($kisi ?: '—') ?></strong></td>
+        <td class="k">SİCİL NO</td><td class="mono"><?= h($per['sicil_no'] ?? '') ?: '—' ?></td></tr>
+    <tr><td class="k">MAİL ADRESİ</td><td><?= h($per['eposta'] ?? '') ?: '—' ?></td>
+        <td class="k">TELEFON</td><td><?= h($per['telefon'] ?? '') ?: '—' ?></td></tr>
+    <tr><td class="k">BİRİM / UNVAN</td><td><?= h(trim(($departman ?: '') . ($per && $per['unvan'] ? ' — ' . $per['unvan'] : ''), ' —')) ?: '—' ?></td>
+        <td class="k">LOKASYON</td><td><?= h($lokasyon ?: '—') ?></td></tr>
   </table>
 
   <div class="note">

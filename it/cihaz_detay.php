@@ -166,6 +166,9 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
             <?= $bilgi('Lisans Anahtarı', $c['lisans_anahtari'], true) ?>
             <?= $bilgi('Lisans Adedi', $c['lisans_adet']) ?>
             <?php else: ?>
+            <?= $bilgi('Varlık / Nesne No (IFS)', $c['varlik_kodu'] ?? null, true) ?>
+            <?= $bilgi('Şasi No / 2. Seri No', $c['sasi_no'] ?? null, true) ?>
+            <?= $bilgi('IMEI', $c['imei'] ?? null, true) ?>
             <?= $bilgi('IP Adresi', $c['ip_adresi'], true) ?>
             <?= $bilgi('MAC Adresi', $c['mac_adresi'], true) ?>
             <?= $bilgi('İşletim Sistemi', $c['isletim_sistemi']) ?>

@@ -48,18 +48,21 @@ if (($_GET['export'] ?? '') === 'xlsx') {
     $st = $pdoIt->prepare("SELECT * FROM it_cihazlar $wsql ORDER BY kategori, envanter_no");
     $st->execute($par);
     $xl = new \XlsxWriter('Varlık Listesi');
-    $xl->header(['Grup','Kategori','Envanter No','Varlık Kodu','Cihaz','Marka','Model','Seri No','Durum',
-                 'IP Adresi','MAC Adresi','Dahili','Telefon No','IMEI','Operatör','Firmware','Lisans Durumu',
-                 'Disk / Port','Kullanım Amacı','Adet','Lokasyon','Zimmetli','Departman','Garanti Bitiş','Fiyat (TL)','Notlar']);
+    $xl->header(['Grup','Kategori','Envanter No','Varlık / Nesne No','Cihaz','Marka','Model','Seri No','Şasi No','IMEI','Durum',
+                 'IP Adresi','MAC Adresi','Dahili','Telefon No','Operatör','Firmware','Lisans Durumu',
+                 'İşlemci','RAM','Ekran Kartı','Disk','Anakart','Ekran Boyutu','Kapasite','Kullanım Amacı','Adet',
+                 'Lokasyon','Zimmetli','Departman','Kiralanan Firma','Garanti Bitiş','Fiyat (TL)','Notlar']);
     foreach ($st->fetchAll() as $r) {
         $xl->row([
             ['v'=>IT_GRUP[it_grup($r['kategori'])][0] ?? ''], ['v'=>it_kategoriAd($r['kategori'])],
             ['v'=>$r['envanter_no']], ['v'=>$r['varlik_kodu'] ?? ''], ['v'=>$r['ad']], ['v'=>$r['marka']], ['v'=>$r['model']],
-            ['v'=>$r['seri_no']], ['v'=>it_durumAd($r['durum'])],
+            ['v'=>$r['seri_no']], ['v'=>$r['sasi_no'] ?? ''], ['v'=>$r['imei'] ?? ''], ['v'=>it_durumAd($r['durum'])],
             ['v'=>$r['ip_adresi']], ['v'=>$r['mac_adresi']], ['v'=>$r['dahili_no'] ?? ''], ['v'=>$r['telefon_no'] ?? ''],
-            ['v'=>$r['imei'] ?? ''], ['v'=>$r['operator'] ?? ''], ['v'=>$r['firmware'] ?? ''], ['v'=>$r['lisans_durumu'] ?? ''],
-            ['v'=>$r['kapasite'] ?? ''], ['v'=>$r['kullanim_amaci'] ?? ''], ['v'=>$r['adet'] ?? '', 't'=>'number'],
-            ['v'=>$r['lokasyon']], ['v'=>$r['zimmetli']], ['v'=>$r['departman']],
+            ['v'=>$r['operator'] ?? ''], ['v'=>$r['firmware'] ?? ''], ['v'=>$r['lisans_durumu'] ?? ''],
+            ['v'=>$r['islemci'] ?? ''], ['v'=>$r['ram'] ?? ''], ['v'=>$r['ekran_karti'] ?? ''], ['v'=>$r['disk'] ?? ''],
+            ['v'=>$r['anakart'] ?? ''], ['v'=>$r['ekran_boyutu'] ?? ''], ['v'=>$r['kapasite'] ?? ''],
+            ['v'=>$r['kullanim_amaci'] ?? ''], ['v'=>$r['adet'] ?? '', 't'=>'number'],
+            ['v'=>$r['lokasyon']], ['v'=>$r['zimmetli']], ['v'=>$r['departman']], ['v'=>$r['kiralik_firma'] ?? ''],
             ['v'=>$r['garanti_bitis'], 't'=>'date'], ['v'=>(float)$r['fiyat'], 't'=>'number'], ['v'=>$r['notlar']],
         ]);
     }
@@ -206,6 +209,8 @@ require_once __DIR__ . '/../includes/header.php';
         if (!empty($r['imei']))       $ag[] = '<span class="vg-kod text-muted">IMEI ' . h($r['imei']) . '</span>';
         // Teknik sütunu
         $tek = [];
+        foreach (['islemci','ram','ekran_karti','disk','anakart','ekran_boyutu'] as $__hk)
+            if (!empty($r[$__hk])) $tek[] = h($r[$__hk]);
         if (!empty($r['operator']))      $tek[] = h($r['operator']);
         if (!empty($r['firmware']))      $tek[] = 'FW ' . h($r['firmware']);
         if (!empty($r['kapasite']))      $tek[] = h($r['kapasite']);
@@ -224,7 +229,9 @@ require_once __DIR__ . '/../includes/header.php';
             <td><i class="bi <?= h(it_kategoriIkon($kat)) ?> me-1 text-muted"></i><?= h($r['ad']) ?>
                 <div class="small text-muted"><?= h(it_kategoriAd($kat)) ?></div></td>
             <td><?= h(trim(($r['marka'] ?? '') . ' ' . ($r['model'] ?? ''))) ?: '<span class="text-muted">—</span>' ?></td>
-            <td class="vg-kod"><?= h($r['seri_no'] ?? '') ?: '<span class="text-muted">—</span>' ?></td>
+            <td class="vg-kod"><?= h($r['seri_no'] ?? '') ?: '<span class="text-muted">—</span>' ?>
+                <?php if (!empty($r['sasi_no']) && $r['sasi_no'] !== ($r['seri_no'] ?? '')): ?><div class="text-muted" title="şasi / 2. seri no"><?= h($r['sasi_no']) ?></div><?php endif; ?>
+                <?php if (!empty($r['varlik_kodu'])): ?><div class="text-muted" title="IFS nesne no"><?= h($r['varlik_kodu']) ?></div><?php endif; ?></td>
             <td><?= $ag ? implode('<br>', $ag) : '<span class="text-muted">—</span>' ?></td>
             <td><?= $tek ? implode('<br>', $tek) : '<span class="text-muted">—</span>' ?></td>
             <td class="small"><?= h(!empty($r['lokasyon_id']) ? it_lokasyon_etiket($pdoIt, (int)$r['lokasyon_id']) : ($r['lokasyon'] ?: '—')) ?></td>

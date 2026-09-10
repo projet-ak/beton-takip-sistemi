@@ -71,8 +71,16 @@ const IT_KATEGORI = [
 const IT_EK_ALAN = [
     'dahili_no'         => ['Dahili No',            ['ip_telefon','santral'], 'text', ''],
     'telefon_no'        => ['Telefon Numarası',     ['ip_telefon','santral','hat','superbox','telefon'], 'text', ''],
-    'imei'              => ['IMEI',                 ['superbox','telefon','tablet'], 'text', ''],
     'operator'          => ['Operatör',             ['superbox','hat','telefon'], 'text', 'Turkcell / Vodafone / Türk Telekom'],
+    // Donanım künyesi — kurumsal zimmet formundaki "Özellikler" bloğunun karşılığı.
+    // Serbest metin `ozellikler` alanı KALIR (liste/Excel özeti); boş bırakılırsa bunlardan üretilir.
+    'islemci'           => ['İşlemci (marka / model)', ['bilgisayar','laptop','sunucu'], 'text', 'İntel i7 · Intel(R) Core(TM) 7 240H'],
+    'ram'               => ['RAM (tip / kapasite)',    ['bilgisayar','laptop','sunucu','tablet'], 'text', 'DDR5 16 GB · Samsung'],
+    'ekran_karti'       => ['Ekran Kartı',             ['bilgisayar','laptop','sunucu'], 'text', ''],
+    'disk'              => ['Disk / HDD bilgisi',      ['bilgisayar','laptop','sunucu','nvr'], 'text', 'NVMe 512 GB'],
+    'anakart'           => ['Anakart',                 ['bilgisayar','laptop','sunucu'], 'text', ''],
+    'ekran_boyutu'      => ['Ekran Boyutu',            ['monitor','tv','laptop','tablet','projeksiyon'], 'text', '14"'],
+    'kiralik_firma'     => ['Kiralanan Firma',         ['bilgisayar','laptop','monitor','yazici','sunucu','telefon','tablet','tv','ag','switch','firewall','superbox','diger'], 'text', 'cihaz kiralıksa kiralandığı firma'],
     'firmware'          => ['Firmware Sürümü',      ['firewall','switch','access_point','nvr','kamera','kartli_gecis','turnike','santral'], 'text', ''],
     'lisans_durumu'     => ['Lisans Durumu',        ['firewall','yazilim','santral','nvr'], 'text', 'ör. UTM lisansı 2027-05-01\'e kadar'],
     'yonetim_kullanici' => ['Yönetim Kullanıcısı',  ['firewall','switch','access_point','nvr','kamera','kartli_gecis','turnike','santral'], 'text', ''],
@@ -101,6 +109,20 @@ function it_kategori_agaci(): array
     foreach (IT_GRUP as $g => $_) $a[$g] = [];
     foreach (IT_KATEGORI as $anahtar => $t) $a[$t[2] ?? 'diger'][$anahtar] = $t[0];
     return array_filter($a);
+}
+
+/**
+ * Donanım künyesinden **kısa özet** üretir (liste, Excel ve tutanak satırı için).
+ * `ozellikler` serbest metni BOŞSA kayıtta bununla doldurulur — kullanıcı yazdıysa dokunulmaz.
+ */
+function it_ozellik_ozet(array $r): string
+{
+    $p = [];
+    foreach (['islemci', 'ram', 'ekran_karti', 'disk', 'ekran_boyutu', 'kapasite'] as $k) {
+        $v = trim((string)($r[$k] ?? ''));
+        if ($v !== '') $p[] = $v;
+    }
+    return mb_substr(implode(' · ', $p), 0, 255);
 }
 
 /** Bir kategoride gösterilecek ek alanlar: alan => [etiket, tip, ipucu]. */
@@ -305,7 +327,7 @@ function it_filtre(array $g): array
         // Tek kutudan IP / MAC / seri no / envanter no / dahili / telefon araması
         $q = '%' . trim($g['q']) . '%';
         // Kolonların hepsi it_semasi_kur() tarafından garanti edilir (yoksa runtime ALTER ile eklenir)
-        $alan = ['envanter_no','ad','marka','model','seri_no','zimmetli','departman','lokasyon','notlar',
+        $alan = ['envanter_no','ad','marka','model','seri_no','sasi_no','zimmetli','departman','lokasyon','notlar',
                  'ip_adresi','mac_adresi','varlik_kodu','dahili_no','telefon_no','imei'];
         $w[] = '(' . implode(' LIKE ? OR ', $alan) . ' LIKE ?)';
         foreach ($alan as $_) $p[] = $q;
@@ -613,7 +635,15 @@ function it_ek_alan_semasi_kur(PDO $pdo): void
     if ($yapildi) return;
     $yapildi = true;
     $kolonlar = [
-        'varlik_kodu'       => 'VARCHAR(60) NULL',   // ERP demirbaş kodu (cihaz içe aktarma eşleşmesi)
+        'varlik_kodu'       => 'VARCHAR(60) NULL',   // ERP/IFS "Nesne No" — demirbaş kodu (içe aktarma eşleşmesi)
+        'sasi_no'           => 'VARCHAR(120) NULL',  // 2. seri numarası (şasi / servis etiketi)
+        'islemci'           => 'VARCHAR(160) NULL',
+        'ram'               => 'VARCHAR(120) NULL',
+        'ekran_karti'       => 'VARCHAR(160) NULL',
+        'disk'              => 'VARCHAR(160) NULL',
+        'anakart'           => 'VARCHAR(160) NULL',
+        'ekran_boyutu'      => 'VARCHAR(40) NULL',
+        'kiralik_firma'     => 'VARCHAR(120) NULL',
         'dahili_no'         => 'VARCHAR(20) NULL',
         'telefon_no'        => 'VARCHAR(40) NULL',
         'imei'              => 'VARCHAR(32) NULL',

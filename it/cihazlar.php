@@ -40,12 +40,12 @@ if (($_GET['export'] ?? '') === 'xlsx') {
     $st = $pdoIt->prepare("SELECT * FROM it_cihazlar $wsql ORDER BY $sk $yon, id");
     $st->execute($par);
     $xl = new \XlsxWriter('IT Envanter');
-    $xl->header(['Envanter No','Kategori','Cihaz','Marka','Model','Seri No','Durum','Zimmetli','Departman','Lokasyon',
+    $xl->header(['Envanter No','Varlık / Nesne No','Kategori','Cihaz','Marka','Model','Seri No','Şasi No','IMEI','Durum','Zimmetli','Departman','Lokasyon',
                  'Zimmet Tarihi','Alış Tarihi','Garanti Bitiş','Fiyat (TL)','Tedarikçi','Fatura No','IP','MAC','İşletim Sistemi','Özellikler','Lisans Adet','Notlar']);
     foreach ($st->fetchAll() as $r) {
         $xl->row([
-            ['v'=>$r['envanter_no']], ['v'=>it_kategoriAd($r['kategori'])], ['v'=>$r['ad']], ['v'=>$r['marka']], ['v'=>$r['model']],
-            ['v'=>$r['seri_no']], ['v'=>it_durumAd($r['durum'])], ['v'=>$r['zimmetli']], ['v'=>$r['departman']], ['v'=>$r['lokasyon']],
+            ['v'=>$r['envanter_no']], ['v'=>$r['varlik_kodu'] ?? ''], ['v'=>it_kategoriAd($r['kategori'])], ['v'=>$r['ad']], ['v'=>$r['marka']], ['v'=>$r['model']],
+            ['v'=>$r['seri_no']], ['v'=>$r['sasi_no'] ?? ''], ['v'=>$r['imei'] ?? ''], ['v'=>it_durumAd($r['durum'])], ['v'=>$r['zimmetli']], ['v'=>$r['departman']], ['v'=>$r['lokasyon']],
             ['v'=>$r['zimmet_tarihi'],'t'=>'date'], ['v'=>$r['alis_tarihi'],'t'=>'date'], ['v'=>$r['garanti_bitis'],'t'=>'date'],
             ['v'=>(float)$r['fiyat'],'t'=>'number'], ['v'=>$r['tedarikci']], ['v'=>$r['fatura_no']], ['v'=>$r['ip_adresi']],
             ['v'=>$r['mac_adresi']], ['v'=>$r['isletim_sistemi']], ['v'=>$r['ozellikler']], ['v'=>$r['lisans_adet'],'t'=>'number'], ['v'=>$r['notlar']],

@@ -29,7 +29,8 @@ if ($duzenleme ? !yetki_var('duzenle') : !yetki_var('giris')) {
 }
 
 $error = '';
-$v = $c ?: ['envanter_no'=>'', 'kategori'=>'laptop', 'ad'=>'', 'marka'=>'', 'model'=>'', 'seri_no'=>'', 'sirket'=>'', 'durum'=>'depoda',
+$v = $c ?: ['envanter_no'=>'', 'kategori'=>'laptop', 'ad'=>'', 'marka'=>'', 'model'=>'', 'seri_no'=>'',
+            'varlik_kodu'=>'', 'sasi_no'=>'', 'imei'=>'', 'sirket'=>'', 'durum'=>'depoda',
             'personel_id'=>'', 'zimmetli'=>'', 'departman'=>'', 'lokasyon_id'=>'', 'lokasyon'=>'', 'zimmet_tarihi'=>'', 'alis_tarihi'=>'', 'garanti_bitis'=>'',
             'fiyat'=>'', 'tedarikci'=>'', 'fatura_no'=>'', 'ip_adresi'=>'', 'mac_adresi'=>'', 'isletim_sistemi'=>'',
             'ozellikler'=>'', 'lisans_anahtari'=>'', 'lisans_adet'=>'', 'notlar'=>'']
@@ -44,6 +45,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'sirket'          => $al('sirket', 120),
         'model'           => $al('model', 120),
         'seri_no'         => $al('seri_no', 120),
+        // Kimlik alanları kategoriden BAĞIMSIZ: kurumsal envanterde her cihazın IFS "Nesne No"su,
+        // ikinci bir seri (şasi / servis etiketi) ve giderek her cihazda bir IMEI'si olabiliyor.
+        'varlik_kodu'     => $al('varlik_kodu', 60),
+        'sasi_no'         => $al('sasi_no', 120),
+        'imei'            => $al('imei', 32),
         'durum'           => isset(IT_DURUM[$_POST['durum'] ?? '']) ? $_POST['durum'] : 'depoda',
         'personel_id'     => (int)($_POST['personel_id'] ?? 0) ?: null,
         'zimmetli'        => $al('zimmetli', 120),
@@ -82,6 +88,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!yetki_var('duzenle') || (trim((string)($_POST['yonetim_sifre'] ?? '')) === '' && $duzenleme && isset($gorunen['yonetim_sifre'])))
             $y['yonetim_sifre'] = $c['yonetim_sifre'] ?? null;
     }
+    // Serbest "Özellikler" metni boşsa donanım künyesinden özet üretilir (liste/Excel/tutanak için)
+    if (!$y['ozellikler']) { $ozet = it_ozellik_ozet($y); if ($ozet !== '') $y['ozellikler'] = $ozet; }
     it_cihaz_bag_esitle($pdoIt, $y);   // personel seçildiyse zimmetli/departman, lokasyon seçildiyse yol metni dolar
     // Zimmetli kişi doluysa durum otomatik "kullanımda", boşsa "kullanımda" olamaz
     if ($y['zimmetli'] && in_array($y['durum'], ['depoda'], true)) $y['durum'] = 'aktif';
@@ -197,6 +205,17 @@ $tv = fn($k) => h($v[$k] ?? '');
       <div class="col-md-2"><label class="form-label">Seri No</label><input name="seri_no" class="form-control font-monospace" value="<?= $tv('seri_no') ?>" maxlength="120"></div>
       <div class="col-md-3"><label class="form-label">Şirket</label><input name="sirket" list="dl_sirket" class="form-control" value="<?= $tv('sirket') ?>" maxlength="120" placeholder="ERN Holding / ERN Taahhüt…"><?= $dl('sirket') ?></div>
 
+      <?php /* Kimlik alanları: kurumsal envanterin (IFS) nesne kodu, ikinci seri ve IMEI — her kategoride görünür */ ?>
+      <div class="col-12"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-upc-scan me-1"></i>KİMLİK KODLARI
+        <span class="fw-normal">— envanter no yanında cihazı bulmayı sağlayan numaralar; hepsi aramada taranır</span></div></div>
+      <div class="col-md-4"><label class="form-label">Varlık / Nesne No <span class="text-muted small">(IFS)</span></label>
+        <input name="varlik_kodu" class="form-control font-monospace" value="<?= $tv('varlik_kodu') ?>" maxlength="60" placeholder="FRM-0002-82026-2552600167">
+        <div class="form-text">Kurumsal envanterdeki demirbaş kodu — Excel aktarımında eşleşme bu koddan yapılır.</div></div>
+      <div class="col-md-4"><label class="form-label">Şasi No / 2. Seri No</label>
+        <input name="sasi_no" class="form-control font-monospace" value="<?= $tv('sasi_no') ?>" maxlength="120" placeholder="servis etiketi / şasi"></div>
+      <div class="col-md-4"><label class="form-label">IMEI</label>
+        <input name="imei" class="form-control font-monospace" value="<?= $tv('imei') ?>" maxlength="32" placeholder="356938035643809"></div>
+
       <div class="col-12"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-person-check me-1"></i>ZİMMET</div></div>
       <div class="col-md-4"><label class="form-label">Zimmetli Personel</label>
         <select name="personel_id" id="personel_id" class="form-select"><?= it_personel_options($pdoIt, (int)($v['personel_id'] ?? 0), !empty($v['personel_id'])) ?></select>
@@ -219,10 +238,12 @@ $tv = fn($k) => h($v[$k] ?? '');
       <div class="col-md-3 teknik"><label class="form-label">IP Adresi</label><input name="ip_adresi" class="form-control font-monospace" value="<?= $tv('ip_adresi') ?>" maxlength="45"></div>
       <div class="col-md-3 teknik"><label class="form-label">MAC Adresi</label><input name="mac_adresi" class="form-control font-monospace" value="<?= $tv('mac_adresi') ?>" maxlength="40"></div>
       <div class="col-md-3 teknik"><label class="form-label">İşletim Sistemi</label><input name="isletim_sistemi" class="form-control" value="<?= $tv('isletim_sistemi') ?>" maxlength="80" placeholder="Windows 11 Pro"></div>
-      <div class="col-md-3 teknik"><label class="form-label">Özellikler</label><input name="ozellikler" class="form-control" value="<?= $tv('ozellikler') ?>" maxlength="255" placeholder="i7 / 16 GB / 512 SSD"></div>
+      <div class="col-md-3 teknik"><label class="form-label">Özellik özeti</label><input name="ozellikler" class="form-control" value="<?= $tv('ozellikler') ?>" maxlength="255" placeholder="boş bırakılırsa künyeden üretilir">
+        <div class="form-text">Listelerde ve Excel'de görünen kısa satır.</div></div>
 
       <?php /* Kategoriye özel alanlar: her biri kendi kategorilerinde görünür (JS ile), diğerlerinde gizlenir */ ?>
-      <div class="col-12 ekalan"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-sliders me-1"></i>CİHAZ TİPİNE ÖZEL</div></div>
+      <div class="col-12 ekalan"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-sliders me-1"></i>CİHAZ TİPİNE ÖZEL / DONANIM KÜNYESİ
+        <span class="fw-normal">— zimmet tutanağındaki "Özellikler" bloğu buradan doldurulur</span></div></div>
       <?php foreach (IT_EK_ALAN as $__ea => [$__eEt, $__eKat, $__eTip, $__eIp]):
           if ($__eTip === 'sifre' && !yetki_var('duzenle')) continue;   // şifreyi yalnız yetkili görür/yazar ?>
       <div class="col-md-3 ekalan ek-<?= h($__ea) ?>" data-kat="<?= h(implode(',', $__eKat)) ?>">

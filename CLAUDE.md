@@ -423,6 +423,37 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   ve açıklama kutusu tutanak/protokol no ister. Envanterden düşmüş cihazda işlem menüsü yalnız "Not ekle"
   bırakır. `cim_durum()` Excel'den "KAYIP/ÇALINTI/ZAYİ" → kayip, "HİBE/DEVİR" → hibe okur; personel zimmet
   geçmişi ve Tanımlar › Durumlar sekmesi yeni durumları sayımlarıyla listeler.
+  **KİMLİK KODLARI + DONANIM KÜNYESİ + HIZLI ARAMA (2026-09-10)** — kaynak: kurumsal **DEMİRBAŞ ZİMMET FORMU**
+  (YILDIZLAR GRUP çıktısı, PDF). Sistemdeki cihaz kartı o formun yanında eksik kalıyordu; formdaki her alan
+  karşılandı.
+  • **Kimlik kodları kategoriden BAĞIMSIZ** ve cihaz formunda ayrı bir blokta: **varlik_kodu** = formdaki
+  *Nesne No* (IFS demirbaş kodu, `FRM-0002-82026-2552600167`) — DB'de vardı ama **formda yoktu**, artık
+  girilebiliyor · **sasi_no** = *Şasi No / Seri No*'nun ikinci yarısı — eskiden içe aktarmada seri boşsa seriye
+  taşınıp doluysa `ozellikler` metnine gömülüp KAYBOLUYORDU, artık kendi kolonunda (seri boşken seriye de
+  kopyalanır ki aramada bulunsun) · **imei** — eskiden yalnız telefon/tablet/superbox'ta görünüyordu, "artık her
+  cihazda IMEI var" denince çekirdeğe alındı. Üçü de `cihaz_detay`'da ve aramada.
+  • **Donanım künyesi** (IT_EK_ALAN, yeni kolonlar): `islemci` · `ram` · `ekran_karti` · `disk` · `anakart` ·
+  `ekran_boyutu` · `kiralik_firma` (+ mevcut `kapasite`). Serbest metin `ozellikler` KALDI ama artık **özet**
+  alanı: boş bırakılırsa `it_ozellik_ozet()` künyeden üretir (liste/Excel/tutanak satırı bundan beslenir).
+  • **Cihaz içe aktarma** artık donanım sütunlarını ayrı alanlara yazar. `CIM_COKLU` = birden çok sütundan
+  beslenebilen alanlar (ozellik · notlar · islemci · ram · ekran_karti · disk): "Islemcı Marka" + "Islemcı Model"
+  tek alanda " · " ile birleşir. ⚠ ozellik/notlar "Başlık: değer" olarak birikir **ama sütun başlığı zaten
+  genelse** (`CIM_GENEL_BASLIK`: NOT/AÇIKLAMA/TEKNİK ÖZELLİK…) önek EKLENMEZ — aksi halde `?sablon=mevcut`
+  round-trip'inde not her turda "Not: <eski not>" diye kendi üstüne sarılıyordu. Şablon 21 → **31 sütun**.
+  Gerçek dosyayla doğrulandı: 189 satır → 0 yeni / 142 güncellenen (künye doldu) / 47 değişmeyen; 189 IFS nesne
+  no, 125 şasi no, 87 işlemci kaydı; `?sablon=mevcut` round-trip 198 satır → **0 yeni / 0 güncellenen /
+  198 değişmeyen**, eşleşmeyen sütun yok.
+  • **ZİMMET TUTANAĞI kurumsal forma hizalandı** (`zt_kunye()`): cihaz tablosunun altına her cihaz için
+  **ÖZELLİKLER** bloğu (Nesne Açıklama · Nesne Türü/Kategori + Marka · Model · Şasi/Seri No · Kullanım Durumu ·
+  Zimmetlenen Personel · Lokasyon · Kiralanan Firma · Kapasite · İşlemci · RAM · Ekran Kartı · HDD · Anakart ·
+  Ekran Boyutu · IMEI · IP/MAC · İşletim Sistemi · Cihaz Kodu — **yalnız DOLU alanlar**, ikişerli sütun) +
+  **KULLANICI BİLGİLERİ** bloğu (ad soyad · sicil · mail · telefon · birim/unvan · lokasyon).
+  • **Ana ekranda HIZLI ARAMA** (`it/index.php` en üstte, autofocus): tek kutudan seri no · IFS nesne no · IMEI ·
+  envanter no · MAC · IP · dahili · ad soyad → `varliklar.php`'ye gider; sonuç satırında cihaz + **kimde** +
+  **hangi lokasyonda** + **durum** birlikte görünür. Merkezi izlemede Seri No sütunu altında şasi ve IFS kodu da
+  yazar (aranan numarayı göz teyit etsin), Teknik sütununa donanım künyesi eklendi, Excel 26 → **34 sütun**.
+  Gerçek veriyle doğrulandı: IFS kodu · şasi · envanter no · seri no aramalarının her biri tek sonuç döndürüp
+  kişi + lokasyon + durumu gösteriyor.
   **TANIMLAR EKRANI `it/tanimlar.php` (2026-09-09)** — tek sayfa, sekmeli (Snipe-IT'deki "tanım tablosu seç"
   düzeni): **Lokasyonlar · Kategoriler · Üreticiler · Modeller · Tedarikçiler · Şirketler · Durumlar · Personel**.
   • *Lokasyonlar* = `it_lokasyonlar` (hiyerarşi korunur) + yeni **sehir / adres / renk** kolonları; satırda ad
