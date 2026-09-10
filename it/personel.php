@@ -67,11 +67,15 @@ if ($birim !== '') { $w[] = "p.birim=?"; $p[] = $birim; }
 if ($q !== '') { $w[] = "(p.ad LIKE ? OR p.soyad LIKE ? OR p.sicil_no LIKE ? OR p.unvan LIKE ? OR p.telefon LIKE ? OR p.eposta LIKE ?)"; for ($i = 0; $i < 6; $i++) $p[] = "%$q%"; }
 $wsql = $w ? ' WHERE ' . implode(' AND ', $w) : '';
 
-$sirala = ['ad' => 'p.soyad, p.ad', 'sicil' => 'p.sicil_no', 'unvan' => 'p.unvan', 'birim' => 'p.birim', 'giris' => 'p.ise_giris', 'cikis' => 'p.isten_cikis', 'cihaz' => 'cihaz'];
+// Her sütun sıralanabilir (cihaz listesindeki desen); lokasyon adı SELECT'teki alt sorgudan gelir
+$sirala = ['ad' => 'p.soyad, p.ad', 'sicil' => 'p.sicil_no', 'unvan' => 'p.unvan', 'birim' => 'p.birim',
+           'lokasyon' => 'lok_ad', 'telefon' => 'p.telefon',
+           'giris' => 'p.ise_giris', 'cikis' => 'p.isten_cikis', 'cihaz' => 'cihaz'];
 $skA = array_key_exists($_GET['sk'] ?? '', $sirala) ? $_GET['sk'] : 'ad';
 $yon = ($_GET['yon'] ?? '') === 'desc' ? 'DESC' : 'ASC';
 
-$sql = "SELECT p.*, (SELECT COUNT(*) FROM it_cihazlar c WHERE c.personel_id=p.id AND " . it_envanterde('c') . ") cihaz,
+$sql = "SELECT p.*, (SELECT l.ad FROM it_lokasyonlar l WHERE l.id=p.lokasyon_id) lok_ad,
+               (SELECT COUNT(*) FROM it_cihazlar c WHERE c.personel_id=p.id AND " . it_envanterde('c') . ") cihaz,
                (SELECT COALESCE(SUM(c.fiyat),0) FROM it_cihazlar c WHERE c.personel_id=p.id AND " . it_envanterde('c') . ") mali
         FROM it_personel p $wsql ORDER BY {$sirala[$skA]} $yon, p.id";
 $st = $pdoIt->prepare($sql); $st->execute($p);
@@ -80,12 +84,14 @@ $liste = $st->fetchAll();
 if (($_GET['export'] ?? '') === 'xlsx') {
     require_once __DIR__ . '/../includes/XlsxWriter.php';
     $xl = new \XlsxWriter('Personel');
-    $xl->header(['Sicil No','Ad','Soyad','Unvan','Birim','Lokasyon','Telefon','E-posta','İşe Giriş','İşten Çıkış','Durum','Zimmetli Cihaz','Zimmet Değeri (TL)','Notlar']);
-    foreach ($liste as $r) $xl->row([
+    $__mg = it_mali_goster();
+    $xl->header(array_merge(['Sicil No','Ad','Soyad','Unvan','Birim','Lokasyon','Telefon','E-posta','İşe Giriş','İşten Çıkış','Durum','Zimmetli Cihaz'],
+                            $__mg ? ['Zimmet Değeri (TL)'] : [], ['Notlar']));
+    foreach ($liste as $r) $xl->row(array_merge([
         ['v'=>$r['sicil_no']], ['v'=>$r['ad']], ['v'=>$r['soyad']], ['v'=>$r['unvan']], ['v'=>$r['birim']], ['v'=>it_lokasyon_yol($pdoIt, (int)$r['lokasyon_id'])],
         ['v'=>$r['telefon']], ['v'=>$r['eposta']], ['v'=>$r['ise_giris'],'t'=>'date'], ['v'=>$r['isten_cikis'],'t'=>'date'],
-        ['v'=>it_personel_aktif($r) ? 'Çalışıyor' : 'Ayrıldı'], ['v'=>(int)$r['cihaz'],'t'=>'number'], ['v'=>(float)$r['mali'],'t'=>'number'], ['v'=>$r['notlar']],
-    ]);
+        ['v'=>it_personel_aktif($r) ? 'Çalışıyor' : 'Ayrıldı'], ['v'=>(int)$r['cihaz'],'t'=>'number'],
+    ], $__mg ? [['v'=>(float)$r['mali'],'t'=>'number']] : [], [['v'=>$r['notlar']]]));
     $xl->download('it_personel_' . date('Ymd_Hi') . '.xlsx');
 }
 
@@ -212,7 +218,8 @@ require_once __DIR__ . '/../includes/header.php';
     <th><a href="<?= h($srtUrl('ad')) ?>" class="text-decoration-none text-dark">Ad Soyad <?= $srtIk('ad') ?></a></th>
     <th><a href="<?= h($srtUrl('unvan')) ?>" class="text-decoration-none text-dark">Unvan <?= $srtIk('unvan') ?></a></th>
     <th><a href="<?= h($srtUrl('birim')) ?>" class="text-decoration-none text-dark">Birim <?= $srtIk('birim') ?></a></th>
-    <th>Lokasyon</th><th>Telefon</th>
+    <th><a href="<?= h($srtUrl('lokasyon')) ?>" class="text-decoration-none text-dark">Lokasyon <?= $srtIk('lokasyon') ?></a></th>
+    <th><a href="<?= h($srtUrl('telefon')) ?>" class="text-decoration-none text-dark">Telefon <?= $srtIk('telefon') ?></a></th>
     <th><a href="<?= h($srtUrl('giris')) ?>" class="text-decoration-none text-dark">İşe Giriş <?= $srtIk('giris') ?></a></th>
     <th><a href="<?= h($srtUrl('cikis')) ?>" class="text-decoration-none text-dark">Çıkış <?= $srtIk('cikis') ?></a></th>
     <th class="text-end"><a href="<?= h($srtUrl('cihaz')) ?>" class="text-decoration-none text-dark">Zimmet <?= $srtIk('cihaz') ?></a></th>
@@ -229,7 +236,7 @@ require_once __DIR__ . '/../includes/header.php';
       <td class="small text-nowrap"><?= h($r['telefon'] ?: '—') ?></td>
       <td class="small text-nowrap"><?= $r['ise_giris'] ? format_date($r['ise_giris']) : '—' ?></td>
       <td class="small text-nowrap"><?= $r['isten_cikis'] ? format_date($r['isten_cikis']) : '—' ?></td>
-      <td class="text-end"><?php if ((int)$r['cihaz']): ?><span class="badge bg-<?= $risk ? 'danger' : 'primary' ?>"><?= (int)$r['cihaz'] ?> cihaz</span><div class="small text-muted"><?= $f2($r['mali']) ?> TL</div><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
+      <td class="text-end"><?php if ((int)$r['cihaz']): ?><span class="badge bg-<?= $risk ? 'danger' : 'primary' ?>"><?= (int)$r['cihaz'] ?> cihaz</span><?php if (it_mali_goster()): ?><div class="small text-muted"><?= $f2($r['mali']) ?> TL</div><?php endif; ?><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
       <td class="text-end text-nowrap">
         <a href="personel_detay.php?id=<?= (int)$r['id'] ?>" class="btn btn-sm btn-outline-secondary" title="Kart"><i class="bi bi-eye"></i></a>
         <?php if ((int)$r['cihaz']): ?><a href="zimmet_tutanak.php?personel_id=<?= (int)$r['id'] ?>" target="_blank" class="btn btn-sm btn-outline-primary" title="Toplu zimmet tutanağı"><i class="bi bi-file-earmark-text"></i></a><?php endif; ?>

@@ -83,7 +83,7 @@ $bilgi = fn($e, $v) => '<div class="col-sm-6 col-lg-4"><div class="small text-mu
         <?= $bilgi('İşe Giriş', $p['ise_giris'] ? format_date($p['ise_giris']) : null) ?>
         <?= $bilgi('İşten Çıkış', $p['isten_cikis'] ? format_date($p['isten_cikis']) : null) ?>
         <?= $bilgi('Zimmetli cihaz', count($cihazlar) . ' adet') ?>
-        <?= $bilgi('Zimmet değeri', $f2($mali) . ' TL') ?>
+        <?= it_mali_goster() ? $bilgi('Zimmet değeri', $f2($mali) . ' TL') : '' ?>
     </div><?php if ($p['notlar']): ?><div class="alert alert-light border mt-3 mb-0" style="white-space:pre-wrap"><?= h($p['notlar']) ?></div><?php endif; ?></div></div>
 
     <div class="card border-0 shadow-sm mb-3">
@@ -95,13 +95,15 @@ $bilgi = fn($e, $v) => '<div class="col-sm-6 col-lg-4"><div class="small text-mu
         <?php endif; ?>
       </div>
       <div class="table-responsive"><table class="table table-sm table-hover mb-0" style="font-size:.85rem">
-        <thead class="table-light"><tr><th>Envanter No</th><th>Cihaz</th><th>Kategori</th><th>Seri No</th><th>Zimmet Tarihi</th><th>Durum</th><th class="text-end">Değer</th><th></th></tr></thead>
+        <thead class="table-light"><tr><th>Cihaz Kodu</th><th>IFS Seri Nesne No</th><th>Cihaz</th><th>Kategori</th><th>Seri No</th><th>Zimmet Tarihi</th><th>Durum</th><?php if (it_mali_goster()): ?><th class="text-end">Değer</th><?php endif; ?><th></th></tr></thead>
         <tbody>
-        <?php if (!$cihazlar): ?><tr><td colspan="8" class="text-center text-muted py-3">Zimmetli cihaz yok.</td></tr><?php endif; ?>
-        <?php foreach ($cihazlar as $c): ?>
-          <tr><td class="font-monospace"><a href="cihaz_detay.php?id=<?= (int)$c['id'] ?>" class="text-decoration-none"><?= h($c['envanter_no']) ?></a></td><td><?= h($c['ad']) ?><div class="small text-muted"><?= h(trim(($c['marka'] ?? '') . ' ' . ($c['model'] ?? ''))) ?></div></td>
+        <?php if (!$cihazlar): ?><tr><td colspan="<?= it_mali_goster() ? 9 : 8 ?>" class="text-center text-muted py-3">Zimmetli cihaz yok.</td></tr><?php endif; ?>
+        <?php foreach ($cihazlar as $c): $__k = trim((string)($c['cihaz_kodu'] ?? '')); ?>
+          <tr><td class="font-monospace"><a href="cihaz_detay.php?id=<?= (int)$c['id'] ?>" class="text-decoration-none"><?= h($__k !== '' ? $__k : $c['envanter_no']) ?></a></td>
+              <td class="font-monospace small text-muted"><?= h(($c['varlik_kodu'] ?? '') !== '' ? $c['varlik_kodu'] : '—') ?></td>
+              <td><a href="cihaz_detay.php?id=<?= (int)$c['id'] ?>" class="text-decoration-none"><?= h($c['ad']) ?></a><div class="small text-muted"><?= h(trim(($c['marka'] ?? '') . ' ' . ($c['model'] ?? ''))) ?></div></td>
               <td><?= h(it_kategoriAd($c['kategori'])) ?></td><td class="font-monospace small"><?= h($c['seri_no'] ?: '—') ?></td><td><?= $c['zimmet_tarihi'] ? format_date($c['zimmet_tarihi']) : '—' ?></td>
-              <td><?= it_durumBadge($c['durum']) ?></td><td class="text-end"><?= $c['fiyat'] !== null ? $f2($c['fiyat']) : '—' ?></td>
+              <td><?= it_durumBadge($c['durum']) ?></td><?php if (it_mali_goster()): ?><td class="text-end"><?= $c['fiyat'] !== null ? $f2($c['fiyat']) : '—' ?></td><?php endif; ?>
               <td class="text-end"><a href="zimmet_tutanak.php?id=<?= (int)$c['id'] ?>" target="_blank" class="btn btn-sm btn-outline-secondary py-0" title="Tutanak"><i class="bi bi-file-earmark-text"></i></a></td></tr>
         <?php endforeach; ?>
         </tbody></table></div>

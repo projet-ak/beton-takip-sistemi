@@ -29,9 +29,10 @@ $oz->execute($par);
 $oz = $oz->fetch() ?: ['adet'=>0,'mali'=>0,'aktif'=>0,'kisi'=>0];
 
 $maliGoster = it_mali_goster();      // garanti + fiyat gösterimi (varsayılan KAPALI)
-$sirala = ['no'=>'envanter_no', 'kod'=>'cihaz_kodu, envanter_no', 'ifs'=>'varlik_kodu, envanter_no', 'ad'=>'ad', 'kategori'=>'kategori, ad', 'durum'=>'durum, ad', 'zimmetli'=>'zimmetli, ad',
+$sirala = ['kod'=>'cihaz_kodu, envanter_no', 'ifs'=>'varlik_kodu, envanter_no', 'no'=>'envanter_no',
+           'ad'=>'ad', 'kategori'=>'kategori, ad', 'seri'=>'seri_no, ad', 'durum'=>'durum, ad', 'zimmetli'=>'zimmetli, ad',
            'lokasyon'=>'lokasyon, ad', 'garanti'=>'garanti_bitis', 'fiyat'=>'fiyat', 'alis'=>'alis_tarihi', 'guncel'=>'updated_at'];
-$skAnahtar = array_key_exists($_GET['sk'] ?? '', $sirala) ? $_GET['sk'] : 'no';
+$skAnahtar = array_key_exists($_GET['sk'] ?? '', $sirala) ? $_GET['sk'] : 'kod';
 $sk  = $sirala[$skAnahtar];
 $yon = ($_GET['yon'] ?? '') === 'desc' ? 'DESC' : 'ASC';
 
@@ -145,12 +146,11 @@ require_once __DIR__ . '/../includes/header.php';
       <thead class="table-light">
         <tr>
           <th style="width:52px"></th>
-          <th><a href="<?= h($srtUrl('no')) ?>" class="text-decoration-none text-dark">Envanter No <?= $srtIk('no') ?></a></th>
           <th><a href="<?= h($srtUrl('kod')) ?>" class="text-decoration-none text-dark">Cihaz Kodu <?= $srtIk('kod') ?></a></th>
           <th><a href="<?= h($srtUrl('ifs')) ?>" class="text-decoration-none text-dark">IFS Seri Nesne No <?= $srtIk('ifs') ?></a></th>
           <th><a href="<?= h($srtUrl('ad')) ?>" class="text-decoration-none text-dark">Cihaz <?= $srtIk('ad') ?></a></th>
           <th><a href="<?= h($srtUrl('kategori')) ?>" class="text-decoration-none text-dark">Kategori <?= $srtIk('kategori') ?></a></th>
-          <th>Seri No</th>
+          <th><a href="<?= h($srtUrl('seri')) ?>" class="text-decoration-none text-dark">Seri No <?= $srtIk('seri') ?></a></th>
           <th><a href="<?= h($srtUrl('durum')) ?>" class="text-decoration-none text-dark">Durum <?= $srtIk('durum') ?></a></th>
           <th><a href="<?= h($srtUrl('zimmetli')) ?>" class="text-decoration-none text-dark">Zimmetli <?= $srtIk('zimmetli') ?></a></th>
           <th><a href="<?= h($srtUrl('lokasyon')) ?>" class="text-decoration-none text-dark">Lokasyon <?= $srtIk('lokasyon') ?></a></th>
@@ -164,7 +164,7 @@ require_once __DIR__ . '/../includes/header.php';
       </thead>
       <tbody>
       <?php if (!$liste): ?>
-        <tr><td colspan="<?= $maliGoster ? 14 : 12 ?>" class="text-center text-muted py-4">Kayıt yok.<?php if ($yazabilir && !$etkin): ?> <a href="cihaz_form.php">İlk cihazı ekleyin</a>.<?php endif; ?></td></tr>
+        <tr><td colspan="<?= $maliGoster ? 13 : 11 ?>" class="text-center text-muted py-4">Kayıt yok.<?php if ($yazabilir && !$etkin): ?> <a href="cihaz_form.php">İlk cihazı ekleyin</a>.<?php endif; ?></td></tr>
       <?php endif; ?>
       <?php foreach ($liste as $r): $gk = it_garanti_kalan($r['garanti_bitis']); ?>
         <tr class="<?= it_durum_dustu($r['durum']) ? 'text-muted' : '' ?>">
@@ -175,10 +175,18 @@ require_once __DIR__ . '/../includes/header.php';
               <div class="d-flex align-items-center justify-content-center bg-light rounded" style="width:44px;height:36px"><i class="bi <?= h(it_kategoriIkon($r['kategori'])) ?> text-muted"></i></div>
             <?php endif; ?>
           </td>
-          <td><a href="cihaz_detay.php?id=<?= (int)$r['id'] ?>" class="font-monospace fw-semibold text-decoration-none"><?= h($r['envanter_no']) ?></a></td>
-          <td class="font-monospace small"><?= h(($r['cihaz_kodu'] ?? '') !== '' ? $r['cihaz_kodu'] : '—') ?></td>
-          <td class="font-monospace small text-muted" style="max-width:190px"><?= h(($r['varlik_kodu'] ?? '') !== '' ? $r['varlik_kodu'] : '—') ?></td>
-          <td><div class="fw-semibold"><?= h($r['ad']) ?></div><div class="small text-muted"><?= h(trim(($r['marka'] ?? '') . ' ' . ($r['model'] ?? ''))) ?></div></td>
+          <?php /* Envanter no sütunu kaldırıldı (karışıklık yapıyordu); cihaz kartına giriş artık
+                    CİHAZ KODU · IFS NO · CİHAZ ADI üzerinden. Kod boşsa hücrede envanter no gösterilir
+                    ki satırın her zaman tıklanabilir bir kimliği olsun. */ ?>
+          <?php $__kod = trim((string)($r['cihaz_kodu'] ?? '')); ?>
+          <td><a href="cihaz_detay.php?id=<?= (int)$r['id'] ?>" class="font-monospace fw-semibold text-decoration-none"
+                 title="<?= $__kod === '' ? 'envanter no' : 'cihaz kodu (demirbaş etiketi)' ?>"><?= h($__kod !== '' ? $__kod : $r['envanter_no']) ?></a></td>
+          <td class="font-monospace small" style="max-width:190px">
+            <?= ($r['varlik_kodu'] ?? '') !== ''
+                ? '<a href="cihaz_detay.php?id=' . (int)$r['id'] . '" class="text-decoration-none text-muted" title="IFS seri nesne no">' . h($r['varlik_kodu']) . '</a>'
+                : '<span class="text-muted">—</span>' ?></td>
+          <td><a href="cihaz_detay.php?id=<?= (int)$r['id'] ?>" class="fw-semibold text-decoration-none"><?= h($r['ad']) ?></a>
+              <div class="small text-muted"><?= h(trim(($r['marka'] ?? '') . ' ' . ($r['model'] ?? ''))) ?></div></td>
           <td><i class="bi <?= h(it_kategoriIkon($r['kategori'])) ?> me-1 text-muted"></i><?= h(it_kategoriAd($r['kategori'])) ?></td>
           <td class="font-monospace small"><?= h($r['seri_no'] ?: '—') ?></td>
           <td><?= it_durumBadge($r['durum']) ?></td>

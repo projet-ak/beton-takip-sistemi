@@ -505,6 +505,13 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   siler) ve her cihazın yaşam günlüğüne not düşülür. `cihaz_detay`'da ayrı "İmzalı Zimmet Tutanağı" kutusu
   (yeşil/sarı durum bandı) + belge kartında ✓ ikonu; `cihazlar.php`'de **Evrak sütunu**: yeşil = imzalı tutanak var,
   gri = başka belge var, sarı ⚠ = zimmetli ama imzalı evrak yok.
+  • **LİSTE SÜTUNLARI (2026-09-10, kullanıcı isteği)**: cihaz listesinden **Envanter No sütunu KALDIRILDI**
+  (üç kimlik yan yana karışıklık yapıyordu; alan DB'de ve Excel'de duruyor). Cihaz kartına giriş artık
+  **Cihaz Kodu · IFS Seri Nesne No · Cihaz adı** üzerinden — cihaz kodu boşsa o hücrede envanter no gösterilir
+  ki satırın her zaman tıklanabilir bir kimliği olsun. **Her sütun sıralanabilir** (Seri No da eklendi),
+  varsayılan sıralama `kod`. Aynı desen **personel** ekranına da uygulandı: Lokasyon (`lok_ad` alt sorgusu) ve
+  Telefon sütunları sıralanabilir oldu; personel kartındaki cihaz tablosu da Cihaz Kodu + IFS No gösterir.
+  Zimmet değeri / Değer sütunları `it_mali_goster()` ile gizlenir (liste, Excel, personel kartı).
   • Şablon 31 → **32 sütun** (Envanter No · Cihaz Kodu · IFS Seri Nesne No …). Mükerrer merkezi (`MK_KURAL`)
   it_cihazlar anahtarlarına `cihaz_kodu` eklendi. Gerçek dosyayla doğrulandı: **412 satır → 251 yeni /
   159 güncellenen / 2 atlanan** (1 boş satır + 1 kimlik çakışması), **2. yükleme 0 yeni / 0 güncellenen /
