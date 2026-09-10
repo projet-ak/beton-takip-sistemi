@@ -70,22 +70,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 it_hareket_ekle($pdoIt, $id, 'ariza', $kisi, $acik ?: 'Arıza bildirildi', $tarih);
                 flash('success', 'Arıza kaydı eklendi.');
                 break;
-            // TRANSFER — cihaz başka projeye/lokasyona gönderildi ama teslim alındığı teyit edilmedi.
-            // Envanterden DÜŞMEZ (hâlâ bizim), ama zimmet düşer ve depodaki kullanılabilir stok sayılmaz.
+            // TRANSFER — cihaz bir PROJEDEN İHTİYAÇ DUYAN BAŞKA PROJEYE gönderilir (Batı Yakası → Hatay gibi).
+            // Yolda geçen süre takip edilebilsin diye ayrı bir durumdur: envanterden DÜŞMEZ (hâlâ bizim),
+            // zimmet düşer, depodaki kullanılabilir stok sayılmaz. Günlüğe **nereden → nereye** yazılır.
             case 'transfer':
-                $hedef = (int)($_POST['hedef_lokasyon_id'] ?? 0) ?: null;
+                $hedef   = (int)($_POST['hedef_lokasyon_id'] ?? 0) ?: null;
                 $hedefAd = $hedef ? it_lokasyon_yol($pdoIt, $hedef) : '';
+                $kaynakAd = $c['lokasyon_id'] ? it_lokasyon_yol($pdoIt, (int)$c['lokasyon_id']) : (string)($c['lokasyon'] ?? '');
+                $isteyen = mb_substr(trim((string)($_POST['isteyen'] ?? '')), 0, 120);
                 $pdoIt->prepare("UPDATE it_cihazlar SET durum='transfer', personel_id=NULL, zimmetli=NULL, zimmet_tarihi=NULL"
                                 . ($hedef ? ", lokasyon_id=?, lokasyon=?" : "") . " WHERE id=?")
                       ->execute($hedef ? [$hedef, $hedefAd, $id] : [$id]);
-                it_hareket_ekle($pdoIt, $id, 'transfer', $kisi,
-                    ($acik ?: 'Transfere çıkarıldı') . ($hedefAd ? ' → ' . $hedefAd : ''), $tarih);
-                flash('success', 'Cihaz TRANSFER (yolda) olarak işaretlendi' . ($hedefAd ? ' — hedef: ' . $hedefAd : '') . '.');
+                // ⚠ Biçim SABİT: "Sevk: <kaynak> → <hedef> · gönderen: … · isteyen/teslim alacak: … · not"
+                // Transfer tutanağı bu satırı ayrıştırır (`it_transfer_son` de 'Sevk:' önekiyle bulur).
+                $__met = 'Sevk: ' . ($kaynakAd ?: '—') . ' → ' . ($hedefAd ?: '—')
+                       . ($kisi ? ' · gönderen: ' . $kisi : '')
+                       . ($isteyen ? ' · isteyen/teslim alacak: ' . $isteyen : '')
+                       . ($acik ? ' · ' . $acik : '');
+                it_hareket_ekle($pdoIt, $id, 'transfer', $kisi ?: null, $__met, $tarih);
+                flash('success', 'Cihaz TRANSFER (yolda): ' . ($kaynakAd ?: '—') . ' → ' . ($hedefAd ?: '—')
+                                 . '. Transfer tutanağını yazdırıp imzalatabilirsiniz.');
                 break;
             case 'transfer_bitti':
-                $pdoIt->prepare("UPDATE it_cihazlar SET durum='depoda' WHERE id=?")->execute([$id]);
-                it_hareket_ekle($pdoIt, $id, 'transfer', $kisi, $acik ?: 'Transfer teslim alındı — depoya girdi', $tarih);
-                flash('success', 'Transfer tamamlandı; cihaz depoda.');
+                $hedef2  = (int)($_POST['hedef_lokasyon_id'] ?? 0) ?: null;
+                $hedefAd2 = $hedef2 ? it_lokasyon_yol($pdoIt, $hedef2) : '';
+                $pdoIt->prepare("UPDATE it_cihazlar SET durum='depoda'" . ($hedef2 ? ", lokasyon_id=?, lokasyon=?" : "") . " WHERE id=?")
+                      ->execute($hedef2 ? [$hedef2, $hedefAd2, $id] : [$id]);
+                it_hareket_ekle($pdoIt, $id, 'transfer', $kisi ?: null,
+                    'Transfer teslim alındı — ' . ($hedefAd2 ?: ($c['lokasyon'] ?: 'hedef proje')) . ' deposuna girdi'
+                    . ($kisi ? ' · teslim alan: ' . $kisi : '') . ($acik ? ' · ' . $acik : ''), $tarih);
+                flash('success', 'Transfer tamamlandı; cihaz hedef projenin deposunda.');
                 break;
             // Envanterden düşüren üç işlem aynı kalıptadır: zimmet düşer, kayıt SİLİNMEZ,
             // varsayılan listelerde ve mali değerde görünmez (durum filtresiyle geri gelir).
@@ -161,10 +175,14 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
     <?php if (!empty($c['cihaz_kodu'])): ?><span class="badge bg-light text-dark border font-monospace" title="cihaz kodu (demirbaş etiketi)"><?= h($c['cihaz_kodu']) ?></span><?php endif; ?>
     <?php if (!empty($c['varlik_kodu'])): ?><span class="badge bg-light text-secondary border font-monospace" title="IFS seri nesne no"><?= h($c['varlik_kodu']) ?></span><?php endif; ?>
     <?= it_durumBadge($c['durum']) ?>
+    <?php if ($c['durum'] === 'transfer' && ($__trg = it_transfer_gunleri($pdoIt, [$id])[$id] ?? null) !== null): ?>
+      <span class="badge bg-<?= $__trg > 14 ? 'danger' : 'light text-dark border' ?>" title="son transfer hareketinden bu yana"><?= (int)$__trg ?> gündür yolda</span>
+    <?php endif; ?>
     <?php if ($maliGoster && $gk !== null && $gk < 0): ?><span class="badge bg-light text-danger border">garanti bitti</span>
     <?php elseif ($maliGoster && $gk !== null && $gk <= 60): ?><span class="badge bg-warning text-dark">garanti <?= $gk ?> gün</span><?php endif; ?>
     <div class="ms-auto d-flex gap-2">
         <?php if ($c['zimmetli']): ?><a href="zimmet_tutanak.php?id=<?= $id ?>" target="_blank" class="btn btn-outline-primary btn-sm"><i class="bi bi-file-earmark-text me-1"></i>Zimmet Tutanağı</a><?php endif; ?>
+        <?php if ($c['durum'] === 'transfer'): ?><a href="transfer_tutanak.php?id=<?= $id ?>" target="_blank" class="btn btn-outline-info btn-sm"><i class="bi bi-arrow-left-right me-1"></i>Transfer Tutanağı</a><?php endif; ?>
         <?php if ($duzenleyebilir): ?><a href="cihaz_form.php?id=<?= $id ?>" class="btn btn-primary btn-sm"><i class="bi bi-pencil me-1"></i>Düzenle</a><?php endif; ?>
     </div>
 </div>
@@ -306,9 +324,12 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
           </div>
           <div class="mb-2 zimmet-ek"><select name="personel_id" id="personel_id" class="form-select form-select-sm"><?= it_personel_options($pdoIt, 0) ?></select>
             <div class="form-text">Listede yoksa <a href="personel_form.php" target="_blank">personel ekleyin</a>.</div></div>
-          <div class="mb-2 transfer-ek d-none"><select name="hedef_lokasyon_id" class="form-select form-select-sm">
-            <option value="">Hedef lokasyon (boş = değişmesin)</option><?= it_lokasyon_options($pdoIt, 0, false) ?></select>
-            <div class="form-text">Cihaz "yolda" sayılır; teslim alınınca aynı menüden "Transfer teslim alındı" seçin.</div></div>
+          <div class="mb-2 transfer-ek d-none">
+            <select name="hedef_lokasyon_id" class="form-select form-select-sm mb-2">
+              <option value="">Gönderilecek proje / lokasyon</option><?= it_lokasyon_options($pdoIt, 0, false) ?></select>
+            <input name="isteyen" class="form-control form-control-sm transfer-yeni" placeholder="İsteyen / teslim alacak kişi (hedef projede)">
+            <div class="form-text">Cihaz <strong><?= h($c['lokasyon_id'] ? it_lokasyon_yol($pdoIt, (int)$c['lokasyon_id']) : ($c['lokasyon'] ?: '—')) ?></strong>
+              projesinden çıkar, "yolda" sayılır. Karşı taraf teslim alınca aynı menüden <em>Transfer teslim alındı</em> seçilir.</div></div>
           <div class="mb-2 kisi"><input name="kisi" class="form-control form-control-sm" placeholder="Servis firması / kişi" value=""></div>
           <div class="row g-2 mb-2 zimmet-ek">
             <div class="col-6"><input name="departman" id="departman" class="form-control form-control-sm" placeholder="Departman (boş = kişinin birimi)" value=""></div>
@@ -380,9 +401,11 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
 (function () {
     var t = document.getElementById('tur'); if (!t) return;
     function uygula() {
-        var z = t.value === 'zimmet', tr = t.value === 'transfer';
+        var z = t.value === 'zimmet', tr = t.value === 'transfer', trBit = t.value === 'transfer_bitti';
         document.querySelectorAll('.zimmet-ek').forEach(function (e) { e.classList.toggle('d-none', !z); });
-        document.querySelectorAll('.transfer-ek').forEach(function (e) { e.classList.toggle('d-none', !tr); });
+        // Hedef lokasyon seçimi hem transfere çıkarmada hem teslim almada gerekebilir (yanlış hedef düzeltilir)
+        document.querySelectorAll('.transfer-ek').forEach(function (e) { e.classList.toggle('d-none', !(tr || trBit)); });
+        document.querySelectorAll('.transfer-yeni').forEach(function (e) { e.classList.toggle('d-none', !tr); });
         document.querySelector('.kisi').classList.toggle('d-none', z);
         var k = document.querySelector('.kisi input');
         k.placeholder = { servis: 'Servis firması',

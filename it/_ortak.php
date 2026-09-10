@@ -234,7 +234,7 @@ function it_semasi_kur(PDO $pdo): void
         cihaz_id INT NOT NULL,
         dosya_url VARCHAR(255) NOT NULL,
         ad VARCHAR(255) NULL, mime VARCHAR(80) NULL, boyut INT NULL,
-        tur VARCHAR(20) NOT NULL DEFAULT 'belge' COMMENT 'belge | zimmet (imzalı tutanak)',
+        tur VARCHAR(20) NOT NULL DEFAULT 'belge' COMMENT 'belge | zimmet (imzalı zimmet tutanağı) | transfer (imzalı sevk tutanağı)',
         kullanici VARCHAR(80) NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         KEY ix_cihaz (cihaz_id)
@@ -409,7 +409,7 @@ function it_belge_yukle(PDO $pdo, int $cihazId, array $f, ?string $kullanici = n
     if (!@move_uploaded_file($f['tmp_name'], $dir . '/' . $yeni)) return [false, h($ad) . ': dosya diske yazılamadı.'];
 
     $url = 'uploads/it_envanter/' . $cihazId . '/' . $yeni;
-    $tur = $tur === 'zimmet' ? 'zimmet' : 'belge';
+    $tur = in_array($tur, ['zimmet', 'transfer'], true) ? $tur : 'belge';
     $pdo->prepare("INSERT INTO it_belgeler (cihaz_id, dosya_url, ad, mime, boyut, tur, kullanici) VALUES (?,?,?,?,?,?,?)")
         ->execute([$cihazId, $url, mb_substr($ad, 0, 255), $mime, (int)($f['size'] ?? 0), $tur, $kullanici]);
     if (str_starts_with($mime, 'image/'))
@@ -437,7 +437,8 @@ function it_belge_sil(PDO $pdo, int $belgeId): bool
 
 /**
  * Verilen cihazlar için belge sayıları: [cihaz_id => ['toplam'=>n, 'imzali'=>n]].
- * 'imzali' = imzalı zimmet tutanağı (`it_belgeler.tur='zimmet'`) — listedeki evrak rozeti bundan doğar.
+ * 'imzali' = imzalı tutanak (`it_belgeler.tur` = 'zimmet' zimmet tutanağı | 'transfer' sevk tutanağı) —
+ * listedeki yeşil evrak rozeti bundan doğar.
  */
 function it_belge_sayilari(PDO $pdo, array $cihazIdler): array
 {
@@ -445,11 +446,55 @@ function it_belge_sayilari(PDO $pdo, array $cihazIdler): array
     if (!$cihazIdler) return [];
     try {
         $ph = implode(',', array_fill(0, count($cihazIdler), '?'));
-        $st = $pdo->prepare("SELECT cihaz_id, COUNT(*) toplam, SUM(tur='zimmet') imzali
+        $st = $pdo->prepare("SELECT cihaz_id, COUNT(*) toplam, SUM(tur IN ('zimmet','transfer')) imzali
                              FROM it_belgeler WHERE cihaz_id IN ($ph) GROUP BY cihaz_id");
         $st->execute($cihazIdler);
         $r = [];
         foreach ($st->fetchAll() as $x) $r[(int)$x['cihaz_id']] = ['toplam'=>(int)$x['toplam'], 'imzali'=>(int)$x['imzali']];
+        return $r;
+    } catch (Throwable $e) { return []; }
+}
+
+/**
+ * Cihazın son transfer ÇIKIŞ hareketi ("Sevk: <kaynak> → <hedef> · gönderen: … · isteyen: … · not").
+ * ⚠ Teslim alma da `tur='transfer'` yazılır; çıkış satırı **'Sevk:' öneki** ile ayrılır — yoksa tutanakta
+ * gönderen proje ve sevk tarihi teslim satırından okunup boş çıkıyordu. Sıralama **id**'ye göredir:
+ * geriye dönük tarihle girilen yeni bir sevk, eski tarihli kayda yenilmesin.
+ */
+function it_transfer_son(PDO $pdo, int $cihazId): ?array
+{
+    try {
+        $st = $pdo->prepare("SELECT * FROM it_hareketler WHERE cihaz_id=? AND tur='transfer' AND aciklama LIKE 'Sevk:%'
+                             ORDER BY id DESC LIMIT 1");
+        $st->execute([$cihazId]);
+        return $st->fetch() ?: null;
+    } catch (Throwable $e) { return null; }
+}
+
+/**
+ * Verilen cihazlar için "kaç gündür yolda": [cihaz_id => gün]. Transfer durumundaki cihazın
+ * son transfer hareketinin tarihinden bugüne. Uzun süredir teslim alınmayanlar böyle görünür.
+ */
+function it_transfer_gunleri(PDO $pdo, array $cihazIdler): array
+{
+    $cihazIdler = array_values(array_unique(array_filter(array_map('intval', $cihazIdler))));
+    if (!$cihazIdler) return [];
+    try {
+        $ph = implode(',', array_fill(0, count($cihazIdler), '?'));
+        // Yalnız ÇIKIŞ satırları ('Sevk:' önekli); teslim alma satırı süreyi sıfırlardı.
+        // Her cihazın EN SON kaydedilen çıkışı (id) esas alınır, en büyük tarih değil.
+        $st = $pdo->prepare("SELECT h.cihaz_id, h.tarih FROM it_hareketler h
+                             WHERE h.tur='transfer' AND h.aciklama LIKE 'Sevk:%' AND h.cihaz_id IN ($ph)
+                               AND h.id = (SELECT MAX(h2.id) FROM it_hareketler h2
+                                           WHERE h2.cihaz_id=h.cihaz_id AND h2.tur='transfer' AND h2.aciklama LIKE 'Sevk:%')");
+        $st->execute($cihazIdler);
+        $r = [];
+        $bugun = new DateTimeImmutable('today');
+        foreach ($st->fetchAll() as $x) {
+            $t = (string)$x['tarih'];
+            if ($t === '') continue;
+            try { $r[(int)$x['cihaz_id']] = (int)(new DateTimeImmutable($t))->diff($bugun)->format('%r%a'); } catch (Throwable $e) {}
+        }
         return $r;
     } catch (Throwable $e) { return []; }
 }

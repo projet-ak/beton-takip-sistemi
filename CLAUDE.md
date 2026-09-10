@@ -426,13 +426,27 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   ve açıklama kutusu tutanak/protokol no ister. Envanterden düşmüş cihazda işlem menüsü yalnız "Not ekle"
   bırakır. `cim_durum()` Excel'den "KAYIP/ÇALINTI/ZAYİ" → kayip, "HİBE/DEVİR" → hibe okur; personel zimmet
   geçmişi ve Tanımlar › Durumlar sekmesi yeni durumları sayımlarıyla listeler.
-  **TRANSFER DURUMU (2026-09-10)** — `IT_DURUM`'a **`transfer` (Transfer / yolda)** eklendi: cihaz başka
-  projeye/lokasyona gönderildi ama teslim alındığı teyit edilmedi. **Envanterden DÜŞMEZ** (IT_DURUM_DUSEN'e
-  girmez — cihaz hâlâ bizim), ama zimmet düşer ve depodaki kullanılabilir stok sayılmaz. `IT_HAREKET`'e de
-  `transfer` satırı eklendi. **Cihaz detayında iki işlem**: *Transfere çıkar* (hedef lokasyon seçilir → durum
-  transfer, zimmet düşer, lokasyon hedefe taşınır, günlüğe "… → hedef" yazılır) ve durum transfer'ken menüde
-  beliren *Transfer teslim alındı (depoya)* (durum depoda olur, günlüğe teslim notu düşer). Dashboard'a
-  "Transfer (yolda)" KPI'ı, raporlara aynı gösterge (Excel + PDF dahil) eklendi; `it_ozet()` `transfer`
+  **TRANSFER = PROJELER ARASI SEVK (2026-09-10)** — iş kuralı: cihaz **bir projeden (Batı Yakası vb.)
+  İHTİYAÇ DUYAN BAŞKA PROJEYE** gönderilir; ilgili kişi gönderir, karşı taraf teslim alır. Yolda geçen süre
+  takip edilebilsin diye ayrı bir DURUM: `IT_DURUM`'a **`transfer` (Transfer / yolda)**, `IT_HAREKET`'e de
+  `transfer` eklendi. **Envanterden DÜŞMEZ** (IT_DURUM_DUSEN'e girmez — cihaz hâlâ bizim, mali değere ve
+  sayımlara girer), ama **zimmet düşer** ve depodaki kullanılabilir stok sayılmaz.
+  • **Cihaz kartında iki işlem**: *Transfere çıkar* (hedef proje/lokasyon + **isteyen/teslim alacak kişi**
+  seçilir → durum transfer, zimmet düşer, lokasyon hedefe taşınır) ve durum transfer'ken menüde beliren
+  *Transfer teslim alındı (depoya)* (durum depoda, hedef düzeltilebilir, teslim alan yazılır).
+  • ⚠ **Günlük satırı SABİT BİÇİMDE** yazılır: `Sevk: <kaynak> → <hedef> · gönderen: X ·
+  isteyen/teslim alacak: Y · <not>`. `it_transfer_son()` **'Sevk:' önekiyle** çıkış satırını bulur (teslim
+  alma satırı da `tur='transfer'` olduğundan ayırt edilmeli) ve **id'ye göre** sıralar (geriye dönük tarihli
+  yeni sevk, eski tarihli kayda yenilmesin). `it_transfer_gunleri()` aynı kuralla **"kaç gündür yolda"**
+  hesaplar — listede ve cihaz kartında rozet, 14 günü aşan kırmızı.
+  • **`it/transfer_tutanak.php` — CİHAZ TRANSFER (SEVK) TUTANAĞI** (A4, ERN Taahhüt logolu): gönderen ↔ hedef
+  proje kutuları, gönderen/isteyen, sevk tarihi, cihaz künyesi tablosu, taahhüt maddeleri, çift imza.
+  `?id=` tek cihaz · **`?lok=` o lokasyona yolda olan TÜM cihazlar tek tutanakta** (bir sevkiyat = bir belge).
+  **İmzalı kopya geri yüklenir** (`it_belgeler.tur='transfer'`; dosya diske bir kez yazılır, tutanaktaki
+  diğer cihazlara aynı URL ile bağ satırı eklenir) — `it_belge_yukle` artık 'zimmet' | 'transfer' | 'belge'
+  kabul eder, evrak rozeti ikisini birden sayar. Cihaz listesinde transferdeki satırda tutanak düğmesi +
+  imzalı sevk tutanağı yoksa sarı ⚠ rozeti.
+  • Dashboard'a "Transfer (yolda)" KPI'ı, raporlara aynı gösterge (Excel + PDF dahil); `it_ozet()` `transfer`
   sayacını döndürür. `cim_durum()` Snipe-IT'nin "Transfer" durumunu artık **depoda değil transfer** okur
   (kaynak dosyada 101 satır). Tanımlar › Durumlar sekmesi yeni durumu sayımıyla listeler.
   **KİMLİK KODLARI + DONANIM KÜNYESİ + HIZLI ARAMA (2026-09-10)** — kaynak: kurumsal **DEMİRBAŞ ZİMMET FORMU**

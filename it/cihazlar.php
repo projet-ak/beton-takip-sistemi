@@ -70,6 +70,8 @@ $st->execute($par);
 $liste = $st->fetchAll();
 
 $belgeSay = it_belge_sayilari($pdoIt, array_column($liste, 'id'));
+// Transferdeki cihazlar için "kaç gündür yolda" (teslim alınmayan sevkiyat gözden kaçmasın)
+$trGun = it_transfer_gunleri($pdoIt, array_column(array_filter($liste, fn($r) => $r['durum'] === 'transfer'), 'id'));
 $sec = ['zimmetli'=>it_secenekler($pdoIt,'zimmetli'), 'departman'=>it_secenekler($pdoIt,'departman'),
         'lokasyon'=>it_secenekler($pdoIt,'lokasyon'), 'marka'=>it_secenekler($pdoIt,'marka')];
 $f0 = fn($n) => number_format((float)$n, 0, ',', '.');
@@ -189,7 +191,10 @@ require_once __DIR__ . '/../includes/header.php';
               <div class="small text-muted"><?= h(trim(($r['marka'] ?? '') . ' ' . ($r['model'] ?? ''))) ?></div></td>
           <td><i class="bi <?= h(it_kategoriIkon($r['kategori'])) ?> me-1 text-muted"></i><?= h(it_kategoriAd($r['kategori'])) ?></td>
           <td class="font-monospace small"><?= h($r['seri_no'] ?: '—') ?></td>
-          <td><?= it_durumBadge($r['durum']) ?></td>
+          <td><?= it_durumBadge($r['durum']) ?>
+            <?php if ($r['durum'] === 'transfer' && isset($trGun[(int)$r['id']])): ?>
+              <div class="small <?= $trGun[(int)$r['id']] > 14 ? 'text-danger fw-semibold' : 'text-muted' ?>"><?= (int)$trGun[(int)$r['id']] ?> gündür yolda</div>
+            <?php endif; ?></td>
           <td><?= $r['zimmetli'] ? '<i class="bi bi-person me-1 text-muted"></i>' . ($r['personel_id'] ? '<a href="personel_detay.php?id=' . (int)$r['personel_id'] . '" class="text-decoration-none">' . h($r['zimmetli']) . '</a>' : h($r['zimmetli'])) . ($r['departman'] ? '<div class="small text-muted">' . h($r['departman']) . '</div>' : '') : '<span class="text-muted">—</span>' ?></td>
           <td class="small"><?= h($r['lokasyon_id'] ? it_lokasyon_etiket($pdoIt, (int)$r['lokasyon_id']) : ($r['lokasyon'] ?: '—')) ?></td>
           <?php if ($maliGoster): ?>
@@ -207,13 +212,16 @@ require_once __DIR__ . '/../includes/header.php';
               <a href="cihaz_detay.php?id=<?= (int)$r['id'] ?>#belgeler" class="badge bg-success text-decoration-none" title="İmzalı zimmet tutanağı yüklü"><i class="bi bi-file-earmark-check me-1"></i><?= (int)$bs['imzali'] ?></a>
             <?php elseif ($bs['toplam']): ?>
               <a href="cihaz_detay.php?id=<?= (int)$r['id'] ?>#belgeler" class="badge bg-light text-secondary border text-decoration-none" title="<?= (int)$bs['toplam'] ?> belge — imzalı tutanak yok"><i class="bi bi-paperclip me-1"></i><?= (int)$bs['toplam'] ?></a>
+            <?php elseif ($r['durum'] === 'transfer'): ?>
+              <a href="transfer_tutanak.php?id=<?= (int)$r['id'] ?>" target="_blank" class="badge bg-light text-warning border text-decoration-none" title="Transferde ama imzalı sevk tutanağı yok"><i class="bi bi-exclamation-triangle"></i></a>
             <?php elseif ($r['zimmetli']): ?>
               <a href="zimmet_tutanak.php?id=<?= (int)$r['id'] ?>" target="_blank" class="badge bg-light text-warning border text-decoration-none" title="Zimmetli ama imzalı evrak yok"><i class="bi bi-exclamation-triangle"></i></a>
             <?php else: ?><span class="text-muted">—</span><?php endif; ?>
           </td>
           <td class="text-end text-nowrap">
             <a href="cihaz_detay.php?id=<?= (int)$r['id'] ?>" class="btn btn-sm btn-outline-secondary" title="Detay"><i class="bi bi-eye"></i></a>
-            <?php if ($r['zimmetli']): ?><a href="zimmet_tutanak.php?id=<?= (int)$r['id'] ?>" target="_blank" class="btn btn-sm btn-outline-primary" title="Zimmet tutanağı"><i class="bi bi-file-earmark-text"></i></a><?php endif; ?>
+            <?php if ($r['durum'] === 'transfer'): ?><a href="transfer_tutanak.php?id=<?= (int)$r['id'] ?>" target="_blank" class="btn btn-sm btn-outline-info" title="Transfer tutanağı"><i class="bi bi-arrow-left-right"></i></a>
+            <?php elseif ($r['zimmetli']): ?><a href="zimmet_tutanak.php?id=<?= (int)$r['id'] ?>" target="_blank" class="btn btn-sm btn-outline-primary" title="Zimmet tutanağı"><i class="bi bi-file-earmark-text"></i></a><?php endif; ?>
           </td>
         </tr>
       <?php endforeach; ?>
