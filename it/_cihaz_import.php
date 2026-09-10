@@ -502,8 +502,9 @@ function cim_durum(string $s): ?string
     // ⚠ Snipe-IT sözlüğü: "… Atanmış" = bir kişide (kullanımda); atanmamış tüm hâller depodadır.
     // 'ATANMIS' kontrolü depo kelimelerinden ÖNCE gelmeli — "Boş / Yedek Atanmış" kullanımdadır.
     if (str_contains($n, 'ATANMIS') || str_contains($n, 'ATANDI')) return 'aktif';
+    if (str_contains($n, 'TRANSFER') || str_contains($n, 'SEVK')) return 'transfer';
     if (str_contains($n, 'DEPO') || str_contains($n, 'BOSTA') || str_contains($n, 'STOK')
-        || str_contains($n, 'BOS') || str_contains($n, 'YEDEK') || str_contains($n, 'TRANSFER')
+        || str_contains($n, 'BOS') || str_contains($n, 'YEDEK')
         || str_contains($n, 'BEKLIYOR') || str_contains($n, 'DAGITILABILIR')) return 'depoda';
     if (str_contains($n, 'KULLAN') || str_contains($n, 'ZIMMET') || str_contains($n, 'AKTIF')) return 'aktif';
     return null;

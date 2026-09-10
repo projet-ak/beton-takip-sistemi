@@ -1,7 +1,8 @@
 <?php
 /**
  * it/cihaz_detay.php — Cihaz kartı: tüm alanlar + yaşam günlüğü (hareketler) + belgeler/fotoğraflar
- * İşlemler: zimmet ver / zimmet iade / servise gönder / servisten döndü / arıza / hurdaya ayır / not.
+ * İşlemler: zimmet ver / zimmet iade / servise gönder / servisten döndü / arıza / transfer /
+ *            kayıp / hibe / hurdaya ayır / not.
  * Her işlem it_hareketler'e yazılır; cihazın durum/zimmet alanları buna göre güncellenir.
  */
 $rootPath = '../';
@@ -68,6 +69,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdoIt->prepare("UPDATE it_cihazlar SET durum='arizali' WHERE id=?")->execute([$id]);
                 it_hareket_ekle($pdoIt, $id, 'ariza', $kisi, $acik ?: 'Arıza bildirildi', $tarih);
                 flash('success', 'Arıza kaydı eklendi.');
+                break;
+            // TRANSFER — cihaz başka projeye/lokasyona gönderildi ama teslim alındığı teyit edilmedi.
+            // Envanterden DÜŞMEZ (hâlâ bizim), ama zimmet düşer ve depodaki kullanılabilir stok sayılmaz.
+            case 'transfer':
+                $hedef = (int)($_POST['hedef_lokasyon_id'] ?? 0) ?: null;
+                $hedefAd = $hedef ? it_lokasyon_yol($pdoIt, $hedef) : '';
+                $pdoIt->prepare("UPDATE it_cihazlar SET durum='transfer', personel_id=NULL, zimmetli=NULL, zimmet_tarihi=NULL"
+                                . ($hedef ? ", lokasyon_id=?, lokasyon=?" : "") . " WHERE id=?")
+                      ->execute($hedef ? [$hedef, $hedefAd, $id] : [$id]);
+                it_hareket_ekle($pdoIt, $id, 'transfer', $kisi,
+                    ($acik ?: 'Transfere çıkarıldı') . ($hedefAd ? ' → ' . $hedefAd : ''), $tarih);
+                flash('success', 'Cihaz TRANSFER (yolda) olarak işaretlendi' . ($hedefAd ? ' — hedef: ' . $hedefAd : '') . '.');
+                break;
+            case 'transfer_bitti':
+                $pdoIt->prepare("UPDATE it_cihazlar SET durum='depoda' WHERE id=?")->execute([$id]);
+                it_hareket_ekle($pdoIt, $id, 'transfer', $kisi, $acik ?: 'Transfer teslim alındı — depoya girdi', $tarih);
+                flash('success', 'Transfer tamamlandı; cihaz depoda.');
                 break;
             // Envanterden düşüren üç işlem aynı kalıptadır: zimmet düşer, kayıt SİLİNMEZ,
             // varsayılan listelerde ve mali değerde görünmez (durum filtresiyle geri gelir).
@@ -277,6 +295,8 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
               <?php if ($c['zimmetli']): ?><option value="iade">Zimmet iade al (depoya)</option><?php endif; ?>
               <?php if ($c['durum'] !== 'serviste'): ?><option value="servis">Servise gönder</option><?php else: ?><option value="donus">Servisten döndü</option><?php endif; ?>
               <option value="ariza">Arıza bildir</option>
+              <?php if ($c['durum'] === 'transfer'): ?><option value="transfer_bitti">Transfer teslim alındı (depoya)</option>
+              <?php else: ?><option value="transfer">Transfere çıkar (başka lokasyona)</option><?php endif; ?>
               <option value="kayip">Kayıp / çalıntı bildir</option>
               <option value="hibe">Hibe et / devret</option>
               <option value="hurda">Hurdaya ayır</option>
@@ -286,6 +306,9 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
           </div>
           <div class="mb-2 zimmet-ek"><select name="personel_id" id="personel_id" class="form-select form-select-sm"><?= it_personel_options($pdoIt, 0) ?></select>
             <div class="form-text">Listede yoksa <a href="personel_form.php" target="_blank">personel ekleyin</a>.</div></div>
+          <div class="mb-2 transfer-ek d-none"><select name="hedef_lokasyon_id" class="form-select form-select-sm">
+            <option value="">Hedef lokasyon (boş = değişmesin)</option><?= it_lokasyon_options($pdoIt, 0, false) ?></select>
+            <div class="form-text">Cihaz "yolda" sayılır; teslim alınınca aynı menüden "Transfer teslim alındı" seçin.</div></div>
           <div class="mb-2 kisi"><input name="kisi" class="form-control form-control-sm" placeholder="Servis firması / kişi" value=""></div>
           <div class="row g-2 mb-2 zimmet-ek">
             <div class="col-6"><input name="departman" id="departman" class="form-control form-control-sm" placeholder="Departman (boş = kişinin birimi)" value=""></div>
@@ -357,18 +380,22 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
 (function () {
     var t = document.getElementById('tur'); if (!t) return;
     function uygula() {
-        var z = t.value === 'zimmet';
+        var z = t.value === 'zimmet', tr = t.value === 'transfer';
         document.querySelectorAll('.zimmet-ek').forEach(function (e) { e.classList.toggle('d-none', !z); });
+        document.querySelectorAll('.transfer-ek').forEach(function (e) { e.classList.toggle('d-none', !tr); });
         document.querySelector('.kisi').classList.toggle('d-none', z);
         var k = document.querySelector('.kisi input');
         k.placeholder = { servis: 'Servis firması',
                           hibe:   'Hibe edilen kurum / kişi',
-                          kayip:  'Kaybı bildiren kişi' }[t.value] || 'Kişi / firma (isteğe bağlı)';
+                          kayip:  'Kaybı bildiren kişi',
+                          transfer: 'Gönderen / teslim eden',
+                          transfer_bitti: 'Teslim alan kişi' }[t.value] || 'Kişi / firma (isteğe bağlı)';
         // Envanterden düşüren işlemlerde sebep yazılması beklenir
         var a = document.querySelector('textarea[name="aciklama"]');
         if (a) a.placeholder = { kayip: 'Nerede/ne zaman kaybolduğu, tutanak no…',
                                  hibe:  'Hibe/devir gerekçesi, protokol no…',
-                                 hurda: 'Hurdaya ayırma sebebi' }[t.value] || 'Açıklama (isteğe bağlı)';
+                                 hurda: 'Hurdaya ayırma sebebi',
+                                 transfer: 'Sevk irsaliyesi / araç / teslim eden…' }[t.value] || 'Açıklama (isteğe bağlı)';
         document.getElementById('personel_id').required = z;
     }
     t.addEventListener('change', uygula); uygula();

@@ -109,6 +109,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <div class="row g-2 mb-3">
   <?php foreach (array_merge([['Cihaz (envanterde)', $f0($o['toplam'] - $o['dusen'])], ['Kullanımda', $f0($o['aktif'])], ['Depoda', $f0($o['depoda'])],
+                  ['Transfer (yolda)', $f0($o['transfer'])],
                   ['Serviste / Arızalı', $f0($o['serviste'] + $o['arizali'])], ['Düşen (hurda/kayıp/hibe)', $f0($o['dusen'])]],
                  $maliGoster ? [['Mali değer', $f2($o['mali']) . ' TL']] : [['Zimmetli kişi', $f0($o['kisi'] ?? 0)]]) as [$e, $d]): ?>
   <div class="col-6 col-md-2"><div class="card border-0 shadow-sm"><div class="card-body py-2"><div class="small text-muted"><?= $e ?></div><div class="fs-5 fw-bold"><?= $d ?></div></div></div></div>
@@ -190,7 +191,7 @@ $tablo = function (string $baslik, string $ikon, array $l, string $ilk) use ($f0
 <script src="../assets/js/ern_rapor.js?v=<?= @filemtime(__DIR__ . '/../assets/js/ern_rapor.js') ?>"></script>
 <script>
 const IT = {
-    kpi: <?= json_encode(['cihaz'=>$o['toplam']-$o['dusen'],'aktif'=>$o['aktif'],'depoda'=>$o['depoda'],'sorun'=>$o['serviste']+$o['arizali'],'hurda'=>$o['dusen'],'mali'=>$o['mali'],'kisi'=>$o['zimmetliKisi'],'garantiBitiyor'=>$o['garantiBitiyor']]) ?>,
+    kpi: <?= json_encode(['cihaz'=>$o['toplam']-$o['dusen'],'aktif'=>$o['aktif'],'depoda'=>$o['depoda'],'transfer'=>$o['transfer'],'sorun'=>$o['serviste']+$o['arizali'],'hurda'=>$o['dusen'],'mali'=>$o['mali'],'kisi'=>$o['zimmetliKisi'],'garantiBitiyor'=>$o['garantiBitiyor']]) ?>,
     durumlar: <?= json_encode(array_map(fn($x) => $x[0], IT_DURUM), JSON_UNESCAPED_UNICODE) ?>,
     matris: <?= json_encode($matris, JSON_UNESCAPED_UNICODE) ?>,
     dep: <?= json_encode($dep, JSON_UNESCAPED_UNICODE) ?>, lok: <?= json_encode($lok, JSON_UNESCAPED_UNICODE) ?>, etap: <?= json_encode($etap, JSON_UNESCAPED_UNICODE) ?>, marka: <?= json_encode($marka, JSON_UNESCAPED_UNICODE) ?>,
@@ -223,7 +224,7 @@ function itPdf(mode){
         l.map(r => IT.mali ? [r.ad, f0(r.adet), f0(r.aktif), f2(r.mali)] : [r.ad, f0(r.adet), f0(r.aktif)])) : '';
     const html = '<div class="kpis">'
         + '<div><b>' + f0(IT.kpi.cihaz) + '</b>Cihaz</div><div><b>' + f0(IT.kpi.aktif) + '</b>Kullanımda</div>'
-        + '<div><b>' + f0(IT.kpi.depoda) + '</b>Depoda</div><div><b>' + f0(IT.kpi.sorun) + '</b>Serviste / Arızalı</div>'
+        + '<div><b>' + f0(IT.kpi.depoda) + '</b>Depoda</div><div><b>' + f0(IT.kpi.transfer) + '</b>Transfer (yolda)</div><div><b>' + f0(IT.kpi.sorun) + '</b>Serviste / Arızalı</div>'
         + (IT.mali ? '<div><b>' + f2(IT.kpi.mali) + ' TL</b>Mali Değer</div>' : '<div><b>' + f0(IT.kpi.kisi) + '</b>Zimmetli kişi</div>') + '</div>'
         + '<h2>Kategori × Durum</h2>' + tbl(['Kategori', ...IT.durumlar, 'Toplam', ...(IT.mali ? ['Mali (TL)'] : [])],
             IT.matris.map(m => [m.ad, ...Object.keys(IT.durumlar).map(d => f0(m[d])), f0(m.toplam), ...(IT.mali ? [f2(m.mali)] : [])]))
@@ -235,7 +236,7 @@ async function itExcel(){
     const wb = await ERN_RAPOR.wb();
     let ws = wb.addWorksheet('Özet'); ws.columns = [{width:34},{width:22}];
     ERN_RAPOR.title(wb, ws, 'IT ENVANTER — ÖZET', 2); ERN_RAPOR.hdr(ws.addRow(['Gösterge','Değer']));
-    [['Cihaz (envanterde)', IT.kpi.cihaz], ['Kullanımda', IT.kpi.aktif], ['Depoda', IT.kpi.depoda], ['Serviste / Arızalı', IT.kpi.sorun],
+    [['Cihaz (envanterde)', IT.kpi.cihaz], ['Kullanımda', IT.kpi.aktif], ['Depoda', IT.kpi.depoda], ['Transfer (yolda)', IT.kpi.transfer], ['Serviste / Arızalı', IT.kpi.sorun],
      ['Düşen (hurda/kayıp/hibe)', IT.kpi.hurda], ['Zimmetli kişi', IT.kpi.kisi],
      ...(IT.mali ? [['Garantisi 60 günde bitecek', IT.kpi.garantiBitiyor], ['Mali değer (TL)', IT.kpi.mali]] : [])].forEach(r => ws.addRow(r));
     ws = wb.addWorksheet('Kategori x Durum'); ws.columns = [{width:26}, ...Object.keys(IT.durumlar).map(()=>({width:14})), {width:10}, {width:16}];

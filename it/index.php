@@ -115,6 +115,7 @@ require_once __DIR__ . '/../includes/header.php';
     ['Toplam Cihaz', $f0($o['toplam'] - $o['dusen']), 'bi-pc-display', 'primary', 'cihazlar.php'],
     ['Kullanımda', $f0($o['aktif']), 'bi-person-check', 'success', 'cihazlar.php?durum=aktif'],
     ['Depoda / Boşta', $f0($o['depoda']), 'bi-box-seam', 'secondary', 'cihazlar.php?durum=depoda'],
+    ['Transfer (yolda)', $f0($o['transfer']), 'bi-arrow-left-right', 'info', 'cihazlar.php?durum=transfer'],
     ['Serviste + Arızalı', $f0($o['serviste'] + $o['arizali']), 'bi-wrench', 'danger', 'cihazlar.php?durum=arizali'],
   ];
   if ($maliGoster) {

@@ -140,6 +140,9 @@ function it_ek_alanlar(string $kat): array
 const IT_DURUM = [
     'aktif'    => ['Kullanımda (zimmetli)', 'success',          'bi-person-check'],
     'depoda'   => ['Depoda / Boşta',        'secondary',        'bi-box-seam'],
+    // Başka projeye/lokasyona gönderildi, teslim alındığı teyit edilmedi — HÂLÂ ENVANTERDE
+    // (bu yüzden IT_DURUM_DUSEN'e girmez), ama depodaki kullanılabilir stok da sayılmaz.
+    'transfer' => ['Transfer (yolda)',      'info text-dark',   'bi-arrow-left-right'],
     'serviste' => ['Serviste',              'info',             'bi-wrench'],
     'arizali'  => ['Arızalı',               'danger',           'bi-exclamation-triangle'],
     'kayip'    => ['Kayıp / Çalıntı',       'warning text-dark','bi-question-octagon'],
@@ -177,6 +180,7 @@ const IT_HAREKET = [
     'servis'  => ['Servise gönderildi','info',      'bi-wrench'],
     'ariza'   => ['Arıza bildirimi',   'danger',    'bi-exclamation-triangle'],
     'donus'   => ['Servisten döndü',   'success',   'bi-check2-circle'],
+    'transfer'=> ['Transfer edildi',   'info',      'bi-arrow-left-right'],
     'kayip'   => ['Kayıp / çalıntı bildirildi', 'warning text-dark', 'bi-question-octagon'],
     'hibe'    => ['Hibe / devir edildi', 'primary',  'bi-gift'],
     'hurda'   => ['Hurdaya ayrıldı',   'dark',      'bi-trash'],
@@ -354,11 +358,11 @@ function it_secenekler(PDO $pdo, string $sutun): array
 /** Dashboard / rapor özeti. */
 function it_ozet(PDO $pdo): array
 {
-    $o = ['toplam'=>0,'aktif'=>0,'depoda'=>0,'serviste'=>0,'arizali'=>0,'kayip'=>0,'hibe'=>0,'hurda'=>0,'dusen'=>0,
+    $o = ['toplam'=>0,'aktif'=>0,'depoda'=>0,'transfer'=>0,'serviste'=>0,'arizali'=>0,'kayip'=>0,'hibe'=>0,'hurda'=>0,'dusen'=>0,
           'mali'=>0.0,'garantiBitiyor'=>0,'garantiBitti'=>0,'zimmetliKisi'=>0,'lisans'=>0];
     try {
         $r = $pdo->query("SELECT COUNT(*) toplam,
-                SUM(durum='aktif') aktif, SUM(durum='depoda') depoda, SUM(durum='serviste') serviste,
+                SUM(durum='aktif') aktif, SUM(durum='depoda') depoda, SUM(durum='transfer') transfer, SUM(durum='serviste') serviste,
                 SUM(durum='arizali') arizali, SUM(durum='hurda') hurda,
                 SUM(durum='kayip') kayip, SUM(durum='hibe') hibe,
                 COALESCE(SUM(CASE WHEN " . it_envanterde() . " THEN fiyat END),0) mali,

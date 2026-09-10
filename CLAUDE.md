@@ -426,6 +426,15 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   ve açıklama kutusu tutanak/protokol no ister. Envanterden düşmüş cihazda işlem menüsü yalnız "Not ekle"
   bırakır. `cim_durum()` Excel'den "KAYIP/ÇALINTI/ZAYİ" → kayip, "HİBE/DEVİR" → hibe okur; personel zimmet
   geçmişi ve Tanımlar › Durumlar sekmesi yeni durumları sayımlarıyla listeler.
+  **TRANSFER DURUMU (2026-09-10)** — `IT_DURUM`'a **`transfer` (Transfer / yolda)** eklendi: cihaz başka
+  projeye/lokasyona gönderildi ama teslim alındığı teyit edilmedi. **Envanterden DÜŞMEZ** (IT_DURUM_DUSEN'e
+  girmez — cihaz hâlâ bizim), ama zimmet düşer ve depodaki kullanılabilir stok sayılmaz. `IT_HAREKET`'e de
+  `transfer` satırı eklendi. **Cihaz detayında iki işlem**: *Transfere çıkar* (hedef lokasyon seçilir → durum
+  transfer, zimmet düşer, lokasyon hedefe taşınır, günlüğe "… → hedef" yazılır) ve durum transfer'ken menüde
+  beliren *Transfer teslim alındı (depoya)* (durum depoda olur, günlüğe teslim notu düşer). Dashboard'a
+  "Transfer (yolda)" KPI'ı, raporlara aynı gösterge (Excel + PDF dahil) eklendi; `it_ozet()` `transfer`
+  sayacını döndürür. `cim_durum()` Snipe-IT'nin "Transfer" durumunu artık **depoda değil transfer** okur
+  (kaynak dosyada 101 satır). Tanımlar › Durumlar sekmesi yeni durumu sayımıyla listeler.
   **KİMLİK KODLARI + DONANIM KÜNYESİ + HIZLI ARAMA (2026-09-10)** — kaynak: kurumsal **DEMİRBAŞ ZİMMET FORMU**
   (YILDIZLAR GRUP çıktısı, PDF). Sistemdeki cihaz kartı o formun yanında eksik kalıyordu; formdaki her alan
   karşılandı.
