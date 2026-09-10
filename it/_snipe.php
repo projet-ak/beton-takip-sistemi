@@ -97,7 +97,11 @@ function sn_cihazlar(int $sayfaBoy = 100, int $enFazla = 5000): array
     return $hepsi;
 }
 
-/** Bir varlığın dosya listesi: [[id, ad, notlar], …] */
+/**
+ * Bir varlığın dosya listesi: [[id, ad, notlar, url, diskte], …]
+ * ⚠ `exists_on_disk` = kayıt var ama dosya sunucudan silinmiş olabilir; `url` = doğrudan indirme
+ * adresi (API ucu hata verirse yedek yol).
+ */
 function sn_dosyalar(int $snipeId): array
 {
     [$ok, $j] = sn_istek('hardware/' . $snipeId . '/files');
@@ -106,7 +110,9 @@ function sn_dosyalar(int $snipeId): array
     foreach ($j['rows'] ?? [] as $f) {
         $r[] = ['id'     => (int)($f['id'] ?? 0),
                 'ad'     => trim((string)($f['filename'] ?? $f['name'] ?? '')) ?: ('dosya-' . (int)($f['id'] ?? 0)),
-                'notlar' => trim((string)($f['notes'] ?? ''))];
+                'notlar' => trim((string)($f['note'] ?? $f['notes'] ?? '')),
+                'url'    => trim((string)($f['url'] ?? '')),
+                'diskte' => !array_key_exists('exists_on_disk', $f) || (bool)$f['exists_on_disk']];
     }
     return $r;
 }
@@ -181,15 +187,47 @@ function sn_url_indir(string $url, int $zamanAsimi = 30): ?string
     return $tmp;
 }
 
-/** API'den dosya indirir (Bearer'lı) → geçici dosya yolu ya da null. */
-function sn_dosya_indir(int $snipeId, int $dosyaId): ?string
+/**
+ * API'den dosya indirir (Bearer'lı) → [geçici dosya yolu | null, hata mesajı].
+ *
+ * ⚠⚠ Snipe-IT dosya indirme ucu **hataları da HTTP 200 ile ve JSON gövdeyle** döndürür
+ * (`{"status":"error","messages":"…"}` — invalid_id / file_not_found). HTTP koduna bakan bir
+ * denetim bunu "dosya" sanıp diske yazıyordu; sonuç: her ek "desteklenmeyen tür — application/json".
+ * Bu yüzden gövde JSON hata mı diye AYRICA bakılır ve gerçek mesaj yukarı taşınır.
+ * API ucu hata verirse dosya listesindeki doğrudan `url` yedek yol olarak denenir.
+ */
+function sn_dosya_indir(int $snipeId, int $dosyaId, string $yedekUrl = ''): array
 {
-    [$ok, $govde] = sn_istek('hardware/' . $snipeId . '/files/' . $dosyaId, true, 60);
-    if (!$ok || $govde === null || $govde === '') return null;
-    $tmp = tempnam(sys_get_temp_dir(), 'sn_');
-    if ($tmp === false) return null;
-    if (@file_put_contents($tmp, $govde) === false) { @unlink($tmp); return null; }
-    return $tmp;
+    [$ok, $govde, $hata] = sn_istek('hardware/' . $snipeId . '/files/' . $dosyaId, true, 60);
+    if ($ok && is_string($govde) && $govde !== '') {
+        $j = sn_json_hata($govde);
+        if ($j === null) {                                   // gerçek dosya
+            $tmp = tempnam(sys_get_temp_dir(), 'sn_');
+            if ($tmp === false) return [null, 'geçici dosya açılamadı'];
+            if (@file_put_contents($tmp, $govde) === false) { @unlink($tmp); return [null, 'geçici dosyaya yazılamadı']; }
+            return [$tmp, ''];
+        }
+        $hata = $j;                                          // Snipe-IT'in kendi hata metni
+    }
+    if ($yedekUrl !== '') {                                  // yedek: doğrudan indirme adresi
+        $tmp = sn_url_indir($yedekUrl, 60);
+        if ($tmp !== null && sn_json_hata((string)@file_get_contents($tmp)) === null) return [$tmp, ''];
+        if ($tmp !== null) @unlink($tmp);
+    }
+    return [null, $hata ?: 'indirilemedi'];
+}
+
+/** Gövde bir Snipe-IT JSON HATASI mı? Öyleyse mesajı, değilse null döner. */
+function sn_json_hata(string $govde): ?string
+{
+    $bas = ltrim(substr($govde, 0, 8));
+    if ($bas === '' || ($bas[0] !== '{' && $bas[0] !== '[')) return null;   // JSON'a benzemiyor → dosya
+    $j = json_decode($govde, true);
+    if (!is_array($j)) return null;
+    if (($j['status'] ?? '') !== 'error') return null;
+    $m = $j['messages'] ?? null;
+    if (is_array($m)) $m = implode(' · ', array_map(fn($x) => is_array($x) ? implode(' ', $x) : (string)$x, $m));
+    return trim((string)$m) ?: 'Snipe-IT dosyayı vermedi';
 }
 
 /**
@@ -220,6 +258,8 @@ function sn_parti_isle(PDO $pdo, array $eslesen, array $snipeIdler, array $opt):
         // 1) Cihaz fotoğrafı (public disk, tam URL olarak gelir)
         if ($foto && $sn['foto'] !== '') {
             $tmp = sn_url_indir($sn['foto']);
+            // ⚠ Fotoğraf ucu da hata yerine JSON döndürebilir — dosya sanıp kaydetme
+            if ($tmp !== null && sn_json_hata((string)@file_get_contents($tmp)) !== null) { @unlink($tmp); $tmp = null; }
             if ($tmp) {
                 $m = md5_file($tmp);
                 if (isset($md5ler[$m])) { $r['atlanan']++; $satir['atlanan']++; }
@@ -235,8 +275,12 @@ function sn_parti_isle(PDO $pdo, array $eslesen, array $snipeIdler, array $opt):
         // 2) Varlığa yüklenmiş dosyalar (imzalı tutanak, fatura, garanti…)
         if ($belge) {
             foreach (sn_dosyalar($sid) as $d) {
-                $tmp = sn_dosya_indir($sid, $d['id']);
-                if (!$tmp) { $r['hata'][] = $satir['kim'] . ': ' . $d['ad'] . ' indirilemedi'; continue; }
+                if (!$d['diskte']) {                     // kayıt var ama dosya Snipe sunucusunda yok
+                    $r['hata'][] = $satir['kim'] . ': ' . $d['ad'] . ' — dosya Snipe-IT sunucusunda bulunamadı (kayıt var, dosya silinmiş)';
+                    continue;
+                }
+                [$tmp, $ih] = sn_dosya_indir($sid, $d['id'], $d['url']);
+                if (!$tmp) { $r['hata'][] = $satir['kim'] . ': ' . $d['ad'] . ' — ' . $ih; continue; }
                 $m = md5_file($tmp);
                 if (isset($md5ler[$m])) { $r['atlanan']++; $satir['atlanan']++; @unlink($tmp); continue; }
                 [$b, $msj] = it_belge_kaydet($pdo, $cihazId, $tmp, $d['ad'], $kul, sn_belge_turu($d['ad'], $d['notlar']));

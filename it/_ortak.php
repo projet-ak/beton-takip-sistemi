@@ -400,6 +400,50 @@ function it_belge_yukle(PDO $pdo, int $cihazId, array $f, ?string $kullanici = n
 }
 
 /**
+ * Belge olarak kabul edilen türler. PDF + görsel yanında **Office dosyaları** da vardır:
+ * Snipe-IT eklerinde imzalı tutanağın taraması kadar .xlsx/.docx kayıtlar da çıkıyor.
+ */
+const IT_BELGE_MIME = [
+    'application/pdf',
+    'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/gif', 'image/bmp',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+];
+
+/**
+ * Dosyanın kabul edilebilir MIME'ı — kabul edilmiyorsa null.
+ *
+ * ⚠ İçerik sezgisi (finfo) Office dosyalarında **kapsayıcı türü** verir: .xlsx/.docx aslında bir ZIP
+ * olduğundan `application/zip`, eski .xls/.doc ise `application/CDFV2` / `application/octet-stream`
+ * döner. Sırf buna bakılırsa geçerli ekler "desteklenmeyen tür" diye reddedilir. Bu yüzden sezilen tür
+ * listede yoksa ve **genel bir kapsayıcıysa**, UZANTIYA göre karar verilir (uzantı haritası yalnız
+ * güvenli türleri içerir — .php gibi bir uzantı zaten haritada yoktur).
+ */
+function it_belge_mime(string $yol, string $ad): ?string
+{
+    $m = guess_mime($yol, $ad);
+    if (in_array($m, IT_BELGE_MIME, true)) return $m;
+
+    $genel = ['application/zip', 'application/octet-stream', 'application/CDFV2',
+              'application/vnd.ms-office', 'application/x-ole-storage', 'text/plain'];
+    if (!in_array($m, $genel, true)) return null;
+
+    $ext = strtolower(pathinfo($ad !== '' ? $ad : $yol, PATHINFO_EXTENSION));
+    $harita = [
+        'pdf'=>'application/pdf', 'jpg'=>'image/jpeg', 'jpeg'=>'image/jpeg', 'png'=>'image/png',
+        'webp'=>'image/webp', 'heic'=>'image/heic', 'gif'=>'image/gif', 'bmp'=>'image/bmp',
+        'doc'=>'application/msword',
+        'docx'=>'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls'=>'application/vnd.ms-excel',
+        'xlsx'=>'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ];
+    $u = $harita[$ext] ?? null;
+    return ($u !== null && in_array($u, IT_BELGE_MIME, true)) ? $u : null;
+}
+
+/**
  * Diskteki bir dosyayı cihazın belgesi olarak kaydeder — form yüklemesi (it_belge_yukle) ve
  * dış kaynaktan indirme (Snipe-IT köprüsü) aynı doğrulama/adlandırma yolundan geçsin diye ortak.
  * $tasi=true → dosya taşınır (form yüklemesi), false → kopyalanır (indirilen geçici dosya).
@@ -410,9 +454,9 @@ function it_belge_kaydet(PDO $pdo, int $cihazId, string $yol, string $ad, ?strin
 {
     if ($yol === '' || !is_file($yol)) return [false, 'Dosya bulunamadı.'];
     $ad   = $ad !== '' ? $ad : basename($yol);
-    $mime = guess_mime($yol, $ad);
-    if (!in_array($mime, ['application/pdf','image/jpeg','image/png','image/webp','image/heic'], true))
-        return [false, h($ad) . ': desteklenmeyen tür (PDF, JPG, PNG, WEBP) — ' . $mime];
+    $mime = it_belge_mime($yol, $ad);
+    if ($mime === null)
+        return [false, h($ad) . ': desteklenmeyen tür (PDF · görsel · Word/Excel) — ' . guess_mime($yol, $ad)];
     $boyut = (int)@filesize($yol);
     if ($boyut > 15 * 1024 * 1024) return [false, h($ad) . ': dosya 15 MB sınırını aşıyor.'];
 

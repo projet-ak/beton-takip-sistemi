@@ -449,6 +449,21 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   klasörü kimlik doğrulaması arkasındaysa da çalışsın). ⚠ `curl_close()` PHP 8.5'te deprecated — `unset()`.
   • Yetki: `sayfa_islemi()` regex'ine `snipe_cek` eklendi → **giris**. Giriş noktası: Cihaz İçe Aktar
   ekranındaki "Snipe-IT'den Belge Çek" düğmesi (sidebar'a yeni satır eklenmedi).
+  ⚠⚠ **GERÇEK SUNUCUDA ÇIKAN İKİ HATA (2026-09-10, ilk çalıştırma)** — her ek "desteklenmeyen tür —
+  application/json" diye reddedildi:
+  (1) **Snipe-IT dosya indirme ucu HATALARI DA `HTTP 200` + JSON gövde ile döndürür**
+  (`{"status":"error","messages":"…"}`; kaynak: `UploadedFilesController::show()` — invalid_id ve
+  file_not_found dalları `response()->json(..., 200)`). HTTP koduna bakan denetim bu gövdeyi DOSYA sanıp
+  diske yazıyordu. Artık `sn_json_hata()` gövdenin JSON hata olup olmadığına bakar, **gerçek Snipe mesajını**
+  yukarı taşır; fotoğraf ucu için de aynı kontrol var. Dosya listesindeki **`url`** alanı (transformer'ın
+  `uploads_file_url()`'ü) **yedek indirme yolu** olarak denenir — API ucu hata verse de dosya iner.
+  Listeden **`exists_on_disk`** de okunur: false ise indirmeye kalkışılmaz, "dosya Snipe-IT sunucusunda
+  bulunamadı (kayıt var, dosya silinmiş)" diye raporlanır.
+  (2) **Office ekleri (.xlsx/.docx) reddediliyordu**: hem izin listesinde yoklardı hem de finfo bir .xlsx'i
+  **`application/zip`** (eski .xls'i `application/CDFV2`) diye sezer. `IT_BELGE_MIME` PDF + görsellere
+  Word/Excel türlerini ekledi ve yeni **`it_belge_mime()`** sezilen tür listede yoksa **genel kapsayıcı**
+  (zip/octet-stream/CDFV2…) olup olmadığına bakıp UZANTIDAN karar verir (uzantı haritasında yalnız güvenli
+  türler var). Gerçek eklerde .xlsx, .docx, taranmış .pdf ve .jpg'ler artık iniyor.
   • Sahte Snipe-IT sunucusuyla doğrulandı (418 varlık): 1. tur 60 fotoğraf + 150 belge indi,
   **2. tur 0 belge / 120 atlandı**, 3. tur **0 yeni / 135 atlandı**; zimmet adlı dosyalar `zimmet`
   türüyle işaretlendi; hatalı token → "Yetki reddedildi (HTTP 401)", yanlış adres → bağlantı hatası.
