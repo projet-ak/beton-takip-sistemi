@@ -426,6 +426,32 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   ve açıklama kutusu tutanak/protokol no ister. Envanterden düşmüş cihazda işlem menüsü yalnız "Not ekle"
   bırakır. `cim_durum()` Excel'den "KAYIP/ÇALINTI/ZAYİ" → kayip, "HİBE/DEVİR" → hibe okur; personel zimmet
   geçmişi ve Tanımlar › Durumlar sekmesi yeni durumları sayımlarıyla listeler.
+  **SNIPE-IT BELGE & FOTOĞRAF KÖPRÜSÜ (2026-09-10)** `it/snipe_cek.php` + çekirdek `it/_snipe.php` (sn_*) —
+  ⚠ Snipe-IT'nin **Excel çıktısında görsel/belge YOKTUR**; dosyalar sunucuda `public/uploads/assets/`
+  (fotoğraf, açık disk) ve `storage/private_uploads/assets/` (belge, yalnız uygulama üzerinden) yollarında
+  durur, dosya↔cihaz bağı da `action_logs` tablosundadır. İkisine tek yerden ulaşmanın yolu **REST API**:
+  `GET /api/v1/hardware?limit&offset` (id · asset_tag · serial · **image** tam URL) ·
+  `GET /api/v1/hardware/{id}/files` (dosya listesi) · `GET /api/v1/hardware/{id}/files/{file_id}` (dosyanın
+  KENDİSİ). Kimlik `Authorization: Bearer <token>` (Snipe-IT → kullanıcı menüsü → Manage API Keys).
+  • **Token SIRDIR**: formdan girilirse yalnız `$_SESSION`'da tutulur, DB'ye/diske YAZILMAZ; kalıcı isteniyorsa
+  `config.php`'ye (git-ignored) `SNIPE_URL` / `SNIPE_TOKEN` eklenir — `sn_ayar()` önce sabitlere bakar.
+  • **3 adım**: bağlan (test + eşleşme önizlemesi) → **15'erli partiler** hâlinde indirme (sayfa kendini
+  yeniler, ilerleme çubuğu; uzun listede zaman aşımına düşmesin diye) → rapor.
+  • **Eşleşme** `sn_eslestir()`: **snipe_id → cihaz kodu (asset tag) → IFS nesne no → seri no → envanter no**.
+  Eşleşen cihaza Snipe id'si yazılır (yeni kolon **`it_cihazlar.snipe_id`**, `it_ek_alan_semasi_kur`) → sonraki
+  çekimler birebir olur; `CIM_ALAN`'a `snipe_id` eklendiği için Excel'deki **"Kimlik"** sütunu da bunu doldurur.
+  • **Mükerrer yok**: indirilen her dosyanın md5'i cihazın mevcut belgeleriyle karşılaştırılır
+  (`it_belge_md5ler`), aynı bayt ikinci kez eklenmez — istendiği kadar tekrar çalıştırılır.
+  `it_belge_yukle` artık ortak `it_belge_kaydet()`e devreder (form yüklemesi taşır, indirme kopyalar).
+  • `sn_belge_turu()` dosya adı/notundan tür çıkarır: **zimmet/tutanak/teslim/imzalı → `tur='zimmet'`**
+  (listede yeşil rozet), transfer/sevk → `transfer`, gerisi `belge`. Fotoğraf `foto_url`u günceller.
+  • `sn_url_indir()` fotoğrafı çekerken, adres Snipe sunucusunun kendisiyse **token da gönderir** (uploads
+  klasörü kimlik doğrulaması arkasındaysa da çalışsın). ⚠ `curl_close()` PHP 8.5'te deprecated — `unset()`.
+  • Yetki: `sayfa_islemi()` regex'ine `snipe_cek` eklendi → **giris**. Giriş noktası: Cihaz İçe Aktar
+  ekranındaki "Snipe-IT'den Belge Çek" düğmesi (sidebar'a yeni satır eklenmedi).
+  • Sahte Snipe-IT sunucusuyla doğrulandı (418 varlık): 1. tur 60 fotoğraf + 150 belge indi,
+  **2. tur 0 belge / 120 atlandı**, 3. tur **0 yeni / 135 atlandı**; zimmet adlı dosyalar `zimmet`
+  türüyle işaretlendi; hatalı token → "Yetki reddedildi (HTTP 401)", yanlış adres → bağlantı hatası.
   **TRANSFER = PROJELER ARASI SEVK (2026-09-10)** — iş kuralı: cihaz **bir projeden (Batı Yakası vb.)
   İHTİYAÇ DUYAN BAŞKA PROJEYE** gönderilir; ilgili kişi gönderir, karşı taraf teslim alır. Yolda geçen süre
   takip edilebilsin diye ayrı bir DURUM: `IT_DURUM`'a **`transfer` (Transfer / yolda)**, `IT_HAREKET`'e de

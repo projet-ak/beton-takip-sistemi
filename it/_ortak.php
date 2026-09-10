@@ -396,25 +396,55 @@ function it_belgeler(PDO $pdo, int $cihazId): array
 function it_belge_yukle(PDO $pdo, int $cihazId, array $f, ?string $kullanici = null, string $tur = 'belge'): array
 {
     if (empty($f['tmp_name']) || !is_uploaded_file($f['tmp_name'])) return [false, 'Dosya seçilmedi.'];
-    $ad   = (string)($f['name'] ?? '');
-    $mime = guess_mime($f['tmp_name'], $ad);
+    return it_belge_kaydet($pdo, $cihazId, (string)$f['tmp_name'], (string)($f['name'] ?? ''), $kullanici, $tur, true);
+}
+
+/**
+ * Diskteki bir dosyayı cihazın belgesi olarak kaydeder — form yüklemesi (it_belge_yukle) ve
+ * dış kaynaktan indirme (Snipe-IT köprüsü) aynı doğrulama/adlandırma yolundan geçsin diye ortak.
+ * $tasi=true → dosya taşınır (form yüklemesi), false → kopyalanır (indirilen geçici dosya).
+ * @return array{0:bool,1:string}
+ */
+function it_belge_kaydet(PDO $pdo, int $cihazId, string $yol, string $ad, ?string $kullanici = null,
+                         string $tur = 'belge', bool $tasi = false): array
+{
+    if ($yol === '' || !is_file($yol)) return [false, 'Dosya bulunamadı.'];
+    $ad   = $ad !== '' ? $ad : basename($yol);
+    $mime = guess_mime($yol, $ad);
     if (!in_array($mime, ['application/pdf','image/jpeg','image/png','image/webp','image/heic'], true))
         return [false, h($ad) . ': desteklenmeyen tür (PDF, JPG, PNG, WEBP) — ' . $mime];
-    if ((int)($f['size'] ?? 0) > 15 * 1024 * 1024) return [false, h($ad) . ': dosya 15 MB sınırını aşıyor.'];
+    $boyut = (int)@filesize($yol);
+    if ($boyut > 15 * 1024 * 1024) return [false, h($ad) . ': dosya 15 MB sınırını aşıyor.'];
 
     $dir = __DIR__ . '/../uploads/it_envanter/' . $cihazId;
     if (!is_dir($dir) && !@mkdir($dir, 0755, true)) return [false, 'Klasör oluşturulamadı: uploads/it_envanter/' . $cihazId];
     $ext  = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'bin';
     $yeni = 'belge_' . date('Ymd_His') . '_' . substr(md5($ad . microtime()), 0, 6) . '.' . $ext;
-    if (!@move_uploaded_file($f['tmp_name'], $dir . '/' . $yeni)) return [false, h($ad) . ': dosya diske yazılamadı.'];
+    $hedef = $dir . '/' . $yeni;
+    $ok = $tasi ? @move_uploaded_file($yol, $hedef) : @copy($yol, $hedef);
+    if (!$ok) return [false, h($ad) . ': dosya diske yazılamadı.'];
 
     $url = 'uploads/it_envanter/' . $cihazId . '/' . $yeni;
     $tur = in_array($tur, ['zimmet', 'transfer'], true) ? $tur : 'belge';
     $pdo->prepare("INSERT INTO it_belgeler (cihaz_id, dosya_url, ad, mime, boyut, tur, kullanici) VALUES (?,?,?,?,?,?,?)")
-        ->execute([$cihazId, $url, mb_substr($ad, 0, 255), $mime, (int)($f['size'] ?? 0), $tur, $kullanici]);
+        ->execute([$cihazId, $url, mb_substr($ad, 0, 255), $mime, $boyut, $tur, $kullanici]);
     if (str_starts_with($mime, 'image/'))
         $pdo->prepare("UPDATE it_cihazlar SET foto_url=? WHERE id=?")->execute([$url, $cihazId]);
-    return [true, h($ad) . ' yüklendi.'];
+    return [true, h($ad) . ' kaydedildi.'];
+}
+
+/**
+ * Cihazın mevcut belgelerinin içerik md5'leri — dış kaynaktan tekrar tekrar indirmede
+ * **aynı dosya iki kez eklenmesin** diye (ad/boyut değil, BAYT karşılaştırması).
+ */
+function it_belge_md5ler(PDO $pdo, int $cihazId): array
+{
+    $r = [];
+    foreach (it_belgeler($pdo, $cihazId) as $b) {
+        $y = __DIR__ . '/../' . ($b['dosya_url'] ?? '');
+        if (is_file($y)) $r[md5_file($y)] = true;
+    }
+    return $r;
 }
 
 /** Belgeyi siler (kayıt + disk); foto_url kalan en yeni görsele döner. */
@@ -724,6 +754,8 @@ function it_ek_alan_semasi_kur(PDO $pdo): void
         // ⚠ Kurum içi kısa demirbaş etiketi (M160 / N221). envanter_no BİZİM sabit numaramızdır
         // (IT-00001, tutanaklarda geçer) ve içe aktarma onu ASLA ezmez — kurumsal kod buraya yazılır.
         'cihaz_kodu'        => 'VARCHAR(60) NULL',
+        // Snipe-IT'deki varlık id'si ("Kimlik" sütunu) — belge/fotoğraf köprüsü cihazı bununla bulur
+        'snipe_id'          => 'INT NULL',
         'sasi_no'           => 'VARCHAR(120) NULL',  // 2. seri numarası (şasi / servis etiketi)
         'islemci'           => 'VARCHAR(160) NULL',
         'ram'               => 'VARCHAR(120) NULL',

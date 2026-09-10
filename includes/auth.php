@@ -323,7 +323,7 @@ function sayfa_islemi(): string
                    'mutabakat.php','prp_ustyapi.php','istinat.php','temel_kazik.php','metraj_sayfasi.php',
                    'mobilizasyon.php','taseron_bakiye.php','arac_takip.php','saha_analiz.php','ai_rapor.php'];
     if (!$post && (in_array($s, $raporSayfa, true) || isset($_GET['export']) || isset($_GET['indir']))) return 'rapor';
-    $girisSayfa = preg_match('/^(import\d*|cihaz_import|toplu_irsaliye|hizli_tarama|belge_dagit|fatura_eslestir|faturalar|hizli_kaydet|hizli_guncelle|ai_okut|demir_okut|demir_scan_kaydet|demir_pdf_kaydet|pdf_kaydet|foto_yukle)\.php$/', $s)
+    $girisSayfa = preg_match('/^(import\d*|cihaz_import|snipe_cek|toplu_irsaliye|hizli_tarama|belge_dagit|fatura_eslestir|faturalar|hizli_kaydet|hizli_guncelle|ai_okut|demir_okut|demir_scan_kaydet|demir_pdf_kaydet|pdf_kaydet|foto_yukle)\.php$/', $s)
                || str_ends_with($s, '_form.php');
     $kayitAcik = !empty($_GET['edit']) || (str_ends_with($s, '_form.php') && (!empty($_GET['id']) || (int)($_POST['id'] ?? 0) > 0));
     if ($kayitAcik) return 'duzenle';

@@ -58,6 +58,7 @@ const CIM_ALAN = [
     'kiralik_firma'=> ['etiket' => 'Kiralanan Firma',    'es' => ['KIRALANAN FIRMA','KIRALIK FIRMA','KIRALAYAN FIRMA']],
     'ozellik'      => ['etiket' => 'Diğer teknik özellik (birleşir)','es' => ['TEKNIK OZELLIK','TEKNIK OZELLIKLER','OZELLIK','OZELLIKLER','SPECS','SPECIFICATION']],
     'sicil_no'     => ['etiket' => 'Zimmetli kişinin sicil no', 'es' => ['CALISAN NUMARASI','SICIL NO','SICIL','PERSONEL NO','EMPLOYEE NUMBER','EMPLOYEE NO']],
+    'snipe_id'     => ['etiket' => 'Snipe-IT Kimlik (belge köprüsü)', 'es' => ['KIMLIK','SNIPE ID','SNIPE-IT ID','ASSET ID']],
     'sirket'       => ['etiket' => 'Şirket',                  'es' => ['SIRKET','SIRKETI','COMPANY','FIRMA ADI']],
     'notlar'       => ['etiket' => 'Not (nota eklenir)',       'es' => ['NOT','NOTLAR','ACIKLAMA','DESCRIPTION','REMARKS','COMMENT','INFO','DEMIRBAS DURUMU']],
 ];
@@ -294,7 +295,7 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
     $r = ['okunan'=>0, 'yeni'=>[], 'guncellenen'=>[], 'degismeyen'=>0, 'atlanan'=>[], 'kisi_yok'=>[], 'lokasyon_yok'=>[], 'kisi_eklenen'=>[]];
     // ⚠ 'envanter_no' BİLEREK YOK: bizim sabit numaramızdır (tutanaklarda geçer), dosya onu ezmez.
     $alanlar = ['varlik_kodu','cihaz_kodu','kategori','ad','marka','model','seri_no','sasi_no','imei','durum','zimmetli','personel_id','departman','lokasyon','lokasyon_id',
-                'zimmet_tarihi','alis_tarihi','garanti_bitis','fiyat','tedarikci','fatura_no','sirket','ip_adresi','mac_adresi','isletim_sistemi',
+                'zimmet_tarihi','alis_tarihi','garanti_bitis','fiyat','tedarikci','fatura_no','sirket','snipe_id','ip_adresi','mac_adresi','isletim_sistemi',
                 'islemci','ram','ekran_karti','disk','anakart','ekran_boyutu','kapasite','kiralik_firma','ozellikler'];
 
     cim_semasi_kur($pdo);                       // ⚠ DDL transaction'ı örtük commit eder → ÖNCE
@@ -397,6 +398,7 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
                 'fiyat'       => cim_fiyat($v['fiyat']),
                 'tedarikci'   => $v['tedarikci'] ?: null, 'fatura_no' => $v['fatura_no'] ?: null,
                 'sirket'      => $v['sirket'] ?: null,
+                'snipe_id'    => ctype_digit($v['snipe_id']) ? (int)$v['snipe_id'] : null,
                 'ip_adresi'   => $v['ip_adresi'] ?: null, 'mac_adresi' => $v['mac_adresi'] ?: null,
                 'isletim_sistemi' => $v['isletim'] ?: null,
                 'sasi_no'     => $v['sasi_no'] ?: null, 'imei' => $v['imei'] ?: null,

@@ -65,3 +65,11 @@ define('DB_PASS', 'sifre');
 
 // IT Envanter modülü ayrı veritabanı (isteğe bağlı; tanımsızsa ana DB'de it_ önekli tablolar)
 // define('IT_DB_NAME', 'takbulut_it');
+
+// ── Snipe-IT köprüsü (isteğe bağlı) ──────────────────────────────────────────
+// IT Envanter › Cihaz İçe Aktar › "Snipe-IT'den Belge Çek" ekranı cihaz fotoğraflarını ve
+// varlığa yüklenmiş dosyaları (imzalı zimmet tutanağı, fatura…) API ile indirir.
+// Burada tanımlanırsa ekranda her seferinde girilmesi gerekmez. Token Snipe-IT'de
+// kullanıcı menüsü → Manage API Keys ile üretilir. ⚠ Bu dosya git-ignored'dır.
+// define('SNIPE_URL',   'https://envanter.sirketiniz.com');
+// define('SNIPE_TOKEN', '...');
