@@ -122,6 +122,12 @@ require_once __DIR__ . '/../includes/header.php';
     <h4 class="mb-0"><i class="bi bi-diagram-3 text-primary me-2"></i>Merkezi Varlık İzleme
         <?php if ($grup): ?><span class="text-muted fw-normal">· <?= h(IT_GRUP[$grup][0]) ?></span><?php endif; ?></h4>
     <div class="d-flex gap-2">
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" title="Sütunları gizle / göster">
+                <i class="bi bi-layout-three-columns me-1"></i>Sütunlar<span class="badge bg-secondary ms-1 d-none" id="kolonRozet"></span>
+            </button>
+            <div class="dropdown-menu dropdown-menu-end p-0 shadow" style="min-width:240px" id="kolonMenu"></div>
+        </div>
         <a href="varliklar.php<?= h($qs(['export'=>'xlsx'])) ?>" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Excel</a>
         <a href="cihazlar.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-list-ul me-1"></i>Klasik Liste</a>
         <?php if (yetki_var('giris')): ?><a href="cihaz_form.php" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Yeni Varlık</a><?php endif; ?>
@@ -193,11 +199,11 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 <?php else: ?>
 <div class="card border-0 shadow-sm">
-<div class="table-responsive"><table class="table table-hover align-middle mb-0 vg-tablo">
+<div class="table-responsive"><table id="varlikTablo" class="table table-hover align-middle mb-0 vg-tablo">
     <thead class="table-light"><tr>
-        <th>Envanter</th><th>Varlık</th><th>Marka / Model</th><th>Seri No</th>
-        <th>Ağ / Hat</th><th>Teknik</th><th>Lokasyon</th><th>Zimmetli</th><th>Durum</th>
-        <?php if ($maliGoster): ?><th class="text-end">Garanti</th><?php endif; ?>
+        <th data-kol="envanter">Envanter</th><th data-kol="varlik">Varlık</th><th data-kol="marka" data-kol-ad="Marka / Model">Marka / Model</th><th data-kol="seri" data-kol-ad="Seri No">Seri No</th>
+        <th data-kol="ag" data-kol-ad="Ağ / Hat">Ağ / Hat</th><th data-kol="teknik">Teknik</th><th data-kol="lokasyon">Lokasyon</th><th data-kol="zimmetli">Zimmetli</th><th data-kol="durum">Durum</th>
+        <?php if ($maliGoster): ?><th class="text-end" data-kol="garanti">Garanti</th><?php endif; ?>
     </tr></thead>
     <tbody>
     <?php $sonGrup = null; foreach ($liste as $r):
@@ -270,4 +276,8 @@ require_once __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 </div>
 <?php endif; ?>
+<script src="<?= $rootPath ?>assets/js/kolon_sec.js"></script>
+<script>
+ERN_KOLON.kur({ tablo: '#varlikTablo', menu: '#kolonMenu', anahtar: 'it_varliklar', dugme: '#kolonRozet' });
+</script>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

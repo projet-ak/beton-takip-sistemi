@@ -576,6 +576,15 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   varsayılan sıralama `kod`. Aynı desen **personel** ekranına da uygulandı: Lokasyon (`lok_ad` alt sorgusu) ve
   Telefon sütunları sıralanabilir oldu; personel kartındaki cihaz tablosu da Cihaz Kodu + IFS No gösterir.
   Zimmet değeri / Değer sütunları `it_mali_goster()` ile gizlenir (liste, Excel, personel kartı).
+  • **SÜTUN GİZLE / GÖSTER (2026-09-10, kullanıcı isteği)** — ortak bileşen **`assets/js/kolon_sec.js`**
+  (`ERN_KOLON.kur({tablo, menu, anahtar, dugme, varsayilan})`): başlıktaki her `<th data-kol="…" data-kol-ad="…">`
+  menüde bir kutucuk olur, işaretsiz sütun `d-none` alır. **Hücrelere ayrıca işaret konmaz** — gövde hücreleri
+  BAŞLIK SIRASIYLA eşleşir; başlık sayısı tutmayan satırlar (colspan'lı "Kayıt yok" satırı, `varliklar.php`'nin
+  grup başlığı satırı) atlanır, bu yüzden yeni sütun eklerken yalnız `th` işaretlenir. Tercih **cihaza özeldir**
+  (`localStorage` `ern_kol_<anahtar>` = GİZLİ sütun anahtarları; try/catch — gizli sekmede sessizce varsayılana
+  düşer), **son görünür sütun kapatılamaz**, düğmede gizli sütun sayısı rozeti + menüde Tümü / Varsayılan.
+  Kullanan ekranlar: `cihazlar.php` (`it_cihazlar`, 10 sütun) · `personel.php` (`it_personel`, 9) ·
+  `varliklar.php` (`it_varliklar`, 9). Dropdown `data-bs-auto-close="outside"` ile açık kalır.
   • Şablon 31 → **32 sütun** (Envanter No · Cihaz Kodu · IFS Seri Nesne No …). Mükerrer merkezi (`MK_KURAL`)
   it_cihazlar anahtarlarına `cihaz_kodu` eklendi. Gerçek dosyayla doğrulandı: **412 satır → 251 yeni /
   159 güncellenen / 2 atlanan** (1 boş satır + 1 kimlik çakışması), **2. yükleme 0 yeni / 0 güncellenen /
@@ -628,7 +637,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 ### Teknoloji
 - Backend: PHP (framework yok), PDO/MySQL 8, prepared statements her yerde.
 - Frontend: Bootstrap 5.3.3 + Bootstrap Icons, Chart.js 4.4.4, Google Fonts (Outfit), sunucu-tarafı render + PWA (`manifest.json`, `sw.js`).
-- Excel: `Shuchkin\SimpleXLSX` (composer, okuma) + `includes/XlsxWriter.php` (yazma; **varsayılan ERN Taahhüt logolu** — kurucu 2. parametre false ile kapatılır, başlık 4. satıra kayar) + client-side **ExcelJS** (formatlı rapor). **Rapor dışa aktarma ortak katmanı `assets/js/ern_rapor.js`**: ERN_RAPOR.wb/title/hdr/save (logolu çok sayfalı ExcelJS) + ERN_RAPOR.popup({mode:'pdf'|'print'}) (logolu A4 penceresi, jsPDF doğrudan kaydet + yazdır). TÜM modül raporları (beton hariç kendi eski deseninde) bu katmanı kullanır: Excel'e Aktar + PDF İndir + Yazdır üçlüsü. Sayfa script'ten önce `window.ERN_ROOT` tanımlar ('' veya '../').
+- Excel: `Shuchkin\SimpleXLSX` (composer, okuma) + `includes/XlsxWriter.php` (yazma; **varsayılan ERN Taahhüt logolu** — kurucu 2. parametre false ile kapatılır, başlık 4. satıra kayar) + client-side **ExcelJS** (formatlı rapor). **Rapor dışa aktarma ortak katmanı `assets/js/ern_rapor.js`**: ERN_RAPOR.wb/title/hdr/save (logolu çok sayfalı ExcelJS) + ERN_RAPOR.popup({mode:'pdf'|'print'}) (logolu A4 penceresi, jsPDF doğrudan kaydet + yazdır). TÜM modül raporları (beton hariç kendi eski deseninde) bu katmanı kullanır: Excel'e Aktar + PDF İndir + Yazdır üçlüsü. Sayfa script'ten önce `window.ERN_ROOT` tanımlar ('' veya '../'). **Tablo sütunu gizle/göster ortak katmanı `assets/js/kolon_sec.js`** (`ERN_KOLON.kur`, IT listelerinde kullanılıyor — ayrıntı IT Envanter bölümünde).
 - AI: Claude (Haiku 4.5) / Gemini / OpenRouter — `AI_PROVIDER` ile seçilir (`includes/ai_call.php`).
 
 ---

@@ -87,6 +87,12 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <h4 class="mb-0"><i class="bi bi-pc-display text-primary me-2"></i>Cihazlar &amp; Lisanslar</h4>
     <div class="d-flex gap-2">
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" title="Sütunları gizle / göster">
+                <i class="bi bi-layout-three-columns me-1"></i>Sütunlar<span class="badge bg-secondary ms-1 d-none" id="kolonRozet"></span>
+            </button>
+            <div class="dropdown-menu dropdown-menu-end p-0 shadow" style="min-width:240px" id="kolonMenu"></div>
+        </div>
         <a href="cihazlar.php?<?= h(http_build_query(array_merge($_GET, ['export'=>'xlsx']))) ?>" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Excel</a>
         <?php if ($yazabilir): ?><a href="cihaz_import.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-box-arrow-in-down me-1"></i>İçe Aktar</a>
         <a href="cihaz_form.php" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Yeni Cihaz</a><?php endif; ?>
@@ -144,23 +150,23 @@ require_once __DIR__ . '/../includes/header.php';
 
 <div class="card border-0 shadow-sm">
   <div class="table-responsive">
-    <table class="table table-hover table-sm align-middle mb-0" style="font-size:.86rem">
+    <table id="cihazTablo" class="table table-hover table-sm align-middle mb-0" style="font-size:.86rem">
       <thead class="table-light">
         <tr>
-          <th style="width:52px"></th>
-          <th><a href="<?= h($srtUrl('kod')) ?>" class="text-decoration-none text-dark">Cihaz Kodu <?= $srtIk('kod') ?></a></th>
-          <th><a href="<?= h($srtUrl('ifs')) ?>" class="text-decoration-none text-dark">IFS Seri Nesne No <?= $srtIk('ifs') ?></a></th>
-          <th><a href="<?= h($srtUrl('ad')) ?>" class="text-decoration-none text-dark">Cihaz <?= $srtIk('ad') ?></a></th>
-          <th><a href="<?= h($srtUrl('kategori')) ?>" class="text-decoration-none text-dark">Kategori <?= $srtIk('kategori') ?></a></th>
-          <th><a href="<?= h($srtUrl('seri')) ?>" class="text-decoration-none text-dark">Seri No <?= $srtIk('seri') ?></a></th>
-          <th><a href="<?= h($srtUrl('durum')) ?>" class="text-decoration-none text-dark">Durum <?= $srtIk('durum') ?></a></th>
-          <th><a href="<?= h($srtUrl('zimmetli')) ?>" class="text-decoration-none text-dark">Zimmetli <?= $srtIk('zimmetli') ?></a></th>
-          <th><a href="<?= h($srtUrl('lokasyon')) ?>" class="text-decoration-none text-dark">Lokasyon <?= $srtIk('lokasyon') ?></a></th>
+          <th style="width:52px" data-kol="foto" data-kol-ad="Fotoğraf"></th>
+          <th data-kol="kod" data-kol-ad="Cihaz Kodu"><a href="<?= h($srtUrl('kod')) ?>" class="text-decoration-none text-dark">Cihaz Kodu <?= $srtIk('kod') ?></a></th>
+          <th data-kol="ifs" data-kol-ad="IFS Seri Nesne No"><a href="<?= h($srtUrl('ifs')) ?>" class="text-decoration-none text-dark">IFS Seri Nesne No <?= $srtIk('ifs') ?></a></th>
+          <th data-kol="ad" data-kol-ad="Cihaz"><a href="<?= h($srtUrl('ad')) ?>" class="text-decoration-none text-dark">Cihaz <?= $srtIk('ad') ?></a></th>
+          <th data-kol="kategori" data-kol-ad="Kategori"><a href="<?= h($srtUrl('kategori')) ?>" class="text-decoration-none text-dark">Kategori <?= $srtIk('kategori') ?></a></th>
+          <th data-kol="seri" data-kol-ad="Seri No"><a href="<?= h($srtUrl('seri')) ?>" class="text-decoration-none text-dark">Seri No <?= $srtIk('seri') ?></a></th>
+          <th data-kol="durum" data-kol-ad="Durum"><a href="<?= h($srtUrl('durum')) ?>" class="text-decoration-none text-dark">Durum <?= $srtIk('durum') ?></a></th>
+          <th data-kol="zimmetli" data-kol-ad="Zimmetli"><a href="<?= h($srtUrl('zimmetli')) ?>" class="text-decoration-none text-dark">Zimmetli <?= $srtIk('zimmetli') ?></a></th>
+          <th data-kol="lokasyon" data-kol-ad="Lokasyon"><a href="<?= h($srtUrl('lokasyon')) ?>" class="text-decoration-none text-dark">Lokasyon <?= $srtIk('lokasyon') ?></a></th>
           <?php if ($maliGoster): ?>
-          <th><a href="<?= h($srtUrl('garanti')) ?>" class="text-decoration-none text-dark">Garanti <?= $srtIk('garanti') ?></a></th>
-          <th class="text-end"><a href="<?= h($srtUrl('fiyat')) ?>" class="text-decoration-none text-dark">Fiyat <?= $srtIk('fiyat') ?></a></th>
+          <th data-kol="garanti" data-kol-ad="Garanti"><a href="<?= h($srtUrl('garanti')) ?>" class="text-decoration-none text-dark">Garanti <?= $srtIk('garanti') ?></a></th>
+          <th class="text-end" data-kol="fiyat" data-kol-ad="Fiyat"><a href="<?= h($srtUrl('fiyat')) ?>" class="text-decoration-none text-dark">Fiyat <?= $srtIk('fiyat') ?></a></th>
           <?php endif; ?>
-          <th class="text-center" title="İmzalı zimmet tutanağı / belge">Evrak</th>
+          <th class="text-center" data-kol="evrak" data-kol-ad="Evrak" title="İmzalı zimmet tutanağı / belge">Evrak</th>
           <th></th>
         </tr>
       </thead>
@@ -239,4 +245,8 @@ require_once __DIR__ . '/../includes/header.php';
   </div>
   <?php endif; ?>
 </div>
+<script src="<?= $rootPath ?>assets/js/kolon_sec.js"></script>
+<script>
+ERN_KOLON.kur({ tablo: '#cihazTablo', menu: '#kolonMenu', anahtar: 'it_cihazlar', dugme: '#kolonRozet' });
+</script>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

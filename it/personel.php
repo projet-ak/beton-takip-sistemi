@@ -110,6 +110,12 @@ require_once __DIR__ . '/../includes/header.php';
     <h4 class="mb-0"><i class="bi bi-people text-primary me-2"></i>Personel &amp; Zimmet Sahipleri</h4>
     <div class="d-flex gap-2">
         <a href="tanimlar.php?t=lokasyon" class="btn btn-outline-secondary btn-sm"><i class="bi bi-diagram-3 me-1"></i>Lokasyonlar</a>
+        <div class="dropdown">
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" title="Sütunları gizle / göster">
+                <i class="bi bi-layout-three-columns me-1"></i>Sütunlar<span class="badge bg-secondary ms-1 d-none" id="kolonRozet"></span>
+            </button>
+            <div class="dropdown-menu dropdown-menu-end p-0 shadow" style="min-width:240px" id="kolonMenu"></div>
+        </div>
         <a href="personel.php?<?= h(http_build_query(array_merge($_GET, ['export'=>'xlsx']))) ?>" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Excel</a>
         <?php if ($yazabilir): ?><a href="import.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-cloud-arrow-up me-1"></i>İçe Aktar</a><a href="personel_form.php" class="btn btn-primary btn-sm"><i class="bi bi-person-plus me-1"></i>Yeni Personel</a><?php endif; ?>
     </div>
@@ -212,17 +218,17 @@ require_once __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 
 <div class="card border-0 shadow-sm"><div class="table-responsive">
-<table class="table table-hover table-sm align-middle mb-0" style="font-size:.86rem">
+<table id="personelTablo" class="table table-hover table-sm align-middle mb-0" style="font-size:.86rem">
   <thead class="table-light"><tr>
-    <th><a href="<?= h($srtUrl('sicil')) ?>" class="text-decoration-none text-dark">Sicil <?= $srtIk('sicil') ?></a></th>
-    <th><a href="<?= h($srtUrl('ad')) ?>" class="text-decoration-none text-dark">Ad Soyad <?= $srtIk('ad') ?></a></th>
-    <th><a href="<?= h($srtUrl('unvan')) ?>" class="text-decoration-none text-dark">Unvan <?= $srtIk('unvan') ?></a></th>
-    <th><a href="<?= h($srtUrl('birim')) ?>" class="text-decoration-none text-dark">Birim <?= $srtIk('birim') ?></a></th>
-    <th><a href="<?= h($srtUrl('lokasyon')) ?>" class="text-decoration-none text-dark">Lokasyon <?= $srtIk('lokasyon') ?></a></th>
-    <th><a href="<?= h($srtUrl('telefon')) ?>" class="text-decoration-none text-dark">Telefon <?= $srtIk('telefon') ?></a></th>
-    <th><a href="<?= h($srtUrl('giris')) ?>" class="text-decoration-none text-dark">İşe Giriş <?= $srtIk('giris') ?></a></th>
-    <th><a href="<?= h($srtUrl('cikis')) ?>" class="text-decoration-none text-dark">Çıkış <?= $srtIk('cikis') ?></a></th>
-    <th class="text-end"><a href="<?= h($srtUrl('cihaz')) ?>" class="text-decoration-none text-dark">Zimmet <?= $srtIk('cihaz') ?></a></th>
+    <th data-kol="sicil" data-kol-ad="Sicil"><a href="<?= h($srtUrl('sicil')) ?>" class="text-decoration-none text-dark">Sicil <?= $srtIk('sicil') ?></a></th>
+    <th data-kol="ad" data-kol-ad="Ad Soyad"><a href="<?= h($srtUrl('ad')) ?>" class="text-decoration-none text-dark">Ad Soyad <?= $srtIk('ad') ?></a></th>
+    <th data-kol="unvan" data-kol-ad="Unvan"><a href="<?= h($srtUrl('unvan')) ?>" class="text-decoration-none text-dark">Unvan <?= $srtIk('unvan') ?></a></th>
+    <th data-kol="birim" data-kol-ad="Birim"><a href="<?= h($srtUrl('birim')) ?>" class="text-decoration-none text-dark">Birim <?= $srtIk('birim') ?></a></th>
+    <th data-kol="lokasyon" data-kol-ad="Lokasyon"><a href="<?= h($srtUrl('lokasyon')) ?>" class="text-decoration-none text-dark">Lokasyon <?= $srtIk('lokasyon') ?></a></th>
+    <th data-kol="telefon" data-kol-ad="Telefon"><a href="<?= h($srtUrl('telefon')) ?>" class="text-decoration-none text-dark">Telefon <?= $srtIk('telefon') ?></a></th>
+    <th data-kol="giris" data-kol-ad="İşe Giriş"><a href="<?= h($srtUrl('giris')) ?>" class="text-decoration-none text-dark">İşe Giriş <?= $srtIk('giris') ?></a></th>
+    <th data-kol="cikis" data-kol-ad="Çıkış"><a href="<?= h($srtUrl('cikis')) ?>" class="text-decoration-none text-dark">Çıkış <?= $srtIk('cikis') ?></a></th>
+    <th class="text-end" data-kol="cihaz" data-kol-ad="Zimmet"><a href="<?= h($srtUrl('cihaz')) ?>" class="text-decoration-none text-dark">Zimmet <?= $srtIk('cihaz') ?></a></th>
     <th></th></tr></thead>
   <tbody>
   <?php if (!$liste): ?><tr><td colspan="10" class="text-center text-muted py-4">Kayıt yok.<?php if ($yazabilir): ?> <a href="personel_form.php">İlk personeli ekleyin</a>.<?php endif; ?></td></tr><?php endif; ?>
@@ -245,4 +251,8 @@ require_once __DIR__ . '/../includes/header.php';
   <?php endforeach; ?>
   </tbody>
 </table></div></div>
+<script src="<?= $rootPath ?>assets/js/kolon_sec.js"></script>
+<script>
+ERN_KOLON.kur({ tablo: '#personelTablo', menu: '#kolonMenu', anahtar: 'it_personel', dugme: '#kolonRozet' });
+</script>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
