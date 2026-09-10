@@ -213,20 +213,30 @@ require_once __DIR__ . '/../includes/header.php';
           <td class="text-end"><?= $r['fiyat'] !== null ? $f2($r['fiyat']) : '—' ?></td>
           <?php endif; ?>
           <td class="text-center">
-            <?php $bs = $belgeSay[(int)$r['id']] ?? ['toplam'=>0,'imzali'=>0]; ?>
-            <?php if ($bs['imzali']): ?>
-              <a href="cihaz_detay.php?id=<?= (int)$r['id'] ?>#belgeler" class="badge bg-success text-decoration-none" title="İmzalı zimmet tutanağı yüklü"><i class="bi bi-file-earmark-check me-1"></i><?= (int)$bs['imzali'] ?></a>
+            <?php
+              $bs = $belgeSay[(int)$r['id']] ?? ['toplam'=>0,'imzali'=>0,'zimmet'=>0,'transfer'=>0,'hurda'=>0];
+              // Cihazın DURUMUNA uygun tutanak: envanterden düşende hurda/zayi/hibe, yoldakinde sevk,
+              // zimmetlide zimmet tutanağı. Başka türde belge olması gerekeni karşılamaz.
+              $__gerek = it_durum_dustu($r['durum'])
+                  ? ['hurda', 'hurda_tutanak.php?id=' . (int)$r['id'], 'hurda / zayi / hibe tutanağı']
+                  : ($r['durum'] === 'transfer'
+                      ? ['transfer', 'transfer_tutanak.php?id=' . (int)$r['id'], 'sevk tutanağı']
+                      : ($r['zimmetli'] ? ['zimmet', 'zimmet_tutanak.php?id=' . (int)$r['id'], 'zimmet tutanağı'] : null));
+            ?>
+            <?php if ($__gerek && (int)($bs[$__gerek[0]] ?? 0)): ?>
+              <a href="cihaz_detay.php?id=<?= (int)$r['id'] ?>#belgeler" class="badge bg-success text-decoration-none" title="İmzalı <?= h($__gerek[2]) ?> yüklü"><i class="bi bi-file-earmark-check me-1"></i><?= (int)$bs[$__gerek[0]] ?></a>
+            <?php elseif ($__gerek): ?>
+              <a href="<?= h($__gerek[1]) ?>" target="_blank" class="badge bg-light text-warning border text-decoration-none" title="İmzalı <?= h($__gerek[2]) ?> yok<?= $bs['toplam'] ? ' (' . (int)$bs['toplam'] . ' başka belge var)' : '' ?> — tutanağı aç"><i class="bi bi-exclamation-triangle"></i></a>
+            <?php elseif ($bs['imzali']): ?>
+              <a href="cihaz_detay.php?id=<?= (int)$r['id'] ?>#belgeler" class="badge bg-success text-decoration-none" title="İmzalı tutanak yüklü"><i class="bi bi-file-earmark-check me-1"></i><?= (int)$bs['imzali'] ?></a>
             <?php elseif ($bs['toplam']): ?>
               <a href="cihaz_detay.php?id=<?= (int)$r['id'] ?>#belgeler" class="badge bg-light text-secondary border text-decoration-none" title="<?= (int)$bs['toplam'] ?> belge — imzalı tutanak yok"><i class="bi bi-paperclip me-1"></i><?= (int)$bs['toplam'] ?></a>
-            <?php elseif ($r['durum'] === 'transfer'): ?>
-              <a href="transfer_tutanak.php?id=<?= (int)$r['id'] ?>" target="_blank" class="badge bg-light text-warning border text-decoration-none" title="Transferde ama imzalı sevk tutanağı yok"><i class="bi bi-exclamation-triangle"></i></a>
-            <?php elseif ($r['zimmetli']): ?>
-              <a href="zimmet_tutanak.php?id=<?= (int)$r['id'] ?>" target="_blank" class="badge bg-light text-warning border text-decoration-none" title="Zimmetli ama imzalı evrak yok"><i class="bi bi-exclamation-triangle"></i></a>
             <?php else: ?><span class="text-muted">—</span><?php endif; ?>
           </td>
           <td class="text-end text-nowrap">
             <a href="cihaz_detay.php?id=<?= (int)$r['id'] ?>" class="btn btn-sm btn-outline-secondary" title="Detay"><i class="bi bi-eye"></i></a>
-            <?php if ($r['durum'] === 'transfer'): ?><a href="transfer_tutanak.php?id=<?= (int)$r['id'] ?>" target="_blank" class="btn btn-sm btn-outline-info" title="Transfer tutanağı"><i class="bi bi-arrow-left-right"></i></a>
+            <?php if (it_durum_dustu($r['durum'])): ?><a href="hurda_tutanak.php?id=<?= (int)$r['id'] ?>" target="_blank" class="btn btn-sm btn-outline-danger" title="<?= h(it_durumAd($r['durum'])) ?> tutanağı"><i class="bi bi-file-earmark-x"></i></a>
+            <?php elseif ($r['durum'] === 'transfer'): ?><a href="transfer_tutanak.php?id=<?= (int)$r['id'] ?>" target="_blank" class="btn btn-sm btn-outline-info" title="Transfer tutanağı"><i class="bi bi-arrow-left-right"></i></a>
             <?php elseif ($r['zimmetli']): ?><a href="zimmet_tutanak.php?id=<?= (int)$r['id'] ?>" target="_blank" class="btn btn-sm btn-outline-primary" title="Zimmet tutanağı"><i class="bi bi-file-earmark-text"></i></a><?php endif; ?>
           </td>
         </tr>

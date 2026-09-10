@@ -85,39 +85,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'imzal
 $imzaliSayi = 0;
 foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (int)$__c['id']), fn($b) => ($b['tur'] ?? '') === 'zimmet'));
 
-/**
- * Cihazın KÜNYESİ — kurumsal zimmet formundaki "Özellikler" bloğunun birebir karşılığı
- * (Marka · Model · Şasi/Seri No · Kullanım Durumu · Zimmetlenen Personel · Lokasyon · Kiralanan Firma ·
- *  Kapasite · İşlemci · RAM · Ekran Kartı · HDD · Anakart · Ekran Boyutu · IMEI · Cihaz Kodu).
- * Yalnız DOLU alanlar döner; boş satırlarla form şişmez.
- */
-function zt_kunye(PDO $pdo, array $r): array
-{
-    $lok = !empty($r['lokasyon_id']) ? it_lokasyon_yol($pdo, (int)$r['lokasyon_id']) : (string)($r['lokasyon'] ?? '');
-    $alanlar = [
-        'MARKA'                => $r['marka'] ?? '',
-        'MODEL'                => $r['model'] ?? '',
-        'ŞASİ NO / SERİ NO'    => trim((string)($r['seri_no'] ?? '') . (($r['sasi_no'] ?? '') && ($r['sasi_no'] !== ($r['seri_no'] ?? '')) ? ' / ' . $r['sasi_no'] : '')),
-        'KULLANIM DURUMU'      => it_durumAd((string)$r['durum']),
-        'ZİMMETLENEN PERSONEL' => $r['zimmetli'] ?? '',
-        'LOKASYON'             => $lok,
-        'KİRALANAN FİRMA'      => $r['kiralik_firma'] ?? '',
-        'KAPASİTE'             => $r['kapasite'] ?? '',
-        'İŞLEMCİ MARKA / MODEL'=> $r['islemci'] ?? '',
-        'RAM TİPİ'             => $r['ram'] ?? '',
-        'EKRAN KARTI'          => $r['ekran_karti'] ?? '',
-        'HDD BİLGİSİ'          => $r['disk'] ?? '',
-        'ANAKART'              => $r['anakart'] ?? '',
-        'EKRAN BOYUTU'         => $r['ekran_boyutu'] ?? '',
-        'IMEI'                 => $r['imei'] ?? '',
-        'IP / MAC'             => trim((string)($r['ip_adresi'] ?? '') . (($r['mac_adresi'] ?? '') ? ' / ' . $r['mac_adresi'] : ''), ' /'),
-        'İŞLETİM SİSTEMİ'      => $r['isletim_sistemi'] ?? '',
-        'CİHAZ KODU'           => $r['cihaz_kodu'] ?? '',
-        'ENVANTER NO'          => $r['envanter_no'] ?? '',
-        'IFS SERİ NESNE NO'    => $r['varlik_kodu'] ?? '',
-    ];
-    return array_filter($alanlar, fn($x) => trim((string)$x) !== '');
-}
 ?>
 <!DOCTYPE html>
 <html lang="tr"><head>
@@ -230,7 +197,7 @@ function zt_kunye(PDO $pdo, array $r): array
   </table>
 
   <?php /* Kurumsal formdaki "Özellikler" bloğu — her cihaz için nesne kimliği + donanım künyesi */ ?>
-  <?php foreach ($liste as $i => $r): $ky = zt_kunye($pdoIt, $r); if (!$ky) continue; ?>
+  <?php foreach ($liste as $i => $r): $ky = it_kunye($pdoIt, $r); if (!$ky) continue; ?>
   <div class="kunye-basi"><?= count($liste) > 1 ? ($i + 1) . '. ' : '' ?>ÖZELLİKLER — <?= h($r['ad']) ?>
     <span style="font-weight:600;color:#555">(<?= h($r['envanter_no']) ?><?= !empty($r['varlik_kodu']) ? ' · IFS: ' . h($r['varlik_kodu']) : '' ?>)</span></div>
   <table class="kunye">

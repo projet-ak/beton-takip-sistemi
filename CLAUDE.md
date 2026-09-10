@@ -576,6 +576,32 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   varsayılan sıralama `kod`. Aynı desen **personel** ekranına da uygulandı: Lokasyon (`lok_ad` alt sorgusu) ve
   Telefon sütunları sıralanabilir oldu; personel kartındaki cihaz tablosu da Cihaz Kodu + IFS No gösterir.
   Zimmet değeri / Değer sütunları `it_mali_goster()` ile gizlenir (liste, Excel, personel kartı).
+  **HURDA / ZAYİ / HİBE TUTANAĞI (2026-09-10, kullanıcı isteği)** `it/hurda_tutanak.php` — envanterden
+  DÜŞEN üç durumun (`IT_DURUM_DUSEN`: hurda · kayip · hibe) resmî belgesi. Kayıt silinmediği için
+  "neden düştü, kim karar verdi, kim teslim etti" sorusunun cevabı bu tutanaktır; **tek sayfa üç işlemi
+  de basar** (`HT_TUR` sabiti: başlık · belge no öneki HRD/ZAY/HBE · beyan cümlesi · imza sütunları) —
+  yeni bir düşen durum eklenirse yalnız bu sabite satır eklenir.
+  • `?id=` tek cihaz · **`?gun=YYYY-MM-DD&tur=…` o gün aynı işlemle düşen TÜM cihazlar tek tutanakta**
+  (bir hurda kararı = bir belge; tek cihaz görünümünde aynı günde başka cihaz varsa araç çubuğunda
+  "Aynı gün düşen N cihaz tek tutanakta" bağlantısı çıkar). Toplu belgede satır başına **gerekçe sütunu**.
+  • Gerekçe/tarih/kişi `it_dusum_son()` ile `it_hareketler`'den okunur (hurda|kayip|hibe satırı, **id'ye
+  göre** en son karar); hareket yoksa (Excel'den `durum='hurda'` gelen eski kayıtlar) bugüne düşer.
+  • ⚠ **Cihazın sistemde kayıtlı GÖRSELİ (`foto_url`) tutanağa basılır** — hurda/zayi belgesinde
+  "hangi cihazdı" sorusunun en iyi cevabı fotoğraftır; dosya diskte yoksa blok hiç çıkmaz.
+  • Künye bloğu zimmet tutanağıyla ORTAK: `zt_kunye()` `_ortak.php`'ye **`it_kunye()`** olarak taşındı
+  (iki tutanak aynı ÖZELLİKLER tablosunu basar, tek yerde düzeltilir).
+  • **İmzalı kopya geri yüklenir** — `it_belgeler.tur='hurda'`; dosya diske bir kez yazılır, tutanaktaki
+  diğer cihazlara aynı URL ile bağ satırı eklenir (transfer tutanağıyla aynı desen). `it_belge_kaydet`
+  artık 'zimmet' | 'transfer' | **'hurda'** kabul eder.
+  • **`it_belge_sayilari()` artık tür bazında sayar** (`zimmet`/`transfer`/`hurda` + `toplam`/`imzali`):
+  cihaz listesindeki Evrak sütunu **cihazın DURUMUNA uygun tutanağı** sorar — düşen cihazda hurda,
+  yoldakinde sevk, zimmetlide zimmet tutanağı; başka türde belge olması gerekeni karşılamaz (yeşil ✓ /
+  sarı ⚠ + tutanağa bağlantı). Cihaz kartındaki "İmzalı … Tutanağı" kutusu da düşen cihazda hurda
+  tutanağına döner (`belge_tur` POST'u 'zimmet' | 'hurda' kabul eder).
+  • Cihaz henüz düşülmemişken tutanak açılırsa (adres elle yazılırsa) **ekranda uyarı bandı** çıkar
+  (yazdırmada gizli): form önceden yazdırılabilir ama gerekçe/tarih ancak cihaz kartındaki işlem
+  uygulanınca dolar. Giriş noktaları: cihaz kartı başlığı + Belgeler kutusu, cihaz listesinde satır
+  düğmesi ve Evrak rozeti (sidebar'a satır eklenmedi). Yetki: `sayfa_islemi()` → GET **oku**, POST **yaz**.
   • **SÜTUN GİZLE / GÖSTER (2026-09-10, kullanıcı isteği)** — ortak bileşen **`assets/js/kolon_sec.js`**
   (`ERN_KOLON.kur({tablo, menu, anahtar, dugme, varsayilan})`): başlıktaki her `<th data-kol="…" data-kol-ad="…">`
   menüde bir kutucuk olur, işaretsiz sütun `d-none` alır. **Hücrelere ayrıca işaret konmaz** — gövde hücreleri
@@ -1027,7 +1053,7 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 - Görseller **dosya olarak** tutulur; DB'ye yalnızca göreli URL yazılır (DB boyutu şişmez).
 - **CRM**: `uploads/crm_ariza/{ariza_id}/` (arıza başına çoklu belge/fotoğraf; kayıtlar `crm_ariza_belgeler`).
 - **Akaryakıt**: `uploads/akaryakit_cikis/{id}/` (imzalı çıkış fişi) · `uploads/akaryakit_giris/{id}/` (mazot giriş irsaliyesi/faturası).
-- **IT Envanter**: `uploads/it_envanter/{cihaz_id}/` (cihaz fotoğrafı, fatura, garanti belgesi, imzalı zimmet tutanağı; kayıtlar `it_belgeler`, `tur='zimmet'` = imzalı tutanak — bir dosya birden çok cihaza bağlı olabilir, diskten yalnız SON bağ koptuğunda silinir).
+- **IT Envanter**: `uploads/it_envanter/{cihaz_id}/` (cihaz fotoğrafı, fatura, garanti belgesi, imzalı zimmet/transfer/hurda tutanağı; kayıtlar `it_belgeler`, `tur` = 'zimmet' | 'transfer' | 'hurda' → imzalı tutanak — bir dosya birden çok cihaza bağlı olabilir, diskten yalnız SON bağ koptuğunda silinir).
 - `uploads/.htaccess` PHP çalıştırmayı engeller (alt klasörlere de uygulanır).
 
 ---

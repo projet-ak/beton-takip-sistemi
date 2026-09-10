@@ -469,7 +469,7 @@ function it_belge_kaydet(PDO $pdo, int $cihazId, string $yol, string $ad, ?strin
     if (!$ok) return [false, h($ad) . ': dosya diske yazılamadı.'];
 
     $url = 'uploads/it_envanter/' . $cihazId . '/' . $yeni;
-    $tur = in_array($tur, ['zimmet', 'transfer'], true) ? $tur : 'belge';
+    $tur = in_array($tur, ['zimmet', 'transfer', 'hurda'], true) ? $tur : 'belge';
     $pdo->prepare("INSERT INTO it_belgeler (cihaz_id, dosya_url, ad, mime, boyut, tur, kullanici) VALUES (?,?,?,?,?,?,?)")
         ->execute([$cihazId, $url, mb_substr($ad, 0, 255), $mime, $boyut, $tur, $kullanici]);
     if (str_starts_with($mime, 'image/'))
@@ -510,9 +510,12 @@ function it_belge_sil(PDO $pdo, int $belgeId): bool
 }
 
 /**
- * Verilen cihazlar için belge sayıları: [cihaz_id => ['toplam'=>n, 'imzali'=>n]].
- * 'imzali' = imzalı tutanak (`it_belgeler.tur` = 'zimmet' zimmet tutanağı | 'transfer' sevk tutanağı) —
- * listedeki yeşil evrak rozeti bundan doğar.
+ * Verilen cihazlar için belge sayıları:
+ * [cihaz_id => ['toplam'=>n, 'imzali'=>n, 'zimmet'=>n, 'transfer'=>n, 'hurda'=>n]].
+ * 'imzali' = imzalı tutanak (`it_belgeler.tur` = 'zimmet' zimmet | 'transfer' sevk | 'hurda' hurda/zayi/hibe
+ * tutanağı) — listedeki yeşil evrak rozeti bundan doğar. Tür bazındaki sayaçlar, cihazın DURUMUNA uygun
+ * tutanağın yüklenip yüklenmediğini sormak içindir (hurdaya ayrılmış cihazda zimmet tutanağının olması
+ * hurda tutanağının yerini tutmaz).
  */
 function it_belge_sayilari(PDO $pdo, array $cihazIdler): array
 {
@@ -520,13 +523,64 @@ function it_belge_sayilari(PDO $pdo, array $cihazIdler): array
     if (!$cihazIdler) return [];
     try {
         $ph = implode(',', array_fill(0, count($cihazIdler), '?'));
-        $st = $pdo->prepare("SELECT cihaz_id, COUNT(*) toplam, SUM(tur IN ('zimmet','transfer')) imzali
+        $st = $pdo->prepare("SELECT cihaz_id, COUNT(*) toplam, SUM(tur IN ('zimmet','transfer','hurda')) imzali,
+                                    SUM(tur='zimmet') zimmet, SUM(tur='transfer') transfer, SUM(tur='hurda') hurda
                              FROM it_belgeler WHERE cihaz_id IN ($ph) GROUP BY cihaz_id");
         $st->execute($cihazIdler);
         $r = [];
-        foreach ($st->fetchAll() as $x) $r[(int)$x['cihaz_id']] = ['toplam'=>(int)$x['toplam'], 'imzali'=>(int)$x['imzali']];
+        foreach ($st->fetchAll() as $x) $r[(int)$x['cihaz_id']] = [
+            'toplam'=>(int)$x['toplam'], 'imzali'=>(int)$x['imzali'],
+            'zimmet'=>(int)$x['zimmet'], 'transfer'=>(int)$x['transfer'], 'hurda'=>(int)$x['hurda']];
         return $r;
     } catch (Throwable $e) { return []; }
+}
+
+/**
+ * Cihazın envanterden DÜŞÜŞ hareketi (hurda / kayıp / hibe) — hurda tutanağı gerekçeyi, tarihi ve
+ * işlemi yapan kişiyi buradan okur. En son kaydedilen satır (id) esas alınır: geriye dönük tarihle
+ * girilen yeni bir karar, eski tarihli kayda yenilmesin.
+ */
+function it_dusum_son(PDO $pdo, int $cihazId, ?string $tur = null): ?array
+{
+    try {
+        $turler = ($tur !== null && in_array($tur, IT_DURUM_DUSEN, true)) ? [$tur] : IT_DURUM_DUSEN;
+        $ph = implode(',', array_fill(0, count($turler), '?'));
+        $st = $pdo->prepare("SELECT * FROM it_hareketler WHERE cihaz_id=? AND tur IN ($ph) ORDER BY id DESC LIMIT 1");
+        $st->execute(array_merge([$cihazId], $turler));
+        return $st->fetch() ?: null;
+    } catch (Throwable $e) { return null; }
+}
+
+/**
+ * Cihazın KÜNYESİ — kurumsal demirbaş formundaki "ÖZELLİKLER" bloğu: yalnız DOLU alanlar,
+ * etiket => değer. Zimmet tutanağı ile hurda tutanağı aynı künyeyi basar (tek yerde düzeltilsin).
+ */
+function it_kunye(PDO $pdo, array $r): array
+{
+    $lok = !empty($r['lokasyon_id']) ? it_lokasyon_yol($pdo, (int)$r['lokasyon_id']) : (string)($r['lokasyon'] ?? '');
+    $alanlar = [
+        'MARKA'                => $r['marka'] ?? '',
+        'MODEL'                => $r['model'] ?? '',
+        'ŞASİ NO / SERİ NO'    => trim((string)($r['seri_no'] ?? '') . (($r['sasi_no'] ?? '') && ($r['sasi_no'] !== ($r['seri_no'] ?? '')) ? ' / ' . $r['sasi_no'] : '')),
+        'KULLANIM DURUMU'      => it_durumAd((string)$r['durum']),
+        'ZİMMETLENEN PERSONEL' => $r['zimmetli'] ?? '',
+        'LOKASYON'             => $lok,
+        'KİRALANAN FİRMA'      => $r['kiralik_firma'] ?? '',
+        'KAPASİTE'             => $r['kapasite'] ?? '',
+        'İŞLEMCİ MARKA / MODEL'=> $r['islemci'] ?? '',
+        'RAM TİPİ'             => $r['ram'] ?? '',
+        'EKRAN KARTI'          => $r['ekran_karti'] ?? '',
+        'HDD BİLGİSİ'          => $r['disk'] ?? '',
+        'ANAKART'              => $r['anakart'] ?? '',
+        'EKRAN BOYUTU'         => $r['ekran_boyutu'] ?? '',
+        'IMEI'                 => $r['imei'] ?? '',
+        'IP / MAC'             => trim((string)($r['ip_adresi'] ?? '') . (($r['mac_adresi'] ?? '') ? ' / ' . $r['mac_adresi'] : ''), ' /'),
+        'İŞLETİM SİSTEMİ'      => $r['isletim_sistemi'] ?? '',
+        'CİHAZ KODU'           => $r['cihaz_kodu'] ?? '',
+        'ENVANTER NO'          => $r['envanter_no'] ?? '',
+        'IFS SERİ NESNE NO'    => $r['varlik_kodu'] ?? '',
+    ];
+    return array_filter($alanlar, fn($x) => trim((string)$x) !== '');
 }
 
 /**

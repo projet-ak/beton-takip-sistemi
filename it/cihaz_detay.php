@@ -110,15 +110,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdoIt->prepare("UPDATE it_cihazlar SET durum=?, personel_id=NULL, zimmetli=NULL, zimmet_tarihi=NULL WHERE id=?")
                       ->execute([$tur, $id]);
                 it_hareket_ekle($pdoIt, $id, $tur, $kisi, $acik ?: $__ad, $tarih);
-                flash('success', $__ad . ' — kayıt silinmez, listede gizlenir (durum filtresiyle görüntülenir).');
+                flash('success', $__ad . ' — kayıt silinmez, listede gizlenir (durum filtresiyle görüntülenir). '
+                                 . 'Tutanağı yazdırıp imzalattıktan sonra taranmış kopyayı cihaz kartından yükleyin.');
                 break;
             default:
                 it_hareket_ekle($pdoIt, $id, 'not', $kisi, $acik ?: '—', $tarih);
                 flash('success', 'Not eklendi.');
         }
     } elseif ($islem === 'belge' && $girebilir) {
-        // tur: 'zimmet' = ıslak imzalı zimmet tutanağı (listede yeşil rozet), 'belge' = diğer ekler
-        $tur = ($_POST['belge_tur'] ?? '') === 'zimmet' ? 'zimmet' : 'belge';
+        // tur: 'zimmet' = ıslak imzalı zimmet tutanağı · 'hurda' = hurda/zayi/hibe tutanağı
+        // (ikisi de listede yeşil rozet) · 'belge' = diğer ekler
+        $tur = in_array($_POST['belge_tur'] ?? '', ['zimmet','hurda'], true) ? $_POST['belge_tur'] : 'belge';
         $ok = 0; $hatalar = [];
         foreach (it_dosya_listesi($_FILES['belge'] ?? []) as $d) {
             if (($d['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) continue;
@@ -126,9 +128,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($b) $ok++; else $hatalar[] = $m;
         }
         if ($ok) {
-            flash('success', $ok . ' dosya yüklendi.' . ($tur === 'zimmet' ? ' İmzalı zimmet tutanağı olarak işaretlendi.' : ''));
-            if ($tur === 'zimmet')
-                it_hareket_ekle($pdoIt, $id, 'not', $c['zimmetli'] ?: null, 'İmzalı zimmet tutanağı yüklendi (' . $ok . ' dosya).');
+            $__tad = ['zimmet'=>'zimmet tutanağı', 'hurda'=>'hurda / zayi / hibe tutanağı'][$tur] ?? '';
+            flash('success', $ok . ' dosya yüklendi.' . ($__tad ? ' İmzalı ' . $__tad . ' olarak işaretlendi.' : ''));
+            if ($__tad)
+                it_hareket_ekle($pdoIt, $id, 'not', $c['zimmetli'] ?: null, 'İmzalı ' . $__tad . ' yüklendi (' . $ok . ' dosya).');
         }
         if ($hatalar) flash('error', strip_tags(implode(' · ', $hatalar)));
         if (!$ok && !$hatalar) flash('error', 'Dosya seçilmedi.');
@@ -148,7 +151,13 @@ $hst = $pdoIt->prepare("SELECT * FROM it_hareketler WHERE cihaz_id=? ORDER BY ta
 $hst->execute([$id]);
 $hareketler = $hst->fetchAll();
 $belgeler   = it_belgeler($pdoIt, $id);
-$imzaliSayi = count(array_filter($belgeler, fn($b) => ($b['tur'] ?? '') === 'zimmet'));
+$dustu      = it_durum_dustu($c['durum']);            // hurda / kayıp / hibe → tutanak = hurda tutanağı
+$imzaliTur  = $dustu ? 'hurda' : 'zimmet';
+$imzaliSayi = count(array_filter($belgeler, fn($b) => ($b['tur'] ?? '') === $imzaliTur));
+$imzaliAd   = ['hurda'=>'hurda','kayip'=>'zayi','hibe'=>'hibe'][(string)$c['durum']] ?? '';
+$tutanakUrl = $dustu ? 'hurda_tutanak.php?id=' . $id : ($c['zimmetli'] ? 'zimmet_tutanak.php?id=' . $id : '');
+$tutanakAd  = $dustu ? ['hurda'=>'Hurda Tutanağı','kayip'=>'Zayi Tutanağı','hibe'=>'Hibe / Devir Tutanağı'][(string)$c['durum']]
+                     : 'Zimmet Tutanağı';
 $gk = it_garanti_kalan($c['garanti_bitis']);
 $maliGoster = it_mali_goster();      // garanti + fiyat gösterimi (varsayılan KAPALI)
 
@@ -183,6 +192,7 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
     <div class="ms-auto d-flex gap-2">
         <?php if ($c['zimmetli']): ?><a href="zimmet_tutanak.php?id=<?= $id ?>" target="_blank" class="btn btn-outline-primary btn-sm"><i class="bi bi-file-earmark-text me-1"></i>Zimmet Tutanağı</a><?php endif; ?>
         <?php if ($c['durum'] === 'transfer'): ?><a href="transfer_tutanak.php?id=<?= $id ?>" target="_blank" class="btn btn-outline-info btn-sm"><i class="bi bi-arrow-left-right me-1"></i>Transfer Tutanağı</a><?php endif; ?>
+        <?php if ($dustu): ?><a href="hurda_tutanak.php?id=<?= $id ?>" target="_blank" class="btn btn-outline-danger btn-sm"><i class="bi bi-file-earmark-x me-1"></i><?= h($tutanakAd) ?></a><?php endif; ?>
         <?php if ($duzenleyebilir): ?><a href="cihaz_form.php?id=<?= $id ?>" class="btn btn-primary btn-sm"><i class="bi bi-pencil me-1"></i>Düzenle</a><?php endif; ?>
     </div>
 </div>
@@ -345,25 +355,27 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
 
     <div class="card border-0 shadow-sm">
       <div class="card-header bg-white" id="belgeler"><strong><i class="bi bi-paperclip me-1"></i>Belgeler &amp; Fotoğraflar</strong> <span class="badge bg-secondary ms-1"><?= count($belgeler) ?></span>
-        <?php if ($imzaliSayi): ?><span class="badge bg-success ms-1" title="imzalı zimmet tutanağı"><i class="bi bi-file-earmark-check me-1"></i><?= $imzaliSayi ?></span><?php endif; ?></div>
+        <?php if ($imzaliSayi): ?><span class="badge bg-success ms-1" title="imzalı <?= h($tutanakAd) ?>"><i class="bi bi-file-earmark-check me-1"></i><?= $imzaliSayi ?></span><?php endif; ?></div>
       <div class="card-body">
         <?php if ($girebilir): ?>
         <?php /* İMZALI EVRAK: tutanağı yazdır → ıslak imzala → buradan geri yükle (depo fiş akışıyla aynı desen) */ ?>
+        <?php if ($dustu || $c['zimmetli'] || $imzaliSayi): ?>
         <div class="border rounded p-2 mb-3 <?= $imzaliSayi ? 'border-success bg-success-subtle' : 'border-warning bg-warning-subtle' ?>">
-          <div class="small fw-semibold mb-1"><i class="bi bi-file-earmark-check me-1"></i>İmzalı Zimmet Tutanağı
+          <div class="small fw-semibold mb-1"><i class="bi bi-file-earmark-check me-1"></i>İmzalı <?= h($tutanakAd) ?>
             <?php if ($imzaliSayi): ?><span class="badge bg-success"><?= $imzaliSayi ?> yüklü</span>
             <?php else: ?><span class="badge bg-warning text-dark">yüklenmedi</span><?php endif; ?></div>
           <div class="small text-muted mb-2">Tutanağı yazdırıp imzalattıktan sonra taranmış kopyayı buradan yükleyin — listede yeşil rozetle görünür.</div>
           <form method="post" enctype="multipart/form-data">
             <input type="hidden" name="action" value="belge">
-            <input type="hidden" name="belge_tur" value="zimmet">
+            <input type="hidden" name="belge_tur" value="<?= h($imzaliTur) ?>">
             <input type="file" name="belge[]" multiple accept="image/*,application/pdf" class="form-control form-control-sm mb-2" required>
             <div class="d-flex gap-2">
-              <?php if ($c['zimmetli']): ?><a href="zimmet_tutanak.php?id=<?= $id ?>" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="bi bi-printer me-1"></i>Tutanak</a><?php endif; ?>
+              <?php if ($tutanakUrl): ?><a href="<?= h($tutanakUrl) ?>" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="bi bi-printer me-1"></i>Tutanak</a><?php endif; ?>
               <button class="btn btn-success btn-sm flex-grow-1"><i class="bi bi-cloud-arrow-up me-1"></i>İmzalı evrakı yükle</button>
             </div>
           </form>
         </div>
+        <?php endif; ?>
         <form method="post" enctype="multipart/form-data" class="mb-3">
           <input type="hidden" name="action" value="belge">
           <input type="file" name="belge[]" multiple accept="image/*,application/pdf" class="form-control form-control-sm mb-2">
@@ -380,7 +392,7 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
                 <?php else: ?><div class="py-4"><i class="bi bi-file-earmark-pdf text-danger fs-2"></i></div><?php endif; ?>
               </a>
               <div class="small text-truncate mt-1" title="<?= h($b['ad']) ?>">
-                <?php if (($b['tur'] ?? '') === 'zimmet'): ?><i class="bi bi-file-earmark-check text-success me-1" title="imzalı zimmet tutanağı"></i><?php endif; ?><?= h($b['ad']) ?></div>
+                <?php if (in_array($b['tur'] ?? '', ['zimmet','transfer','hurda'], true)): ?><i class="bi bi-file-earmark-check text-success me-1" title="imzalı <?= h(['zimmet'=>'zimmet','transfer'=>'transfer','hurda'=>'hurda / zayi / hibe'][$b['tur']]) ?> tutanağı"></i><?php endif; ?><?= h($b['ad']) ?></div>
               <div class="d-flex justify-content-between align-items-center small text-muted">
                 <span><?= format_date(substr((string)$b['created_at'], 0, 10)) ?></span>
                 <?php if ($duzenleyebilir): ?>
