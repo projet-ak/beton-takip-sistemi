@@ -407,6 +407,9 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   • **Sidebar'dan "Personel İçe Aktar" KALDIRILDI** (kullanıcı isteği); `it/import.php` duruyor ve
   `personel.php`'deki "İçe Aktar" düğmesinden açılıyor. Yerine "Merkezi Varlık İzleme" açılır menüsü geldi
   (Tüm varlıklar + 8 grup). `IT_GRUP` header'da `defined()` ile korumalı okunur.
+  ⚠ **2026-09-10: "Cihaz İçe Aktar" da sidebar'dan KALDIRILDI** (aynı gerekçe) — `it/cihaz_import.php`
+  yerinde duruyor ve **Cihazlar & Lisanslar** ekranındaki "İçe Aktar" düğmesinden açılıyor. İki içe aktarma
+  da artık kendi liste sayfasından girilir; sidebar'da menü satırı yok.
   **KAYIP ve HİBE DURUMLARI (2026-09-10)** — `IT_DURUM`'a iki durum eklendi: **kayip** (Kayıp / Çalıntı) ve
   **hibe** (Hibe / Devredildi). Cihaz kaydı yine SİLİNMEZ; bu ikisi hurda ile birlikte **envanterden DÜŞEN**
   durumlardır: `IT_DURUM_DUSEN = ['hurda','kayip','hibe']` ve SQL parçası **`it_envanterde($alias='')`**

@@ -546,11 +546,6 @@ if ($__user) {
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('personel.php').__isActive('personel_detay.php').__isActive('personel_form.php') ?>" href="<?= $__rootPath ?>it/personel.php" data-label="Personel"><i class="bi bi-people"></i><span>Personel &amp; Zimmetler</span></a>
       </li>
-      <?php if(can_edit()): ?>
-      <li class="sidebar-nav-item">
-        <a class="sidebar-nav-link <?= __isActive('cihaz_import.php') ?>" href="<?= $__rootPath ?>it/cihaz_import.php" data-label="Cihaz Aktar"><i class="bi bi-box-arrow-in-down"></i><span>Cihaz İçe Aktar</span></a>
-      </li>
-      <?php endif; ?>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('tanimlar.php').__isActive('lokasyonlar.php') ?>" href="<?= $__rootPath ?>it/tanimlar.php" data-label="Tanımlar"><i class="bi bi-sliders"></i><span>Tanımlar (lokasyon, marka…)</span></a>
       </li>
