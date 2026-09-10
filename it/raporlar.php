@@ -89,7 +89,10 @@ $seri = [];
 for ($i = 11; $i >= 0; $i--) { $ay = date('Y-m', strtotime("-$i month")); $seri[] = ['ay'=>$ay] + array_map('intval', ($aylik[$ay] ?? []) + ['giris'=>0,'zimmet'=>0,'iade'=>0,'sorun'=>0,'hurda'=>0]); }
 
 // En değerli cihazlar
-$degerli = $pdoIt->query("SELECT envanter_no, ad, kategori, zimmetli, fiyat FROM it_cihazlar WHERE " . it_envanterde() . " AND fiyat IS NOT NULL ORDER BY fiyat DESC LIMIT 20")->fetchAll();
+$maliGoster = it_mali_goster();      // garanti + fiyat gösterimi (varsayılan KAPALI)
+$degerli = $maliGoster
+    ? $pdoIt->query("SELECT envanter_no, ad, kategori, zimmetli, fiyat FROM it_cihazlar WHERE " . it_envanterde() . " AND fiyat IS NOT NULL ORDER BY fiyat DESC LIMIT 20")->fetchAll()
+    : [];
 
 $f0 = fn($n) => number_format((float)$n, 0, ',', '.');
 $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
@@ -105,19 +108,22 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 
 <div class="row g-2 mb-3">
-  <?php foreach ([['Cihaz (envanterde)', $f0($o['toplam'] - $o['dusen'])], ['Kullanımda', $f0($o['aktif'])], ['Depoda', $f0($o['depoda'])],
-                  ['Serviste / Arızalı', $f0($o['serviste'] + $o['arizali'])], ['Düşen (hurda/kayıp/hibe)', $f0($o['dusen'])], ['Mali değer', $f2($o['mali']) . ' TL']] as [$e, $d]): ?>
+  <?php foreach (array_merge([['Cihaz (envanterde)', $f0($o['toplam'] - $o['dusen'])], ['Kullanımda', $f0($o['aktif'])], ['Depoda', $f0($o['depoda'])],
+                  ['Serviste / Arızalı', $f0($o['serviste'] + $o['arizali'])], ['Düşen (hurda/kayıp/hibe)', $f0($o['dusen'])]],
+                 $maliGoster ? [['Mali değer', $f2($o['mali']) . ' TL']] : [['Zimmetli kişi', $f0($o['kisi'] ?? 0)]]) as [$e, $d]): ?>
   <div class="col-6 col-md-2"><div class="card border-0 shadow-sm"><div class="card-body py-2"><div class="small text-muted"><?= $e ?></div><div class="fs-5 fw-bold"><?= $d ?></div></div></div></div>
   <?php endforeach; ?>
 </div>
 
 <div class="row g-3 mb-3">
-  <div class="col-lg-6"><div class="card border-0 shadow-sm h-100"><div class="card-header bg-white"><strong>Aylık hareket trendi</strong> <span class="small text-muted">(son 12 ay)</span></div>
+  <div class="col-lg-<?= $maliGoster ? 6 : 8 ?>"><div class="card border-0 shadow-sm h-100"><div class="card-header bg-white"><strong>Aylık hareket trendi</strong> <span class="small text-muted">(son 12 ay)</span></div>
     <div class="card-body"><div style="height:280px"><canvas id="chAy"></canvas></div></div></div></div>
-  <div class="col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-header bg-white"><strong>Yaş dağılımı</strong></div>
+  <div class="col-lg-<?= $maliGoster ? 3 : 4 ?>"><div class="card border-0 shadow-sm h-100"><div class="card-header bg-white"><strong>Yaş dağılımı</strong></div>
     <div class="card-body"><div style="height:280px"><canvas id="chYas"></canvas></div></div></div></div>
+  <?php if ($maliGoster): ?>
   <div class="col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-header bg-white"><strong>Garanti durumu</strong></div>
     <div class="card-body"><div style="height:280px"><canvas id="chGar"></canvas></div></div></div></div>
+  <?php endif; ?>
 </div>
 
 <div class="card border-0 shadow-sm mb-3">
@@ -127,38 +133,38 @@ require_once __DIR__ . '/../includes/header.php';
     <a href="varliklar.php" class="btn btn-sm btn-outline-secondary ms-auto"><i class="bi bi-diagram-3 me-1"></i>Merkezi izleme</a>
   </div>
   <div class="table-responsive"><table class="table table-sm table-hover mb-0" style="font-size:.85rem">
-    <thead class="table-light"><tr><th>Grup</th><?php foreach (IT_DURUM as $d => [$ad]): ?><th class="text-end"><?= h($ad) ?></th><?php endforeach; ?><th class="text-end">Toplam*</th><th class="text-end">Mali değer (TL)</th></tr></thead>
+    <thead class="table-light"><tr><th>Grup</th><?php foreach (IT_DURUM as $d => [$ad]): ?><th class="text-end"><?= h($ad) ?></th><?php endforeach; ?><th class="text-end">Toplam*</th><?php if ($maliGoster): ?><th class="text-end">Mali değer (TL)</th><?php endif; ?></tr></thead>
     <tbody>
     <?php foreach ($grupMatris as $m): ?>
       <tr><td><i class="bi <?= h($m['ikon']) ?> me-1 text-muted"></i><a href="varliklar.php?grup=<?= h($m['kod']) ?>" class="text-decoration-none"><?= h($m['ad']) ?></a></td>
           <?php foreach (array_keys(IT_DURUM) as $d): ?><td class="text-end"><?= $m[$d] ?: '<span class="text-muted">—</span>' ?></td><?php endforeach; ?>
-          <td class="text-end fw-semibold"><?= $f0($m['toplam']) ?></td><td class="text-end"><?= $f2($m['mali']) ?></td></tr>
+          <td class="text-end fw-semibold"><?= $f0($m['toplam']) ?></td><?php if ($maliGoster): ?><td class="text-end"><?= $f2($m['mali']) ?></td><?php endif; ?></tr>
     <?php endforeach; ?>
     <?php if (!$grupMatris): ?><tr><td colspan="8" class="text-center text-muted py-3">Kayıt yok.</td></tr><?php endif; ?>
     </tbody></table></div>
-  <div class="card-footer bg-white small text-muted">* Toplam ve mali değer envanterden düşenler (hurda / kayıp / hibe) hariçtir. Grup adına tıklayınca o grubun varlıkları merkezi izleme ekranında açılır.</div>
+  <div class="card-footer bg-white small text-muted">* Toplam envanterden düşenler (hurda / kayıp / hibe) hariçtir. Grup adına tıklayınca o grubun varlıkları merkezi izleme ekranında açılır.</div>
 </div>
 
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-header bg-white"><strong><i class="bi bi-grid-3x3 me-1"></i>Kategori × Durum</strong></div>
   <div class="table-responsive"><table class="table table-sm table-hover mb-0" style="font-size:.85rem">
-    <thead class="table-light"><tr><th>Kategori</th><?php foreach (IT_DURUM as $d => [$ad]): ?><th class="text-end"><?= h($ad) ?></th><?php endforeach; ?><th class="text-end">Toplam*</th><th class="text-end">Mali değer (TL)</th></tr></thead>
+    <thead class="table-light"><tr><th>Kategori</th><?php foreach (IT_DURUM as $d => [$ad]): ?><th class="text-end"><?= h($ad) ?></th><?php endforeach; ?><th class="text-end">Toplam*</th><?php if ($maliGoster): ?><th class="text-end">Mali değer (TL)</th><?php endif; ?></tr></thead>
     <tbody>
     <?php foreach ($matris as $m): ?>
       <tr><td><?= h($m['ad']) ?></td><?php foreach (array_keys(IT_DURUM) as $d): ?><td class="text-end"><?= $m[$d] ?: '<span class="text-muted">—</span>' ?></td><?php endforeach; ?>
-          <td class="text-end fw-semibold"><?= $f0($m['toplam']) ?></td><td class="text-end"><?= $f2($m['mali']) ?></td></tr>
+          <td class="text-end fw-semibold"><?= $f0($m['toplam']) ?></td><?php if ($maliGoster): ?><td class="text-end"><?= $f2($m['mali']) ?></td><?php endif; ?></tr>
     <?php endforeach; ?>
     <?php if (!$matris): ?><tr><td colspan="8" class="text-center text-muted py-3">Kayıt yok.</td></tr><?php endif; ?>
     </tbody></table></div>
-  <div class="card-footer bg-white small text-muted">* Toplam ve mali değer envanterden düşenler (hurda / kayıp / hibe) hariçtir.</div>
+  <div class="card-footer bg-white small text-muted">* Toplam envanterden düşenler (hurda / kayıp / hibe) hariçtir.</div>
 </div>
 
 <?php
-$tablo = function (string $baslik, string $ikon, array $l, string $ilk) use ($f0, $f2) {
+$tablo = function (string $baslik, string $ikon, array $l, string $ilk) use ($f0, $f2, $maliGoster) {
     if (!$l) return;
     echo '<div class="col-lg-4"><div class="card border-0 shadow-sm h-100"><div class="card-header bg-white"><strong><i class="bi ' . $ikon . ' me-1"></i>' . h($baslik) . '</strong></div>';
-    echo '<div class="table-responsive"><table class="table table-sm table-hover mb-0" style="font-size:.84rem"><thead class="table-light"><tr><th>' . h($ilk) . '</th><th class="text-end">Cihaz</th><th class="text-end">Kullanımda</th><th class="text-end">Mali (TL)</th></tr></thead><tbody>';
-    foreach ($l as $r) echo '<tr><td>' . h($r['ad']) . '</td><td class="text-end">' . $f0($r['adet']) . '</td><td class="text-end">' . $f0($r['aktif']) . '</td><td class="text-end">' . $f2($r['mali']) . '</td></tr>';
+    echo '<div class="table-responsive"><table class="table table-sm table-hover mb-0" style="font-size:.84rem"><thead class="table-light"><tr><th>' . h($ilk) . '</th><th class="text-end">Cihaz</th><th class="text-end">Kullanımda</th>' . ($maliGoster ? '<th class="text-end">Mali (TL)</th>' : '') . '</tr></thead><tbody>';
+    foreach ($l as $r) echo '<tr><td>' . h($r['ad']) . '</td><td class="text-end">' . $f0($r['adet']) . '</td><td class="text-end">' . $f0($r['aktif']) . '</td>' . ($maliGoster ? '<td class="text-end">' . $f2($r['mali']) . '</td>' : '') . '</tr>';
     echo '</tbody></table></div></div></div>';
 };
 ?>
@@ -188,6 +194,7 @@ const IT = {
     durumlar: <?= json_encode(array_map(fn($x) => $x[0], IT_DURUM), JSON_UNESCAPED_UNICODE) ?>,
     matris: <?= json_encode($matris, JSON_UNESCAPED_UNICODE) ?>,
     dep: <?= json_encode($dep, JSON_UNESCAPED_UNICODE) ?>, lok: <?= json_encode($lok, JSON_UNESCAPED_UNICODE) ?>, etap: <?= json_encode($etap, JSON_UNESCAPED_UNICODE) ?>, marka: <?= json_encode($marka, JSON_UNESCAPED_UNICODE) ?>,
+    mali: <?= $maliGoster ? 'true' : 'false' ?>,
     yas: <?= json_encode(array_map('intval', $yas)) ?>, garanti: <?= json_encode(array_map('intval', $garanti)) ?>,
     seri: <?= json_encode($seri) ?>, degerli: <?= json_encode($degerli, JSON_UNESCAPED_UNICODE) ?>
 };
@@ -206,21 +213,22 @@ new Chart(document.getElementById('chAy'), { type:'bar',
 new Chart(document.getElementById('chYas'), { type:'doughnut',
   data:{ labels:['< 1 yıl','1–3 yıl','3–5 yıl','5+ yıl','tarih yok'], datasets:[{ data:[IT.yas.y1, IT.yas.y3, IT.yas.y5, IT.yas.y5p, IT.yas.bilinmiyor], backgroundColor:['#198754','#00C9B1','#ffc107','#dc3545','#adb5bd'] }] },
   options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, font:{size:11} } } } } });
-new Chart(document.getElementById('chGar'), { type:'doughnut',
+if (IT.mali) new Chart(document.getElementById('chGar'), { type:'doughnut',
   data:{ labels:['Devam ediyor','60 günde bitiyor','Bitti','Tanımsız'], datasets:[{ data:[IT.garanti.devam, IT.garanti.bitiyor, IT.garanti.bitti, IT.garanti.yok], backgroundColor:['#198754','#ffc107','#dc3545','#adb5bd'] }] },
   options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, font:{size:11} } } } } });
 
 function itPdf(mode){
     const tbl = ERN_RAPOR.tbl;
-    const kir = (b, l, ilk) => l.length ? '<h2>' + b + '</h2>' + tbl([ilk,'Cihaz','Kullanımda','Mali değer (TL)'], l.map(r => [r.ad, f0(r.adet), f0(r.aktif), f2(r.mali)])) : '';
+    const kir = (b, l, ilk) => l.length ? '<h2>' + b + '</h2>' + tbl(IT.mali ? [ilk,'Cihaz','Kullanımda','Mali değer (TL)'] : [ilk,'Cihaz','Kullanımda'],
+        l.map(r => IT.mali ? [r.ad, f0(r.adet), f0(r.aktif), f2(r.mali)] : [r.ad, f0(r.adet), f0(r.aktif)])) : '';
     const html = '<div class="kpis">'
         + '<div><b>' + f0(IT.kpi.cihaz) + '</b>Cihaz</div><div><b>' + f0(IT.kpi.aktif) + '</b>Kullanımda</div>'
         + '<div><b>' + f0(IT.kpi.depoda) + '</b>Depoda</div><div><b>' + f0(IT.kpi.sorun) + '</b>Serviste / Arızalı</div>'
-        + '<div><b>' + f2(IT.kpi.mali) + ' TL</b>Mali Değer</div></div>'
-        + '<h2>Kategori × Durum</h2>' + tbl(['Kategori', ...IT.durumlar, 'Toplam', 'Mali (TL)'],
-            IT.matris.map(m => [m.ad, ...Object.keys(IT.durumlar).map(d => f0(m[d])), f0(m.toplam), f2(m.mali)]))
+        + (IT.mali ? '<div><b>' + f2(IT.kpi.mali) + ' TL</b>Mali Değer</div>' : '<div><b>' + f0(IT.kpi.kisi) + '</b>Zimmetli kişi</div>') + '</div>'
+        + '<h2>Kategori × Durum</h2>' + tbl(['Kategori', ...IT.durumlar, 'Toplam', ...(IT.mali ? ['Mali (TL)'] : [])],
+            IT.matris.map(m => [m.ad, ...Object.keys(IT.durumlar).map(d => f0(m[d])), f0(m.toplam), ...(IT.mali ? [f2(m.mali)] : [])]))
         + kir('Proje / Bina Bazında', IT.lok, 'Proje / Bina') + kir('Etap / Birim Bazında', IT.etap, 'Lokasyon') + kir('Departman Bazında', IT.dep, 'Departman') + kir('Marka Bazında', IT.marka, 'Marka')
-        + (IT.degerli.length ? '<h2>En Değerli Cihazlar</h2>' + tbl(['Envanter No','Cihaz','Zimmetli','Fiyat (TL)'], IT.degerli.map(r => [r.envanter_no, r.ad, r.zimmetli || '—', f2(r.fiyat)])) : '');
+        + (IT.mali && IT.degerli.length ? '<h2>En Değerli Cihazlar</h2>' + tbl(['Envanter No','Cihaz','Zimmetli','Fiyat (TL)'], IT.degerli.map(r => [r.envanter_no, r.ad, r.zimmetli || '—', f2(r.fiyat)])) : '');
     ERN_RAPOR.popup({title:'IT ENVANTER RAPORU', body:html, mode:mode, filename:'ERN_IT_Envanter'});
 }
 async function itExcel(){
@@ -228,13 +236,15 @@ async function itExcel(){
     let ws = wb.addWorksheet('Özet'); ws.columns = [{width:34},{width:22}];
     ERN_RAPOR.title(wb, ws, 'IT ENVANTER — ÖZET', 2); ERN_RAPOR.hdr(ws.addRow(['Gösterge','Değer']));
     [['Cihaz (envanterde)', IT.kpi.cihaz], ['Kullanımda', IT.kpi.aktif], ['Depoda', IT.kpi.depoda], ['Serviste / Arızalı', IT.kpi.sorun],
-     ['Düşen (hurda/kayıp/hibe)', IT.kpi.hurda], ['Zimmetli kişi', IT.kpi.kisi], ['Garantisi 60 günde bitecek', IT.kpi.garantiBitiyor], ['Mali değer (TL)', IT.kpi.mali]].forEach(r => ws.addRow(r));
+     ['Düşen (hurda/kayıp/hibe)', IT.kpi.hurda], ['Zimmetli kişi', IT.kpi.kisi],
+     ...(IT.mali ? [['Garantisi 60 günde bitecek', IT.kpi.garantiBitiyor], ['Mali değer (TL)', IT.kpi.mali]] : [])].forEach(r => ws.addRow(r));
     ws = wb.addWorksheet('Kategori x Durum'); ws.columns = [{width:26}, ...Object.keys(IT.durumlar).map(()=>({width:14})), {width:10}, {width:16}];
     const dk = Object.keys(IT.durumlar);
-    ERN_RAPOR.title(wb, ws, 'KATEGORİ × DURUM', dk.length + 3); ERN_RAPOR.hdr(ws.addRow(['Kategori', ...dk.map(d => IT.durumlar[d]), 'Toplam', 'Mali (TL)']));
-    IT.matris.forEach(m => ws.addRow([m.ad, ...dk.map(d => +m[d]), +m.toplam, +m.mali]));
+    ERN_RAPOR.title(wb, ws, 'KATEGORİ × DURUM', dk.length + 3); ERN_RAPOR.hdr(ws.addRow(['Kategori', ...dk.map(d => IT.durumlar[d]), 'Toplam', ...(IT.mali ? ['Mali (TL)'] : [])]));
+    IT.matris.forEach(m => ws.addRow([m.ad, ...dk.map(d => +m[d]), +m.toplam, ...(IT.mali ? [+m.mali] : [])]));
     const kir = (adi, baslik, l, ilk) => { if (!l.length) return; const w = wb.addWorksheet(adi); w.columns = [{width:34},{width:10},{width:12},{width:16}];
-        ERN_RAPOR.title(wb, w, baslik, 4); ERN_RAPOR.hdr(w.addRow([ilk,'Cihaz','Kullanımda','Mali (TL)'])); l.forEach(r => w.addRow([r.ad, +r.adet, +r.aktif, +r.mali])); };
+        ERN_RAPOR.title(wb, w, baslik, IT.mali ? 4 : 3); ERN_RAPOR.hdr(w.addRow([ilk,'Cihaz','Kullanımda', ...(IT.mali ? ['Mali (TL)'] : [])]));
+        l.forEach(r => w.addRow([r.ad, +r.adet, +r.aktif, ...(IT.mali ? [+r.mali] : [])])); };
     kir('Proje-Bina', 'PROJE / BİNA BAZINDA', IT.lok, 'Proje / Bina'); kir('Etap-Birim', 'ETAP / BİRİM BAZINDA', IT.etap, 'Lokasyon'); kir('Departman', 'DEPARTMAN BAZINDA', IT.dep, 'Departman'); kir('Marka', 'MARKA BAZINDA', IT.marka, 'Marka');
     ws = wb.addWorksheet('Aylık Hareket'); ws.columns = [{width:12},{width:10},{width:10},{width:10},{width:16},{width:10}];
     ERN_RAPOR.title(wb, ws, 'AYLIK HAREKET TRENDİ', 6); ERN_RAPOR.hdr(ws.addRow(['Ay','Giriş','Zimmet','İade','Servis / Arıza','Hurda']));

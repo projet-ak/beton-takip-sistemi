@@ -454,6 +454,59 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   yazar (aranan numarayı göz teyit etsin), Teknik sütununa donanım künyesi eklendi, Excel 26 → **34 sütun**.
   Gerçek veriyle doğrulandı: IFS kodu · şasi · envanter no · seri no aramalarının her biri tek sonuç döndürüp
   kişi + lokasyon + durumu gösteriyor.
+  **SNIPE-IT AKTARIMI + CİHAZ KODU + MALİ GİZLEME + İMZALI EVRAK (2026-09-10)** — kaynak: **Snipe-IT
+  "Export Assets"** dosyası (412 satır, 40 sütun; sayfa adı "Table").
+  • **ÜÇ AYRI KİMLİK KOLONU** ayrıştırıldı — eskiden hepsi `envanter_no`ya sıkışıyordu:
+  `envanter_no` = **BİZİM sabit numaramız** (IT-00001; tutanaklarda geçer, **içe aktarma onu ASLA ezmez**) ·
+  **yeni `cihaz_kodu`** = kurum içi demirbaş etiketi (M160 / N221) · `varlik_kodu` = **IFS Seri Nesne No**
+  (FRM-0002-…). Runtime ALTER `it_ek_alan_semasi_kur` + kurulum; `it_filtre` araması ve
+  `cihazlar.php` / `varliklar.php` / `cihaz_detay` / `cihaz_form` / zimmet tutanağı / Excel çıktıları üçünü de
+  gösterir (liste başlıkları **Envanter No · Cihaz Kodu · IFS Seri Nesne No**, sıralama anahtarları `kod`/`ifs`).
+  **Geçiş** `cim_semasi_kur` içinde idempotent: `envanter_no` IT-… biçiminde DEĞİLSE değeri `cihaz_kodu`ya
+  kopyalanır (envanter no yerinde kalır). ⚠ Bunu yapmadan önce Snipe satırı mevcut kaydın envanter no'sunu
+  başka bir cihazın koduyla ezmeye çalışıyor ve **UNIQUE ihlali** veriyordu.
+  • **Snipe-IT sütun sözlüğü** `CIM_ALAN`'a eklendi: Demirbaş Etiketi→cihaz_kodu · IFS Cihaz Kodu→varlik_kodu ·
+  **Model→ kurum içi kod, Model No.→ gerçek model** (yeni `model_no` alanı) · Çıkış Yapılmış Olan Kişi→kisi ·
+  **Çalışan Numarası→`sicil_no`** · Başlık→**`unvan`** (personel kartında boşsa doldurulur, dolu unvan ezilmez) ·
+  Konum→lokasyon · Varsayılan Konum→ilk_lokasyon · Şirket→`sirket` · Çıkış Tarihi→`zimmet_tarihi` ·
+  Garanti Süresi Sona Erdi→garanti_bitis (plain "Garanti" = "24 ay" SÜREdir, tarih değil — eşlenmez).
+  ⚠ Bare **'ZIMMET'** kisi eş anlamlılarından ÇIKARILDI: "Son zimmet teslim tarihi" gevşek eşleşmeyle kişiye
+  düşüp `ozellikler`i kirletiyordu. Fiyat `cim_fiyat()` ile hem "8,598,960.00" (ABD) hem "8.598.960,00" (TR) okur.
+  • **Kimlik ayrıştırma** (`cim_satir_cozumle`): `cim_ifs_kodu()` FRM-/ORT-/ZFRM- kalıbını tanır → etiket IFS
+  biçimindeyse `varlik_kodu`ya taşınır ve `$kodTasindi` işaretlenir; **yalnız o zaman** `cim_kod_mu()` ile
+  Model'deki kısa kod (N288) cihaz kodu sayılır — aksi halde "A2604" gibi **gerçek model numaraları** demirbaş
+  etiketi sanılıyordu. Kişi hücresindeki parantezli kullanıcı adı `cim_kisi_ad()` ile atılır
+  ("TUĞBA AKYAZI KUBLAY (TUĞBAAKYAZI)"). Ad boşsa `cim_ad_mi()` gerçek ada benziyorsa Model, değilse
+  "Kategori — Marka" TÜRETİLİR — ⚠ **türetilmiş ad mevcut kaydı GÜNCELLEMEZ** (elle verilmiş "Dizüstü
+  Bilgisayar" adları her aktarımda bozuluyordu); yalnız yeni kayda yazılır.
+  • **Eşleşme sırası** IFS nesne no → cihaz kodu → envanter no → seri no. **Aynı DB kaydına iki dosya satırı
+  denk gelirse ikincisi ATLANIR** ve çelişki raporlanır — yoksa satırlar birbirini ezip her aktarımda
+  gidip geliyordu (N282 ↔ N405). Personel eşleşmesi **önce SİCİL** (`cim_personel_sicil`), sonra ad+soyad;
+  "kişi kartı aç" seçeneği kartı sicil + unvanla açar.
+  • **Yeni kategoriler**: `drone` (Drone / İHA) · `fotograf` (Fotoğraf / Video Kamerası) — ikisi de multimedya;
+  `cim_kategori` haritasına PLOTER/PLOTTER→yazici, PROJEKTOR→projeksiyon eklendi. ⚠ `fotograf` haritada
+  **en sona** konur, yoksa "IP KAMERA" güvenlik yerine ona düşer. `cim_durum()` Snipe sözlüğünü okur:
+  **"… Atanmış" → aktif** (depo kelimelerinden ÖNCE denenir, "Boş / Yedek Atanmış" kullanımdadır) ·
+  Boş/Yedek · Transfer · Bekliyor · Dağıtılabilir → depoda · Servis/Onarım → serviste · Hurda → hurda ·
+  Kayıp/Çalınmış → kayip · Hibe → hibe.
+  • **GARANTİ + FİYAT GİZLENDİ** — `it_mali_goster()` (varsayılan **false**; `config.php`'de
+  `define('IT_MALI_GOSTER', true);` ile geri açılır). Kapalıyken cihaz listesi/merkezi izleme/cihaz kartı/
+  cihaz formu/zimmet tutanağı/dashboard/raporlar (Excel + PDF dahil) garanti sütununu, garanti süzgecini,
+  garanti grafiğini, fiyat ve mali değer alanlarını göstermez; formda mevcut değerler **gizli alanla korunur**
+  (kaydetmek veriyi silmez). Yerine dashboard'da **"İmzalı evrakı eksik zimmet"**, listelerde **imzalı evrak**
+  sayacı çıkar. Kaynak dosyada 412 satırın yalnız 1'inde garanti, 3'ünde fiyat vardı.
+  • **İMZALI EVRAK** — `it_belgeler.tur` ('belge' | **'zimmet'**; runtime ALTER). `it_belge_yukle(..., $tur)`,
+  `it_belge_sayilari()`. **`zimmet_tutanak.php`'ye geri yükleme paneli** (depo `hareket_sonuc` desenli, yazdırmada
+  gizli): tutanağı yazdır → imzalat → tara → yükle; belge **tutanaktaki TÜM cihazlara** bağlanır (dosya diske bir
+  kez yazılır, diğer cihazlara aynı URL ile bağ satırı eklenir — `it_belge_sil` dosyayı yalnız son bağ koptuğunda
+  siler) ve her cihazın yaşam günlüğüne not düşülür. `cihaz_detay`'da ayrı "İmzalı Zimmet Tutanağı" kutusu
+  (yeşil/sarı durum bandı) + belge kartında ✓ ikonu; `cihazlar.php`'de **Evrak sütunu**: yeşil = imzalı tutanak var,
+  gri = başka belge var, sarı ⚠ = zimmetli ama imzalı evrak yok.
+  • Şablon 31 → **32 sütun** (Envanter No · Cihaz Kodu · IFS Seri Nesne No …). Mükerrer merkezi (`MK_KURAL`)
+  it_cihazlar anahtarlarına `cihaz_kodu` eklendi. Gerçek dosyayla doğrulandı: **412 satır → 251 yeni /
+  159 güncellenen / 2 atlanan** (1 boş satır + 1 kimlik çakışması), **2. yükleme 0 yeni / 0 güncellenen /
+  410 değişmeyen**; `?sablon=mevcut` round-trip 449 satır → **0 yeni / 0 güncellenen / 449 değişmeyen**,
+  eşleşmeyen sütun yok.
   **TANIMLAR EKRANI `it/tanimlar.php` (2026-09-09)** — tek sayfa, sekmeli (Snipe-IT'deki "tanım tablosu seç"
   düzeni): **Lokasyonlar · Kategoriler · Üreticiler · Modeller · Tedarikçiler · Şirketler · Durumlar · Personel**.
   • *Lokasyonlar* = `it_lokasyonlar` (hiyerarşi korunur) + yeni **sehir / adres / renk** kolonları; satırda ad
@@ -891,7 +944,7 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 - Görseller **dosya olarak** tutulur; DB'ye yalnızca göreli URL yazılır (DB boyutu şişmez).
 - **CRM**: `uploads/crm_ariza/{ariza_id}/` (arıza başına çoklu belge/fotoğraf; kayıtlar `crm_ariza_belgeler`).
 - **Akaryakıt**: `uploads/akaryakit_cikis/{id}/` (imzalı çıkış fişi) · `uploads/akaryakit_giris/{id}/` (mazot giriş irsaliyesi/faturası).
-- **IT Envanter**: `uploads/it_envanter/{cihaz_id}/` (cihaz fotoğrafı, fatura, garanti belgesi, imzalı zimmet tutanağı; kayıtlar `it_belgeler`).
+- **IT Envanter**: `uploads/it_envanter/{cihaz_id}/` (cihaz fotoğrafı, fatura, garanti belgesi, imzalı zimmet tutanağı; kayıtlar `it_belgeler`, `tur='zimmet'` = imzalı tutanak — bir dosya birden çok cihaza bağlı olabilir, diskten yalnız SON bağ koptuğunda silinir).
 - `uploads/.htaccess` PHP çalıştırmayı engeller (alt klasörlere de uygulanır).
 
 ---

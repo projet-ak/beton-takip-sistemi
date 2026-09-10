@@ -11,6 +11,7 @@ require_auth(['admin','teknik_ofis_admin']);
 require_once __DIR__ . '/../includes/db_it.php';
 require_once __DIR__ . '/_ortak.php';
 require_once __DIR__ . '/_import.php';
+require_once __DIR__ . '/_cihaz_import.php';
 
 $pageTitle = 'IT Envanter Kurulum';
 $hata = null; $log = [];
@@ -18,6 +19,7 @@ try {
     it_semasi_kur($pdoIt);
     pim_log_kur($pdoIt);
     it_tanim_semasi_kur($pdoIt);
+    cim_semasi_kur($pdoIt);   // varlık/cihaz kodu kolonları + eski envanter no'ların cihaz koduna taşınması
     $log = ['it_cihazlar', 'it_hareketler', 'it_belgeler', 'it_lokasyonlar', 'it_personel', 'it_tanimlar', 'it_import_log'];
     if (!(int)$pdoIt->query("SELECT COUNT(*) FROM it_lokasyonlar")->fetchColumn()) { $n = it_lokasyon_seed($pdoIt); $log[] = "varsayılan lokasyon ağacı ($n satır: Kartal Batı Yakası U030/U031/U039 + ERN Holding Merkez)"; }
     $dir = __DIR__ . '/../uploads/it_envanter';

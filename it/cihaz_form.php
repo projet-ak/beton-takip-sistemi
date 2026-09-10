@@ -30,7 +30,7 @@ if ($duzenleme ? !yetki_var('duzenle') : !yetki_var('giris')) {
 
 $error = '';
 $v = $c ?: ['envanter_no'=>'', 'kategori'=>'laptop', 'ad'=>'', 'marka'=>'', 'model'=>'', 'seri_no'=>'',
-            'varlik_kodu'=>'', 'sasi_no'=>'', 'imei'=>'', 'sirket'=>'', 'durum'=>'depoda',
+            'varlik_kodu'=>'', 'cihaz_kodu'=>'', 'sasi_no'=>'', 'imei'=>'', 'sirket'=>'', 'durum'=>'depoda',
             'personel_id'=>'', 'zimmetli'=>'', 'departman'=>'', 'lokasyon_id'=>'', 'lokasyon'=>'', 'zimmet_tarihi'=>'', 'alis_tarihi'=>'', 'garanti_bitis'=>'',
             'fiyat'=>'', 'tedarikci'=>'', 'fatura_no'=>'', 'ip_adresi'=>'', 'mac_adresi'=>'', 'isletim_sistemi'=>'',
             'ozellikler'=>'', 'lisans_anahtari'=>'', 'lisans_adet'=>'', 'notlar'=>'']
@@ -48,6 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Kimlik alanları kategoriden BAĞIMSIZ: kurumsal envanterde her cihazın IFS "Nesne No"su,
         // ikinci bir seri (şasi / servis etiketi) ve giderek her cihazda bir IMEI'si olabiliyor.
         'varlik_kodu'     => $al('varlik_kodu', 60),
+        'cihaz_kodu'      => $al('cihaz_kodu', 60),
         'sasi_no'         => $al('sasi_no', 120),
         'imei'            => $al('imei', 32),
         'durum'           => isset(IT_DURUM[$_POST['durum'] ?? '']) ? $_POST['durum'] : 'depoda',
@@ -208,12 +209,15 @@ $tv = fn($k) => h($v[$k] ?? '');
       <?php /* Kimlik alanları: kurumsal envanterin (IFS) nesne kodu, ikinci seri ve IMEI — her kategoride görünür */ ?>
       <div class="col-12"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-upc-scan me-1"></i>KİMLİK KODLARI
         <span class="fw-normal">— envanter no yanında cihazı bulmayı sağlayan numaralar; hepsi aramada taranır</span></div></div>
-      <div class="col-md-4"><label class="form-label">Varlık / Nesne No <span class="text-muted small">(IFS)</span></label>
+      <div class="col-md-3"><label class="form-label">IFS Seri Nesne No</label>
         <input name="varlik_kodu" class="form-control font-monospace" value="<?= $tv('varlik_kodu') ?>" maxlength="60" placeholder="FRM-0002-82026-2552600167">
-        <div class="form-text">Kurumsal envanterdeki demirbaş kodu — Excel aktarımında eşleşme bu koddan yapılır.</div></div>
-      <div class="col-md-4"><label class="form-label">Şasi No / 2. Seri No</label>
+        <div class="form-text">Kurumsal envanterdeki (IFS) demirbaş kodu — içe aktarmada eşleşme önce bundan yapılır.</div></div>
+      <div class="col-md-3"><label class="form-label">Cihaz Kodu</label>
+        <input name="cihaz_kodu" class="form-control font-monospace" value="<?= $tv('cihaz_kodu') ?>" maxlength="60" placeholder="N221 / M160">
+        <div class="form-text">Kurum içi demirbaş etiketi. Envanter no (IT-…) bizim sabit numaramızdır, değişmez.</div></div>
+      <div class="col-md-3"><label class="form-label">Şasi No / 2. Seri No</label>
         <input name="sasi_no" class="form-control font-monospace" value="<?= $tv('sasi_no') ?>" maxlength="120" placeholder="servis etiketi / şasi"></div>
-      <div class="col-md-4"><label class="form-label">IMEI</label>
+      <div class="col-md-3"><label class="form-label">IMEI</label>
         <input name="imei" class="form-control font-monospace" value="<?= $tv('imei') ?>" maxlength="32" placeholder="356938035643809"></div>
 
       <div class="col-12"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-person-check me-1"></i>ZİMMET</div></div>
@@ -227,10 +231,15 @@ $tv = fn($k) => h($v[$k] ?? '');
         <input type="hidden" name="lokasyon" value="<?= $tv('lokasyon') ?>"><?php if (!empty($v['lokasyon']) && empty($v['lokasyon_id'])): ?><div class="form-text">Eski kayıt: <?= $tv('lokasyon') ?></div><?php endif; ?></div>
       <div class="col-md-2"><label class="form-label">Zimmet Tarihi</label><input type="date" name="zimmet_tarihi" class="form-control" value="<?= $tv('zimmet_tarihi') ?>"></div>
 
-      <div class="col-12"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-receipt me-1"></i>SATIN ALMA &amp; GARANTİ</div></div>
+      <div class="col-12"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-receipt me-1"></i>SATIN ALMA<?= it_mali_goster() ? ' &amp; GARANTİ' : '' ?></div></div>
       <div class="col-md-2"><label class="form-label">Alış Tarihi</label><input type="date" name="alis_tarihi" class="form-control" value="<?= $tv('alis_tarihi') ?>"></div>
+      <?php if (it_mali_goster()): ?>
       <div class="col-md-2"><label class="form-label">Garanti Bitiş</label><input type="date" name="garanti_bitis" class="form-control" value="<?= $tv('garanti_bitis') ?>"></div>
       <div class="col-md-2"><label class="form-label">Fiyat (TL)</label><input name="fiyat" class="form-control text-end" value="<?= $v['fiyat'] !== null && $v['fiyat'] !== '' ? number_format((float)$v['fiyat'], 2, ',', '.') : '' ?>" placeholder="0,00"></div>
+      <?php else: /* garanti + fiyat gizli — mevcut değerler kaybolmasın diye gizli alanla taşınır */ ?>
+      <input type="hidden" name="garanti_bitis" value="<?= $tv('garanti_bitis') ?>">
+      <input type="hidden" name="fiyat" value="<?= $v['fiyat'] !== null && $v['fiyat'] !== '' ? number_format((float)$v['fiyat'], 2, ',', '.') : '' ?>">
+      <?php endif; ?>
       <div class="col-md-3"><label class="form-label">Tedarikçi</label><input name="tedarikci" list="dl_tedarikci" class="form-control" value="<?= $tv('tedarikci') ?>" maxlength="120"><?= $dl('tedarikci') ?></div>
       <div class="col-md-3"><label class="form-label">Fatura No</label><input name="fatura_no" class="form-control" value="<?= $tv('fatura_no') ?>" maxlength="60"></div>
 

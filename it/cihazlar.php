@@ -28,7 +28,8 @@ $oz = $pdoIt->prepare("SELECT COUNT(*) adet, COALESCE(SUM(fiyat),0) mali, SUM(du
 $oz->execute($par);
 $oz = $oz->fetch() ?: ['adet'=>0,'mali'=>0,'aktif'=>0,'kisi'=>0];
 
-$sirala = ['no'=>'envanter_no', 'ad'=>'ad', 'kategori'=>'kategori, ad', 'durum'=>'durum, ad', 'zimmetli'=>'zimmetli, ad',
+$maliGoster = it_mali_goster();      // garanti + fiyat gösterimi (varsayılan KAPALI)
+$sirala = ['no'=>'envanter_no', 'kod'=>'cihaz_kodu, envanter_no', 'ifs'=>'varlik_kodu, envanter_no', 'ad'=>'ad', 'kategori'=>'kategori, ad', 'durum'=>'durum, ad', 'zimmetli'=>'zimmetli, ad',
            'lokasyon'=>'lokasyon, ad', 'garanti'=>'garanti_bitis', 'fiyat'=>'fiyat', 'alis'=>'alis_tarihi', 'guncel'=>'updated_at'];
 $skAnahtar = array_key_exists($_GET['sk'] ?? '', $sirala) ? $_GET['sk'] : 'no';
 $sk  = $sirala[$skAnahtar];
@@ -40,16 +41,19 @@ if (($_GET['export'] ?? '') === 'xlsx') {
     $st = $pdoIt->prepare("SELECT * FROM it_cihazlar $wsql ORDER BY $sk $yon, id");
     $st->execute($par);
     $xl = new \XlsxWriter('IT Envanter');
-    $xl->header(['Envanter No','Varlık / Nesne No','Kategori','Cihaz','Marka','Model','Seri No','Şasi No','IMEI','Durum','Zimmetli','Departman','Lokasyon',
-                 'Zimmet Tarihi','Alış Tarihi','Garanti Bitiş','Fiyat (TL)','Tedarikçi','Fatura No','IP','MAC','İşletim Sistemi','Özellikler','Lisans Adet','Notlar']);
+    $xl->header(array_merge(
+        ['Envanter No','Cihaz Kodu','IFS Seri Nesne No','Kategori','Cihaz','Marka','Model','Seri No','Şasi No','IMEI','Durum','Zimmetli','Departman','Lokasyon','Zimmet Tarihi','Alış Tarihi'],
+        $maliGoster ? ['Garanti Bitiş','Fiyat (TL)'] : [],
+        ['Tedarikçi','Fatura No','IP','MAC','İşletim Sistemi','Özellikler','Lisans Adet','Notlar']));
     foreach ($st->fetchAll() as $r) {
-        $xl->row([
-            ['v'=>$r['envanter_no']], ['v'=>$r['varlik_kodu'] ?? ''], ['v'=>it_kategoriAd($r['kategori'])], ['v'=>$r['ad']], ['v'=>$r['marka']], ['v'=>$r['model']],
+        $xl->row(array_merge([
+            ['v'=>$r['envanter_no']], ['v'=>$r['cihaz_kodu'] ?? ''], ['v'=>$r['varlik_kodu'] ?? ''], ['v'=>it_kategoriAd($r['kategori'])], ['v'=>$r['ad']], ['v'=>$r['marka']], ['v'=>$r['model']],
             ['v'=>$r['seri_no']], ['v'=>$r['sasi_no'] ?? ''], ['v'=>$r['imei'] ?? ''], ['v'=>it_durumAd($r['durum'])], ['v'=>$r['zimmetli']], ['v'=>$r['departman']], ['v'=>$r['lokasyon']],
-            ['v'=>$r['zimmet_tarihi'],'t'=>'date'], ['v'=>$r['alis_tarihi'],'t'=>'date'], ['v'=>$r['garanti_bitis'],'t'=>'date'],
-            ['v'=>(float)$r['fiyat'],'t'=>'number'], ['v'=>$r['tedarikci']], ['v'=>$r['fatura_no']], ['v'=>$r['ip_adresi']],
+            ['v'=>$r['zimmet_tarihi'],'t'=>'date'], ['v'=>$r['alis_tarihi'],'t'=>'date'],
+        ], $maliGoster ? [['v'=>$r['garanti_bitis'],'t'=>'date'], ['v'=>(float)$r['fiyat'],'t'=>'number']] : [], [
+            ['v'=>$r['tedarikci']], ['v'=>$r['fatura_no']], ['v'=>$r['ip_adresi']],
             ['v'=>$r['mac_adresi']], ['v'=>$r['isletim_sistemi']], ['v'=>$r['ozellikler']], ['v'=>$r['lisans_adet'],'t'=>'number'], ['v'=>$r['notlar']],
-        ]);
+        ]));
     }
     $xl->download('it_envanter_' . date('Ymd_Hi') . '.xlsx');
 }
@@ -64,6 +68,7 @@ $st = $pdoIt->prepare("SELECT * FROM it_cihazlar $wsql ORDER BY $sk $yon, id LIM
 $st->execute($par);
 $liste = $st->fetchAll();
 
+$belgeSay = it_belge_sayilari($pdoIt, array_column($liste, 'id'));
 $sec = ['zimmetli'=>it_secenekler($pdoIt,'zimmetli'), 'departman'=>it_secenekler($pdoIt,'departman'),
         'lokasyon'=>it_secenekler($pdoIt,'lokasyon'), 'marka'=>it_secenekler($pdoIt,'marka')];
 $f0 = fn($n) => number_format((float)$n, 0, ',', '.');
@@ -108,11 +113,13 @@ require_once __DIR__ . '/../includes/header.php';
       <div class="col-md-1"><label class="form-label small mb-0">Departman</label>
         <select name="departman" class="form-select form-select-sm"><option value="">Tümü</option>
           <?php foreach ($sec['departman'] as $x): ?><option value="<?= h($x) ?>" <?= ($etkin['departman'] ?? '') === $x ? 'selected' : '' ?>><?= h($x) ?></option><?php endforeach; ?></select></div>
+      <?php if ($maliGoster): ?>
       <div class="col-md-1"><label class="form-label small mb-0">Garanti</label>
         <select name="garanti" class="form-select form-select-sm"><option value="">—</option>
           <option value="bitiyor" <?= ($etkin['garanti'] ?? '') === 'bitiyor' ? 'selected' : '' ?>>60 günde bitiyor</option>
           <option value="bitti" <?= ($etkin['garanti'] ?? '') === 'bitti' ? 'selected' : '' ?>>Bitti</option>
           <option value="devam" <?= ($etkin['garanti'] ?? '') === 'devam' ? 'selected' : '' ?>>Devam ediyor</option></select></div>
+      <?php endif; ?>
       <div class="col-md-1 d-flex gap-1">
         <button class="btn btn-primary btn-sm w-100"><i class="bi bi-funnel"></i></button>
         <?php if ($etkin): ?><a href="cihazlar.php" class="btn btn-outline-secondary btn-sm" title="Temizle"><i class="bi bi-x-lg"></i></a><?php endif; ?>
@@ -125,7 +132,11 @@ require_once __DIR__ . '/../includes/header.php';
   <div class="col-6 col-md-3"><div class="card border-0 shadow-sm"><div class="card-body py-2"><div class="small text-muted">Kayıt</div><div class="fs-5 fw-bold"><?= $f0($oz['adet']) ?></div></div></div></div>
   <div class="col-6 col-md-3"><div class="card border-0 shadow-sm"><div class="card-body py-2"><div class="small text-muted">Kullanımda</div><div class="fs-5 fw-bold text-success"><?= $f0($oz['aktif']) ?></div></div></div></div>
   <div class="col-6 col-md-3"><div class="card border-0 shadow-sm"><div class="card-body py-2"><div class="small text-muted">Zimmetli kişi</div><div class="fs-5 fw-bold"><?= $f0($oz['kisi']) ?></div></div></div></div>
+  <?php if ($maliGoster): ?>
   <div class="col-6 col-md-3"><div class="card border-0 shadow-sm"><div class="card-body py-2"><div class="small text-muted">Mali değer</div><div class="fs-5 fw-bold"><?= $f2($oz['mali']) ?> <small class="text-muted">TL</small></div></div></div></div>
+  <?php else: ?>
+  <div class="col-6 col-md-3"><div class="card border-0 shadow-sm"><div class="card-body py-2"><div class="small text-muted">Bu sayfada imzalı evrak</div><div class="fs-5 fw-bold text-primary"><?= $f0(array_sum(array_column($belgeSay, 'imzali'))) ?></div></div></div></div>
+  <?php endif; ?>
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -135,20 +146,25 @@ require_once __DIR__ . '/../includes/header.php';
         <tr>
           <th style="width:52px"></th>
           <th><a href="<?= h($srtUrl('no')) ?>" class="text-decoration-none text-dark">Envanter No <?= $srtIk('no') ?></a></th>
+          <th><a href="<?= h($srtUrl('kod')) ?>" class="text-decoration-none text-dark">Cihaz Kodu <?= $srtIk('kod') ?></a></th>
+          <th><a href="<?= h($srtUrl('ifs')) ?>" class="text-decoration-none text-dark">IFS Seri Nesne No <?= $srtIk('ifs') ?></a></th>
           <th><a href="<?= h($srtUrl('ad')) ?>" class="text-decoration-none text-dark">Cihaz <?= $srtIk('ad') ?></a></th>
           <th><a href="<?= h($srtUrl('kategori')) ?>" class="text-decoration-none text-dark">Kategori <?= $srtIk('kategori') ?></a></th>
           <th>Seri No</th>
           <th><a href="<?= h($srtUrl('durum')) ?>" class="text-decoration-none text-dark">Durum <?= $srtIk('durum') ?></a></th>
           <th><a href="<?= h($srtUrl('zimmetli')) ?>" class="text-decoration-none text-dark">Zimmetli <?= $srtIk('zimmetli') ?></a></th>
           <th><a href="<?= h($srtUrl('lokasyon')) ?>" class="text-decoration-none text-dark">Lokasyon <?= $srtIk('lokasyon') ?></a></th>
+          <?php if ($maliGoster): ?>
           <th><a href="<?= h($srtUrl('garanti')) ?>" class="text-decoration-none text-dark">Garanti <?= $srtIk('garanti') ?></a></th>
           <th class="text-end"><a href="<?= h($srtUrl('fiyat')) ?>" class="text-decoration-none text-dark">Fiyat <?= $srtIk('fiyat') ?></a></th>
+          <?php endif; ?>
+          <th class="text-center" title="İmzalı zimmet tutanağı / belge">Evrak</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
       <?php if (!$liste): ?>
-        <tr><td colspan="11" class="text-center text-muted py-4">Kayıt yok.<?php if ($yazabilir && !$etkin): ?> <a href="cihaz_form.php">İlk cihazı ekleyin</a>.<?php endif; ?></td></tr>
+        <tr><td colspan="<?= $maliGoster ? 14 : 12 ?>" class="text-center text-muted py-4">Kayıt yok.<?php if ($yazabilir && !$etkin): ?> <a href="cihaz_form.php">İlk cihazı ekleyin</a>.<?php endif; ?></td></tr>
       <?php endif; ?>
       <?php foreach ($liste as $r): $gk = it_garanti_kalan($r['garanti_bitis']); ?>
         <tr class="<?= it_durum_dustu($r['durum']) ? 'text-muted' : '' ?>">
@@ -160,12 +176,15 @@ require_once __DIR__ . '/../includes/header.php';
             <?php endif; ?>
           </td>
           <td><a href="cihaz_detay.php?id=<?= (int)$r['id'] ?>" class="font-monospace fw-semibold text-decoration-none"><?= h($r['envanter_no']) ?></a></td>
+          <td class="font-monospace small"><?= h(($r['cihaz_kodu'] ?? '') !== '' ? $r['cihaz_kodu'] : '—') ?></td>
+          <td class="font-monospace small text-muted" style="max-width:190px"><?= h(($r['varlik_kodu'] ?? '') !== '' ? $r['varlik_kodu'] : '—') ?></td>
           <td><div class="fw-semibold"><?= h($r['ad']) ?></div><div class="small text-muted"><?= h(trim(($r['marka'] ?? '') . ' ' . ($r['model'] ?? ''))) ?></div></td>
           <td><i class="bi <?= h(it_kategoriIkon($r['kategori'])) ?> me-1 text-muted"></i><?= h(it_kategoriAd($r['kategori'])) ?></td>
           <td class="font-monospace small"><?= h($r['seri_no'] ?: '—') ?></td>
           <td><?= it_durumBadge($r['durum']) ?></td>
           <td><?= $r['zimmetli'] ? '<i class="bi bi-person me-1 text-muted"></i>' . ($r['personel_id'] ? '<a href="personel_detay.php?id=' . (int)$r['personel_id'] . '" class="text-decoration-none">' . h($r['zimmetli']) . '</a>' : h($r['zimmetli'])) . ($r['departman'] ? '<div class="small text-muted">' . h($r['departman']) . '</div>' : '') : '<span class="text-muted">—</span>' ?></td>
           <td class="small"><?= h($r['lokasyon_id'] ? it_lokasyon_etiket($pdoIt, (int)$r['lokasyon_id']) : ($r['lokasyon'] ?: '—')) ?></td>
+          <?php if ($maliGoster): ?>
           <td>
             <?php if ($gk === null): ?><span class="text-muted">—</span>
             <?php elseif ($gk < 0): ?><span class="badge bg-light text-danger border">bitti</span>
@@ -173,6 +192,17 @@ require_once __DIR__ . '/../includes/header.php';
             <?php else: ?><span class="small"><?= format_date($r['garanti_bitis']) ?></span><?php endif; ?>
           </td>
           <td class="text-end"><?= $r['fiyat'] !== null ? $f2($r['fiyat']) : '—' ?></td>
+          <?php endif; ?>
+          <td class="text-center">
+            <?php $bs = $belgeSay[(int)$r['id']] ?? ['toplam'=>0,'imzali'=>0]; ?>
+            <?php if ($bs['imzali']): ?>
+              <a href="cihaz_detay.php?id=<?= (int)$r['id'] ?>#belgeler" class="badge bg-success text-decoration-none" title="İmzalı zimmet tutanağı yüklü"><i class="bi bi-file-earmark-check me-1"></i><?= (int)$bs['imzali'] ?></a>
+            <?php elseif ($bs['toplam']): ?>
+              <a href="cihaz_detay.php?id=<?= (int)$r['id'] ?>#belgeler" class="badge bg-light text-secondary border text-decoration-none" title="<?= (int)$bs['toplam'] ?> belge — imzalı tutanak yok"><i class="bi bi-paperclip me-1"></i><?= (int)$bs['toplam'] ?></a>
+            <?php elseif ($r['zimmetli']): ?>
+              <a href="zimmet_tutanak.php?id=<?= (int)$r['id'] ?>" target="_blank" class="badge bg-light text-warning border text-decoration-none" title="Zimmetli ama imzalı evrak yok"><i class="bi bi-exclamation-triangle"></i></a>
+            <?php else: ?><span class="text-muted">—</span><?php endif; ?>
+          </td>
           <td class="text-end text-nowrap">
             <a href="cihaz_detay.php?id=<?= (int)$r['id'] ?>" class="btn btn-sm btn-outline-secondary" title="Detay"><i class="bi bi-eye"></i></a>
             <?php if ($r['zimmetli']): ?><a href="zimmet_tutanak.php?id=<?= (int)$r['id'] ?>" target="_blank" class="btn btn-sm btn-outline-primary" title="Zimmet tutanağı"><i class="bi bi-file-earmark-text"></i></a><?php endif; ?>

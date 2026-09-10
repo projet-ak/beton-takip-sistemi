@@ -85,13 +85,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash('success', 'Not eklendi.');
         }
     } elseif ($islem === 'belge' && $girebilir) {
+        // tur: 'zimmet' = ıslak imzalı zimmet tutanağı (listede yeşil rozet), 'belge' = diğer ekler
+        $tur = ($_POST['belge_tur'] ?? '') === 'zimmet' ? 'zimmet' : 'belge';
         $ok = 0; $hatalar = [];
         foreach (it_dosya_listesi($_FILES['belge'] ?? []) as $d) {
             if (($d['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) continue;
-            [$b, $m] = it_belge_yukle($pdoIt, $id, $d, $kul);
+            [$b, $m] = it_belge_yukle($pdoIt, $id, $d, $kul, $tur);
             if ($b) $ok++; else $hatalar[] = $m;
         }
-        if ($ok) flash('success', $ok . ' dosya yüklendi.');
+        if ($ok) {
+            flash('success', $ok . ' dosya yüklendi.' . ($tur === 'zimmet' ? ' İmzalı zimmet tutanağı olarak işaretlendi.' : ''));
+            if ($tur === 'zimmet')
+                it_hareket_ekle($pdoIt, $id, 'not', $c['zimmetli'] ?: null, 'İmzalı zimmet tutanağı yüklendi (' . $ok . ' dosya).');
+        }
         if ($hatalar) flash('error', strip_tags(implode(' · ', $hatalar)));
         if (!$ok && !$hatalar) flash('error', 'Dosya seçilmedi.');
     } elseif ($islem === 'belge_sil' && $duzenleyebilir) {
@@ -110,7 +116,9 @@ $hst = $pdoIt->prepare("SELECT * FROM it_hareketler WHERE cihaz_id=? ORDER BY ta
 $hst->execute([$id]);
 $hareketler = $hst->fetchAll();
 $belgeler   = it_belgeler($pdoIt, $id);
+$imzaliSayi = count(array_filter($belgeler, fn($b) => ($b['tur'] ?? '') === 'zimmet'));
 $gk = it_garanti_kalan($c['garanti_bitis']);
+$maliGoster = it_mali_goster();      // garanti + fiyat gösterimi (varsayılan KAPALI)
 
 // Aynı kişinin diğer cihazları (zimmet tutanağında bir arada çıkar)
 $digerleri = [];
@@ -131,10 +139,12 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
     <a href="cihazlar.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i></a>
     <h4 class="mb-0"><i class="bi <?= h(it_kategoriIkon($c['kategori'])) ?> text-primary me-2"></i><?= h($c['ad']) ?></h4>
-    <span class="badge bg-light text-dark border font-monospace"><?= h($c['envanter_no']) ?></span>
+    <span class="badge bg-light text-dark border font-monospace" title="envanter no"><?= h($c['envanter_no']) ?></span>
+    <?php if (!empty($c['cihaz_kodu'])): ?><span class="badge bg-light text-dark border font-monospace" title="cihaz kodu (demirbaş etiketi)"><?= h($c['cihaz_kodu']) ?></span><?php endif; ?>
+    <?php if (!empty($c['varlik_kodu'])): ?><span class="badge bg-light text-secondary border font-monospace" title="IFS seri nesne no"><?= h($c['varlik_kodu']) ?></span><?php endif; ?>
     <?= it_durumBadge($c['durum']) ?>
-    <?php if ($gk !== null && $gk < 0): ?><span class="badge bg-light text-danger border">garanti bitti</span>
-    <?php elseif ($gk !== null && $gk <= 60): ?><span class="badge bg-warning text-dark">garanti <?= $gk ?> gün</span><?php endif; ?>
+    <?php if ($maliGoster && $gk !== null && $gk < 0): ?><span class="badge bg-light text-danger border">garanti bitti</span>
+    <?php elseif ($maliGoster && $gk !== null && $gk <= 60): ?><span class="badge bg-warning text-dark">garanti <?= $gk ?> gün</span><?php endif; ?>
     <div class="ms-auto d-flex gap-2">
         <?php if ($c['zimmetli']): ?><a href="zimmet_tutanak.php?id=<?= $id ?>" target="_blank" class="btn btn-outline-primary btn-sm"><i class="bi bi-file-earmark-text me-1"></i>Zimmet Tutanağı</a><?php endif; ?>
         <?php if ($duzenleyebilir): ?><a href="cihaz_form.php?id=<?= $id ?>" class="btn btn-primary btn-sm"><i class="bi bi-pencil me-1"></i>Düzenle</a><?php endif; ?>
@@ -158,15 +168,16 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
             <?= $bilgi('Lokasyon / Proje', $c['lokasyon_id'] ? it_lokasyon_yol($pdoIt, (int)$c['lokasyon_id']) : $c['lokasyon']) ?>
             <?= $bilgi('Zimmet Tarihi', $c['zimmet_tarihi'] ? format_date($c['zimmet_tarihi']) : null) ?>
             <?= $bilgi('Alış Tarihi', $c['alis_tarihi'] ? format_date($c['alis_tarihi']) : null) ?>
-            <?= $bilgi('Garanti Bitiş', $c['garanti_bitis'] ? format_date($c['garanti_bitis']) . ($gk !== null ? ($gk < 0 ? ' (bitti)' : ' (' . $gk . ' gün)') : '') : null) ?>
-            <?= $bilgi('Fiyat', $c['fiyat'] !== null ? $f2($c['fiyat']) . ' TL' : null) ?>
+            <?= $maliGoster ? $bilgi('Garanti Bitiş', $c['garanti_bitis'] ? format_date($c['garanti_bitis']) . ($gk !== null ? ($gk < 0 ? ' (bitti)' : ' (' . $gk . ' gün)') : '') : null) : '' ?>
+            <?= $maliGoster ? $bilgi('Fiyat', $c['fiyat'] !== null ? $f2($c['fiyat']) . ' TL' : null) : '' ?>
             <?= $bilgi('Tedarikçi', $c['tedarikci']) ?>
             <?= $bilgi('Fatura No', $c['fatura_no']) ?>
             <?php if ($c['kategori'] === 'yazilim'): ?>
             <?= $bilgi('Lisans Anahtarı', $c['lisans_anahtari'], true) ?>
             <?= $bilgi('Lisans Adedi', $c['lisans_adet']) ?>
             <?php else: ?>
-            <?= $bilgi('Varlık / Nesne No (IFS)', $c['varlik_kodu'] ?? null, true) ?>
+            <?= $bilgi('IFS Seri Nesne No', $c['varlik_kodu'] ?? null, true) ?>
+            <?= $bilgi('Cihaz Kodu', $c['cihaz_kodu'] ?? null, true) ?>
             <?= $bilgi('Şasi No / 2. Seri No', $c['sasi_no'] ?? null, true) ?>
             <?= $bilgi('IMEI', $c['imei'] ?? null, true) ?>
             <?= $bilgi('IP Adresi', $c['ip_adresi'], true) ?>
@@ -289,13 +300,30 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
     <?php endif; ?>
 
     <div class="card border-0 shadow-sm">
-      <div class="card-header bg-white"><strong><i class="bi bi-paperclip me-1"></i>Belgeler &amp; Fotoğraflar</strong> <span class="badge bg-secondary ms-1"><?= count($belgeler) ?></span></div>
+      <div class="card-header bg-white" id="belgeler"><strong><i class="bi bi-paperclip me-1"></i>Belgeler &amp; Fotoğraflar</strong> <span class="badge bg-secondary ms-1"><?= count($belgeler) ?></span>
+        <?php if ($imzaliSayi): ?><span class="badge bg-success ms-1" title="imzalı zimmet tutanağı"><i class="bi bi-file-earmark-check me-1"></i><?= $imzaliSayi ?></span><?php endif; ?></div>
       <div class="card-body">
         <?php if ($girebilir): ?>
+        <?php /* İMZALI EVRAK: tutanağı yazdır → ıslak imzala → buradan geri yükle (depo fiş akışıyla aynı desen) */ ?>
+        <div class="border rounded p-2 mb-3 <?= $imzaliSayi ? 'border-success bg-success-subtle' : 'border-warning bg-warning-subtle' ?>">
+          <div class="small fw-semibold mb-1"><i class="bi bi-file-earmark-check me-1"></i>İmzalı Zimmet Tutanağı
+            <?php if ($imzaliSayi): ?><span class="badge bg-success"><?= $imzaliSayi ?> yüklü</span>
+            <?php else: ?><span class="badge bg-warning text-dark">yüklenmedi</span><?php endif; ?></div>
+          <div class="small text-muted mb-2">Tutanağı yazdırıp imzalattıktan sonra taranmış kopyayı buradan yükleyin — listede yeşil rozetle görünür.</div>
+          <form method="post" enctype="multipart/form-data">
+            <input type="hidden" name="action" value="belge">
+            <input type="hidden" name="belge_tur" value="zimmet">
+            <input type="file" name="belge[]" multiple accept="image/*,application/pdf" class="form-control form-control-sm mb-2" required>
+            <div class="d-flex gap-2">
+              <?php if ($c['zimmetli']): ?><a href="zimmet_tutanak.php?id=<?= $id ?>" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="bi bi-printer me-1"></i>Tutanak</a><?php endif; ?>
+              <button class="btn btn-success btn-sm flex-grow-1"><i class="bi bi-cloud-arrow-up me-1"></i>İmzalı evrakı yükle</button>
+            </div>
+          </form>
+        </div>
         <form method="post" enctype="multipart/form-data" class="mb-3">
           <input type="hidden" name="action" value="belge">
           <input type="file" name="belge[]" multiple accept="image/*,application/pdf" class="form-control form-control-sm mb-2">
-          <button class="btn btn-outline-primary btn-sm w-100"><i class="bi bi-cloud-arrow-up me-1"></i>Yükle (fotoğraf, fatura, garanti belgesi)</button>
+          <button class="btn btn-outline-primary btn-sm w-100"><i class="bi bi-cloud-arrow-up me-1"></i>Diğer belge yükle (fotoğraf, fatura…)</button>
         </form>
         <?php endif; ?>
         <?php if (!$belgeler): ?><div class="text-muted small">Belge yok.</div><?php endif; ?>
@@ -307,7 +335,8 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
                 <?php if ($img): ?><img src="../<?= h($b['dosya_url']) ?>" alt="" style="width:100%;height:90px;object-fit:cover;border-radius:4px">
                 <?php else: ?><div class="py-4"><i class="bi bi-file-earmark-pdf text-danger fs-2"></i></div><?php endif; ?>
               </a>
-              <div class="small text-truncate mt-1" title="<?= h($b['ad']) ?>"><?= h($b['ad']) ?></div>
+              <div class="small text-truncate mt-1" title="<?= h($b['ad']) ?>">
+                <?php if (($b['tur'] ?? '') === 'zimmet'): ?><i class="bi bi-file-earmark-check text-success me-1" title="imzalı zimmet tutanağı"></i><?php endif; ?><?= h($b['ad']) ?></div>
               <div class="d-flex justify-content-between align-items-center small text-muted">
                 <span><?= format_date(substr((string)$b['created_at'], 0, 10)) ?></span>
                 <?php if ($duzenleyebilir): ?>

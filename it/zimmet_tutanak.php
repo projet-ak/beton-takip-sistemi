@@ -49,6 +49,41 @@ $lokasyon  = $per && $per['lokasyon_id'] ? it_lokasyon_yol($pdoIt, (int)$per['lo
 $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
 $toplam = array_sum(array_map(fn($r) => (float)($r['fiyat'] ?? 0), $liste));
 $teslimEden = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ?? '';
+$maliGoster = it_mali_goster();      // "Değer (TL)" sütunu (varsayılan KAPALI)
+
+// ── İMZALI EVRAK: tutanağı yazdır → ıslak imzala → buradan geri yükle ──────────
+// Belge tutanaktaki BÜTÜN cihazlara bağlanır (kişi bazlı tutanakta tek dosya = tüm cihazlar),
+// depo modülündeki "imzalı fişi geri yükle" deseniyle aynı.
+$evrakMesaj = null; $evrakHata = null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'imzali' && yetki_var('giris')) {
+    $kul = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ?? null;
+    $ok = 0; $hatalar = [];
+    $ilkId = (int)$liste[0]['id'];
+    foreach (it_dosya_listesi($_FILES['belge'] ?? []) as $d) {
+        if (($d['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) continue;
+        // ⚠ Yüklenen dosya diske BİR KEZ taşınır (ilk cihazın klasörüne); tutanaktaki diğer cihazlara
+        // aynı dosya URL'siyle bağ satırı eklenir. it_belge_sil() dosyayı yalnız SON bağ koptuğunda siler.
+        [$b, $m] = it_belge_yukle($pdoIt, $ilkId, $d, $kul, 'zimmet');
+        if (!$b) { $hatalar[] = $m; continue; }
+        $ok++;
+        $son = $pdoIt->prepare("SELECT * FROM it_belgeler WHERE cihaz_id=? ORDER BY id DESC LIMIT 1");
+        $son->execute([$ilkId]);
+        $bg = $son->fetch();
+        foreach ($liste as $__c) {
+            $cid = (int)$__c['id'];
+            if ($cid !== $ilkId && $bg) {
+                $pdoIt->prepare("INSERT INTO it_belgeler (cihaz_id, dosya_url, ad, mime, boyut, tur, kullanici) VALUES (?,?,?,?,?, 'zimmet', ?)")
+                      ->execute([$cid, $bg['dosya_url'], $bg['ad'], $bg['mime'], $bg['boyut'], $kul]);
+            }
+            it_hareket_ekle($pdoIt, $cid, 'not', $__c['zimmetli'] ?: null, 'İmzalı zimmet tutanağı yüklendi (' . $no . ').');
+        }
+    }
+    if ($ok) $evrakMesaj = 'İmzalı tutanak yüklendi.';
+    if ($hatalar) $evrakHata = strip_tags(implode(' · ', array_unique($hatalar)));
+    if (!$ok && !$hatalar) $evrakHata = 'Dosya seçilmedi.';
+}
+$imzaliSayi = 0;
+foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (int)$__c['id']), fn($b) => ($b['tur'] ?? '') === 'zimmet'));
 
 /**
  * Cihazın KÜNYESİ — kurumsal zimmet formundaki "Özellikler" bloğunun birebir karşılığı
@@ -77,7 +112,9 @@ function zt_kunye(PDO $pdo, array $r): array
         'IMEI'                 => $r['imei'] ?? '',
         'IP / MAC'             => trim((string)($r['ip_adresi'] ?? '') . (($r['mac_adresi'] ?? '') ? ' / ' . $r['mac_adresi'] : ''), ' /'),
         'İŞLETİM SİSTEMİ'      => $r['isletim_sistemi'] ?? '',
-        'CİHAZ KODU'           => $r['envanter_no'] ?? '',
+        'CİHAZ KODU'           => $r['cihaz_kodu'] ?? '',
+        'ENVANTER NO'          => $r['envanter_no'] ?? '',
+        'IFS SERİ NESNE NO'    => $r['varlik_kodu'] ?? '',
     ];
     return array_filter($alanlar, fn($x) => trim((string)$x) !== '');
 }
@@ -118,6 +155,14 @@ function zt_kunye(PDO $pdo, array $r): array
   .toolbar button, .toolbar a { font:inherit; padding:8px 18px; border-radius:8px; border:none; cursor:pointer; text-decoration:none; margin:0 4px; }
   .btn-print { background:#00584E; color:#fff; }
   .btn-back { background:#e0e0e0; color:#333; }
+  .evrak { max-width:210mm; margin:0 auto 10px; background:#fff; border:1px solid #d5d5d5; border-left:5px solid #00584E; border-radius:8px; padding:12px 16px; font-size:13px; }
+  .evrak .basi { font-weight:700; color:#00584E; margin-bottom:4px; }
+  .evrak .rozet { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; }
+  .evrak .var { background:#e6f4ea; color:#1b6b3a; } .evrak .yok { background:#fff4e0; color:#8a5a00; }
+  .evrak form { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }
+  .evrak input[type=file] { flex:1 1 240px; font:inherit; }
+  .evrak button { background:#1b6b3a; color:#fff; border:none; border-radius:8px; padding:8px 16px; font:inherit; cursor:pointer; }
+  .evrak .uyari { color:#b00; } .evrak .tamam { color:#1b6b3a; }
   @media print { body { background:#fff; } .sheet { margin:0; box-shadow:none; width:auto; padding:12mm; } .toolbar { display:none; } }
 </style>
 </head>
@@ -126,6 +171,24 @@ function zt_kunye(PDO $pdo, array $r): array
   <button class="btn-print" onclick="window.print()">🖨 Yazdır / PDF Kaydet</button>
   <a class="btn-back" href="<?= h($geri) ?>">← Geri</a>
 </div>
+
+<?php if (yetki_var('giris')): ?>
+<div class="evrak">
+  <div class="basi">İmzalı Evrak
+    <?php if ($imzaliSayi): ?><span class="rozet var">yüklü (<?= (int)$imzaliSayi ?>)</span>
+    <?php else: ?><span class="rozet yok">yüklenmedi</span><?php endif; ?></div>
+  <div style="color:#555">Tutanağı yazdırıp imzalattıktan sonra taranmış kopyayı buradan yükleyin —
+    belge tutanaktaki <?= count($liste) ?> cihazın kartına da işlenir ve listede yeşil rozetle görünür.</div>
+  <?php if ($evrakMesaj): ?><div class="tamam"><?= h($evrakMesaj) ?></div><?php endif; ?>
+  <?php if ($evrakHata): ?><div class="uyari"><?= h($evrakHata) ?></div><?php endif; ?>
+  <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="action" value="imzali">
+    <input type="hidden" name="csrf" value="<?= h(csrf_token()) ?>">
+    <input type="file" name="belge[]" multiple accept="image/*,application/pdf" required>
+    <button type="submit">İmzalı tutanağı yükle</button>
+  </form>
+</div>
+<?php endif; ?>
 
 <div class="sheet">
   <div class="top">
@@ -150,26 +213,26 @@ function zt_kunye(PDO $pdo, array $r): array
   </table>
 
   <table class="items">
-    <thead><tr><th style="width:30px">S.No</th><th style="width:78px">Envanter No</th><th>Cihaz</th><th>Marka / Model</th><th>Seri No</th><th class="r" style="width:88px">Değer (TL)</th></tr></thead>
+    <thead><tr><th style="width:30px">S.No</th><th style="width:78px">Envanter No</th><th>Cihaz</th><th>Marka / Model</th><th>Seri No</th><?php if ($maliGoster): ?><th class="r" style="width:88px">Değer (TL)</th><?php endif; ?></tr></thead>
     <tbody>
     <?php foreach ($liste as $i => $r): ?>
       <tr>
         <td><?= $i + 1 ?></td>
-        <td class="mono"><?= h($r['envanter_no']) ?></td>
+        <td class="mono"><?= h($r['envanter_no']) ?><?php if (!empty($r['cihaz_kodu'])): ?><div style="font-size:10px;color:#666"><?= h($r['cihaz_kodu']) ?></div><?php endif; ?></td>
         <td><?= h($r['ad']) ?><div style="font-size:10.5px;color:#666"><?= h(it_kategoriAd($r['kategori'])) ?><?= $r['ozellikler'] ? ' · ' . h($r['ozellikler']) : '' ?></div></td>
         <td><?= h(trim(($r['marka'] ?? '') . ' ' . ($r['model'] ?? '')) ?: '—') ?></td>
         <td class="mono"><?= h($r['seri_no'] ?: '—') ?></td>
-        <td class="r"><?= $r['fiyat'] !== null ? $f2($r['fiyat']) : '—' ?></td>
+        <?php if ($maliGoster): ?><td class="r"><?= $r['fiyat'] !== null ? $f2($r['fiyat']) : '—' ?></td><?php endif; ?>
       </tr>
     <?php endforeach; ?>
     </tbody>
-    <tfoot><tr><td colspan="5" class="r">TOPLAM (<?= count($liste) ?> kalem)</td><td class="r"><?= $f2($toplam) ?></td></tr></tfoot>
+    <tfoot><tr><td colspan="5" class="r">TOPLAM (<?= count($liste) ?> kalem)</td><?php if ($maliGoster): ?><td class="r"><?= $f2($toplam) ?></td><?php endif; ?></tr></tfoot>
   </table>
 
   <?php /* Kurumsal formdaki "Özellikler" bloğu — her cihaz için nesne kimliği + donanım künyesi */ ?>
   <?php foreach ($liste as $i => $r): $ky = zt_kunye($pdoIt, $r); if (!$ky) continue; ?>
   <div class="kunye-basi"><?= count($liste) > 1 ? ($i + 1) . '. ' : '' ?>ÖZELLİKLER — <?= h($r['ad']) ?>
-    <span style="font-weight:600;color:#555">(<?= h($r['envanter_no']) ?><?= !empty($r['varlik_kodu']) ? ' · Nesne No: ' . h($r['varlik_kodu']) : '' ?>)</span></div>
+    <span style="font-weight:600;color:#555">(<?= h($r['envanter_no']) ?><?= !empty($r['varlik_kodu']) ? ' · IFS: ' . h($r['varlik_kodu']) : '' ?>)</span></div>
   <table class="kunye">
     <tr><td class="k">NESNE AÇIKLAMA</td><td><?= h($r['ad']) ?></td>
         <td class="k">NESNE TÜRÜ / KATEGORİ</td><td><?= h(IT_GRUP[it_grup((string)$r['kategori'])][0] ?? '') ?> / <?= h(it_kategoriAd((string)$r['kategori'])) ?></td></tr>

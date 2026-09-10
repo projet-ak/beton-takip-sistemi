@@ -19,7 +19,7 @@ $pageTitle = 'Cihaz İçe Aktar — IT Envanter';
 $kisi = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ?? null;
 
 /** Şablonun sütun düzeni = içe aktarmanın tanıdığı başlıklar (cim_harita bu adlarla eşleştirir). */
-const CIM_SABLON_BASLIK = ['Cihaz Kodu','Seri Nesne Kodu','Seri Nesne Adı','Kategori','Marka','Model','Seri No','Şasi No','IMEI',
+const CIM_SABLON_BASLIK = ['Envanter No','Cihaz Kodu','IFS Seri Nesne No','Seri Nesne Adı','Kategori','Marka','Model','Seri No','Şasi No','IMEI',
                            'Durum','Kişi','Departman','Mevcut Proje','Kiralanan Firma','Alış Tarihi','Garanti Bitiş','Fiyat',
                            'Tedarikçi','Fatura No','IP Adresi','MAC Adresi','İşletim Sistemi',
                            'İşlemci','Ram','Ekran Kartı','Hdd','Anakart','Ekran Boyutu','Kapasite','Teknik Özellik','Not'];
@@ -31,7 +31,8 @@ function cim_sablon_satiri(PDO $pdo, array $r): array
     $lokAd = (string)($r['lokasyon'] ?? '');
     if ($lok && ($l = it_lokasyonlar($pdo)[$lok] ?? null)) $lokAd = trim(($l['kod'] ?? '') !== '' ? $l['kod'] . ' — ' . $l['ad'] : $l['ad']);
     return [
-        ['v'=>(string)($r['envanter_no'] ?? '')], ['v'=>(string)($r['varlik_kodu'] ?? '')], ['v'=>(string)($r['ad'] ?? '')],
+        ['v'=>(string)($r['envanter_no'] ?? '')], ['v'=>(string)($r['cihaz_kodu'] ?? '')],
+        ['v'=>(string)($r['varlik_kodu'] ?? '')], ['v'=>(string)($r['ad'] ?? '')],
         ['v'=>IT_KATEGORI[$r['kategori'] ?? 'diger'][0] ?? ''],
         ['v'=>(string)($r['marka'] ?? '')], ['v'=>(string)($r['model'] ?? '')], ['v'=>(string)($r['seri_no'] ?? '')],
         ['v'=>(string)($r['sasi_no'] ?? '')], ['v'=>(string)($r['imei'] ?? '')],
@@ -73,25 +74,25 @@ if (isset($_GET['sablon'])) {
 
     // Örnek satırlar başlık sırasıyla birebir eşleşir (CIM_SABLON_BASLIK); kişi/lokasyon sistemden gelir
     $ornek = [
-        ['IT-00001','FRM-0002-82026-2552600167','Dizüstü Bilgisayar','Dizüstü','Lenovo','ThinkPad E14','PF3ABCDE','TCNXCV00V025494','356938035643809',
+        ['IT-00001','N221','FRM-0002-82026-2552600167','Dizüstü Bilgisayar','Dizüstü','Lenovo','ThinkPad E14','PF3ABCDE','TCNXCV00V025494','356938035643809',
          'Kullanımda',0,'','2025-02-10','2027-02-10',28500,'Bilgi İşlem A.Ş.','FTR2025000123','','','Windows 11 Pro',
          'İntel i7 · Intel(R) Core(TM) 7 240H','DDR5 16 GB · Samsung','Intel Raptor Lake-H','NVMe 512 GB','ThinkPad E14 · Lenovo','14"','512 GB','',''],
-        ['IT-00002','FRM-0002-MON-2551900855','Monitör','Monitör','AOC','24B2XH','FUAE1HA035655','','',
+        ['IT-00002','M160','FRM-0002-MON-2551900855','Monitör','Monitör','AOC','24B2XH','FUAE1HA035655','','',
          'Kullanımda',1,'','2025-02-10','2027-02-10',3250,'Bilgi İşlem A.Ş.','FTR2025000123','','','',
          '','','','','','24"','','IPS Full HD',''],
-        ['IT-00003','FRM-0002-YZC-2551901004','Yazıcı','Yazıcı','HP','LaserJet M404dn','VNC3K12345','','',
+        ['IT-00003','Y031','FRM-0002-YZC-2551901004','Yazıcı','Yazıcı','HP','LaserJet M404dn','VNC3K12345','','',
          'Depoda',2,'','2024-11-05','2026-11-05',9750,'Ofis Market','FTR2024000987','192.168.1.45','A4:BB:6D:11:22:33','',
          '','','','','','','','Mono lazer, ağ bağlantılı','Depoda yedek olarak bekliyor'],
     ];
     foreach ($ornek as $i => $o) {
         $xl->row([
-            ['v'=>$o[0]], ['v'=>$o[1]], ['v'=>$o[2]], ['v'=>$o[3]], ['v'=>$o[4]], ['v'=>$o[5]], ['v'=>$o[6]], ['v'=>$o[7]], ['v'=>$o[8]],
-            ['v'=>$o[9]], ['v'=>(string)($kisiler[(int)$o[10]] ?? '')], ['v'=>$o[11]],
+            ['v'=>$o[0]], ['v'=>$o[1]], ['v'=>$o[2]], ['v'=>$o[3]], ['v'=>$o[4]], ['v'=>$o[5]], ['v'=>$o[6]], ['v'=>$o[7]], ['v'=>$o[8]], ['v'=>$o[9]],
+            ['v'=>$o[10]], ['v'=>(string)($kisiler[(int)$o[11]] ?? '')], ['v'=>$o[12]],
             ['v'=>(string)($lokAdlar[$i % count($lokAdlar)] ?? '')], ['v'=>''],
-            ['v'=>$o[12], 't'=>'date'], ['v'=>$o[13], 't'=>'date'], ['v'=>(float)$o[14], 't'=>'number'],
-            ['v'=>$o[15]], ['v'=>$o[16]], ['v'=>$o[17]], ['v'=>$o[18]], ['v'=>$o[19]],
-            ['v'=>$o[20]], ['v'=>$o[21]], ['v'=>$o[22]], ['v'=>$o[23]], ['v'=>$o[24]], ['v'=>$o[25]], ['v'=>$o[26]],
-            ['v'=>$o[27]], ['v'=>$o[28]],
+            ['v'=>$o[13], 't'=>'date'], ['v'=>$o[14], 't'=>'date'], ['v'=>(float)$o[15], 't'=>'number'],
+            ['v'=>$o[16]], ['v'=>$o[17]], ['v'=>$o[18]], ['v'=>$o[19]], ['v'=>$o[20]],
+            ['v'=>$o[21]], ['v'=>$o[22]], ['v'=>$o[23]], ['v'=>$o[24]], ['v'=>$o[25]], ['v'=>$o[26]], ['v'=>$o[27]],
+            ['v'=>$o[28]], ['v'=>$o[29]],
         ]);
     }
     for ($i = 0; $i < 5; $i++) $xl->row(array_fill(0, count(CIM_SABLON_BASLIK), ['v'=>'']));
@@ -174,8 +175,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($islem === 'aktar') {
             $s = $_SESSION['it_cim'];
             $var = array_filter($s['harita']);
-            if (!array_intersect(['varlik_kodu','envanter_no','seri_no','ad'], $var)) {
-                $hata = 'Cihazı tanımlayan en az bir sütun (varlık kodu / envanter no / seri no / cihaz adı) eşlenmeden aktarım yapılamaz.';
+            if (!array_intersect(['varlik_kodu','cihaz_kodu','envanter_no','seri_no','ad'], $var)) {
+                $hata = 'Cihazı tanımlayan en az bir sütun (IFS nesne no / cihaz kodu / envanter no / seri no / cihaz adı) eşlenmeden aktarım yapılamaz.';
             } else {
                 $rap = null;
                 try {
@@ -230,9 +231,10 @@ require_once __DIR__ . '/../includes/header.php';
         <label class="form-label fw-semibold">Demirbaş / zimmet listesi dosyası</label>
         <input type="file" name="dosya" class="form-control" accept=".xlsx,.xls,.csv,.txt,.htm,.html" required <?= $yazabilir ? '' : 'disabled' ?>>
         <div class="form-text">
-          Kurumsal envanter çıktısı (ör. <em>"Hızlı Rapor — Zimmet Edilen Demirbaş Listesi"</em>), kendi Excel'iniz ya da .csv olabilir.
-          Sütun başlıkları Türkçe veya İngilizce tanınır (Cihaz Kodu / Seri Nesne Kodu / Seri Nesne Adı / Marka / Model / Seri No / Kişi / Mevcut Proje,
-          Asset Tag, Serial, Assigned To, Location…). Eşleme bir sonraki adımda gösterilir, dilerseniz düzeltirsiniz.
+          Kurumsal envanter çıktısı (ör. <em>"Hızlı Rapor — Zimmet Edilen Demirbaş Listesi"</em>), <strong>Snipe-IT "Export Assets"</strong> dosyası,
+          kendi Excel'iniz ya da .csv olabilir. Sütun başlıkları Türkçe veya İngilizce tanınır (Demirbaş Etiketi / Cihaz Kodu / IFS Seri Nesne No /
+          Model / Model No. / Seri No / Çıkış Yapılmış Olan Kişi / Çalışan Numarası / Konum, Asset Tag, Serial, Assigned To, Location…).
+          Eşleme bir sonraki adımda gösterilir, dilerseniz düzeltirsiniz.
         </div>
         <?php
           $lokEtiket = [];
@@ -270,7 +272,7 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 
 <?php elseif ($adim === 2 && $s): $baslik = $s['satirlar'][$s['baslik_idx']]; $veri = array_slice($s['satirlar'], $s['baslik_idx'] + 1); $nSutun = max(array_map('count', array_slice($s['satirlar'], 0, 50)) ?: [count($baslik)]);
-      $kullanilan = array_filter($s['harita']); $kimlikVar = (bool)array_intersect(['varlik_kodu','envanter_no','seri_no','ad'], $kullanilan); ?>
+      $kullanilan = array_filter($s['harita']); $kimlikVar = (bool)array_intersect(['varlik_kodu','cihaz_kodu','envanter_no','seri_no','ad'], $kullanilan); ?>
 <form method="post" id="fmEsle">
 <input type="hidden" name="islem" id="islem" value="onizle">
 <div class="card border-0 shadow-sm mb-3"><div class="card-body py-2 d-flex flex-wrap align-items-center gap-3 small">
@@ -283,7 +285,7 @@ require_once __DIR__ . '/../includes/header.php';
   <a href="cihaz_import.php?iptal=1" class="btn btn-outline-secondary btn-sm ms-auto"><i class="bi bi-x-lg me-1"></i>Vazgeç</a>
 </div></div>
 
-<?php if (!$kimlikVar): ?><div class="alert alert-danger py-2 small"><i class="bi bi-exclamation-triangle me-1"></i>Cihazı tanımlayan sütun bulunamadı (varlık kodu / envanter no / seri no / cihaz adı) — aşağıda elle eşleyin.</div><?php endif; ?>
+<?php if (!$kimlikVar): ?><div class="alert alert-danger py-2 small"><i class="bi bi-exclamation-triangle me-1"></i>Cihazı tanımlayan sütun bulunamadı (IFS nesne no / cihaz kodu / envanter no / seri no / cihaz adı) — aşağıda elle eşleyin.</div><?php endif; ?>
 
 <div class="row g-3">
   <div class="col-lg-5">

@@ -48,14 +48,14 @@ if (($_GET['export'] ?? '') === 'xlsx') {
     $st = $pdoIt->prepare("SELECT * FROM it_cihazlar $wsql ORDER BY kategori, envanter_no");
     $st->execute($par);
     $xl = new \XlsxWriter('Varlık Listesi');
-    $xl->header(['Grup','Kategori','Envanter No','Varlık / Nesne No','Cihaz','Marka','Model','Seri No','Şasi No','IMEI','Durum',
+    $xl->header(['Grup','Kategori','Envanter No','Cihaz Kodu','IFS Seri Nesne No','Cihaz','Marka','Model','Seri No','Şasi No','IMEI','Durum',
                  'IP Adresi','MAC Adresi','Dahili','Telefon No','Operatör','Firmware','Lisans Durumu',
                  'İşlemci','RAM','Ekran Kartı','Disk','Anakart','Ekran Boyutu','Kapasite','Kullanım Amacı','Adet',
                  'Lokasyon','Zimmetli','Departman','Kiralanan Firma','Garanti Bitiş','Fiyat (TL)','Notlar']);
     foreach ($st->fetchAll() as $r) {
         $xl->row([
             ['v'=>IT_GRUP[it_grup($r['kategori'])][0] ?? ''], ['v'=>it_kategoriAd($r['kategori'])],
-            ['v'=>$r['envanter_no']], ['v'=>$r['varlik_kodu'] ?? ''], ['v'=>$r['ad']], ['v'=>$r['marka']], ['v'=>$r['model']],
+            ['v'=>$r['envanter_no']], ['v'=>$r['cihaz_kodu'] ?? ''], ['v'=>$r['varlik_kodu'] ?? ''], ['v'=>$r['ad']], ['v'=>$r['marka']], ['v'=>$r['model']],
             ['v'=>$r['seri_no']], ['v'=>$r['sasi_no'] ?? ''], ['v'=>$r['imei'] ?? ''], ['v'=>it_durumAd($r['durum'])],
             ['v'=>$r['ip_adresi']], ['v'=>$r['mac_adresi']], ['v'=>$r['dahili_no'] ?? ''], ['v'=>$r['telefon_no'] ?? ''],
             ['v'=>$r['operator'] ?? ''], ['v'=>$r['firmware'] ?? ''], ['v'=>$r['lisans_durumu'] ?? ''],
@@ -85,6 +85,8 @@ if ($sayfa > $sonSayfa) $sayfa = $sonSayfa;
 $st = $pdoIt->prepare("SELECT * FROM it_cihazlar $wsql ORDER BY kategori, envanter_no LIMIT $adet OFFSET " . (($sayfa - 1) * $adet));
 $st->execute($par);
 $liste = $st->fetchAll();
+$maliGoster = it_mali_goster();                                  // garanti + fiyat gösterimi (varsayılan KAPALI)
+$belgeSay   = it_belge_sayilari($pdoIt, array_column($liste, 'id'));
 
 // Bağlı cihaz adları (kamera → NVR, turnike → geçiş ünitesi) tek sorguda
 $bagliAd = [];
@@ -136,12 +138,14 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 
 <div class="row g-2 mb-3">
-    <?php foreach ([['Listelenen', number_format((int)$oz['adet'], 0, ',', '.'), 'bi-box-seam', ''],
+    <?php foreach (array_merge([['Listelenen', number_format((int)$oz['adet'], 0, ',', '.'), 'bi-box-seam', ''],
                     ['Kullanımda', number_format((int)$oz['aktif'], 0, ',', '.'), 'bi-person-check', 'text-success'],
                     ['Serviste / Arızalı', number_format((int)$oz['sorunlu'], 0, ',', '.'), 'bi-wrench', ((int)$oz['sorunlu'] ? 'text-danger' : '')],
                     ['IP adresli', number_format((int)$oz['ipli'], 0, ',', '.'), 'bi-hdd-network', ''],
-                    ['Lokasyon', number_format((int)$oz['lokasyon'], 0, ',', '.'), 'bi-geo-alt', ''],
-                    ['Mali Değer', number_format((float)$oz['mali'], 0, ',', '.') . ' ₺', 'bi-cash-coin', 'text-primary']] as [$et, $dg, $ik, $cls]): ?>
+                    ['Lokasyon', number_format((int)$oz['lokasyon'], 0, ',', '.'), 'bi-geo-alt', '']],
+                    $maliGoster ? [['Mali Değer', number_format((float)$oz['mali'], 0, ',', '.') . ' ₺', 'bi-cash-coin', 'text-primary']] : [
+                        ['İmzalı evrak', number_format(array_sum(array_column($belgeSay, 'imzali')), 0, ',', '.'), 'bi-file-earmark-check', 'text-primary']]
+                   ) as [$et, $dg, $ik, $cls]): ?>
     <div class="col-6 col-md-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
         <div class="small text-muted"><i class="bi <?= $ik ?> me-1"></i><?= $et ?></div>
         <div class="fs-5 fw-bold <?= $cls ?>"><?= $dg ?></div>
@@ -152,8 +156,8 @@ require_once __DIR__ . '/../includes/header.php';
 <form method="get" class="card border-0 shadow-sm mb-3"><div class="card-body py-2">
     <?php if ($grup): ?><input type="hidden" name="grup" value="<?= h($grup) ?>"><?php endif; ?>
     <div class="row g-2 align-items-end">
-        <div class="col-md-3"><label class="form-label small mb-1">Arama <span class="text-muted">(IP · MAC · seri · dahili · IMEI)</span></label>
-            <input name="q" class="form-control form-control-sm" value="<?= h($etkin['q'] ?? '') ?>" placeholder="192.168.1.45 · 00:1A:2B · FUAE1HA…"></div>
+        <div class="col-md-3"><label class="form-label small mb-1">Arama <span class="text-muted">(IP · MAC · seri · cihaz kodu · IFS no · IMEI)</span></label>
+            <input name="q" class="form-control form-control-sm" value="<?= h($etkin['q'] ?? '') ?>" placeholder="192.168.1.45 · FUAE1HA… · N221 · FRM-0002-…"></div>
         <div class="col-md-2"><label class="form-label small mb-1">Cihaz Tipi</label>
             <select name="kategori" class="form-select form-select-sm"><option value="">Tümü</option>
                 <?php foreach (it_kategori_agaci() as $g2 => $kats): if ($grup && $g2 !== $grup) continue; ?>
@@ -167,11 +171,13 @@ require_once __DIR__ . '/../includes/header.php';
             <select name="durum" class="form-select form-select-sm"><option value="">Envanterdekiler (hurda/kayıp/hibe hariç)</option>
                 <?php foreach (IT_DURUM as $k => [$ad]): ?><option value="<?= h($k) ?>" <?= ($etkin['durum'] ?? '') === $k ? 'selected' : '' ?>><?= h($ad) ?></option><?php endforeach; ?>
             </select></div>
+        <?php if ($maliGoster): ?>
         <div class="col-md-2"><label class="form-label small mb-1">Garanti</label>
             <select name="garanti" class="form-select form-select-sm"><option value="">Tümü</option>
                 <?php foreach (['bitiyor'=>'60 günde bitiyor', 'bitti'=>'Bitti', 'devam'=>'Devam ediyor'] as $k => $ad): ?>
                 <option value="<?= $k ?>" <?= ($etkin['garanti'] ?? '') === $k ? 'selected' : '' ?>><?= h($ad) ?></option><?php endforeach; ?>
             </select></div>
+        <?php endif; ?>
         <div class="col-md-1 d-flex gap-1">
             <button class="btn btn-primary btn-sm flex-grow-1"><i class="bi bi-search"></i></button>
             <?php if ($etkin): ?><a href="varliklar.php<?= $grup ? '?grup=' . h($grup) : '' ?>" class="btn btn-outline-secondary btn-sm" title="Süzgeci temizle"><i class="bi bi-x-lg"></i></a><?php endif; ?>
@@ -190,13 +196,14 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="table-responsive"><table class="table table-hover align-middle mb-0 vg-tablo">
     <thead class="table-light"><tr>
         <th>Envanter</th><th>Varlık</th><th>Marka / Model</th><th>Seri No</th>
-        <th>Ağ / Hat</th><th>Teknik</th><th>Lokasyon</th><th>Zimmetli</th><th>Durum</th><th class="text-end">Garanti</th>
+        <th>Ağ / Hat</th><th>Teknik</th><th>Lokasyon</th><th>Zimmetli</th><th>Durum</th>
+        <?php if ($maliGoster): ?><th class="text-end">Garanti</th><?php endif; ?>
     </tr></thead>
     <tbody>
     <?php $sonGrup = null; foreach ($liste as $r):
         $kat = (string)$r['kategori']; $g3 = it_grup($kat);
         if ($grup === '' && $g3 !== $sonGrup): $sonGrup = $g3; ?>
-        <tr class="table-light"><td colspan="10" class="fw-semibold small py-1">
+        <tr class="table-light"><td colspan="<?= $maliGoster ? 10 : 9 ?>" class="fw-semibold small py-1">
             <i class="bi <?= h(IT_GRUP[$g3][1] ?? 'bi-box') ?> me-1"></i><?= h(IT_GRUP[$g3][0] ?? $g3) ?></td></tr>
     <?php endif;
         $kalan = it_garanti_kalan($r['garanti_bitis'] ?? null);
@@ -231,7 +238,8 @@ require_once __DIR__ . '/../includes/header.php';
             <td><?= h(trim(($r['marka'] ?? '') . ' ' . ($r['model'] ?? ''))) ?: '<span class="text-muted">—</span>' ?></td>
             <td class="vg-kod"><?= h($r['seri_no'] ?? '') ?: '<span class="text-muted">—</span>' ?>
                 <?php if (!empty($r['sasi_no']) && $r['sasi_no'] !== ($r['seri_no'] ?? '')): ?><div class="text-muted" title="şasi / 2. seri no"><?= h($r['sasi_no']) ?></div><?php endif; ?>
-                <?php if (!empty($r['varlik_kodu'])): ?><div class="text-muted" title="IFS nesne no"><?= h($r['varlik_kodu']) ?></div><?php endif; ?></td>
+                <?php if (!empty($r['cihaz_kodu'])): ?><div class="text-muted" title="cihaz kodu (demirbaş etiketi)"><?= h($r['cihaz_kodu']) ?></div><?php endif; ?>
+                <?php if (!empty($r['varlik_kodu'])): ?><div class="text-muted" title="IFS seri nesne no"><?= h($r['varlik_kodu']) ?></div><?php endif; ?></td>
             <td><?= $ag ? implode('<br>', $ag) : '<span class="text-muted">—</span>' ?></td>
             <td><?= $tek ? implode('<br>', $tek) : '<span class="text-muted">—</span>' ?></td>
             <td class="small"><?= h(!empty($r['lokasyon_id']) ? it_lokasyon_etiket($pdoIt, (int)$r['lokasyon_id']) : ($r['lokasyon'] ?: '—')) ?></td>
@@ -239,12 +247,14 @@ require_once __DIR__ . '/../includes/header.php';
                 ? (!empty($r['personel_id']) ? '<a href="personel_detay.php?id=' . (int)$r['personel_id'] . '" class="text-decoration-none">' . h($r['zimmetli']) . '</a>' : h($r['zimmetli']))
                 : '<span class="text-muted">—</span>' ?></td>
             <td><span class="badge bg-<?= h(IT_DURUM[$r['durum']][1] ?? 'secondary') ?>"><?= h(it_durumAd($r['durum'])) ?></span></td>
+            <?php if ($maliGoster): ?>
             <td class="text-end small text-nowrap">
                 <?php if ($kalan === null): ?><span class="text-muted">—</span>
                 <?php elseif ($kalan < 0): ?><span class="text-danger">bitti</span>
                 <?php elseif ($kalan <= 60): ?><span class="text-warning-emphasis"><?= (int)$kalan ?> gün</span>
                 <?php else: ?><span class="text-success"><?= h(date('d.m.Y', strtotime($r['garanti_bitis']))) ?></span><?php endif; ?>
             </td>
+            <?php endif; ?>
         </tr>
     <?php endforeach; ?>
     </tbody>

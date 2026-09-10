@@ -33,6 +33,13 @@ foreach ($kat as $r) {
 }
 uasort($grupSayim, fn($a, $b) => $b['adet'] <=> $a['adet']);
 
+$maliGoster = it_mali_goster();      // garanti + fiyat gösterimi (varsayılan KAPALI)
+// İmzalı zimmet tutanağı olmayan zimmetli cihazlar — mali KPI'ın yerini alan takip göstergesi
+$evraksiz = 0;
+try {
+    $evraksiz = (int)$pdoIt->query("SELECT COUNT(*) FROM it_cihazlar c WHERE " . it_envanterde('c') . " AND c.zimmetli<>''
+                                    AND NOT EXISTS (SELECT 1 FROM it_belgeler b WHERE b.cihaz_id=c.id AND b.tur='zimmet')")->fetchColumn();
+} catch (Throwable $e) {}
 $garanti = $pdoIt->query("SELECT id, envanter_no, ad, kategori, zimmetli, garanti_bitis FROM it_cihazlar
                           WHERE " . it_envanterde() . " AND garanti_bitis IS NOT NULL AND garanti_bitis <= DATE_ADD(CURDATE(), INTERVAL 60 DAY)
                           ORDER BY garanti_bitis LIMIT 12")->fetchAll();
@@ -109,9 +116,14 @@ require_once __DIR__ . '/../includes/header.php';
     ['Kullanımda', $f0($o['aktif']), 'bi-person-check', 'success', 'cihazlar.php?durum=aktif'],
     ['Depoda / Boşta', $f0($o['depoda']), 'bi-box-seam', 'secondary', 'cihazlar.php?durum=depoda'],
     ['Serviste + Arızalı', $f0($o['serviste'] + $o['arizali']), 'bi-wrench', 'danger', 'cihazlar.php?durum=arizali'],
-    ['Garanti 60 gün içinde bitiyor', $f0($o['garantiBitiyor']), 'bi-shield-exclamation', 'warning', 'cihazlar.php?garanti=bitiyor'],
-    ['Mali Değer', $f2($o['mali']) . ' <small>TL</small>', 'bi-cash-stack', 'info', 'raporlar.php'],
   ];
+  if ($maliGoster) {
+      $kpi[] = ['Garanti 60 gün içinde bitiyor', $f0($o['garantiBitiyor']), 'bi-shield-exclamation', 'warning', 'cihazlar.php?garanti=bitiyor'];
+      $kpi[] = ['Mali Değer', $f2($o['mali']) . ' <small>TL</small>', 'bi-cash-stack', 'info', 'raporlar.php'];
+  } else {
+      $kpi[] = ['Zimmetli cihaz', $f0($o['aktif']), 'bi-person-badge', 'info', 'cihazlar.php?durum=aktif'];
+      $kpi[] = ['İmzalı evrakı eksik zimmet', $f0($evraksiz), 'bi-file-earmark-excel', $evraksiz ? 'warning' : 'success', 'cihazlar.php?durum=aktif'];
+  }
   foreach ($kpi as [$et, $deg, $ik, $renk, $href]): ?>
   <div class="col-6 col-md-4 col-xl-2">
     <a href="<?= $href ?>" class="card border-0 shadow-sm h-100 text-decoration-none">
@@ -163,6 +175,7 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 
 <div class="row g-3">
+  <?php if ($maliGoster): ?>
   <div class="col-lg-4">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header bg-white"><strong><i class="bi bi-shield-exclamation text-warning me-1"></i>Garantisi biten / bitmek üzere</strong></div>
@@ -177,6 +190,7 @@ require_once __DIR__ . '/../includes/header.php';
         </tbody></table></div>
     </div>
   </div>
+  <?php endif; ?>
   <div class="col-lg-4">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header bg-white"><strong><i class="bi bi-wrench text-danger me-1"></i>Serviste / arızalı</strong></div>
@@ -200,7 +214,7 @@ require_once __DIR__ . '/../includes/header.php';
         <?php foreach ($kisiler as $k): ?>
           <tr><td><a href="<?= $k['personel_id'] ? 'personel_detay.php?id=' . (int)$k['personel_id'] : 'cihazlar.php?zimmetli=' . urlencode($k['zimmetli']) ?>" class="text-decoration-none fw-semibold"><?= h($k['zimmetli']) ?></a><div class="small text-muted"><?= h($k['departman'] ?: '') ?></div></td>
               <td class="text-end"><span class="badge bg-primary"><?= (int)$k['adet'] ?> cihaz</span></td>
-              <td class="text-end small text-muted"><?= $f2($k['mali']) ?> TL</td>
+              <?php if ($maliGoster): ?><td class="text-end small text-muted"><?= $f2($k['mali']) ?> TL</td><?php endif; ?>
               <td class="text-end"><a href="<?= $k['personel_id'] ? 'zimmet_tutanak.php?personel_id=' . (int)$k['personel_id'] : 'zimmet_tutanak.php?kisi=' . urlencode($k['zimmetli']) ?>" target="_blank" class="btn btn-sm btn-outline-secondary py-0" title="Toplu zimmet tutanağı"><i class="bi bi-file-earmark-text"></i></a></td></tr>
         <?php endforeach; ?>
         </tbody></table></div>

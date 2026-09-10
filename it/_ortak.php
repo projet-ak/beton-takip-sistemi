@@ -54,6 +54,8 @@ const IT_KATEGORI = [
     // Multimedya
     'tv'           => ['TV / Ekran',          'bi-tv',          'multimedya'],
     'projeksiyon'  => ['Projeksiyon',         'bi-projector',   'multimedya'],
+    'drone'        => ['Drone / İHA',         'bi-airplane-engines', 'multimedya'],
+    'fotograf'     => ['Fotoğraf / Video Kamerası', 'bi-camera',  'multimedya'],
     // Yazılım
     'yazilim'      => ['Yazılım / Lisans',    'bi-key',         'yazilim'],
     // Sarf ve aksesuar
@@ -228,10 +230,14 @@ function it_semasi_kur(PDO $pdo): void
         cihaz_id INT NOT NULL,
         dosya_url VARCHAR(255) NOT NULL,
         ad VARCHAR(255) NULL, mime VARCHAR(80) NULL, boyut INT NULL,
+        tur VARCHAR(20) NOT NULL DEFAULT 'belge' COMMENT 'belge | zimmet (imzalı tutanak)',
         kullanici VARCHAR(80) NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         KEY ix_cihaz (cihaz_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    // eski kurulumlarda kolon yoksa ekle (imzalı evrak ayrımı)
+    try { $pdo->query("SELECT tur FROM it_belgeler LIMIT 1"); }
+    catch (Throwable $e) { try { $pdo->exec("ALTER TABLE it_belgeler ADD COLUMN tur VARCHAR(20) NOT NULL DEFAULT 'belge'"); } catch (Throwable $e2) {} }
 }
 
 /** Türkçe duyarsız normalize (arama/karşılaştırma). */
@@ -328,7 +334,7 @@ function it_filtre(array $g): array
         $q = '%' . trim($g['q']) . '%';
         // Kolonların hepsi it_semasi_kur() tarafından garanti edilir (yoksa runtime ALTER ile eklenir)
         $alan = ['envanter_no','ad','marka','model','seri_no','sasi_no','zimmetli','departman','lokasyon','notlar',
-                 'ip_adresi','mac_adresi','varlik_kodu','dahili_no','telefon_no','imei'];
+                 'ip_adresi','mac_adresi','varlik_kodu','cihaz_kodu','dahili_no','telefon_no','imei'];
         $w[] = '(' . implode(' LIKE ? OR ', $alan) . ' LIKE ?)';
         foreach ($alan as $_) $p[] = $q;
         $etkin['q'] = trim($g['q']);
@@ -383,7 +389,7 @@ function it_belgeler(PDO $pdo, int $cihazId): array
  * Görselse cihazın `foto_url` alanı en yeni fotoğrafı gösterir (liste küçük resmi).
  * @return array{0:bool,1:string}
  */
-function it_belge_yukle(PDO $pdo, int $cihazId, array $f, ?string $kullanici = null): array
+function it_belge_yukle(PDO $pdo, int $cihazId, array $f, ?string $kullanici = null, string $tur = 'belge'): array
 {
     if (empty($f['tmp_name']) || !is_uploaded_file($f['tmp_name'])) return [false, 'Dosya seçilmedi.'];
     $ad   = (string)($f['name'] ?? '');
@@ -399,8 +405,9 @@ function it_belge_yukle(PDO $pdo, int $cihazId, array $f, ?string $kullanici = n
     if (!@move_uploaded_file($f['tmp_name'], $dir . '/' . $yeni)) return [false, h($ad) . ': dosya diske yazılamadı.'];
 
     $url = 'uploads/it_envanter/' . $cihazId . '/' . $yeni;
-    $pdo->prepare("INSERT INTO it_belgeler (cihaz_id, dosya_url, ad, mime, boyut, kullanici) VALUES (?,?,?,?,?,?)")
-        ->execute([$cihazId, $url, mb_substr($ad, 0, 255), $mime, (int)($f['size'] ?? 0), $kullanici]);
+    $tur = $tur === 'zimmet' ? 'zimmet' : 'belge';
+    $pdo->prepare("INSERT INTO it_belgeler (cihaz_id, dosya_url, ad, mime, boyut, tur, kullanici) VALUES (?,?,?,?,?,?,?)")
+        ->execute([$cihazId, $url, mb_substr($ad, 0, 255), $mime, (int)($f['size'] ?? 0), $tur, $kullanici]);
     if (str_starts_with($mime, 'image/'))
         $pdo->prepare("UPDATE it_cihazlar SET foto_url=? WHERE id=?")->execute([$url, $cihazId]);
     return [true, h($ad) . ' yüklendi.'];
@@ -422,6 +429,35 @@ function it_belge_sil(PDO $pdo, int $belgeId): bool
     $son->execute([(int)$b['cihaz_id']]);
     $pdo->prepare("UPDATE it_cihazlar SET foto_url=? WHERE id=?")->execute([$son->fetchColumn() ?: null, (int)$b['cihaz_id']]);
     return true;
+}
+
+/**
+ * Verilen cihazlar için belge sayıları: [cihaz_id => ['toplam'=>n, 'imzali'=>n]].
+ * 'imzali' = imzalı zimmet tutanağı (`it_belgeler.tur='zimmet'`) — listedeki evrak rozeti bundan doğar.
+ */
+function it_belge_sayilari(PDO $pdo, array $cihazIdler): array
+{
+    $cihazIdler = array_values(array_unique(array_filter(array_map('intval', $cihazIdler))));
+    if (!$cihazIdler) return [];
+    try {
+        $ph = implode(',', array_fill(0, count($cihazIdler), '?'));
+        $st = $pdo->prepare("SELECT cihaz_id, COUNT(*) toplam, SUM(tur='zimmet') imzali
+                             FROM it_belgeler WHERE cihaz_id IN ($ph) GROUP BY cihaz_id");
+        $st->execute($cihazIdler);
+        $r = [];
+        foreach ($st->fetchAll() as $x) $r[(int)$x['cihaz_id']] = ['toplam'=>(int)$x['toplam'], 'imzali'=>(int)$x['imzali']];
+        return $r;
+    } catch (Throwable $e) { return []; }
+}
+
+/**
+ * Garanti / fiyat (mali) bilgisi gösterilsin mi?
+ * Kurumsal envanterde bu iki alan çoğu cihazda boş ve mali veri paylaşıma açık olmamalı —
+ * varsayılan GİZLİ. `config.php`'de `define('IT_MALI_GOSTER', true);` ile geri açılır.
+ */
+function it_mali_goster(): bool
+{
+    return defined('IT_MALI_GOSTER') ? (bool)IT_MALI_GOSTER : false;
 }
 
 /** Çoklu $_FILES dizisini tek tek dosya dizilerine ayırır. */
@@ -635,7 +671,10 @@ function it_ek_alan_semasi_kur(PDO $pdo): void
     if ($yapildi) return;
     $yapildi = true;
     $kolonlar = [
-        'varlik_kodu'       => 'VARCHAR(60) NULL',   // ERP/IFS "Nesne No" — demirbaş kodu (içe aktarma eşleşmesi)
+        'varlik_kodu'       => 'VARCHAR(60) NULL',   // ERP/IFS "Seri Nesne No" — demirbaş kodu (içe aktarma eşleşmesi)
+        // ⚠ Kurum içi kısa demirbaş etiketi (M160 / N221). envanter_no BİZİM sabit numaramızdır
+        // (IT-00001, tutanaklarda geçer) ve içe aktarma onu ASLA ezmez — kurumsal kod buraya yazılır.
+        'cihaz_kodu'        => 'VARCHAR(60) NULL',
         'sasi_no'           => 'VARCHAR(120) NULL',  // 2. seri numarası (şasi / servis etiketi)
         'islemci'           => 'VARCHAR(160) NULL',
         'ram'               => 'VARCHAR(120) NULL',
