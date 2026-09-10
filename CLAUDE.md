@@ -407,6 +407,22 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   • **Sidebar'dan "Personel İçe Aktar" KALDIRILDI** (kullanıcı isteği); `it/import.php` duruyor ve
   `personel.php`'deki "İçe Aktar" düğmesinden açılıyor. Yerine "Merkezi Varlık İzleme" açılır menüsü geldi
   (Tüm varlıklar + 8 grup). `IT_GRUP` header'da `defined()` ile korumalı okunur.
+  **KAYIP ve HİBE DURUMLARI (2026-09-10)** — `IT_DURUM`'a iki durum eklendi: **kayip** (Kayıp / Çalıntı) ve
+  **hibe** (Hibe / Devredildi). Cihaz kaydı yine SİLİNMEZ; bu ikisi hurda ile birlikte **envanterden DÜŞEN**
+  durumlardır: `IT_DURUM_DUSEN = ['hurda','kayip','hibe']` ve SQL parçası **`it_envanterde($alias='')`**
+  bu listeden ÜRETİLİR (`durum NOT IN (…)`; JOIN'lerde `it_envanterde('c')`). Eskiden 20 yerde elle yazılan
+  `durum<>'hurda'` bu fonksiyonla değiştirildi — ⚠ **yeni bir "artık bizde değil" durumu eklemek için yalnız
+  IT_DURUM + IT_DURUM_DUSEN'e satır eklemek yeterli**, sorgulara dokunulmaz. PHP tarafında `it_durum_dustu()`.
+  Düşen durumlar: varsayılan listelerde gizli (durum filtresiyle görünür, satır soluk), mali değere ·
+  kategori/lokasyon/marka sayımlarına · garanti uyarılarına · personel zimmet sayılarına GİRMEZ.
+  `it_ozet()` artık `kayip`/`hibe` sayaçlarını ve toplamları `dusen` alanını döndürür; dashboard "Toplam Cihaz"
+  ve raporlardaki "Cihaz (envanterde)" KPI'ı `toplam − dusen` ile hesaplanır, aylık trend grafiğindeki seri
+  "Envanterden düşen" (hurda+kayıp+hibe) olur. **Cihaz detayında iki yeni işlem**: *Kayıp / çalıntı bildir* ve
+  *Hibe et / devret* — hurda ile aynı kalıpta (zimmet düşer, `it_hareketler`'e `kayip`/`hibe` satırı yazılır);
+  form "Kişi" alanı işleme göre etiketlenir (hibe → "Hibe edilen kurum / kişi", kayıp → "Kaybı bildiren kişi")
+  ve açıklama kutusu tutanak/protokol no ister. Envanterden düşmüş cihazda işlem menüsü yalnız "Not ekle"
+  bırakır. `cim_durum()` Excel'den "KAYIP/ÇALINTI/ZAYİ" → kayip, "HİBE/DEVİR" → hibe okur; personel zimmet
+  geçmişi ve Tanımlar › Durumlar sekmesi yeni durumları sayımlarıyla listeler.
   **TANIMLAR EKRANI `it/tanimlar.php` (2026-09-09)** — tek sayfa, sekmeli (Snipe-IT'deki "tanım tablosu seç"
   düzeni): **Lokasyonlar · Kategoriler · Üreticiler · Modeller · Tedarikçiler · Şirketler · Durumlar · Personel**.
   • *Lokasyonlar* = `it_lokasyonlar` (hiyerarşi korunur) + yeni **sehir / adres / renk** kolonları; satırda ad

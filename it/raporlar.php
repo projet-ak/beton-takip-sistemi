@@ -22,7 +22,7 @@ foreach ($pdoIt->query("SELECT kategori, durum, COUNT(*) adet, COALESCE(SUM(fiya
     $k = $r['kategori'];
     $matris[$k] ??= ['ad'=>it_kategoriAd($k), 'toplam'=>0, 'mali'=>0.0] + array_fill_keys(array_keys(IT_DURUM), 0);
     $matris[$k][$r['durum']] = (int)$r['adet'];
-    if ($r['durum'] !== 'hurda') { $matris[$k]['toplam'] += (int)$r['adet']; $matris[$k]['mali'] += (float)$r['mali']; }
+    if (!it_durum_dustu($r['durum'])) { $matris[$k]['toplam'] += (int)$r['adet']; $matris[$k]['mali'] += (float)$r['mali']; }
 }
 uasort($matris, fn($a, $b) => $b['toplam'] <=> $a['toplam']);
 $matris = array_values($matris);
@@ -34,14 +34,14 @@ foreach ($pdoIt->query("SELECT kategori, durum, COUNT(*) adet, COALESCE(SUM(fiya
     $grupMatris[$g] ??= ['ad'=>IT_GRUP[$g][0] ?? $g, 'ikon'=>IT_GRUP[$g][1] ?? 'bi-box', 'kod'=>$g, 'toplam'=>0, 'mali'=>0.0]
                         + array_fill_keys(array_keys(IT_DURUM), 0);
     $grupMatris[$g][$r['durum']] += (int)$r['adet'];
-    if ($r['durum'] !== 'hurda') { $grupMatris[$g]['toplam'] += (int)$r['adet']; $grupMatris[$g]['mali'] += (float)$r['mali']; }
+    if (!it_durum_dustu($r['durum'])) { $grupMatris[$g]['toplam'] += (int)$r['adet']; $grupMatris[$g]['mali'] += (float)$r['mali']; }
 }
 uasort($grupMatris, fn($a, $b) => $b['toplam'] <=> $a['toplam']);
 
 $kirilim = function (string $sutun) use ($pdoIt): array {
     return $pdoIt->query("SELECT COALESCE(NULLIF($sutun,''),'(tanımsız)') ad, COUNT(*) adet, SUM(durum='aktif') aktif,
                                  COALESCE(SUM(fiyat),0) mali
-                          FROM it_cihazlar WHERE durum<>'hurda' GROUP BY $sutun ORDER BY adet DESC LIMIT 40")->fetchAll();
+                          FROM it_cihazlar WHERE " . it_envanterde() . " GROUP BY $sutun ORDER BY adet DESC LIMIT 40")->fetchAll();
 };
 $dep = $kirilim('departman'); $marka = $kirilim('marka');
 // Lokasyon kırılımı: kök proje / bina bazında (alt lokasyonlar köke toplanır), lokasyonsuzlar ayrı satır
@@ -50,7 +50,7 @@ try {
     $hepsi = it_lokasyonlar($pdoIt);
     $kokOf = function (int $id) use ($hepsi) { $g = 0; while ($id && isset($hepsi[$id]) && (int)$hepsi[$id]['ust_id'] && $g++ < 10) $id = (int)$hepsi[$id]['ust_id']; return $id; };
     $tmp = [];
-    foreach ($pdoIt->query("SELECT lokasyon_id, COUNT(*) adet, SUM(durum='aktif') aktif, COALESCE(SUM(fiyat),0) mali FROM it_cihazlar WHERE durum<>'hurda' GROUP BY lokasyon_id") as $r) {
+    foreach ($pdoIt->query("SELECT lokasyon_id, COUNT(*) adet, SUM(durum='aktif') aktif, COALESCE(SUM(fiyat),0) mali FROM it_cihazlar WHERE " . it_envanterde() . " GROUP BY lokasyon_id") as $r) {
         $k = $r['lokasyon_id'] ? $kokOf((int)$r['lokasyon_id']) : 0;
         $ad = $k ? it_lokasyon_etiket($pdoIt, $k) : '(lokasyonsuz)';
         $tmp[$ad] ??= ['ad'=>$ad,'adet'=>0,'aktif'=>0,'mali'=>0.0];
@@ -61,7 +61,7 @@ try {
 // Etap / birim düzeyi (alt lokasyon) kırılımı
 $etap = [];
 try {
-    foreach ($pdoIt->query("SELECT lokasyon_id, COUNT(*) adet, SUM(durum='aktif') aktif, COALESCE(SUM(fiyat),0) mali FROM it_cihazlar WHERE durum<>'hurda' AND lokasyon_id IS NOT NULL GROUP BY lokasyon_id ORDER BY adet DESC") as $r)
+    foreach ($pdoIt->query("SELECT lokasyon_id, COUNT(*) adet, SUM(durum='aktif') aktif, COALESCE(SUM(fiyat),0) mali FROM it_cihazlar WHERE " . it_envanterde() . " AND lokasyon_id IS NOT NULL GROUP BY lokasyon_id ORDER BY adet DESC") as $r)
         $etap[] = ['ad'=>it_lokasyon_yol($pdoIt, (int)$r['lokasyon_id']), 'adet'=>(int)$r['adet'], 'aktif'=>(int)$r['aktif'], 'mali'=>(float)$r['mali']];
 } catch (Throwable $e) {}
 
@@ -72,24 +72,24 @@ $yas = $pdoIt->query("SELECT
         SUM(alis_tarihi < DATE_SUB(CURDATE(), INTERVAL 1 YEAR) AND alis_tarihi >= DATE_SUB(CURDATE(), INTERVAL 3 YEAR)) y3,
         SUM(alis_tarihi < DATE_SUB(CURDATE(), INTERVAL 3 YEAR) AND alis_tarihi >= DATE_SUB(CURDATE(), INTERVAL 5 YEAR)) y5,
         SUM(alis_tarihi < DATE_SUB(CURDATE(), INTERVAL 5 YEAR)) y5p
-    FROM it_cihazlar WHERE durum<>'hurda'")->fetch() ?: [];
+    FROM it_cihazlar WHERE " . it_envanterde() . "")->fetch() ?: [];
 $garanti = $pdoIt->query("SELECT
         SUM(garanti_bitis IS NULL) yok,
         SUM(garanti_bitis < CURDATE()) bitti,
         SUM(garanti_bitis BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 60 DAY)) bitiyor,
         SUM(garanti_bitis > DATE_ADD(CURDATE(), INTERVAL 60 DAY)) devam
-    FROM it_cihazlar WHERE durum<>'hurda'")->fetch() ?: [];
+    FROM it_cihazlar WHERE " . it_envanterde() . "")->fetch() ?: [];
 
 // Aylık hareket trendi (son 12 ay)
 $aylik = [];
 foreach ($pdoIt->query("SELECT DATE_FORMAT(tarih,'%Y-%m') ay, SUM(tur='giris') giris, SUM(tur='zimmet') zimmet, SUM(tur='iade') iade,
-                               SUM(tur IN ('servis','ariza')) sorun, SUM(tur='hurda') hurda
+                               SUM(tur IN ('servis','ariza')) sorun, SUM(tur IN ('hurda','kayip','hibe')) hurda
                         FROM it_hareketler WHERE tarih >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) GROUP BY ay ORDER BY ay") as $r) $aylik[$r['ay']] = $r;
 $seri = [];
 for ($i = 11; $i >= 0; $i--) { $ay = date('Y-m', strtotime("-$i month")); $seri[] = ['ay'=>$ay] + array_map('intval', ($aylik[$ay] ?? []) + ['giris'=>0,'zimmet'=>0,'iade'=>0,'sorun'=>0,'hurda'=>0]); }
 
 // En değerli cihazlar
-$degerli = $pdoIt->query("SELECT envanter_no, ad, kategori, zimmetli, fiyat FROM it_cihazlar WHERE durum<>'hurda' AND fiyat IS NOT NULL ORDER BY fiyat DESC LIMIT 20")->fetchAll();
+$degerli = $pdoIt->query("SELECT envanter_no, ad, kategori, zimmetli, fiyat FROM it_cihazlar WHERE " . it_envanterde() . " AND fiyat IS NOT NULL ORDER BY fiyat DESC LIMIT 20")->fetchAll();
 
 $f0 = fn($n) => number_format((float)$n, 0, ',', '.');
 $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
@@ -105,8 +105,8 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 
 <div class="row g-2 mb-3">
-  <?php foreach ([['Cihaz (hurda hariç)', $f0($o['toplam'] - $o['hurda'])], ['Kullanımda', $f0($o['aktif'])], ['Depoda', $f0($o['depoda'])],
-                  ['Serviste / Arızalı', $f0($o['serviste'] + $o['arizali'])], ['Hurda', $f0($o['hurda'])], ['Mali değer', $f2($o['mali']) . ' TL']] as [$e, $d]): ?>
+  <?php foreach ([['Cihaz (envanterde)', $f0($o['toplam'] - $o['dusen'])], ['Kullanımda', $f0($o['aktif'])], ['Depoda', $f0($o['depoda'])],
+                  ['Serviste / Arızalı', $f0($o['serviste'] + $o['arizali'])], ['Düşen (hurda/kayıp/hibe)', $f0($o['dusen'])], ['Mali değer', $f2($o['mali']) . ' TL']] as [$e, $d]): ?>
   <div class="col-6 col-md-2"><div class="card border-0 shadow-sm"><div class="card-body py-2"><div class="small text-muted"><?= $e ?></div><div class="fs-5 fw-bold"><?= $d ?></div></div></div></div>
   <?php endforeach; ?>
 </div>
@@ -136,7 +136,7 @@ require_once __DIR__ . '/../includes/header.php';
     <?php endforeach; ?>
     <?php if (!$grupMatris): ?><tr><td colspan="8" class="text-center text-muted py-3">Kayıt yok.</td></tr><?php endif; ?>
     </tbody></table></div>
-  <div class="card-footer bg-white small text-muted">* Toplam ve mali değer hurdalar hariçtir. Grup adına tıklayınca o grubun varlıkları merkezi izleme ekranında açılır.</div>
+  <div class="card-footer bg-white small text-muted">* Toplam ve mali değer envanterden düşenler (hurda / kayıp / hibe) hariçtir. Grup adına tıklayınca o grubun varlıkları merkezi izleme ekranında açılır.</div>
 </div>
 
 <div class="card border-0 shadow-sm mb-3">
@@ -150,7 +150,7 @@ require_once __DIR__ . '/../includes/header.php';
     <?php endforeach; ?>
     <?php if (!$matris): ?><tr><td colspan="8" class="text-center text-muted py-3">Kayıt yok.</td></tr><?php endif; ?>
     </tbody></table></div>
-  <div class="card-footer bg-white small text-muted">* Toplam ve mali değer hurdalar hariçtir.</div>
+  <div class="card-footer bg-white small text-muted">* Toplam ve mali değer envanterden düşenler (hurda / kayıp / hibe) hariçtir.</div>
 </div>
 
 <?php
@@ -184,7 +184,7 @@ $tablo = function (string $baslik, string $ikon, array $l, string $ilk) use ($f0
 <script src="../assets/js/ern_rapor.js?v=<?= @filemtime(__DIR__ . '/../assets/js/ern_rapor.js') ?>"></script>
 <script>
 const IT = {
-    kpi: <?= json_encode(['cihaz'=>$o['toplam']-$o['hurda'],'aktif'=>$o['aktif'],'depoda'=>$o['depoda'],'sorun'=>$o['serviste']+$o['arizali'],'hurda'=>$o['hurda'],'mali'=>$o['mali'],'kisi'=>$o['zimmetliKisi'],'garantiBitiyor'=>$o['garantiBitiyor']]) ?>,
+    kpi: <?= json_encode(['cihaz'=>$o['toplam']-$o['dusen'],'aktif'=>$o['aktif'],'depoda'=>$o['depoda'],'sorun'=>$o['serviste']+$o['arizali'],'hurda'=>$o['dusen'],'mali'=>$o['mali'],'kisi'=>$o['zimmetliKisi'],'garantiBitiyor'=>$o['garantiBitiyor']]) ?>,
     durumlar: <?= json_encode(array_map(fn($x) => $x[0], IT_DURUM), JSON_UNESCAPED_UNICODE) ?>,
     matris: <?= json_encode($matris, JSON_UNESCAPED_UNICODE) ?>,
     dep: <?= json_encode($dep, JSON_UNESCAPED_UNICODE) ?>, lok: <?= json_encode($lok, JSON_UNESCAPED_UNICODE) ?>, etap: <?= json_encode($etap, JSON_UNESCAPED_UNICODE) ?>, marka: <?= json_encode($marka, JSON_UNESCAPED_UNICODE) ?>,
@@ -201,7 +201,7 @@ new Chart(document.getElementById('chAy'), { type:'bar',
     {label:'Zimmet', data:IT.seri.map(s=>s.zimmet), backgroundColor:'#198754'},
     {label:'İade', data:IT.seri.map(s=>s.iade), backgroundColor:'#6c757d'},
     {label:'Servis / Arıza', data:IT.seri.map(s=>s.sorun), backgroundColor:'#dc3545'},
-    {label:'Hurda', data:IT.seri.map(s=>s.hurda), backgroundColor:'#343a40'} ]},
+    {label:'Envanterden düşen', data:IT.seri.map(s=>s.hurda), backgroundColor:'#343a40'} ]},
   options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom' } }, scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true, ticks:{ precision:0 } } } } });
 new Chart(document.getElementById('chYas'), { type:'doughnut',
   data:{ labels:['< 1 yıl','1–3 yıl','3–5 yıl','5+ yıl','tarih yok'], datasets:[{ data:[IT.yas.y1, IT.yas.y3, IT.yas.y5, IT.yas.y5p, IT.yas.bilinmiyor], backgroundColor:['#198754','#00C9B1','#ffc107','#dc3545','#adb5bd'] }] },
@@ -227,8 +227,8 @@ async function itExcel(){
     const wb = await ERN_RAPOR.wb();
     let ws = wb.addWorksheet('Özet'); ws.columns = [{width:34},{width:22}];
     ERN_RAPOR.title(wb, ws, 'IT ENVANTER — ÖZET', 2); ERN_RAPOR.hdr(ws.addRow(['Gösterge','Değer']));
-    [['Cihaz (hurda hariç)', IT.kpi.cihaz], ['Kullanımda', IT.kpi.aktif], ['Depoda', IT.kpi.depoda], ['Serviste / Arızalı', IT.kpi.sorun],
-     ['Hurda', IT.kpi.hurda], ['Zimmetli kişi', IT.kpi.kisi], ['Garantisi 60 günde bitecek', IT.kpi.garantiBitiyor], ['Mali değer (TL)', IT.kpi.mali]].forEach(r => ws.addRow(r));
+    [['Cihaz (envanterde)', IT.kpi.cihaz], ['Kullanımda', IT.kpi.aktif], ['Depoda', IT.kpi.depoda], ['Serviste / Arızalı', IT.kpi.sorun],
+     ['Düşen (hurda/kayıp/hibe)', IT.kpi.hurda], ['Zimmetli kişi', IT.kpi.kisi], ['Garantisi 60 günde bitecek', IT.kpi.garantiBitiyor], ['Mali değer (TL)', IT.kpi.mali]].forEach(r => ws.addRow(r));
     ws = wb.addWorksheet('Kategori x Durum'); ws.columns = [{width:26}, ...Object.keys(IT.durumlar).map(()=>({width:14})), {width:10}, {width:16}];
     const dk = Object.keys(IT.durumlar);
     ERN_RAPOR.title(wb, ws, 'KATEGORİ × DURUM', dk.length + 3); ERN_RAPOR.hdr(ws.addRow(['Kategori', ...dk.map(d => IT.durumlar[d]), 'Toplam', 'Mali (TL)']));

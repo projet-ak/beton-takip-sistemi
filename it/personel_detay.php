@@ -46,7 +46,7 @@ $aktif = it_personel_aktif($p);
 $adSoyad = it_personel_ad($p);
 // Zimmet geçmişi: personel_id bağlı cihazların hareketleri + eski metin eşleşmesi (kisi = ad soyad)
 $hst = $pdoIt->prepare("SELECT h.*, c.envanter_no, c.ad cihaz_ad FROM it_hareketler h JOIN it_cihazlar c ON c.id=h.cihaz_id
-                        WHERE (c.personel_id=? OR h.kisi=?) AND h.tur IN ('zimmet','iade','servis','ariza','donus','hurda')
+                        WHERE (c.personel_id=? OR h.kisi=?) AND h.tur IN ('zimmet','iade','servis','ariza','donus','hurda','kayip','hibe')
                         ORDER BY h.tarih DESC, h.id DESC LIMIT 100");
 $hst->execute([$id, $adSoyad]);
 $gecmis = $hst->fetchAll();

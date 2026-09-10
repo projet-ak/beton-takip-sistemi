@@ -111,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ───────────────────────── VERİ ─────────────────────────
 $lokCihaz = []; $lokKisi = [];
-try { foreach ($pdoIt->query("SELECT lokasyon_id, COUNT(*) n FROM it_cihazlar WHERE lokasyon_id IS NOT NULL AND durum<>'hurda' GROUP BY lokasyon_id") as $r) $lokCihaz[(int)$r['lokasyon_id']] = (int)$r['n']; } catch (Throwable $e) {}
+try { foreach ($pdoIt->query("SELECT lokasyon_id, COUNT(*) n FROM it_cihazlar WHERE lokasyon_id IS NOT NULL AND " . it_envanterde() . " GROUP BY lokasyon_id") as $r) $lokCihaz[(int)$r['lokasyon_id']] = (int)$r['n']; } catch (Throwable $e) {}
 try { foreach ($pdoIt->query("SELECT lokasyon_id, COUNT(*) n FROM it_personel WHERE lokasyon_id IS NOT NULL GROUP BY lokasyon_id") as $r) $lokKisi[(int)$r['lokasyon_id']] = (int)$r['n']; } catch (Throwable $e) {}
 $lokAgac = it_lokasyon_duz($pdoIt, false);
 // Alt lokasyonlar dahil toplam (proje satırında etapların cihazları da görünsün)
@@ -285,7 +285,7 @@ require_once __DIR__ . '/../includes/header.php';
   $pAktif = 0; $pAyrilan = 0; $pZimmet = 0; $son = [];
   try {
       foreach ($pdoIt->query("SELECT * FROM it_personel") as $r) { it_personel_aktif($r) ? $pAktif++ : $pAyrilan++; }
-      $pZimmet = (int)$pdoIt->query("SELECT COUNT(DISTINCT personel_id) FROM it_cihazlar WHERE personel_id IS NOT NULL AND durum<>'hurda'")->fetchColumn();
+      $pZimmet = (int)$pdoIt->query("SELECT COUNT(DISTINCT personel_id) FROM it_cihazlar WHERE personel_id IS NOT NULL AND " . it_envanterde() . "")->fetchColumn();
       $son = $pdoIt->query("SELECT * FROM it_personel ORDER BY id DESC LIMIT 10")->fetchAll();
   } catch (Throwable $e) {}
 ?>

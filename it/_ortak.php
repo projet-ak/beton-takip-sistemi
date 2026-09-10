@@ -114,12 +114,36 @@ function it_ek_alanlar(string $kat): array
 
 /** Durumlar: anahtar => [ad, bootstrap rengi, ikon] */
 const IT_DURUM = [
-    'aktif'    => ['Kullanımda (zimmetli)', 'success',   'bi-person-check'],
-    'depoda'   => ['Depoda / Boşta',        'secondary', 'bi-box-seam'],
-    'serviste' => ['Serviste',              'info',      'bi-wrench'],
-    'arizali'  => ['Arızalı',               'danger',    'bi-exclamation-triangle'],
-    'hurda'    => ['Hurda / Kullanım dışı', 'dark',      'bi-trash'],
+    'aktif'    => ['Kullanımda (zimmetli)', 'success',          'bi-person-check'],
+    'depoda'   => ['Depoda / Boşta',        'secondary',        'bi-box-seam'],
+    'serviste' => ['Serviste',              'info',             'bi-wrench'],
+    'arizali'  => ['Arızalı',               'danger',           'bi-exclamation-triangle'],
+    'kayip'    => ['Kayıp / Çalıntı',       'warning text-dark','bi-question-octagon'],
+    'hibe'     => ['Hibe / Devredildi',     'primary',          'bi-gift'],
+    'hurda'    => ['Hurda / Kullanım dışı', 'dark',             'bi-trash'],
 ];
+
+/**
+ * **Envanterden DÜŞEN durumlar.** Cihaz kaydı hiçbir zaman silinmez; hurdaya ayrılan, kaybolan/çalınan
+ * ve başka kuruma hibe edilen varlıklar artık "elimizde" sayılmaz: varsayılan listelerde gizlenir,
+ * mali değere ve kategori/lokasyon sayımlarına girmez, zimmetleri düşer.
+ * ⚠ Yeni bir "artık bizde değil" durumu eklenirse **yalnız buraya** eklemek yeterlidir —
+ * SQL parçası `it_envanterde()` tüm sorgularda bu listeden ÜRETİLİR, elle yazılmaz.
+ */
+const IT_DURUM_DUSEN = ['hurda', 'kayip', 'hibe'];
+
+/**
+ * "Hâlâ envanterde" SQL parçası — sorgularda `durum<>'hurda'` yerine bu kullanılır ve
+ * **IT_DURUM_DUSEN'den türetilir**, elle yazılmaz. $alias JOIN'lerde tablo öneki verir ("c" → c.durum).
+ */
+function it_envanterde(string $alias = ''): string
+{
+    $on = $alias !== '' ? rtrim($alias, '.') . '.' : '';
+    return $on . "durum NOT IN ('" . implode("','", IT_DURUM_DUSEN) . "')";
+}
+
+/** Durum envanterden düşmüş mü (hurda / kayıp / hibe)? */
+function it_durum_dustu(?string $d): bool { return in_array((string)$d, IT_DURUM_DUSEN, true); }
 
 /** Hareket türleri: anahtar => [ad, renk, ikon] */
 const IT_HAREKET = [
@@ -129,6 +153,8 @@ const IT_HAREKET = [
     'servis'  => ['Servise gönderildi','info',      'bi-wrench'],
     'ariza'   => ['Arıza bildirimi',   'danger',    'bi-exclamation-triangle'],
     'donus'   => ['Servisten döndü',   'success',   'bi-check2-circle'],
+    'kayip'   => ['Kayıp / çalıntı bildirildi', 'warning text-dark', 'bi-question-octagon'],
+    'hibe'    => ['Hibe / devir edildi', 'primary',  'bi-gift'],
     'hurda'   => ['Hurdaya ayrıldı',   'dark',      'bi-trash'],
     'not'     => ['Not',               'warning',   'bi-chat-left-text'],
     'guncelleme' => ['Kayıt güncellendi', 'light', 'bi-pencil'],
@@ -265,7 +291,7 @@ function it_filtre(array $g): array
     }
     if (!empty($g['kategori']) && isset(IT_KATEGORI[$g['kategori']])) { $w[] = 'kategori=?'; $p[] = $g['kategori']; $etkin['kategori'] = $g['kategori']; }
     if (!empty($g['durum']) && isset(IT_DURUM[$g['durum']]))          { $w[] = 'durum=?';    $p[] = $g['durum'];    $etkin['durum'] = $g['durum']; }
-    elseif (($g['durum'] ?? '') === '') { $w[] = "durum <> 'hurda'"; }   // varsayılan: hurdalar gizli
+    elseif (($g['durum'] ?? '') === '') { $w[] = it_envanterde(); }   // varsayılan: hurda/kayıp/hibe gizli
     foreach (['zimmetli', 'departman', 'lokasyon', 'marka'] as $k) {
         if (!empty($g[$k])) { $w[] = "$k=?"; $p[] = $g[$k]; $etkin[$k] = $g[$k]; }
     }
@@ -300,18 +326,22 @@ function it_secenekler(PDO $pdo, string $sutun): array
 /** Dashboard / rapor özeti. */
 function it_ozet(PDO $pdo): array
 {
-    $o = ['toplam'=>0,'aktif'=>0,'depoda'=>0,'serviste'=>0,'arizali'=>0,'hurda'=>0,'mali'=>0.0,'garantiBitiyor'=>0,'garantiBitti'=>0,'zimmetliKisi'=>0,'lisans'=>0];
+    $o = ['toplam'=>0,'aktif'=>0,'depoda'=>0,'serviste'=>0,'arizali'=>0,'kayip'=>0,'hibe'=>0,'hurda'=>0,'dusen'=>0,
+          'mali'=>0.0,'garantiBitiyor'=>0,'garantiBitti'=>0,'zimmetliKisi'=>0,'lisans'=>0];
     try {
         $r = $pdo->query("SELECT COUNT(*) toplam,
                 SUM(durum='aktif') aktif, SUM(durum='depoda') depoda, SUM(durum='serviste') serviste,
                 SUM(durum='arizali') arizali, SUM(durum='hurda') hurda,
-                COALESCE(SUM(CASE WHEN durum<>'hurda' THEN fiyat END),0) mali,
-                SUM(durum<>'hurda' AND garanti_bitis BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 60 DAY)) garantiBitiyor,
-                SUM(durum<>'hurda' AND garanti_bitis < CURDATE()) garantiBitti,
+                SUM(durum='kayip') kayip, SUM(durum='hibe') hibe,
+                COALESCE(SUM(CASE WHEN " . it_envanterde() . " THEN fiyat END),0) mali,
+                SUM(" . it_envanterde() . " AND garanti_bitis BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 60 DAY)) garantiBitiyor,
+                SUM(" . it_envanterde() . " AND garanti_bitis < CURDATE()) garantiBitti,
                 COUNT(DISTINCT CASE WHEN durum='aktif' AND zimmetli<>'' THEN zimmetli END) zimmetliKisi,
-                SUM(kategori='yazilim' AND durum<>'hurda') lisans
+                SUM(kategori='yazilim' AND " . it_envanterde() . ") lisans
             FROM it_cihazlar")->fetch();
         foreach ($o as $k => $v) $o[$k] = is_float($v) ? (float)($r[$k] ?? 0) : (int)($r[$k] ?? 0);
+        // Envanterden düşenlerin toplamı (hurda + kayıp + hibe) — "Toplam Cihaz" bundan arındırılır
+        foreach (IT_DURUM_DUSEN as $d) $o['dusen'] += (int)($o[$d] ?? 0);
     } catch (Throwable $e) { /* tablo yok */ }
     return $o;
 }
@@ -619,7 +649,7 @@ function it_tanim_kullanim(PDO $pdo, string $kolon): array
 {
     $out = [];
     try {
-        foreach ($pdo->query("SELECT `$kolon` d, COUNT(*) n FROM it_cihazlar WHERE `$kolon` IS NOT NULL AND `$kolon`<>'' AND durum<>'hurda' GROUP BY `$kolon`") as $r)
+        foreach ($pdo->query("SELECT `$kolon` d, COUNT(*) n FROM it_cihazlar WHERE `$kolon` IS NOT NULL AND `$kolon`<>'' AND " . it_envanterde() . " GROUP BY `$kolon`") as $r)
             $out[it_norm((string)$r['d'])] = (int)$r['n'];
     } catch (Throwable $e) {}
     return $out;
@@ -728,7 +758,7 @@ function it_cihaz_bag_esitle(PDO $pdo, array &$y): void
 /** Personelin üzerindeki aktif (hurda hariç, zimmetli) cihazlar. */
 function it_personel_cihazlari(PDO $pdo, int $personelId): array
 {
-    $st = $pdo->prepare("SELECT * FROM it_cihazlar WHERE personel_id=? AND durum<>'hurda' ORDER BY envanter_no");
+    $st = $pdo->prepare("SELECT * FROM it_cihazlar WHERE personel_id=? AND " . it_envanterde() . " ORDER BY envanter_no");
     $st->execute([$personelId]);
     return $st->fetchAll();
 }

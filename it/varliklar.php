@@ -35,7 +35,7 @@ if ($ek) $wsql = ($wsql ? $wsql . ' AND ' : ' WHERE ') . implode(' AND ', $ek);
 /** Grup rozetleri: her grupta kaç varlık var (hurdalar hariç). */
 $grupSayim = []; $toplamVarlik = 0;
 try {
-    foreach ($pdoIt->query("SELECT kategori, COUNT(*) n FROM it_cihazlar WHERE durum<>'hurda' GROUP BY kategori") as $r) {
+    foreach ($pdoIt->query("SELECT kategori, COUNT(*) n FROM it_cihazlar WHERE " . it_envanterde() . " GROUP BY kategori") as $r) {
         $g = it_grup((string)$r['kategori']);
         $grupSayim[$g] = ($grupSayim[$g] ?? 0) + (int)$r['n'];
         $toplamVarlik += (int)$r['n'];
@@ -161,7 +161,7 @@ require_once __DIR__ . '/../includes/header.php';
         <div class="col-md-2"><label class="form-label small mb-1">Lokasyon <span class="text-muted">(alt dahil)</span></label>
             <select name="lokasyon_id" class="form-select form-select-sm"><option value="">Tümü</option><?= it_lokasyon_options($pdoIt, $lokId, false) ?></select></div>
         <div class="col-md-2"><label class="form-label small mb-1">Durum</label>
-            <select name="durum" class="form-select form-select-sm"><option value="">Hurda hariç tümü</option>
+            <select name="durum" class="form-select form-select-sm"><option value="">Envanterdekiler (hurda/kayıp/hibe hariç)</option>
                 <?php foreach (IT_DURUM as $k => [$ad]): ?><option value="<?= h($k) ?>" <?= ($etkin['durum'] ?? '') === $k ? 'selected' : '' ?>><?= h($ad) ?></option><?php endforeach; ?>
             </select></div>
         <div class="col-md-2"><label class="form-label small mb-1">Garanti</label>

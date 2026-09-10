@@ -71,8 +71,8 @@ $sirala = ['ad' => 'p.soyad, p.ad', 'sicil' => 'p.sicil_no', 'unvan' => 'p.unvan
 $skA = array_key_exists($_GET['sk'] ?? '', $sirala) ? $_GET['sk'] : 'ad';
 $yon = ($_GET['yon'] ?? '') === 'desc' ? 'DESC' : 'ASC';
 
-$sql = "SELECT p.*, (SELECT COUNT(*) FROM it_cihazlar c WHERE c.personel_id=p.id AND c.durum<>'hurda') cihaz,
-               (SELECT COALESCE(SUM(c.fiyat),0) FROM it_cihazlar c WHERE c.personel_id=p.id AND c.durum<>'hurda') mali
+$sql = "SELECT p.*, (SELECT COUNT(*) FROM it_cihazlar c WHERE c.personel_id=p.id AND " . it_envanterde('c') . ") cihaz,
+               (SELECT COALESCE(SUM(c.fiyat),0) FROM it_cihazlar c WHERE c.personel_id=p.id AND " . it_envanterde('c') . ") mali
         FROM it_personel p $wsql ORDER BY {$sirala[$skA]} $yon, p.id";
 $st = $pdoIt->prepare($sql); $st->execute($p);
 $liste = $st->fetchAll();

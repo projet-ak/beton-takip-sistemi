@@ -36,7 +36,7 @@ if ($pid) {
     $no = 'ZMT-' . $c['envanter_no'];
     $geri = 'cihaz_detay.php?id=' . $id;
 } elseif ($kisi !== '') {
-    $st = $pdoIt->prepare("SELECT * FROM it_cihazlar WHERE zimmetli=? AND durum<>'hurda' ORDER BY envanter_no"); $st->execute([$kisi]);
+    $st = $pdoIt->prepare("SELECT * FROM it_cihazlar WHERE zimmetli=? AND " . it_envanterde() . " ORDER BY envanter_no"); $st->execute([$kisi]);
     $liste = $st->fetchAll();
     if (!$liste) die('Bu kişiye zimmetli cihaz yok.');
     $no = 'ZMT-' . strtoupper(substr(md5(it_norm($kisi)), 0, 6)) . '-' . date('Ymd');

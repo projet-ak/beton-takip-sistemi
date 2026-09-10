@@ -136,7 +136,7 @@ $pageTitle = ($duzenleme ? 'Cihaz Düzenle — ' . $c['envanter_no'] : 'Yeni Cih
 $bagliAdaylar = [];
 try {
     $bagliAdaylar = $pdoIt->query("SELECT id, envanter_no, ad, kategori FROM it_cihazlar
-        WHERE kategori IN ('nvr','santral','kartli_gecis','switch','firewall') AND durum<>'hurda'
+        WHERE kategori IN ('nvr','santral','kartli_gecis','switch','firewall') AND " . it_envanterde() . "
         ORDER BY kategori, envanter_no")->fetchAll();
 } catch (Throwable $e) {}
 

@@ -347,7 +347,7 @@ function pim_mukerrer_gruplar(PDO $pdo): array
 {
     try { $liste = $pdo->query("SELECT * FROM it_personel")->fetchAll(); } catch (Throwable $e) { return []; }
     $cihaz = [];
-    try { foreach ($pdo->query("SELECT personel_id, COUNT(*) n FROM it_cihazlar WHERE personel_id IS NOT NULL AND durum<>'hurda' GROUP BY personel_id") as $c) $cihaz[(int)$c['personel_id']] = (int)$c['n']; }
+    try { foreach ($pdo->query("SELECT personel_id, COUNT(*) n FROM it_cihazlar WHERE personel_id IS NOT NULL AND " . it_envanterde() . " GROUP BY personel_id") as $c) $cihaz[(int)$c['personel_id']] = (int)$c['n']; }
     catch (Throwable $e) {}
     $gruplar = [];
     $ekle = function (string $tur, string $anahtar, array $kayitlar) use (&$gruplar, $cihaz) {

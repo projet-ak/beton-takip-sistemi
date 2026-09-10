@@ -16,7 +16,7 @@ $pageTitle = 'IT Envanter Dashboard';
 $o = it_ozet($pdoIt);
 
 $kat = $pdoIt->query("SELECT kategori, COUNT(*) adet, SUM(durum='aktif') aktif, COALESCE(SUM(fiyat),0) mali
-                      FROM it_cihazlar WHERE durum<>'hurda' GROUP BY kategori ORDER BY adet DESC")->fetchAll();
+                      FROM it_cihazlar WHERE " . it_envanterde() . " GROUP BY kategori ORDER BY adet DESC")->fetchAll();
 $dep = $pdoIt->query("SELECT COALESCE(NULLIF(departman,''),'(tanımsız)') departman, COUNT(*) adet
                       FROM it_cihazlar WHERE durum='aktif' GROUP BY departman ORDER BY adet DESC LIMIT 12")->fetchAll();
 $kisiler = $pdoIt->query("SELECT zimmetli, MAX(personel_id) personel_id, COUNT(*) adet, COALESCE(SUM(fiyat),0) mali, MAX(departman) departman
@@ -34,17 +34,17 @@ foreach ($kat as $r) {
 uasort($grupSayim, fn($a, $b) => $b['adet'] <=> $a['adet']);
 
 $garanti = $pdoIt->query("SELECT id, envanter_no, ad, kategori, zimmetli, garanti_bitis FROM it_cihazlar
-                          WHERE durum<>'hurda' AND garanti_bitis IS NOT NULL AND garanti_bitis <= DATE_ADD(CURDATE(), INTERVAL 60 DAY)
+                          WHERE " . it_envanterde() . " AND garanti_bitis IS NOT NULL AND garanti_bitis <= DATE_ADD(CURDATE(), INTERVAL 60 DAY)
                           ORDER BY garanti_bitis LIMIT 12")->fetchAll();
 $sorunlu = $pdoIt->query("SELECT id, envanter_no, ad, kategori, durum, zimmetli, updated_at FROM it_cihazlar
                           WHERE durum IN ('serviste','arizali') ORDER BY updated_at DESC LIMIT 10")->fetchAll();
 $riskli = []; $lok = [];
 try {
-    $riskli = $pdoIt->query("SELECT p.id, p.ad, p.soyad, p.isten_cikis, COUNT(c.id) adet FROM it_personel p JOIN it_cihazlar c ON c.personel_id=p.id AND c.durum<>'hurda'
+    $riskli = $pdoIt->query("SELECT p.id, p.ad, p.soyad, p.isten_cikis, COUNT(c.id) adet FROM it_personel p JOIN it_cihazlar c ON c.personel_id=p.id AND " . it_envanterde('c') . "
                              WHERE p.isten_cikis IS NOT NULL AND p.isten_cikis <= CURDATE() GROUP BY p.id ORDER BY p.isten_cikis")->fetchAll();
     // Kök lokasyon (proje / bina) bazında cihaz dağılımı — alt lokasyonlar köke toplanır
     $hepsi = it_lokasyonlar($pdoIt); $kokOf = function (int $id) use ($hepsi) { $g = 0; while ($id && isset($hepsi[$id]) && (int)$hepsi[$id]['ust_id'] && $g++ < 10) $id = (int)$hepsi[$id]['ust_id']; return $id; };
-    foreach ($pdoIt->query("SELECT lokasyon_id, COUNT(*) n FROM it_cihazlar WHERE durum<>'hurda' GROUP BY lokasyon_id") as $r) {
+    foreach ($pdoIt->query("SELECT lokasyon_id, COUNT(*) n FROM it_cihazlar WHERE " . it_envanterde() . " GROUP BY lokasyon_id") as $r) {
         $k = $r['lokasyon_id'] ? $kokOf((int)$r['lokasyon_id']) : 0;
         $ad = $k ? it_lokasyon_etiket($pdoIt, $k) : '(lokasyonsuz)';
         $lok[$ad] = ($lok[$ad] ?? 0) + (int)$r['n'];
@@ -84,7 +84,7 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="row g-3 mb-3">
   <?php
   $kpi = [
-    ['Toplam Cihaz', $f0($o['toplam'] - $o['hurda']), 'bi-pc-display', 'primary', 'cihazlar.php'],
+    ['Toplam Cihaz', $f0($o['toplam'] - $o['dusen']), 'bi-pc-display', 'primary', 'cihazlar.php'],
     ['Kullanımda', $f0($o['aktif']), 'bi-person-check', 'success', 'cihazlar.php?durum=aktif'],
     ['Depoda / Boşta', $f0($o['depoda']), 'bi-box-seam', 'secondary', 'cihazlar.php?durum=depoda'],
     ['Serviste + Arızalı', $f0($o['serviste'] + $o['arizali']), 'bi-wrench', 'danger', 'cihazlar.php?durum=arizali'],
@@ -128,7 +128,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <div class="row g-3 mb-3">
   <div class="col-lg-4">
-    <div class="card border-0 shadow-sm h-100"><div class="card-header bg-white"><strong>Kategori dağılımı</strong> <span class="small text-muted">(hurda hariç)</span></div>
+    <div class="card border-0 shadow-sm h-100"><div class="card-header bg-white"><strong>Kategori dağılımı</strong> <span class="small text-muted">(envanterdekiler)</span></div>
       <div class="card-body"><div style="height:260px"><canvas id="chKat"></canvas></div></div></div>
   </div>
   <div class="col-lg-4">
@@ -207,7 +207,7 @@ require_once __DIR__ . '/../includes/header.php';
 <script>
 const IT = {
   kat: <?= json_encode(array_map(fn($r) => ['ad'=>it_kategoriAd($r['kategori']), 'adet'=>(int)$r['adet']], $kat), JSON_UNESCAPED_UNICODE) ?>,
-  durum: <?= json_encode(array_map(fn($k) => ['ad'=>IT_DURUM[$k][0], 'adet'=>(int)$o[$k]], ['aktif','depoda','serviste','arizali','hurda']), JSON_UNESCAPED_UNICODE) ?>,
+  durum: <?= json_encode(array_map(fn($k) => ['ad'=>IT_DURUM[$k][0], 'adet'=>(int)$o[$k]], array_keys(IT_DURUM)), JSON_UNESCAPED_UNICODE) ?>,
   dep: <?= json_encode(array_map(fn($r) => ['ad'=>$r['departman'], 'adet'=>(int)$r['adet']], $dep), JSON_UNESCAPED_UNICODE) ?>,
   lok: <?= json_encode(array_map(fn($k, $v) => ['ad'=>$k, 'adet'=>$v], array_keys($lok), $lok), JSON_UNESCAPED_UNICODE) ?>
 };

@@ -69,10 +69,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 it_hareket_ekle($pdoIt, $id, 'ariza', $kisi, $acik ?: 'Arıza bildirildi', $tarih);
                 flash('success', 'Arıza kaydı eklendi.');
                 break;
+            // Envanterden düşüren üç işlem aynı kalıptadır: zimmet düşer, kayıt SİLİNMEZ,
+            // varsayılan listelerde ve mali değerde görünmez (durum filtresiyle geri gelir).
             case 'hurda':
-                $pdoIt->prepare("UPDATE it_cihazlar SET durum='hurda', personel_id=NULL, zimmetli=NULL, zimmet_tarihi=NULL WHERE id=?")->execute([$id]);
-                it_hareket_ekle($pdoIt, $id, 'hurda', $kisi, $acik ?: 'Hurdaya ayrıldı', $tarih);
-                flash('success', 'Cihaz hurdaya ayrıldı (kayıt silinmez, listede gizlenir).');
+            case 'kayip':
+            case 'hibe':
+                $__ad = ['hurda'=>'Hurdaya ayrıldı', 'kayip'=>'Kayıp / çalıntı bildirildi', 'hibe'=>'Hibe / devir edildi'][$tur];
+                $pdoIt->prepare("UPDATE it_cihazlar SET durum=?, personel_id=NULL, zimmetli=NULL, zimmet_tarihi=NULL WHERE id=?")
+                      ->execute([$tur, $id]);
+                it_hareket_ekle($pdoIt, $id, $tur, $kisi, $acik ?: $__ad, $tarih);
+                flash('success', $__ad . ' — kayıt silinmez, listede gizlenir (durum filtresiyle görüntülenir).');
                 break;
             default:
                 it_hareket_ekle($pdoIt, $id, 'not', $kisi, $acik ?: '—', $tarih);
@@ -109,10 +115,10 @@ $gk = it_garanti_kalan($c['garanti_bitis']);
 // Aynı kişinin diğer cihazları (zimmet tutanağında bir arada çıkar)
 $digerleri = [];
 if ($c['personel_id']) {
-    $q = $pdoIt->prepare("SELECT id, envanter_no, ad, kategori, durum FROM it_cihazlar WHERE personel_id=? AND id<>? AND durum<>'hurda' ORDER BY envanter_no");
+    $q = $pdoIt->prepare("SELECT id, envanter_no, ad, kategori, durum FROM it_cihazlar WHERE personel_id=? AND id<>? AND " . it_envanterde() . " ORDER BY envanter_no");
     $q->execute([(int)$c['personel_id'], $id]);
 } elseif ($c['zimmetli']) {
-    $q = $pdoIt->prepare("SELECT id, envanter_no, ad, kategori, durum FROM it_cihazlar WHERE zimmetli=? AND id<>? AND durum<>'hurda' ORDER BY envanter_no");
+    $q = $pdoIt->prepare("SELECT id, envanter_no, ad, kategori, durum FROM it_cihazlar WHERE zimmetli=? AND id<>? AND " . it_envanterde() . " ORDER BY envanter_no");
     $q->execute([$c['zimmetli'], $id]);
     $digerleri = $q->fetchAll();
 }
@@ -252,11 +258,13 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
           <input type="hidden" name="action" value="hareket">
           <div class="mb-2">
             <select name="tur" id="tur" class="form-select form-select-sm">
-              <?php if ($c['durum'] !== 'hurda'): ?>
+              <?php if (!it_durum_dustu($c['durum'])): ?>
               <option value="zimmet"><?= $c['zimmetli'] ? 'Zimmeti başkasına devret' : 'Zimmet ver' ?></option>
               <?php if ($c['zimmetli']): ?><option value="iade">Zimmet iade al (depoya)</option><?php endif; ?>
               <?php if ($c['durum'] !== 'serviste'): ?><option value="servis">Servise gönder</option><?php else: ?><option value="donus">Servisten döndü</option><?php endif; ?>
               <option value="ariza">Arıza bildir</option>
+              <option value="kayip">Kayıp / çalıntı bildir</option>
+              <option value="hibe">Hibe et / devret</option>
               <option value="hurda">Hurdaya ayır</option>
               <?php endif; ?>
               <option value="not">Not ekle</option>
@@ -321,7 +329,14 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
         document.querySelectorAll('.zimmet-ek').forEach(function (e) { e.classList.toggle('d-none', !z); });
         document.querySelector('.kisi').classList.toggle('d-none', z);
         var k = document.querySelector('.kisi input');
-        k.placeholder = t.value === 'servis' ? 'Servis firması' : 'Kişi / firma (isteğe bağlı)';
+        k.placeholder = { servis: 'Servis firması',
+                          hibe:   'Hibe edilen kurum / kişi',
+                          kayip:  'Kaybı bildiren kişi' }[t.value] || 'Kişi / firma (isteğe bağlı)';
+        // Envanterden düşüren işlemlerde sebep yazılması beklenir
+        var a = document.querySelector('textarea[name="aciklama"]');
+        if (a) a.placeholder = { kayip: 'Nerede/ne zaman kaybolduğu, tutanak no…',
+                                 hibe:  'Hibe/devir gerekçesi, protokol no…',
+                                 hurda: 'Hurdaya ayırma sebebi' }[t.value] || 'Açıklama (isteğe bağlı)';
         document.getElementById('personel_id').required = z;
     }
     t.addEventListener('change', uygula); uygula();

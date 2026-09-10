@@ -64,8 +64,8 @@ $__ayriMi  = defined('IT_DB_NAME') && IT_DB_NAME !== '' && IT_DB_NAME !== DB_NAM
             </tbody>
         </table>
         <div class="small text-muted">
-            <p class="mb-1"><strong>it_cihazlar</strong>: her satır bir varlık (bilgisayar, telefon, yazıcı, ağ cihazı, yazılım lisansı…); envanter no otomatik <code>IT-00001</code>. Kayıt silinmez, "hurda" durumuna alınır.</p>
-            <p class="mb-1"><strong>it_hareketler</strong>: cihazın yaşam günlüğü — giriş, zimmet, iade, servis, arıza, hurda, not.</p>
+            <p class="mb-1"><strong>it_cihazlar</strong>: her satır bir varlık (bilgisayar, telefon, yazıcı, ağ cihazı, yazılım lisansı…); envanter no otomatik <code>IT-00001</code>. Kayıt hiçbir zaman silinmez; envanterden çıkan varlık <strong>hurda · kayıp/çalıntı · hibe/devir</strong> durumlarından birine alınır (listede gizlenir, geçmişi durur).</p>
+            <p class="mb-1"><strong>it_hareketler</strong>: cihazın yaşam günlüğü — giriş, zimmet, iade, servis, arıza, kayıp, hibe, hurda, not.</p>
             <p class="mb-1"><strong>it_belgeler</strong>: fotoğraf / fatura / garanti belgesi; dosyalar <code>uploads/it_envanter/{cihaz_id}/</code> altında, DB'de yalnız göreli URL.</p>
             <p class="mb-0">Yetki: Kullanıcılar ekranında <em>IT Envanter</em> satırı (okuma / veri girişi / değiştirme / rapor). "IT Sorumlusu" rolü şablon olarak bu modülde tam yetkilidir.</p>
         </div>

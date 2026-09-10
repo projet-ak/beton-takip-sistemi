@@ -1,7 +1,7 @@
 <?php
 /**
  * it/cihazlar.php — Cihaz / lisans listesi: filtre, arama, whitelist sıralama, sayfalama, Excel.
- * Varsayılan görünümde hurdalar gizlidir (durum filtresi "Hurda" seçilince listelenir).
+ * Varsayılan görünümde envanterden düşenler (hurda / kayıp / hibe) gizlidir — durum filtresiyle listelenir.
  */
 $rootPath = '../';
 require_once __DIR__ . '/../includes/functions.php';
@@ -151,7 +151,7 @@ require_once __DIR__ . '/../includes/header.php';
         <tr><td colspan="11" class="text-center text-muted py-4">Kayıt yok.<?php if ($yazabilir && !$etkin): ?> <a href="cihaz_form.php">İlk cihazı ekleyin</a>.<?php endif; ?></td></tr>
       <?php endif; ?>
       <?php foreach ($liste as $r): $gk = it_garanti_kalan($r['garanti_bitis']); ?>
-        <tr class="<?= $r['durum'] === 'hurda' ? 'text-muted' : '' ?>">
+        <tr class="<?= it_durum_dustu($r['durum']) ? 'text-muted' : '' ?>">
           <td>
             <?php if ($r['foto_url']): ?>
               <a href="cihaz_detay.php?id=<?= (int)$r['id'] ?>"><img src="../<?= h($r['foto_url']) ?>" alt="" style="width:44px;height:36px;object-fit:cover;border-radius:6px"></a>
