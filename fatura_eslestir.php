@@ -75,8 +75,14 @@ if (($_POST['action'] ?? '') === 'coz') {
             // Zaten kayıtlıysa hangi irsaliyelere bağlı olduğunu ekranda göster
             $mevcutIrs = $mevcut ? (fat_bagli_irsaliyeler($pdo, [(int)$mevcut['id']])[(int)$mevcut['id']] ?? []) : [];
 
+            // Fatura TÜRÜ önerisi: irsaliye numarası yoksa metindeki anahtar kelimelerden
+            // (POMPA / KİRA / NAKLİYE …) tür sezilir. Zaten kayıtlı faturanın türü esastır.
+            $turOner = fat_tur_sez($metin, $veri);
+            if ($mevcut && !empty($mevcut['tur'])) $turOner = ['tur' => fat_tur_norm($mevcut['tur']), 'gerekce' => ''];
+
             $sonuc = ['veri'=>$veri, 'eslesme'=>$eslesme, 'kaynak'=>$kaynak, 'dosya_url'=>$dosyaUrl,
-                      'metin'=>$metin, 'mevcut'=>$mevcut, 'baskasi'=>$baskasi, 'mevcut_irs'=>$mevcutIrs];
+                      'metin'=>$metin, 'mevcut'=>$mevcut, 'baskasi'=>$baskasi, 'mevcut_irs'=>$mevcutIrs,
+                      'tur_oner'=>$turOner];
         }
     }
 }
@@ -148,6 +154,7 @@ if (($_POST['action'] ?? '') === 'kaydet') {
     try {
         $r = fat_kaydet($pdo, [
             'fatura_no'    => trim((string)($_POST['fatura_no'] ?? '')),
+            'tur'          => fat_tur_norm($_POST['tur'] ?? null),
             'tarih'        => fat_tarih_norm($_POST['tarih'] ?? '') ?: null,
             'tedarikci_id' => (int)($_POST['tedarikci_id'] ?? 0) ?: null,
             'tutar'        => $_POST['tutar'] ?? null,
@@ -190,6 +197,12 @@ if (($_POST['action'] ?? '') === 'eksik_tara' && ctype_digit((string)($_POST['fa
     $f = $pdo->prepare("SELECT * FROM faturalar WHERE id = ?"); $f->execute([$fid]);
     $f = $f->fetch();
     if (!$f) { flash('error', 'Fatura bulunamadı.'); redirect('fatura_eslestir.php?eksik=1'); }
+
+    if (!fat_tur_irsaliyeli($f['tur'] ?? 'beton')) {
+        flash('warning', h($f['fatura_no']) . ' — ' . FAT_TUR[fat_tur_norm($f['tur'])][0]
+            . ' faturasında irsaliye/m³ aranmaz. Beton faturasıysa listeden türünü "Beton (irsaliyeli)" yapın.');
+        redirect('fatura_eslestir.php');
+    }
 
     $tam = $f['dosya_url'] ? __DIR__ . '/' . $f['dosya_url'] : '';
     if ($tam === '' || !is_file($tam)) {
@@ -346,12 +359,16 @@ if (($_POST['action'] ?? '') === 'fatura_isle' && !empty($_POST['dosya'])) {
             $hedefAd  = date('Ymd_His') . '_' . substr(md5($pid . microtime(true)), 0, 8) . '.' . (pathinfo($pid, PATHINFO_EXTENSION) ?: 'pdf');
             $dosyaUrl = null;
             if (@rename($tam, $dir . '/' . $hedefAd)) $dosyaUrl = 'uploads/faturalar/' . date('Y/m') . '/' . $hedefAd;
+            // Tür: irsaliye numarası yoksa metinden sezilir (pompa kirası / hizmet faturası)
+            $turB = fat_tur_sez((string)$metin, $veri);
             fat_kaydet($pdo, [
                 'fatura_no'   => $veri['fatura_no'], 'tarih' => $veri['tarih'],
+                'tur'         => $turB['tur'],
                 'tedarikci_id'=> (int)($ted['id'] ?? 0) ?: null,
                 'tutar'       => $veri['tutar'], 'miktar' => $veri['miktar'], 'ettn' => $veri['ettn'],
                 'eksik_adet'  => count($esl['eksik']), 'eksik_liste' => $esl['eksik'],
-                'notlar'      => 'Toplu kontrolden otomatik işlendi',
+                'notlar'      => 'Toplu kontrolden otomatik işlendi'
+                                 . (fat_tur_irsaliyeli($turB['tur']) ? '' : ' — ' . FAT_TUR[$turB['tur']][0] . ' olarak işaretlendi'),
             ], $ids, current_user_id(), $dosyaUrl);
             // Fatura dosyasını eşleşen irsaliyelerin belgelerine de ekle (tekil akışla aynı)
             $belgeEk = 0;
@@ -401,6 +418,29 @@ if (($_POST['action'] ?? '') === 'm3_duzelt' && ctype_digit((string)($_POST['fat
     redirect('fatura_eslestir.php');
 }
 
+// ── 2e) Fatura türü değiştirme (Kayıtlı Faturalar listesinden) ──────────────
+// "Bu fatura beton teslimi değil, pompa kirası" — tek tıkla işaretlenir; fatura
+// o andan itibaren irsaliye/m³ mutabakatının dışında kalır.
+if (($_POST['action'] ?? '') === 'tur_degistir' && ctype_digit((string)($_POST['fatura_id'] ?? ''))) {
+    $fid = (int)$_POST['fatura_id'];
+    $tur = fat_tur_norm($_POST['tur'] ?? null);
+    $f = $pdo->prepare("SELECT fatura_no, tur, eksik_adet FROM faturalar WHERE id = ?"); $f->execute([$fid]);
+    $f = $f->fetch();
+    if (!$f) { flash('error', 'Fatura bulunamadı.'); redirect('fatura_eslestir.php'); }
+
+    if (fat_tur_irsaliyeli($tur)) {
+        $pdo->prepare("UPDATE faturalar SET tur = ? WHERE id = ?")->execute([$tur, $fid]);
+        $ek = ' Beton faturası olarak mutabakata geri alındı — eksik irsaliyeleri görmek için "tara" düğmesini kullanın.';
+    } else {
+        // İrsaliyesiz türde "eksik irsaliye" kavramı yoktur; sayaç temizlenir.
+        $pdo->prepare("UPDATE faturalar SET tur = ?, eksik_adet = 0, eksik_liste = NULL WHERE id = ?")->execute([$tur, $fid]);
+        $ek = ' Bu fatura artık m³ / eksik irsaliye mutabakatına girmez.';
+    }
+    audit_log($pdo, 'faturalar', $fid, 'UPDATE', ['tur' => $f['tur']], ['tur' => $tur], current_user_id());
+    flash('success', h($f['fatura_no']) . ' → tür: ' . FAT_TUR[$tur][0] . '.' . $ek);
+    redirect('fatura_eslestir.php' . (($_POST['geri'] ?? '') === 'eksik' ? '?eksik=1' : ''));
+}
+
 // ── 3) Fatura sil (bağları çöz) ─────────────────────────────────────────────
 if (is_admin() && isset($_GET['sil']) && ctype_digit((string)$_GET['sil'])) {
     $fid = (int)$_GET['sil'];
@@ -418,7 +458,8 @@ $eksikOzet = [];
 if (isset($_GET['eksik'])) {
     try {
         foreach ($pdo->query("SELECT id, fatura_no, tarih, eksik_adet, eksik_liste, dosya_url FROM faturalar
-                              WHERE eksik_adet > 0 ORDER BY tarih DESC") as $r) {
+                              WHERE eksik_adet > 0 AND tur NOT IN ('" . implode("','", FAT_TUR_IRSALIYESIZ) . "')
+                              ORDER BY tarih DESC") as $r) {
             $liste = json_decode((string)$r['eksik_liste'], true);
             $eksikOzet[] = ['id' => (int)$r['id'], 'fatura_no' => $r['fatura_no'], 'tarih' => $r['tarih'],
                             'adet' => (int)$r['eksik_adet'], 'liste' => is_array($liste) ? $liste : [],
@@ -429,10 +470,18 @@ if (isset($_GET['eksik'])) {
 
 $tedarikciler = $pdo->query("SELECT id, ad, vkn FROM tedarikciler ORDER BY ad")->fetchAll();
 $fatAra = trim((string)($_GET['fatura_ara'] ?? ''));
+$fatTur = (string)($_GET['tur'] ?? '');
+$fatTur = isset(FAT_TUR[$fatTur]) ? $fatTur : '';
+$sqlTur = $fatTur !== '' ? " WHERE f.tur = " . $pdo->quote($fatTur) : "";
 $kayitli = $pdo->query("SELECT f.*, t.ad AS tedarikci,
                                (SELECT COUNT(*) FROM irsaliyeler i WHERE i.fatura_id = f.id) AS bagli
-                        FROM faturalar f LEFT JOIN tedarikciler t ON t.id = f.tedarikci_id
+                        FROM faturalar f LEFT JOIN tedarikciler t ON t.id = f.tedarikci_id" . $sqlTur . "
                         ORDER BY f.tarih DESC, f.id DESC" . ($fatAra === '' ? " LIMIT 100" : ""))->fetchAll();
+// Tür bazlı sayaçlar (süzgeçten BAĞIMSIZ — her zaman tüm faturalar)
+$turSayac = [];
+foreach ($pdo->query("SELECT tur, COUNT(*) adet FROM faturalar GROUP BY tur") as $__ts) {
+    $turSayac[fat_tur_norm($__ts['tur'])] = ($turSayac[fat_tur_norm($__ts['tur'])] ?? 0) + (int)$__ts['adet'];
+}
 // Her faturanın bağlı irsaliyeleri — listede satır açılınca gösterilir
 $kayitliIrs = $kayitli ? fat_bagli_irsaliyeler($pdo, array_column($kayitli, 'id')) : [];
 
@@ -848,11 +897,28 @@ document.getElementById('kontrolForm').addEventListener('submit', async function
 
 <?php if ($sonuc):
     $v = $sonuc['veri']; $e = $sonuc['eslesme'];
+    $turOner    = $sonuc['tur_oner'] ?? ['tur'=>'beton','gerekce'=>''];
+    $seciliTur  = fat_tur_norm($turOner['tur']);
+    $turIrs     = fat_tur_irsaliyeli($seciliTur);
     $toplamIrs = count($v['irsaliyeler']);
     $eslesenAdet = count($e['eslesen']); $eksikAdet = count($e['eksik']);
     $farkM3 = ($v['miktar'] !== null) ? ($e['ozet']['miktar'] - (float)$v['miktar']) : null;
 ?>
-<div class="row g-3 mb-3">
+<?php if (!$turIrs): ?>
+<div class="alert alert-info d-flex gap-2">
+    <i class="bi <?= h(FAT_TUR[$seciliTur][2]) ?> fs-4"></i>
+    <div>
+        <strong>Bu fatura beton teslimi gibi görünmüyor — önerilen tür: <?= h(FAT_TUR[$seciliTur][0]) ?></strong>
+        <div class="small mt-1">
+            <?= h((string)$turOner['gerekce']) ?>
+            <?= h(FAT_TUR[$seciliTur][3]) ?>
+            Yanlışsa aşağıdaki <strong>Fatura Türü</strong> alanından değiştirin.
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<div class="row g-3 mb-3" data-beton-mutabakat>
     <div class="col-6 col-lg"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2"><div class="text-muted small">Faturadaki İrsaliye</div><div class="fs-5 fw-bold"><?= $toplamIrs ?></div></div></div></div>
     <div class="col-6 col-lg"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2"><div class="text-muted small">Eşleşen</div><div class="fs-5 fw-bold text-success"><?= $eslesenAdet ?></div></div></div></div>
     <div class="col-6 col-lg"><div class="card border-0 shadow-sm h-100 <?= $eksikAdet?'border border-danger':'' ?>"><div class="card-body py-2"><div class="text-muted small">Sistemde Yok</div><div class="fs-5 fw-bold <?= $eksikAdet?'text-danger':'text-success' ?>"><?= $eksikAdet ?></div></div></div></div>
@@ -1030,6 +1096,13 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
             <input type="text" name="tutar" class="form-control" value="<?= $v['tutar']!==null?$fmt($v['tutar']):'' ?>"></div>
         <div class="col-md-2"><label class="form-label">Miktar (m³)</label>
             <input type="text" name="miktar" class="form-control" value="<?= $v['miktar']!==null?$fmt($v['miktar']):'' ?>"></div>
+        <div class="col-md-3"><label class="form-label">Fatura Türü</label>
+            <select name="tur" id="faturaTur" class="form-select">
+                <?php foreach (FAT_TUR as $tk => $ti): ?>
+                    <option value="<?= h($tk) ?>" <?= $seciliTur === $tk ? 'selected' : '' ?>><?= h($ti[0]) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <div class="form-text" id="turAciklama"><?= h(FAT_TUR[$seciliTur][3]) ?></div></div>
         <div class="col-md-6"><label class="form-label">ETTN</label>
             <input type="text" name="ettn" class="form-control" value="<?= h((string)$v['ettn']) ?>"></div>
         <div class="col-md-6"><label class="form-label">Not</label>
@@ -1137,6 +1210,36 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
     <a href="fatura_eslestir.php" class="btn btn-outline-secondary">Vazgeç</a>
 </div>
 </form>
+
+<script>
+/* Fatura türü değişince: açıklama yenilenir; irsaliyesiz türde (pompa/hizmet)
+   "eksik irsaliyeleri taslak oluştur" kutusu kapatılır — pompa kirası faturasından
+   irsaliye taslağı açmak anlamsızdır. */
+(function () {
+    var sec = document.getElementById('faturaTur');
+    if (!sec) return;
+    var acik = <?= json_encode(array_map(fn($t) => [$t[0], $t[3]], FAT_TUR), JSON_UNESCAPED_UNICODE) ?>;
+    var irsaliyesiz = <?= json_encode(FAT_TUR_IRSALIYESIZ) ?>;
+    var not = document.getElementById('turAciklama');
+    var kutu = document.getElementById('eksikOlustur');
+    function uygula() {
+        var t = sec.value;
+        if (not && acik[t]) not.textContent = acik[t][1];
+        var disi = irsaliyesiz.indexOf(t) !== -1;
+        if (kutu) {
+            kutu.disabled = disi;
+            if (disi) kutu.checked = false;
+            var kart = kutu.closest('.form-check');
+            if (kart) kart.classList.toggle('opacity-50', disi);
+        }
+        document.querySelectorAll('[data-beton-mutabakat]').forEach(function (el) {
+            el.classList.toggle('opacity-50', disi);
+        });
+    }
+    sec.addEventListener('change', uygula);
+    uygula();
+})();
+</script>
 <?php endif; ?>
 
 <div class="card">
@@ -1145,34 +1248,71 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
         <form method="get" class="d-flex align-items-center gap-1">
             <input type="text" name="fatura_ara" value="<?= h($fatAra) ?>" class="form-control form-control-sm" style="width:230px"
                    placeholder="Fatura no / irsaliye no / tedarikçi">
+            <select name="tur" class="form-select form-select-sm" style="width:170px" onchange="this.form.submit()">
+                <option value="">Tüm türler</option>
+                <?php foreach (FAT_TUR as $tk => $ti): ?>
+                <option value="<?= h($tk) ?>" <?= $fatTur === $tk ? 'selected' : '' ?>><?= h($ti[0]) ?> (<?= (int)($turSayac[$tk] ?? 0) ?>)</option>
+                <?php endforeach; ?>
+            </select>
             <button class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i></button>
-            <?php if ($fatAra !== ''): ?><a href="fatura_eslestir.php" class="btn btn-sm btn-outline-secondary" title="Aramayı temizle"><i class="bi bi-x-lg"></i></a><?php endif; ?>
+            <?php if ($fatAra !== '' || $fatTur !== ''): ?><a href="fatura_eslestir.php" class="btn btn-sm btn-outline-secondary" title="Süzgeci temizle"><i class="bi bi-x-lg"></i></a><?php endif; ?>
         </form>
+        <?php
+        // m³ toplamı yalnız BETON faturalarından — pompa kirası/hizmet faturasının m³'ü yoktur
+        $betonFat = array_values(array_filter($kayitli, fn($x) => fat_tur_irsaliyeli($x['tur'] ?? 'beton')));
+        $digerFat = count($kayitli) - count($betonFat);
+        ?>
         <span class="badge bg-primary" title="<?= $fatAra !== '' ? 'Arama sonucu' : 'Toplam fatura sayısı' ?>"><?= count($kayitli) ?> fatura
-            · <?= $fmt(array_sum(array_map(fn($x)=>(float)$x['miktar_m3'], $kayitli))) ?> m³
-            · <?= $fmt(array_sum(array_map(fn($x)=>(float)$x['tutar'], $kayitli))) ?> ₺</span>
+            · <?= $fmt(array_sum(array_map(fn($x)=>(float)$x['miktar_m3'], $betonFat))) ?> m³
+            · <?= $fmt(array_sum(array_map(fn($x)=>(float)$x['tutar'], $kayitli))) ?> ₺
+            <?= $digerFat ? '· ' . $digerFat . ' irsaliyesiz (pompa/hizmet)' : '' ?></span>
     </div>
     <div class="card-body p-0">
     <?php if (!$kayitli): ?>
-        <div class="p-3 text-muted"><?= $fatAra !== '' ? '"' . h($fatAra) . '" ile eşleşen fatura bulunamadı.' : 'Henüz kayıtlı fatura yok.' ?></div>
+        <div class="p-3 text-muted"><?= ($fatAra !== '' || $fatTur !== '') ? 'Süzgeçle eşleşen fatura bulunamadı.' : 'Henüz kayıtlı fatura yok.' ?></div>
     <?php else: ?>
         <div class="table-responsive">
         <table class="table table-sm table-hover mb-0 align-middle">
             <thead class="table-light"><tr>
                 <th class="text-center">#</th>
-                <th>Fatura No</th><th>Tarih</th><th>Tedarikçi</th><th class="text-end">Tutar</th>
+                <th>Fatura No</th><th>Tür</th><th>Tarih</th><th>Tedarikçi</th><th class="text-end">Tutar</th>
                 <th class="text-end">m³</th><th class="text-end">Bağlı İrs.</th><th class="text-end">Eksik</th><th>Dosya</th><th></th>
             </tr></thead>
             <tbody>
-            <?php $sira = count($kayitli); foreach ($kayitli as $f): $fIrs = $kayitliIrs[(int)$f['id']] ?? []; ?>
-                <tr>
+            <?php $sira = count($kayitli); foreach ($kayitli as $f): $fIrs = $kayitliIrs[(int)$f['id']] ?? [];
+                  $fTur = fat_tur_norm($f['tur'] ?? 'beton'); $fBeton = fat_tur_irsaliyeli($fTur); ?>
+                <tr class="<?= $fBeton ? '' : 'table-light' ?>">
                     <td class="text-center text-muted"><?= $sira-- ?></td>
                     <td><code><?= h($f['fatura_no']) ?></code></td>
+                    <td>
+                        <div class="dropdown">
+                            <a class="badge bg-<?= h(FAT_TUR[$fTur][1]) ?> text-decoration-none" href="#" role="button"
+                               data-bs-toggle="dropdown" title="<?= h(FAT_TUR[$fTur][3]) ?> — değiştirmek için tıklayın">
+                                <i class="bi <?= h(FAT_TUR[$fTur][2]) ?> me-1"></i><?= h(FAT_TUR[$fTur][0]) ?>
+                            </a>
+                            <div class="dropdown-menu p-2" style="min-width:260px">
+                                <div class="small text-muted px-1 pb-1">Fatura türünü değiştir</div>
+                                <?php foreach (FAT_TUR as $tk => $ti): if ($tk === $fTur) continue; ?>
+                                <form method="post" class="d-grid">
+                                    <input type="hidden" name="action" value="tur_degistir">
+                                    <input type="hidden" name="fatura_id" value="<?= (int)$f['id'] ?>">
+                                    <input type="hidden" name="tur" value="<?= h($tk) ?>">
+                                    <button class="btn btn-sm btn-outline-<?= h($ti[1]) ?> mb-1 text-start">
+                                        <i class="bi <?= h($ti[2]) ?> me-1"></i><?= h($ti[0]) ?>
+                                        <span class="d-block small text-muted"><?= h($ti[3]) ?></span>
+                                    </button>
+                                </form>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    </td>
                     <td><?= h(format_date($f['tarih'])) ?></td>
                     <td><?= h((string)$f['tedarikci']) ?></td>
                     <td class="text-end"><?= $f['tutar']!==null?$fmt($f['tutar']).' ₺':'—' ?></td>
                     <td class="text-end">
-                        <?php if ($f['miktar_m3'] !== null): ?><?= $fmt($f['miktar_m3']) ?>
+                        <?php if (!$fBeton): ?>
+                            <span class="text-muted" title="<?= h(FAT_TUR[$fTur][0]) ?> faturasının m³'ü yoktur">—</span>
+                        <?php elseif ($f['miktar_m3'] !== null): ?><?= $fmt($f['miktar_m3']) ?>
                         <?php else: ?>
                         <div class="d-inline-flex align-items-center gap-1">
                             <?php if ($f['dosya_url']): ?>
@@ -1204,7 +1344,9 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                     </td>
                     <td class="text-end <?= (int)$f['eksik_adet']?'text-danger fw-bold':'' ?>">
                         <?php $fTaslak = count(array_filter($fIrs, 'irs_taslak_mi')); ?>
-                        <?php if ((int)$f['eksik_adet'] > 0): $fel = json_decode((string)($f['eksik_liste'] ?? ''), true); ?>
+                        <?php if (!$fBeton): ?>
+                        <span class="text-muted" title="İrsaliye eşleştirmesine girmeyen fatura">—</span>
+                        <?php elseif ((int)$f['eksik_adet'] > 0): $fel = json_decode((string)($f['eksik_liste'] ?? ''), true); ?>
                         <a href="?eksik=1" class="text-danger text-decoration-none" title="<?= h(is_array($fel) ? implode(', ', $fel) : 'numara listesi için tıklayın') ?>"><?= (int)$f['eksik_adet'] ?> <i class="bi bi-box-arrow-up-right small"></i></a>
                         <?php elseif ($fTaslak): ?>
                         <span class="badge bg-warning text-dark" title="Faturadan otomatik açılmış taslak irsaliyeler — Excel aktarımıyla gerçek veriler gelmeden EKSİK sayılır, onaylanamaz"><?= $fTaslak ?> taslak</span>
@@ -1220,7 +1362,7 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                 </tr>
                 <?php if ($fIrs): ?>
                 <tr class="collapse" id="fi<?= (int)$f['id'] ?>">
-                    <td colspan="10" class="bg-body-tertiary">
+                    <td colspan="11" class="bg-body-tertiary">
                         <div class="small fw-semibold mb-1">
                             <?= h($f['fatura_no']) ?> faturasına bağlı irsaliyeler (<?= count($fIrs) ?>)
                         </div>

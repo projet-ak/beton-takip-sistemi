@@ -12,6 +12,93 @@
  *    Düz metin karşılaştırması bu yüzden HİÇ eşleşme bulamaz.
  */
 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * FATURA TÜRÜ — her tedarikçi faturası beton teslimi değildir.
+ *
+ * Gerçek durum (AND2026000000949, ANADOLU ANONİM, 33.600,00 ₺): fatura
+ * "POMPA KİRA GİDERİ" olarak kesilmiş. İçinde irsaliye numarası yoktur, m³
+ * yazmaz. Sistem bunu beton faturası sandığı için listede "0 m³ · 0 bağlı
+ * irsaliye" görünüyor, m³ elle girme kutusu açılıyor ve mutabakatta sürekli
+ * eksik gibi duruyordu.
+ *
+ * Çözüm: faturanın TÜRÜ saklanır. Yalnız 'beton' türü irsaliye/m³ mutabakatına
+ * girer; pompa kirası ve diğer hizmet/gider faturaları tutar olarak arşivlenir,
+ * "eksik irsaliye" sayılmaz.
+ *
+ * Anahtar => [ad, rozet rengi, ikon, açıklama]
+ * ───────────────────────────────────────────────────────────────────────────── */
+const FAT_TUR = [
+    'beton'  => ['Beton (irsaliyeli)', 'primary',   'bi-truck',        'Beton teslimi — faturadaki irsaliyeler sistemle eşleştirilir, m³ mutabakatı yapılır.'],
+    'pompa'  => ['Pompa Kirası',       'info',      'bi-cone-striped', 'Beton pompası kira/servis bedeli — irsaliyesi yoktur, m³ mutabakatına girmez.'],
+    'hizmet' => ['Hizmet / Gider',     'secondary', 'bi-receipt',      'Nakliye, kira, laboratuvar vb. gider faturası — irsaliye eşleştirmesi yapılmaz.'],
+];
+
+/** İrsaliye/m³ mutabakatına GİRMEYEN fatura türleri. */
+const FAT_TUR_IRSALIYESIZ = ['pompa', 'hizmet'];
+
+/** Geçerli tür anahtarına indirger (bilinmeyen/boş → 'beton'). */
+function fat_tur_norm(?string $t): string
+{
+    $t = strtolower(trim((string)$t));
+    return isset(FAT_TUR[$t]) ? $t : 'beton';
+}
+
+/** Bu tür irsaliye eşleştirmesine giriyor mu? */
+function fat_tur_irsaliyeli(?string $t): bool
+{
+    return !in_array(fat_tur_norm($t), FAT_TUR_IRSALIYESIZ, true);
+}
+
+/**
+ * Fatura metninden TÜR ÖNERİSİ üretir.
+ *
+ * Kural: irsaliye numarası bulunduysa fatura beton teslimidir (pompa bedeli
+ * beton faturasının satırı olabilir, o zaman fatura yine betondur). Hiç
+ * irsaliye numarası yoksa metindeki anahtar kelimelere bakılır.
+ *
+ * @return array ['tur' => anahtar, 'gerekce' => kullanıcıya gösterilecek cümle|'']
+ */
+function fat_tur_sez(string $metin, array $veri): array
+{
+    if (!empty($veri['irsaliyeler'])) return ['tur' => 'beton', 'gerekce' => ''];
+
+    // Türkçe harf duyarsız arama (metin BÜYÜK/küçük karışık gelebilir)
+    $t = mb_strtoupper($metin, 'UTF-8');
+    $t = strtr($t, ['İ' => 'I', 'I' => 'I', 'Ş' => 'S', 'Ğ' => 'G', 'Ü' => 'U', 'Ö' => 'O', 'Ç' => 'C']);
+
+    $pompa  = ['POMPA', 'BOOM', 'MOBIL POMPA', 'POMPAJ'];
+    $hizmet = ['KIRA', 'KIRALAMA', 'NAKLIYE', 'HIZMET BEDELI', 'MOBILIZASYON', 'DEMOBILIZASYON',
+               'LABORATUVAR', 'NUMUNE', 'SERVIS BEDELI', 'DANISMANLIK', 'AKARYAKIT', 'MAZOT'];
+
+    $bulunan = [];
+    foreach ($pompa as $k) if (strpos($t, $k) !== false) $bulunan[] = $k;
+    if ($bulunan) {
+        return ['tur' => 'pompa',
+                'gerekce' => 'Faturada hiç irsaliye numarası yok ve metinde "' . $bulunan[0] . '" geçiyor.'];
+    }
+    foreach ($hizmet as $k) if (strpos($t, $k) !== false) $bulunan[] = $k;
+    if ($bulunan) {
+        return ['tur' => 'hizmet',
+                'gerekce' => 'Faturada hiç irsaliye numarası yok ve metinde "' . $bulunan[0] . '" geçiyor.'];
+    }
+
+    // İrsaliye yok, m³ de yok → beton teslimi olma ihtimali düşük
+    if ($veri['miktar'] === null || (float)$veri['miktar'] <= 0) {
+        return ['tur' => 'hizmet', 'gerekce' => 'Faturada ne irsaliye numarası ne de m³ miktarı var.'];
+    }
+    return ['tur' => 'beton', 'gerekce' => ''];
+}
+
+/** faturalar.tur kolonu var mı? (eski kurulumlarda olmayabilir — istek başına önbellekli) */
+function fat_tur_kolonu_var(PDO $pdo): bool
+{
+    static $var = null;
+    if ($var !== null) return $var;
+    try { $var = (bool)$pdo->query("SHOW COLUMNS FROM faturalar LIKE 'tur'")->fetch(); }
+    catch (Throwable $e) { $var = false; }
+    return $var;
+}
+
 /** İrsaliye numarasını karşılaştırılabilir tek biçime indirger: ÖNEK+YIL-SAYI */
 function fat_irs_norm(?string $s): string
 {
@@ -391,6 +478,7 @@ function fat_semasi_kur(PDO $pdo): void
     $pdo->exec("CREATE TABLE IF NOT EXISTS faturalar (
         id           INT AUTO_INCREMENT PRIMARY KEY,
         fatura_no    VARCHAR(50)  NOT NULL,
+        tur          VARCHAR(20)  NOT NULL DEFAULT 'beton',
         tarih        DATE         DEFAULT NULL,
         tedarikci_id INT          DEFAULT NULL,
         tutar        DECIMAL(14,2) DEFAULT NULL,
@@ -410,6 +498,11 @@ function fat_semasi_kur(PDO $pdo): void
     // Yalnız sayı (eksik_adet) hangi irsaliyelerin eksik olduğunu söyleyemiyordu.
     $var = $pdo->query("SHOW COLUMNS FROM faturalar LIKE 'eksik_liste'")->fetch();
     if (!$var) $pdo->exec("ALTER TABLE faturalar ADD COLUMN eksik_liste TEXT NULL AFTER eksik_adet");
+
+    // faturalar.tur — fatura türü (beton | pompa | hizmet). Her tedarikçi faturası beton
+    // teslimi değildir; pompa kirası/hizmet faturasının irsaliyesi ve m³'ü yoktur, mutabakata girmez.
+    $var = $pdo->query("SHOW COLUMNS FROM faturalar LIKE 'tur'")->fetch();
+    if (!$var) $pdo->exec("ALTER TABLE faturalar ADD COLUMN tur VARCHAR(20) NOT NULL DEFAULT 'beton' AFTER fatura_no");
 
     // irsaliyeler.fatura_id — faturaya bağ (fatura_no alanı taramada ETTN ile dolduğundan
     // güvenilir bağ için ayrı kolon tutulur).
@@ -526,7 +619,13 @@ function fat_kaydet(PDO $pdo, array $fatura, array $irsIds, ?int $userId = null,
         $fid = (int)$st->fetchColumn();
         $yeniKayit = ($fid === 0);
 
+        // İrsaliyesiz türlerde (pompa kirası / hizmet) "eksik irsaliye" kavramı yoktur —
+        // faturada zaten irsaliye numarası aranmaz, sayaç sıfırlanır.
+        $tur = fat_tur_norm($fatura['tur'] ?? null);
+        if (!fat_tur_irsaliyeli($tur)) { $fatura['eksik_adet'] = 0; $fatura['eksik_liste'] = []; }
+
         $alan = [
+            $tur,
             $fatura['tarih'] ?: null,
             $fatura['tedarikci_id'] ?: null,
             is_numeric($fatura['tutar'] ?? null)  ? (float)$fatura['tutar']  : fat_sayi((string)($fatura['tutar'] ?? '')),
@@ -540,13 +639,13 @@ function fat_kaydet(PDO $pdo, array $fatura, array $irsIds, ?int $userId = null,
             $fatura['notlar'] ?? null,
         ];
         if ($fid) {
-            $u = $pdo->prepare("UPDATE faturalar SET tarih=?, tedarikci_id=?, tutar=?, miktar_m3=?, ettn=?,
+            $u = $pdo->prepare("UPDATE faturalar SET tur=?, tarih=?, tedarikci_id=?, tutar=?, miktar_m3=?, ettn=?,
                                 irsaliye_adet=?, eksik_adet=?, eksik_liste=?, dosya_url=COALESCE(?, dosya_url), notlar=? WHERE id=?");
             $u->execute(array_merge($alan, [$fid]));
         } else {
-            $i = $pdo->prepare("INSERT INTO faturalar (fatura_no, tarih, tedarikci_id, tutar, miktar_m3, ettn,
+            $i = $pdo->prepare("INSERT INTO faturalar (fatura_no, tur, tarih, tedarikci_id, tutar, miktar_m3, ettn,
                                 irsaliye_adet, eksik_adet, eksik_liste, dosya_url, notlar, created_by)
-                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
             $i->execute(array_merge([$no], $alan, [$userId]));
             $fid = (int)$pdo->lastInsertId();
         }
@@ -564,7 +663,8 @@ function fat_kaydet(PDO $pdo, array $fatura, array $irsIds, ?int $userId = null,
         }
         $pdo->commit();
         audit_log($pdo, 'faturalar', $fid, $yeniKayit ? 'INSERT' : 'UPDATE', null,
-                  ['fatura_no' => $no, 'baglanan_irsaliye' => $baglanan, 'eksik' => (int)($fatura['eksik_adet'] ?? 0)], $userId);
+                  ['fatura_no' => $no, 'tur' => $tur, 'baglanan_irsaliye' => $baglanan,
+                   'eksik' => (int)($fatura['eksik_adet'] ?? 0)], $userId);
         return ['fatura_id' => $fid, 'baglanan' => $baglanan];
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();

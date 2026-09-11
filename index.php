@@ -210,11 +210,20 @@ try {
 // Fatura eşleştirme + bekleyen belge durumu (dashboard aksiyon kartları)
 $faturaOzet = null; $bekleyenBelge = 0;
 try {
-    $fs = $pdo->query("SELECT COUNT(*) adet, COALESCE(SUM(eksik_adet),0) eksik FROM faturalar")->fetch();
+    // Eksik irsaliye sayacı yalnız BETON faturalarından — pompa kirası / hizmet
+    // faturasının irsaliyesi yoktur, "faturada var sistemde yok" diye sayılmamalı.
+    // (tur kolonu eski kurulumlarda olmayabilir; yoksa eski davranış sürer.)
+    $turVar = false;
+    try { $turVar = (bool)$pdo->query("SHOW COLUMNS FROM faturalar LIKE 'tur'")->fetch(); } catch (Throwable $__e) {}
+    $fs = $pdo->query("SELECT COUNT(*) adet, COALESCE(SUM(" .
+            ($turVar ? "CASE WHEN tur IN ('pompa','hizmet') THEN 0 ELSE eksik_adet END" : "eksik_adet")
+          . "),0) eksik" . ($turVar ? ", COALESCE(SUM(tur IN ('pompa','hizmet')),0) irsaliyesiz" : ", 0 irsaliyesiz")
+          . " FROM faturalar")->fetch();
     if ($fs && (int)$fs['adet'] > 0) {
         $faturaOzet = [
             'adet'   => (int)$fs['adet'],
             'eksik'  => (int)$fs['eksik'],
+            'irsaliyesiz' => (int)$fs['irsaliyesiz'],
             'bagli'  => (int)$pdo->query("SELECT COUNT(*) FROM irsaliyeler WHERE fatura_id IS NOT NULL")->fetchColumn(),
             'bagsiz' => (int)$pdo->query("SELECT COUNT(*) FROM irsaliyeler WHERE tip='alis' AND durum<>'reddedildi' AND fatura_id IS NULL")->fetchColumn(),
         ];
@@ -434,7 +443,7 @@ html[data-dark="1"] .trend-down { background:rgba(224,84,84,.14); color:#ff8080;
                     <?= (int)$faturaOzet['adet'] ?> fatura işlendi · <?= (int)$faturaOzet['bagli'] ?> irsaliye bağlı
                 </div>
                 <div class="small text-muted">
-                    <?= (int)$faturaOzet['bagsiz'] ?> irsaliye henüz faturasız<?= $faturaOzet['eksik'] > 0 ? ' · <span class="text-danger fw-semibold">'.(int)$faturaOzet['eksik'].' irsaliye faturada var ama sistemde yok — hangileri olduğunu gör</span>' : '' ?>
+                    <?= (int)$faturaOzet['bagsiz'] ?> irsaliye henüz faturasız<?= $faturaOzet['eksik'] > 0 ? ' · <span class="text-danger fw-semibold">'.(int)$faturaOzet['eksik'].' irsaliye faturada var ama sistemde yok — hangileri olduğunu gör</span>' : '' ?><?= !empty($faturaOzet['irsaliyesiz']) ? ' · '.(int)$faturaOzet['irsaliyesiz'].' pompa/hizmet faturası (irsaliyesiz)' : '' ?>
                 </div>
             </div>
             <i class="bi bi-arrow-right ms-auto text-muted"></i>
