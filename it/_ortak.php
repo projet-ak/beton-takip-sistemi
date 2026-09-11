@@ -242,6 +242,10 @@ function it_semasi_kur(PDO $pdo): void
     // eski kurulumlarda kolon yoksa ekle (imzalı evrak ayrımı)
     try { $pdo->query("SELECT tur FROM it_belgeler LIMIT 1"); }
     catch (Throwable $e) { try { $pdo->exec("ALTER TABLE it_belgeler ADD COLUMN tur VARCHAR(20) NOT NULL DEFAULT 'belge'"); } catch (Throwable $e2) {} }
+    // Belge HANGİ harekete ait: cihaz 5-6 kez el değiştirdiğinde "bu tutanak kimin dönemine ait"
+    // sorusunun cevabı. NULL = döneme bağlanmamış (eski kayıtlar, fatura, serbest belge).
+    try { $pdo->query("SELECT hareket_id FROM it_belgeler LIMIT 1"); }
+    catch (Throwable $e) { try { $pdo->exec("ALTER TABLE it_belgeler ADD COLUMN hareket_id INT NULL"); } catch (Throwable $e2) {} }
 }
 
 /** Türkçe duyarsız normalize (arama/karşılaştırma). */
@@ -299,13 +303,17 @@ function it_sayi(?string $s): ?float
     return is_numeric($s) ? (float)$s : null;
 }
 
-/** Hareket kaydı ekler (cihaz yaşam günlüğü). */
-function it_hareket_ekle(PDO $pdo, int $cihazId, string $tur, ?string $kisi, ?string $aciklama, ?string $tarih = null): void
+/**
+ * Hareket kaydı ekler (cihaz yaşam günlüğü) ve **eklenen satırın id'sini döndürür** —
+ * imzalı tutanak o harekete (zimmet dönemine) bağlanabilsin diye.
+ */
+function it_hareket_ekle(PDO $pdo, int $cihazId, string $tur, ?string $kisi, ?string $aciklama, ?string $tarih = null): int
 {
     if (!isset(IT_HAREKET[$tur])) $tur = 'not';
     $kul = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ?? null;
     $pdo->prepare("INSERT INTO it_hareketler (cihaz_id, tur, tarih, kisi, aciklama, kullanici) VALUES (?,?,?,?,?,?)")
         ->execute([$cihazId, $tur, $tarih ?: date('Y-m-d'), $kisi ?: null, $aciklama ?: null, $kul]);
+    return (int)$pdo->lastInsertId();
 }
 
 /**
@@ -423,11 +431,30 @@ function it_belgeler(PDO $pdo, int $cihazId): array
  * Görselse cihazın `foto_url` alanı en yeni fotoğrafı gösterir (liste küçük resmi).
  * @return array{0:bool,1:string}
  */
-function it_belge_yukle(PDO $pdo, int $cihazId, array $f, ?string $kullanici = null, string $tur = 'belge'): array
+function it_belge_yukle(PDO $pdo, int $cihazId, array $f, ?string $kullanici = null, string $tur = 'belge', ?int $hareketId = null): array
 {
     if (empty($f['tmp_name']) || !is_uploaded_file($f['tmp_name'])) return [false, 'Dosya seçilmedi.'];
-    return it_belge_kaydet($pdo, $cihazId, (string)$f['tmp_name'], (string)($f['name'] ?? ''), $kullanici, $tur, true);
+    return it_belge_kaydet($pdo, $cihazId, (string)$f['tmp_name'], (string)($f['name'] ?? ''), $kullanici, $tur, true, $hareketId);
 }
+
+/**
+ * **Belge türleri** — `it_belgeler.tur`. İlk dördü ISLAK İMZALI TUTANAK (yeşil ✓ sayılır),
+ * `fatura` cihazın alış belgesi, `belge` serbest ek. Yeni bir tutanak türü eklenecekse
+ * buraya satır eklemek + (imzalıysa) IT_BELGE_IMZALI'ya anahtarı koymak yeterlidir.
+ */
+const IT_BELGE_TUR = [
+    'zimmet'   => ['İmzalı Zimmet Tutanağı',       'success',   'bi-file-earmark-check'],
+    'iade'     => ['İmzalı İade Tutanağı',         'primary',   'bi-arrow-return-left'],
+    'transfer' => ['İmzalı Sevk (Transfer) Tutanağı', 'info',   'bi-arrow-left-right'],
+    'hurda'    => ['İmzalı Hurda / Zayi / Hibe Tutanağı', 'dark','bi-file-earmark-x'],
+    'fatura'   => ['Alış Faturası / İrsaliyesi',   'warning',   'bi-receipt'],
+    'belge'    => ['Belge / Fotoğraf',             'secondary', 'bi-paperclip'],
+];
+/** Islak imzalı tutanak sayılan türler (evrak rozetleri bunlara bakar). */
+const IT_BELGE_IMZALI = ['zimmet', 'iade', 'transfer', 'hurda'];
+
+/** Belge türü etiketi/rengi/ikonu (bilinmeyen tür → 'belge'). */
+function it_belge_turu(?string $t): array { return IT_BELGE_TUR[(string)$t] ?? IT_BELGE_TUR['belge']; }
 
 /**
  * Belge olarak kabul edilen türler. PDF + görsel yanında **Office dosyaları** da vardır:
@@ -480,7 +507,7 @@ function it_belge_mime(string $yol, string $ad): ?string
  * @return array{0:bool,1:string}
  */
 function it_belge_kaydet(PDO $pdo, int $cihazId, string $yol, string $ad, ?string $kullanici = null,
-                         string $tur = 'belge', bool $tasi = false): array
+                         string $tur = 'belge', bool $tasi = false, ?int $hareketId = null): array
 {
     if ($yol === '' || !is_file($yol)) return [false, 'Dosya bulunamadı.'];
     $ad   = $ad !== '' ? $ad : basename($yol);
@@ -499,9 +526,9 @@ function it_belge_kaydet(PDO $pdo, int $cihazId, string $yol, string $ad, ?strin
     if (!$ok) return [false, h($ad) . ': dosya diske yazılamadı.'];
 
     $url = 'uploads/it_envanter/' . $cihazId . '/' . $yeni;
-    $tur = in_array($tur, ['zimmet', 'transfer', 'hurda'], true) ? $tur : 'belge';
-    $pdo->prepare("INSERT INTO it_belgeler (cihaz_id, dosya_url, ad, mime, boyut, tur, kullanici) VALUES (?,?,?,?,?,?,?)")
-        ->execute([$cihazId, $url, mb_substr($ad, 0, 255), $mime, $boyut, $tur, $kullanici]);
+    $tur = isset(IT_BELGE_TUR[$tur]) ? $tur : 'belge';
+    $pdo->prepare("INSERT INTO it_belgeler (cihaz_id, dosya_url, ad, mime, boyut, tur, hareket_id, kullanici) VALUES (?,?,?,?,?,?,?,?)")
+        ->execute([$cihazId, $url, mb_substr($ad, 0, 255), $mime, $boyut, $tur, $hareketId ?: null, $kullanici]);
     if (str_starts_with($mime, 'image/'))
         $pdo->prepare("UPDATE it_cihazlar SET foto_url=? WHERE id=?")->execute([$url, $cihazId]);
     return [true, h($ad) . ' kaydedildi.'];
@@ -553,14 +580,16 @@ function it_belge_sayilari(PDO $pdo, array $cihazIdler): array
     if (!$cihazIdler) return [];
     try {
         $ph = implode(',', array_fill(0, count($cihazIdler), '?'));
-        $st = $pdo->prepare("SELECT cihaz_id, COUNT(*) toplam, SUM(tur IN ('zimmet','transfer','hurda')) imzali,
-                                    SUM(tur='zimmet') zimmet, SUM(tur='transfer') transfer, SUM(tur='hurda') hurda
+        $imz = "'" . implode("','", IT_BELGE_IMZALI) . "'";
+        $st = $pdo->prepare("SELECT cihaz_id, COUNT(*) toplam, SUM(tur IN ($imz)) imzali,
+                                    SUM(tur='zimmet') zimmet, SUM(tur='iade') iade,
+                                    SUM(tur='transfer') transfer, SUM(tur='hurda') hurda, SUM(tur='fatura') fatura
                              FROM it_belgeler WHERE cihaz_id IN ($ph) GROUP BY cihaz_id");
         $st->execute($cihazIdler);
         $r = [];
         foreach ($st->fetchAll() as $x) $r[(int)$x['cihaz_id']] = [
-            'toplam'=>(int)$x['toplam'], 'imzali'=>(int)$x['imzali'],
-            'zimmet'=>(int)$x['zimmet'], 'transfer'=>(int)$x['transfer'], 'hurda'=>(int)$x['hurda']];
+            'toplam'=>(int)$x['toplam'], 'imzali'=>(int)$x['imzali'], 'zimmet'=>(int)$x['zimmet'],
+            'iade'=>(int)$x['iade'], 'transfer'=>(int)$x['transfer'], 'hurda'=>(int)$x['hurda'], 'fatura'=>(int)$x['fatura']];
         return $r;
     } catch (Throwable $e) { return []; }
 }
@@ -1034,6 +1063,114 @@ function it_cihaz_bag_esitle(PDO $pdo, array &$y): void
 }
 
 /** Personelin üzerindeki aktif (hurda hariç, zimmetli) cihazlar. */
+/** Cihazın belirli türdeki SON hareketi (tutanak o döneme bağlansın diye). */
+function it_son_hareket(PDO $pdo, int $cihazId, string $tur): ?array
+{
+    try {
+        $st = $pdo->prepare("SELECT * FROM it_hareketler WHERE cihaz_id=? AND tur=? ORDER BY id DESC LIMIT 1");
+        $st->execute([$cihazId, $tur]);
+        return $st->fetch() ?: null;
+    } catch (Throwable $e) { return null; }
+}
+
+/**
+ * **ZİMMET DÖNEMLERİ — cihazın el değiştirme zinciri.**
+ *
+ * Bir cihaz 5-6 kez el değiştirebilir ve HER DÖNEMİN kendi zimmet + iade tutanağı olmalıdır.
+ * Yaşam günlüğü düz bir hareket listesi olduğundan "kim, ne zamandan ne zamana kadar kullandı,
+ * o dönemin evrakı tam mı" sorusu okunmuyordu; bu fonksiyon hareketleri DÖNEMLERE katlar.
+ *
+ * Dönem `zimmet` ile açılır; `iade` · `transfer` · `hurda` · `kayip` · `hibe` ile ya da
+ * (iade satırı yazılmamışsa) bir sonraki `zimmet` ile kapanır. Belgeler `hareket_id` üzerinden
+ * dönemin açılış/kapanış hareketine bağlanır — bağsız (eski) tutanaklar `bagsiz` ile döner.
+ *
+ * @return array{donemler:array,bagsiz:array}
+ */
+function it_zimmet_donemleri(PDO $pdo, int $cihazId, ?string $guncelZimmetli = null): array
+{
+    try {
+        $st = $pdo->prepare("SELECT * FROM it_hareketler WHERE cihaz_id=? ORDER BY tarih, id");
+        $st->execute([$cihazId]);
+        $hareketler = $st->fetchAll();
+    } catch (Throwable $e) { return ['donemler' => [], 'bagsiz' => []]; }
+
+    $harBelge = []; $bagsiz = [];
+    foreach (it_belgeler($pdo, $cihazId) as $b) {
+        if (!in_array($b['tur'] ?? '', IT_BELGE_IMZALI, true)) continue;
+        if (!empty($b['hareket_id'])) $harBelge[(int)$b['hareket_id']][] = $b;
+        else $bagsiz[] = $b;                      // eski kayıt: hangi döneme ait bilinmiyor
+    }
+
+    $kapatan = ['iade', 'transfer', 'hurda', 'kayip', 'hibe'];
+    $don = []; $acik = null;
+    foreach ($hareketler as $h) {
+        $t = (string)$h['tur'];
+        if ($t === 'zimmet') {
+            // Devir: iade satırı yazılmamışsa önceki dönemi yeni zimmet kapatır
+            if ($acik !== null) { $don[$acik]['bit'] = $h['tarih']; $don[$acik]['kapanis'] = $h; }
+            $don[] = ['kisi' => (string)($h['kisi'] ?? ''), 'bas' => (string)$h['tarih'],
+                      'bit' => null, 'zimmet' => $h, 'kapanis' => null];
+            $acik = count($don) - 1;
+        } elseif ($acik !== null && in_array($t, $kapatan, true)) {
+            $don[$acik]['bit'] = (string)$h['tarih'];
+            $don[$acik]['kapanis'] = $h;
+            $acik = null;
+        }
+    }
+
+    $bugun = new DateTimeImmutable('today');
+    foreach ($don as $i => &$d) {
+        $d['sira']  = $i + 1;
+        $d['acik']  = $d['bit'] === null;
+        // ⚠ Açık dönemin kişisi cihaz kartındaki güncel zimmetliyle tutmuyorsa (geriye dönük tarihli
+        // hareket girilmişse olur) "şu an" demek yanıltır — satır uyarıyla işaretlenir.
+        $d['uyusmaz'] = $d['acik'] && $guncelZimmetli !== null
+                        && it_norm((string)$guncelZimmetli) !== it_norm((string)$d['kisi']);
+        $d['gun']   = null;
+        try {
+            $bas = new DateTimeImmutable($d['bas']);
+            $bit = $d['bit'] ? new DateTimeImmutable($d['bit']) : $bugun;
+            $d['gun'] = max(0, (int)$bas->diff($bit)->format('%r%a'));
+        } catch (Throwable $e) {}
+        $zid = (int)($d['zimmet']['id'] ?? 0);
+        $kid = (int)($d['kapanis']['id'] ?? 0);
+        $d['zimmet_belge'] = array_values(array_filter($harBelge[$zid] ?? [], fn($b) => $b['tur'] === 'zimmet'));
+        // Kapanış belgesi dönemin kapanış TÜRÜNE göre: iade → iade tutanağı, sevk → transfer, düşüş → hurda
+        $d['kapanis_belge'] = $kid ? array_values($harBelge[$kid] ?? []) : [];
+        $d['kapanis_tur']   = (string)($d['kapanis']['tur'] ?? '');
+    }
+    unset($d);
+    return ['donemler' => $don, 'bagsiz' => $bagsiz];
+}
+
+/**
+ * Personel ARAMA (zimmet ekranındaki yazarak seçme kutusu).
+ *
+ * ⚠ Süzme SQL LIKE ile DEĞİL PHP'de `it_norm` ile yapılır — LIKE'ta Türkçe 'İ' ile 'i' eşleşmediğinden
+ * "ismail" yazınca "İSMAİL" sessizce düşüyordu (depo `dp_kalem_ara` ile aynı gerekçe). Kelime sırası
+ * serbest: "coskun erkan" → "Erkan Coşkun". Sıralama: ad başı → ad içi → sicil/unvan/birim.
+ */
+function it_personel_ara(PDO $pdo, string $q, int $limit = 25, bool $ayrilanlarDahil = false): array
+{
+    $kelime = array_values(array_filter(explode(' ', it_norm($q))));
+    $sonuc = [];
+    foreach (it_personel_liste($pdo, !$ayrilanlarDahil) as $p) {
+        $ad   = it_norm(it_personel_ad($p));
+        $hepsi = $ad . ' ' . it_norm((string)($p['sicil_no'] ?? '')) . ' ' . it_norm((string)($p['unvan'] ?? ''))
+               . ' ' . it_norm((string)($p['birim'] ?? ''));
+        $puan = 0;
+        if ($kelime) {
+            foreach ($kelime as $k) if (!str_contains($hepsi, $k)) { $puan = -1; break; }
+            if ($puan < 0) continue;
+            $puan = str_starts_with($ad, $kelime[0]) ? 0 : (str_contains($ad, $kelime[0]) ? 1 : 2);
+        }
+        $p['puan'] = $puan;
+        $sonuc[] = $p;
+    }
+    usort($sonuc, fn($a, $b) => [$a['puan'], it_norm(it_personel_ad($a))] <=> [$b['puan'], it_norm(it_personel_ad($b))]);
+    return array_slice($sonuc, 0, $limit);
+}
+
 function it_personel_cihazlari(PDO $pdo, int $personelId): array
 {
     $st = $pdo->prepare("SELECT * FROM it_cihazlar WHERE personel_id=? AND " . it_envanterde() . " ORDER BY envanter_no");

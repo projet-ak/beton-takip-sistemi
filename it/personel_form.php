@@ -12,6 +12,9 @@ require_once __DIR__ . '/../includes/db_it.php';
 require_once __DIR__ . '/_ortak.php';
 it_semasi_kur($pdoIt);
 
+// ?popup=1 → ayrı pencerede açılan hızlı kayıt (cihaz kartındaki "Yeni personel"):
+// kaydedince listeye dönmek yerine açan sayfaya kişiyi bildirip kapanır.
+$popup = !empty($_GET['popup']) || !empty($_POST['popup']);
 $id = isset($_GET['id']) && ctype_digit($_GET['id']) ? (int)$_GET['id'] : (int)($_POST['id'] ?? 0);
 $p  = it_personel_bul($pdoIt, $id);
 if ($id && !$p) { flash('error', 'Personel bulunamadı.'); redirect('personel.php'); }
@@ -62,6 +65,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id = (int)$pdoIt->lastInsertId();
             flash('success', 'Personel kaydedildi.');
         }
+        if ($popup) {
+            // Açan pencereye yeni kişiyi bildir (postMessage) ve kapan
+            $__p = it_personel_bul($pdoIt, $id);
+            $__v = ['id' => $id, 'ad' => it_personel_ad($__p), 'sicil' => (string)($__p['sicil_no'] ?? ''),
+                    'unvan' => (string)($__p['unvan'] ?? ''), 'birim' => (string)($__p['birim'] ?? ''),
+                    'lok_id' => (int)($__p['lokasyon_id'] ?? 0),
+                    'lok' => $__p['lokasyon_id'] ? it_lokasyon_etiket($pdoIt, (int)$__p['lokasyon_id']) : '', 'cihaz' => 0];
+            get_flash('success');   // ana sayfada tekrar görünmesin
+            echo '<!doctype html><meta charset="utf-8"><title>Kaydedildi</title>'
+               . '<body style="font:15px system-ui;padding:24px">Personel kaydedildi, pencere kapanıyor…'
+               . '<script>try{window.opener&&window.opener.postMessage({tip:"it_personel",kisi:'
+               . json_encode($__v, JSON_UNESCAPED_UNICODE) . '},"*");}catch(e){}window.close();</script>';
+            exit;
+        }
         redirect('personel_detay.php?id=' . $id);
     }
     $v = array_merge($v, $y);
@@ -74,6 +91,12 @@ try { $birimler = $pdoIt->query("SELECT DISTINCT birim FROM it_personel WHERE bi
       $unvanlar = $pdoIt->query("SELECT DISTINCT unvan FROM it_personel WHERE unvan IS NOT NULL AND unvan<>'' ORDER BY unvan")->fetchAll(PDO::FETCH_COLUMN); } catch (Throwable $e) {}
 // Merkez binadaki direktörlükler de birim önerisi olsun
 foreach (it_lokasyonlar($pdoIt) as $l) if ($l['tur'] === 'birim' && !in_array($l['ad'], $birimler, true)) $birimler[] = $l['ad'];
+// Arama kutusuna yazılmış metin ad/soyada ön dolgu olarak gelsin ("erkan coş" → Ad: Erkan, Soyad: Coş)
+if ($popup && !$duzenleme && $_SERVER['REQUEST_METHOD'] !== 'POST' && ($__on = trim((string)($_GET['ad'] ?? ''))) !== '') {
+    $__par = preg_split('/\s+/u', $__on);
+    $v['soyad'] = count($__par) > 1 ? array_pop($__par) : '';
+    $v['ad']    = implode(' ', $__par);
+}
 $tv = fn($k) => h($v[$k] ?? '');
 ?>
 <div class="d-flex align-items-center gap-2 mb-3">
@@ -83,6 +106,7 @@ $tv = fn($k) => h($v[$k] ?? '');
 <?php if ($error): ?><div class="alert alert-danger"><?= h($error) ?></div><?php endif; ?>
 
 <form method="post" class="card border-0 shadow-sm">
+<?php if ($popup): ?><input type="hidden" name="popup" value="1"><?php endif; ?>
   <input type="hidden" name="id" value="<?= (int)$id ?>">
   <div class="card-body"><div class="row g-3">
     <div class="col-md-2"><label class="form-label">Sicil No</label><input name="sicil_no" class="form-control font-monospace" value="<?= $tv('sicil_no') ?>" maxlength="30"></div>

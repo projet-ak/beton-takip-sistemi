@@ -617,6 +617,52 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   (yazdırmada gizli): form önceden yazdırılabilir ama gerekçe/tarih ancak cihaz kartındaki işlem
   uygulanınca dolar. Giriş noktaları: cihaz kartı başlığı + Belgeler kutusu, cihaz listesinde satır
   düğmesi ve Evrak rozeti (sidebar'a satır eklenmedi). Yetki: `sayfa_islemi()` → GET **oku**, POST **yaz**.
+  **CİHAZ İŞLEM PANELİ + EL DEĞİŞTİRME ZİNCİRİ (2026-09-11, kullanıcı isteği)** — iş gerçeği:
+  **bir cihaz 5-6 kez el değiştirir ve HER KULLANICININ kendi zimmet + İADE formu olur; yeni gelen
+  cihazın da faturası vardır.** Cihaz kartı bunu taşıyacak hâle getirildi.
+  • **ARANABİLİR PERSONEL SEÇİCİ** (`cihaz_detay.php`, zimmet kutusu): uzun açılır menü yerine yazarak
+  süzme. Sayfanın kendi JSON ucu **`?personel_ara=`** → `it_personel_ara()`; süzme **SQL LIKE ile DEĞİL**
+  PHP'de `it_norm` ile (Türkçe harf duyarsız: "coskun"→"Coşkun", "ismail"→"İsmail"; LIKE'ta 'İ' i/ı ile
+  eşleşmediğinden kayıtlar sessizce düşüyordu — depo `dp_kalem_ara` ile aynı gerekçe), **kelime sırası
+  serbest** ("ince berkant"→"Berkant İnce"), sıralama ad başı→ad içi→sicil/unvan/birim. Satırda sicil ·
+  unvan · birim · lokasyon + **kişinin kaç cihazı olduğu** (tek GROUP BY sorgusuyla). Ok tuşları/Enter/Esc;
+  seçimde **departman ve lokasyon boşsa otomatik dolar**. ⚠ `personel_id` artık GİZLİ input — `required`
+  verilirse tarayıcı "odaklanamıyorum" deyip formu kilitler; doğrulama submit'te yapılır. JS kapalıysa
+  `<noscript>` klasik select devreye girer.
+  • **YENİ PERSONEL AYRI PENCEREDE**: `personel_form.php?popup=1&ad=<yazılan metin>` (ad/soyad ön dolu);
+  kaydedince sayfa listeye gitmez, **`postMessage` ile açan pencereye kişiyi bildirip kapanır** ve kişi
+  seçili hâle gelir — akış kesilmez.
+  • İşlem menüsü **optgroup**'landı (Zimmet · Servis/arıza · Sevk · Envanterden düş · Diğer) + ikonlar.
+  • **"Kaydettikten sonra tutanağı aç"** anahtarı (varsayılan AÇIK, yalnız zimmet/iade'de görünür):
+  zimmet → `zimmet_tutanak.php?hareket=…`, iade → `iade_tutanak.php?hareket=…` açılır. Yazdır → imzalat →
+  tara → geri yükle döngüsü tek akışta kapanır.
+  • **`it/iade_tutanak.php` — BİLGİ İŞLEM DEMİRBAŞ İADE TUTANAĞI** (A4, ERN Taahhüt logolu): zimmetin
+  KAPANIŞ belgesi. İade eden/sicil/birim, zimmet başlangıcı, **kullanım süresi (gün)**, cihaz künyesi
+  (`it_kunye`), sahada elle işaretlenen **TESLİM ALMA KONTROLÜ** kutucukları (çalışır/arızalı/aksesuar
+  eksik/hasar/veri silindi) + eksik-hasar notu, çift imza. `?id=` cihazın son iadesi · **`?hareket=`
+  belirli bir iade** (geçmiş dönem yeniden yazdırılır). İmzalı kopya `tur='iade'` olarak o iade hareketine
+  bağlanır. `zimmet_tutanak.php` de **`?hareket=`** kabul eder (geçmiş dönemin zimmet formu; ekranda
+  "geçmiş zimmet dönemi" bandı, belge o döneme bağlanır).
+  • **`it_zimmet_donemleri()` — EL DEĞİŞTİRME ZİNCİRİ**: düz hareket listesi "kim, ne zamandan ne zamana,
+  evrakı tam mı" sorusuna cevap vermiyordu. Hareketler DÖNEMLERE katlanır: `zimmet` açar; `iade` ·
+  `transfer` · `hurda` · `kayip` · `hibe` ya da (iade satırı yazılmamışsa) **bir sonraki `zimmet` (devir)**
+  kapatır. Cihaz kartında tablo: # · kullanan · dönem · **süre (gün)** · zimmet formu · iade formu —
+  belge varsa yeşil ✓ (dosyaya gider), yoksa sarı yazıcı ikonu (o dönemin formunu açar). Başlıkta
+  "N dönemde evrak eksik" rozeti. ⚠ Açık dönemin kişisi cihaz kartındaki güncel zimmetliyle tutmuyorsa
+  (geriye dönük tarihli hareket girilmişse) "şu an" yerine **"açık kalmış"** uyarısı çıkar.
+  • **Belge ↔ dönem bağı**: yeni kolon **`it_belgeler.hareket_id`** (runtime ALTER). `it_hareket_ekle()`
+  artık **eklenen satırın id'sini döndürür** (void → int), `it_belge_yukle/it_belge_kaydet` son parametre
+  olarak `$hareketId` alır. Bağsız (bu özellikten önce yüklenmiş) tutanaklar zincirin altında
+  "N tutanak bir döneme bağlanmamış" notuyla raporlanır.
+  • **Belge türleri sabite taşındı**: `IT_BELGE_TUR` (zimmet · **iade** · transfer · hurda · **fatura** ·
+  belge → ad/renk/ikon) + `IT_BELGE_IMZALI`. `it_belge_sayilari()` iade/fatura sayaçlarını da döndürür.
+  Yeni tutanak türü eklemek = bu iki sabite satır eklemek.
+  • **ALIŞ FATURASI kutusu** (Belgeler kartında): fatura no · tedarikçi · alış tarihi özeti + yüklü fatura
+  listesi + "Faturayı yükle" (`tur='fatura'`); bilgi girilmemişse cihaz formuna bağlantı. Serbest belge
+  yüklemede artık **tür seçimi** var (fotoğraf/garanti/teklif…).
+  Test: itsm'de 5 dönemlik el değiştirme kurgusu (zimmet→iade→zimmet→iade→devir) zinciri doğru kurdu,
+  imzalı belge doğru döneme bağlandı (#1 yeşil, diğerleri sarı), Playwright ile yazarak seçme + ok tuşları +
+  otomatik departman/lokasyon + boş gönderim engeli + popup dönüşü doğrulandı (JS hatası yok).
   **DASHBOARD ELDEN GEÇİRME (2026-09-10, kullanıcı isteği)** — üç somut şikâyet + genel geliştirme:
   • ⚠⚠ **KPI kartı ile açtığı liste TUTMUYORDU**: "Serviste + Arızalı 1" kartı `?durum=arizali`ye
   gidiyordu, cihaz *serviste* olduğu için liste BOŞ açılıyor ve "serviste arızalı yok" görünüyordu.
@@ -1093,7 +1139,7 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 - Görseller **dosya olarak** tutulur; DB'ye yalnızca göreli URL yazılır (DB boyutu şişmez).
 - **CRM**: `uploads/crm_ariza/{ariza_id}/` (arıza başına çoklu belge/fotoğraf; kayıtlar `crm_ariza_belgeler`).
 - **Akaryakıt**: `uploads/akaryakit_cikis/{id}/` (imzalı çıkış fişi) · `uploads/akaryakit_giris/{id}/` (mazot giriş irsaliyesi/faturası).
-- **IT Envanter**: `uploads/it_envanter/{cihaz_id}/` (cihaz fotoğrafı, fatura, garanti belgesi, imzalı zimmet/transfer/hurda tutanağı; kayıtlar `it_belgeler`, `tur` = 'zimmet' | 'transfer' | 'hurda' → imzalı tutanak — bir dosya birden çok cihaza bağlı olabilir, diskten yalnız SON bağ koptuğunda silinir).
+- **IT Envanter**: `uploads/it_envanter/{cihaz_id}/` (cihaz fotoğrafı, alış faturası, garanti belgesi, imzalı zimmet/iade/transfer/hurda tutanağı; kayıtlar `it_belgeler`, `tur` = IT_BELGE_TUR anahtarı ('zimmet' | 'iade' | 'transfer' | 'hurda' → imzalı tutanak, 'fatura', 'belge'), `hareket_id` = belgenin ait olduğu zimmet/iade dönemi — bir dosya birden çok cihaza bağlı olabilir, diskten yalnız SON bağ koptuğunda silinir).
 - `uploads/.htaccess` PHP çalıştırmayı engeller (alt klasörlere de uygulanır).
 
 ---

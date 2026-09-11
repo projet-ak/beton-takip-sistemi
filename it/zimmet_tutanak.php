@@ -16,6 +16,16 @@ it_semasi_kur($pdoIt);
 
 $id   = isset($_GET['id']) && ctype_digit($_GET['id']) ? (int)$_GET['id'] : 0;
 $kisi = trim((string)($_GET['kisi'] ?? ''));
+// ?hareket= → GEÇMİŞ bir zimmet dönemi için tutanak (cihaz 5-6 kez el değiştirdiğinde her dönemin
+// kendi formu yazdırılabilsin). Kişi/tarih o hareketten gelir, cihazın GÜNCEL zimmetlisinden değil.
+$hid = isset($_GET['hareket']) && ctype_digit((string)$_GET['hareket']) ? (int)$_GET['hareket'] : 0;
+$hrk = null;
+if ($hid) {
+    $hs = $pdoIt->prepare("SELECT * FROM it_hareketler WHERE id=? AND tur='zimmet'"); $hs->execute([$hid]);
+    $hrk = $hs->fetch() ?: null;
+    if (!$hrk) die('Zimmet hareketi bulunamadı.');
+    $id = (int)$hrk['cihaz_id'];
+}
 $pid  = (int)($_GET['personel_id'] ?? 0);
 $per  = null;
 if ($pid) {
@@ -30,10 +40,11 @@ if ($pid) {
     $st = $pdoIt->prepare("SELECT * FROM it_cihazlar WHERE id=?"); $st->execute([$id]);
     $c = $st->fetch();
     if (!$c) die('Cihaz bulunamadı.');
-    $kisi = (string)$c['zimmetli'];
+    $kisi = $hrk ? (string)$hrk['kisi'] : (string)$c['zimmetli'];
     $per  = it_personel_bul($pdoIt, (int)($c['personel_id'] ?? 0));
+    if ($hrk && $per && it_norm(it_personel_ad($per)) !== it_norm($kisi)) $per = null;  // geçmiş dönem: kişi kartı başkasınınki olabilir
     $liste = [$c];
-    $no = 'ZMT-' . $c['envanter_no'];
+    $no = 'ZMT-' . $c['envanter_no'] . ($hrk ? '-D' . (int)$hrk['id'] : '');
     $geri = 'cihaz_detay.php?id=' . $id;
 } elseif ($kisi !== '') {
     $st = $pdoIt->prepare("SELECT * FROM it_cihazlar WHERE zimmetli=? AND " . it_envanterde() . " ORDER BY envanter_no"); $st->execute([$kisi]);
@@ -63,7 +74,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'imzal
         if (($d['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) continue;
         // ⚠ Yüklenen dosya diske BİR KEZ taşınır (ilk cihazın klasörüne); tutanaktaki diğer cihazlara
         // aynı dosya URL'siyle bağ satırı eklenir. it_belge_sil() dosyayı yalnız SON bağ koptuğunda siler.
-        [$b, $m] = it_belge_yukle($pdoIt, $ilkId, $d, $kul, 'zimmet');
+        // Belge, cihazın İLGİLİ ZİMMET DÖNEMİNE bağlanır (hareket_id) — el değiştirme zincirinde
+        // hangi dönemin tutanağı olduğu böyle bilinir.
+        $__hz = $hrk ?: it_son_hareket($pdoIt, $ilkId, 'zimmet');
+        [$b, $m] = it_belge_yukle($pdoIt, $ilkId, $d, $kul, 'zimmet', (int)($__hz['id'] ?? 0) ?: null);
         if (!$b) { $hatalar[] = $m; continue; }
         $ok++;
         $son = $pdoIt->prepare("SELECT * FROM it_belgeler WHERE cihaz_id=? ORDER BY id DESC LIMIT 1");
@@ -72,8 +86,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'imzal
         foreach ($liste as $__c) {
             $cid = (int)$__c['id'];
             if ($cid !== $ilkId && $bg) {
-                $pdoIt->prepare("INSERT INTO it_belgeler (cihaz_id, dosya_url, ad, mime, boyut, tur, kullanici) VALUES (?,?,?,?,?, 'zimmet', ?)")
-                      ->execute([$cid, $bg['dosya_url'], $bg['ad'], $bg['mime'], $bg['boyut'], $kul]);
+                $__hzc = it_son_hareket($pdoIt, $cid, 'zimmet');
+                $pdoIt->prepare("INSERT INTO it_belgeler (cihaz_id, dosya_url, ad, mime, boyut, tur, hareket_id, kullanici) VALUES (?,?,?,?,?, 'zimmet', ?, ?)")
+                      ->execute([$cid, $bg['dosya_url'], $bg['ad'], $bg['mime'], $bg['boyut'], (int)($__hzc['id'] ?? 0) ?: null, $kul]);
             }
             it_hareket_ekle($pdoIt, $cid, 'not', $__c['zimmetli'] ?: null, 'İmzalı zimmet tutanağı yüklendi (' . $no . ').');
         }
@@ -139,6 +154,15 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
   <a class="btn-back" href="<?= h($geri) ?>">← Geri</a>
 </div>
 
+<?php if ($hrk): ?>
+<div class="evrak" style="border-left-color:#0d6efd">
+  <div class="basi" style="color:#0d6efd">Geçmiş zimmet dönemi</div>
+  <div style="color:#555">Bu tutanak <strong><?= h($kisi) ?></strong> adlı personelin
+    <strong><?= format_date($hrk['tarih']) ?></strong> tarihli zimmet dönemi içindir
+    (cihazın güncel zimmetlisi farklı olabilir). Yüklenecek imzalı kopya bu döneme işlenir.</div>
+</div>
+<?php endif; ?>
+
 <?php if (yetki_var('giris')): ?>
 <div class="evrak">
   <div class="basi">İmzalı Evrak
@@ -175,7 +199,7 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
     <tr><td class="k">Birim / Departman</td><td><?= h($departman ?: '—') ?></td>
         <td class="k">Telefon</td><td><?= h($per['telefon'] ?? '') ?: '—' ?></td></tr>
     <tr><td class="k">Lokasyon / Proje</td><td><?= h($lokasyon ?: '—') ?></td>
-        <td class="k">Zimmet Tarihi</td><td><?= $ilk['zimmet_tarihi'] ? format_date($ilk['zimmet_tarihi']) : date('d.m.Y') ?></td></tr>
+        <td class="k">Zimmet Tarihi</td><td><?= $hrk ? format_date($hrk['tarih']) : ($ilk['zimmet_tarihi'] ? format_date($ilk['zimmet_tarihi']) : date('d.m.Y')) ?></td></tr>
     <?php if ($per && $per['ise_giris']): ?><tr><td class="k">İşe Giriş</td><td><?= format_date($per['ise_giris']) ?></td><td class="k">Cihaz adedi</td><td><?= count($liste) ?></td></tr><?php endif; ?>
   </table>
 
