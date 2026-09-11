@@ -255,6 +255,19 @@ function it_norm(string $s): string
     return str_replace(['İ','I','ı','Ş','Ğ','Ü','Ö','Ç'], ['I','I','I','S','G','U','O','C'], $s);
 }
 
+/**
+ * Türkçe doğru BÜYÜK HARF: "Fırat Acı" → "FIRAT ACI", "İsmail Şahin" → "İSMAİL ŞAHİN".
+ *
+ * ⚠ `mb_strtoupper` Türkçeyi bilmez: 'i' → 'I' (İ olmalı), 'ı' → 'I' (doğru ama 'i' ile karışır).
+ * Bu yüzden önce i→İ, ı→I elle değiştirilir, sonra geri kalanı mb_strtoupper yapar.
+ */
+function it_buyuk(?string $s): string
+{
+    $s = trim((string)$s);
+    if ($s === '') return '';
+    return mb_strtoupper(str_replace(['i', 'ı'], ['İ', 'I'], $s), 'UTF-8');
+}
+
 /** Yeni envanter no: IT-00001 (en büyük sıra + 1). */
 function it_envanter_no(PDO $pdo): string
 {
@@ -320,7 +333,7 @@ function it_hareket_ekle(PDO $pdo, int $cihazId, string $tur, ?string $kisi, ?st
  * Liste filtresi: [$whereSql, $params, $etkinFiltreler]. Serbest arama PHP tarafında değil
  * SQL LIKE ile — ad/marka/model/seri/envanter no/zimmetli/lokasyon alanlarında.
  */
-function it_filtre(array $g): array
+function it_filtre(array $g, ?PDO $pdo = null): array
 {
     $w = []; $p = []; $etkin = [];
     // Grup = kategori üst başlığı (BT / Ağ / İletişim / Güvenlik …) — kategori seçiliyse o önceliklidir
@@ -356,8 +369,20 @@ function it_filtre(array $g): array
         // Kolonların hepsi it_semasi_kur() tarafından garanti edilir (yoksa runtime ALTER ile eklenir)
         $alan = ['envanter_no','ad','marka','model','seri_no','sasi_no','zimmetli','departman','lokasyon','notlar',
                  'ip_adresi','mac_adresi','varlik_kodu','cihaz_kodu','dahili_no','telefon_no','imei'];
-        $w[] = '(' . implode(' LIKE ? OR ', $alan) . ' LIKE ?)';
+        $sart = '(' . implode(' LIKE ? OR ', $alan) . ' LIKE ?)';
         foreach ($alan as $_) $p[] = $q;
+        // KİŞİ ADIYLA ARAMA: `zimmetli` metni LIKE ile aranıyor ama (1) Türkçe 'İ' ile 'i' LIKE'ta
+        // eşleşmiyor ("ismail" → "İSMAİL" bulunamıyordu), (2) kelime sırası serbest değil.
+        // Bu yüzden arama metni personel kartlarıyla da (it_personel_ara, PHP tarafında it_norm ile)
+        // eşleştirilip bulunan kişilerin cihazları sonuca EKLENİR.
+        if ($pdo instanceof PDO) {
+            try {
+                $kisiler = it_personel_ara($pdo, trim($g['q']), 50, true);
+                $ids = array_values(array_filter(array_map(fn($x) => (int)$x['id'], $kisiler)));
+                if ($ids) $sart = '(' . $sart . ' OR personel_id IN (' . implode(',', $ids) . '))';
+            } catch (Throwable $e) { /* personel tablosu yoksa yalnız LIKE ile aranır */ }
+        }
+        $w[] = $sart;
         $etkin['q'] = trim($g['q']);
     }
     return [$w ? ' WHERE ' . implode(' AND ', $w) : '', $p, $etkin];
@@ -1169,6 +1194,56 @@ function it_personel_ara(PDO $pdo, string $q, int $limit = 25, bool $ayrilanlarD
     }
     usort($sonuc, fn($a, $b) => [$a['puan'], it_norm(it_personel_ad($a))] <=> [$b['puan'], it_norm(it_personel_ad($b))]);
     return array_slice($sonuc, 0, $limit);
+}
+
+/**
+ * Personel LİSTESİ süzme (personel.php arama kutusu).
+ *
+ * ⚠ Neden SQL LIKE değil: (1) `p.ad LIKE '%Fırat Acı%' OR p.soyad LIKE …` ad ve soyadı AYRI AYRI
+ * karşılaştırdığı için "Fırat Acı" yazınca HİÇBİR kayıt bulunamıyordu — arama metni tek bir alanın
+ * içinde geçmek zorundaydı; (2) LIKE'ta Türkçe 'İ' ile 'i' eşleşmez, "ismail" yazan "İSMAİL"i
+ * bulamıyordu. Süzme `it_norm` ile PHP'de yapılır, **kelime sırası serbest** ("acı fırat" da bulur)
+ * ve her kelime ad+soyad+sicil+unvan+birim+telefon+e-posta bütününde aranır.
+ *
+ * @param array $liste it_personel satırları
+ */
+function it_personel_suz(array $liste, string $q): array
+{
+    $kelime = array_values(array_filter(explode(' ', it_norm($q))));
+    if (!$kelime) return $liste;
+    return array_values(array_filter($liste, function ($p) use ($kelime) {
+        $hepsi = it_norm(it_personel_ad($p)) . ' '
+               . it_norm((string)($p['sicil_no'] ?? '')) . ' ' . it_norm((string)($p['unvan'] ?? '')) . ' '
+               . it_norm((string)($p['birim'] ?? ''))    . ' ' . it_norm((string)($p['telefon'] ?? '')) . ' '
+               . it_norm((string)($p['eposta'] ?? ''))   . ' ' . it_norm((string)($p['lok_ad'] ?? ''));
+        foreach ($kelime as $k) if (!str_contains($hepsi, $k)) return false;
+        return true;
+    }));
+}
+
+/**
+ * Personel kayıtlarını BÜYÜK HARFE çevirir (ad · soyad · unvan · birim) ve bağlı cihazlardaki
+ * `zimmetli` / `departman` METİN alanlarını da eşitler (tutanak ve listeler oradan okur).
+ *
+ * @return array{kisi:int, cihaz:int} değişen kayıt sayıları
+ */
+function it_personel_buyuk_harf(PDO $pdo): array
+{
+    $kisi = 0; $cihaz = 0;
+    $g = $pdo->prepare("UPDATE it_personel SET ad=?, soyad=?, unvan=?, birim=? WHERE id=?");
+    foreach ($pdo->query("SELECT id, ad, soyad, unvan, birim FROM it_personel")->fetchAll() as $r) {
+        $yeni = [it_buyuk($r['ad']), it_buyuk($r['soyad']), it_buyuk($r['unvan']), it_buyuk($r['birim'])];
+        $eski = [(string)$r['ad'], (string)$r['soyad'], (string)$r['unvan'], (string)$r['birim']];
+        // NULL alan NULL kalsın (boş string yazıp "dolu" göstermeyelim)
+        foreach ($yeni as $i => $v) if ($v === '') $yeni[$i] = $eski[$i] === '' ? $eski[$i] : $v;
+        if ($yeni === $eski) continue;
+        $g->execute([$yeni[0], $yeni[1], $yeni[2] ?: null, $yeni[3] ?: null, (int)$r['id']]);
+        $kisi++;
+        $c = $pdo->prepare("UPDATE it_cihazlar SET zimmetli=?, departman=? WHERE personel_id=?");
+        $c->execute([trim($yeni[0] . ' ' . $yeni[1]), $yeni[3] ?: null, (int)$r['id']]);
+        $cihaz += $c->rowCount();
+    }
+    return ['kisi' => $kisi, 'cihaz' => $cihaz];
 }
 
 function it_personel_cihazlari(PDO $pdo, int $personelId): array

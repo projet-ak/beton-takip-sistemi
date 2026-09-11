@@ -350,7 +350,7 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
                 else { $r['lokasyon_yok'][$v['lokasyon']] = ($r['lokasyon_yok'][$v['lokasyon']] ?? 0) + 1; $lokAd = $v['lokasyon']; $v['notlar'][] = 'Lokasyon (dosyadan): ' . $v['lokasyon']; }
             }
             // Zimmetli kişi — ⚠ ÖNCE SİCİL: aynı ad soyadlı iki kişi sicille ayrışır, ad ile ayrışmaz
-            $personelId = null; $kisiAd = trim($v['kisi']);
+            $personelId = null; $kisiAd = it_buyuk($v["kisi"]);
             if ($kisiAd !== '' || $v['sicil_no'] !== '') {
                 $p = $v['sicil_no'] !== '' ? cim_personel_sicil($pdo, $v['sicil_no']) : null;
                 $nasil = $p ? 'benzersiz' : 'yok';
@@ -525,10 +525,11 @@ function cim_personel_ekle(PDO $pdo, array $adlar): int
         if ($sicil !== '' && cim_personel_sicil($pdo, $sicil)) continue;   // sicil zaten kayıtlı
         [$p, ] = cim_personel_bul($pdo, $ad);
         if ($p) continue;
-        [$adKisim, $soyKisim] = pim_ad_ayir(pim_bas_harf($ad));
+        // Kişi adları sistemde tek biçim: Türkçe kurallarına göre BÜYÜK HARF
+        [$adKisim, $soyKisim] = pim_ad_ayir(it_buyuk($ad));
         if ($adKisim === '') continue;
         $pdo->prepare("INSERT INTO it_personel (sicil_no, ad, soyad, unvan, notlar) VALUES (?,?,?,?,?)")
-            ->execute([$sicil ?: null, $adKisim, $soyKisim, mb_substr($unvan, 0, 120) ?: null, 'Cihaz listesi aktarımından açıldı']);
+            ->execute([$sicil ?: null, $adKisim, $soyKisim, it_buyuk(mb_substr($unvan, 0, 120)) ?: null, 'Cihaz listesi aktarımından açıldı']);
         $n++;
     }
     return $n;

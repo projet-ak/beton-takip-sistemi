@@ -51,6 +51,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['islem'] ?? '') === 'tumunu
     redirect('personel.php');
 }
 
+// ── Kayıtları BÜYÜK HARFE çevir (ad · soyad · unvan · birim) ──
+// Kaynak dosyalar karışık geliyor ("Fırat Acı" / "HARUN AKSU"); liste, tutanak ve Excel'de tek
+// biçim istendi. Bağlı cihazların zimmetli/departman METİN alanları da eşitlenir.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['islem'] ?? '') === 'buyuk_harf') {
+    if (!yetki_var('duzenle')) { flash('error', 'Bu işlem için değiştirme yetkisi gerekir.'); redirect('personel.php'); }
+    try {
+        $son = it_personel_buyuk_harf($pdoIt);
+        audit_log($pdoIt, 'it_personel', 0, 'UPDATE', null, ['buyuk_harf' => $son], current_user_id());
+        flash($son['kisi'] ? 'success' : 'info', $son['kisi']
+            ? $son['kisi'] . ' personel kaydı BÜYÜK HARFE çevrildi'
+              . ($son['cihaz'] ? ' (' . $son['cihaz'] . ' cihazın zimmetli/birim metni de güncellendi)' : '') . '.'
+            : 'Tüm kayıtlar zaten büyük harfli — değişiklik yapılmadı.');
+    } catch (Throwable $e) { flash('error', 'Çevrilemedi: ' . $e->getMessage()); }
+    redirect('personel.php');
+}
+
 $mukerrerler = pim_mukerrer_gruplar($pdoIt);
 $mukerrerGoster = isset($_GET['mukerrer']);
 
@@ -64,7 +80,9 @@ if ($durum === 'aktif')   $w[] = "(p.isten_cikis IS NULL OR p.isten_cikis > CURD
 if ($durum === 'ayrilan') $w[] = "(p.isten_cikis IS NOT NULL AND p.isten_cikis <= CURDATE())";
 if ($lokId) { $ids = it_lokasyon_altlar($pdoIt, $lokId); $w[] = "p.lokasyon_id IN (" . implode(',', array_map('intval', $ids)) . ")"; }
 if ($birim !== '') { $w[] = "p.birim=?"; $p[] = $birim; }
-if ($q !== '') { $w[] = "(p.ad LIKE ? OR p.soyad LIKE ? OR p.sicil_no LIKE ? OR p.unvan LIKE ? OR p.telefon LIKE ? OR p.eposta LIKE ?)"; for ($i = 0; $i < 6; $i++) $p[] = "%$q%"; }
+// ⚠ Arama SQL LIKE ile YAPILMAZ — süzme fetch sonrası `it_personel_suz` ile PHP'de yapılır:
+// LIKE her alanı ayrı ayrı karşılaştırdığından "Fırat Acı" (ad + soyad birlikte) hiç eşleşmiyordu,
+// ayrıca Türkçe 'İ' ile 'i' LIKE'ta eşleşmiyor ("ismail" → "İSMAİL" bulunamıyordu).
 $wsql = $w ? ' WHERE ' . implode(' AND ', $w) : '';
 
 // Her sütun sıralanabilir (cihaz listesindeki desen); lokasyon adı SELECT'teki alt sorgudan gelir
@@ -79,7 +97,7 @@ $sql = "SELECT p.*, (SELECT l.ad FROM it_lokasyonlar l WHERE l.id=p.lokasyon_id)
                (SELECT COALESCE(SUM(c.fiyat),0) FROM it_cihazlar c WHERE c.personel_id=p.id AND " . it_envanterde('c') . ") mali
         FROM it_personel p $wsql ORDER BY {$sirala[$skA]} $yon, p.id";
 $st = $pdoIt->prepare($sql); $st->execute($p);
-$liste = $st->fetchAll();
+$liste = it_personel_suz($st->fetchAll(), $q);
 
 if (($_GET['export'] ?? '') === 'xlsx') {
     require_once __DIR__ . '/../includes/XlsxWriter.php';
@@ -117,6 +135,13 @@ require_once __DIR__ . '/../includes/header.php';
             <div class="dropdown-menu dropdown-menu-end p-0 shadow" style="min-width:240px" id="kolonMenu"></div>
         </div>
         <a href="personel.php?<?= h(http_build_query(array_merge($_GET, ['export'=>'xlsx']))) ?>" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Excel</a>
+        <?php if (yetki_var('duzenle')): ?>
+        <form method="post" class="d-inline" onsubmit="return confirm('Tüm personel kayıtlarının ad, soyad, unvan ve birimi BÜYÜK HARFE çevrilsin mi? (Bağlı cihazların zimmetli/birim metni de güncellenir.)')">
+            <input type="hidden" name="islem" value="buyuk_harf">
+            <button class="btn btn-outline-secondary btn-sm" title="Ad · soyad · unvan · birim alanlarını Türkçe kurallarına göre büyük harfe çevirir (Fırat Acı → FIRAT ACI)">
+                <i class="bi bi-type me-1"></i>BÜYÜK HARF</button>
+        </form>
+        <?php endif; ?>
         <?php if ($yazabilir): ?><a href="import.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-cloud-arrow-up me-1"></i>İçe Aktar</a><a href="personel_form.php" class="btn btn-primary btn-sm"><i class="bi bi-person-plus me-1"></i>Yeni Personel</a><?php endif; ?>
     </div>
 </div>
@@ -181,7 +206,8 @@ require_once __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 
 <form method="get" class="card border-0 shadow-sm mb-3"><div class="card-body py-2"><div class="row g-2 align-items-end">
-  <div class="col-md-3"><label class="form-label small mb-0">Ara</label><input name="q" class="form-control form-control-sm" value="<?= h($q) ?>" placeholder="ad, soyad, sicil, unvan, telefon"></div>
+  <div class="col-md-3"><label class="form-label small mb-0">Ara</label><input name="q" class="form-control form-control-sm" value="<?= h($q) ?>" placeholder="ad soyad, sicil, unvan, telefon, lokasyon"
+               title="Ad ve soyadı birlikte yazabilirsiniz; kelime sırası serbest ve Türkçe harf duyarsızdır (ismail = İSMAİL)"></div>
   <div class="col-md-2"><label class="form-label small mb-0">Durum</label>
     <select name="durum" class="form-select form-select-sm"><option value="aktif" <?= $durum==='aktif'?'selected':'' ?>>Çalışanlar</option><option value="ayrilan" <?= $durum==='ayrilan'?'selected':'' ?>>Ayrılanlar</option><option value="hepsi" <?= $durum==='hepsi'?'selected':'' ?>>Hepsi</option></select></div>
   <div class="col-md-3"><label class="form-label small mb-0">Lokasyon / Proje</label><select name="lokasyon_id" class="form-select form-select-sm"><option value="">Tümü</option><?= it_lokasyon_options($pdoIt, $lokId, false) ?></select></div>

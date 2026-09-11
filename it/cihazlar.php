@@ -14,7 +14,7 @@ require_once __DIR__ . '/_ortak.php';
 it_semasi_kur($pdoIt);
 $pageTitle = 'Cihazlar — IT Envanter';
 
-[$wsql, $par, $etkin] = it_filtre($_GET);
+[$wsql, $par, $etkin] = it_filtre($_GET, $pdoIt);
 $lokId = (int)($_GET['lokasyon_id'] ?? 0); $perId = (int)($_GET['personel_id'] ?? 0);
 if ($lokId || $perId) {
     $ek = [];

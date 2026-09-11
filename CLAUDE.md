@@ -663,6 +663,35 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   Test: itsm'de 5 dönemlik el değiştirme kurgusu (zimmet→iade→zimmet→iade→devir) zinciri doğru kurdu,
   imzalı belge doğru döneme bağlandı (#1 yeşil, diğerleri sarı), Playwright ile yazarak seçme + ok tuşları +
   otomatik departman/lokasyon + boş gönderim engeli + popup dönüşü doğrulandı (JS hatası yok).
+  **PERSONEL ARAMA + BÜYÜK HARF (2026-09-11, kullanıcı isteği)** — iki şikâyet:
+  "personel adı ve soyadı yazıldığı zaman kayıt bulunamıyor" + "kayıtların hepsi büyük harf olsun".
+  • ⚠⚠ **Ad SOYAD birlikte yazılınca HİÇ sonuç çıkmıyordu**: `personel.php` araması
+  `p.ad LIKE ? OR p.soyad LIKE ? OR …` ile her alanı AYRI AYRI karşılaştırıyordu — "Fırat Acı"
+  tek bir alanın içinde geçmediği için eşleşme yoktu; ayrıca LIKE'ta Türkçe **'İ' ile 'i' eşleşmez**
+  ("ismail" → "İSMAİL" bulunamıyordu). LIKE süzgeci KALDIRILDI, yerine **`it_personel_suz()`**
+  (`_ortak.php`) geldi: fetch sonrası PHP'de `it_norm` ile süzer, **kelime sırası serbest**
+  ("acı fırat" da bulur) ve her kelime **ad+soyad+sicil+unvan+birim+telefon+e-posta+lokasyon**
+  bütününde aranır (depo `dp_kalem_ara` · IT `it_personel_ara` ile aynı gerekçe ve desen).
+  • **Cihaz/varlık listelerinde de kişi adıyla arama**: `it_filtre()` artık isteğe bağlı ikinci
+  parametre `?PDO $pdo` alır; arama metni `it_personel_ara` ile personel kartlarıyla da eşleştirilip
+  bulunan kişilerin cihazları `personel_id IN (…)` ile sonuca EKLENİR — "medetogullari" (ASCII) yazınca
+  "ÜMİT MEDETOĞULLARI"nın cihazı, "yildiz akin" yazınca "AKIN YILDIZ"ınki gelir. `cihazlar.php` ve
+  `varliklar.php` `$pdoIt` geçer; pdo verilmezse eski LIKE davranışı sürer (geriye uyumlu).
+  • **Kayıtlar tek biçim BÜYÜK HARF** — yeni yardımcı **`it_buyuk()`**: ⚠ `mb_strtoupper` Türkçe
+  bilmez ('i' → 'I' olur, 'İ' olmalı), bu yüzden önce i→İ / ı→I elle değiştirilir
+  ("Fırat Acı" → FIRAT ACI, "İsmail Şahin" → İSMAİL ŞAHİN, "Sisge" → SİSGE).
+  Uygulandığı yerler: `personel_form.php` kaydı (ad · soyad · unvan · birim; lokasyondan türeyen birim
+  dahil) · personel içe aktarma (`pim_satir_cozumle` **`opt['yazim']`**: `buyuk` VARSAYILAN · `bas_harf` ·
+  `''` dosyadaki hâli — import ekranındaki eski "baş harfi büyük yaz" kutusu **açılır menü** oldu; eski
+  `opt['bas_harf']` geriye uyumlu okunur) · cihaz içe aktarmada açılan personel kartları ve eşleşmeyen
+  `zimmetli` metni (`_cihaz_import.php`).
+  • **Mevcut kayıtlar için tek tıklık dönüşüm**: `personel.php` araç çubuğunda **BÜYÜK HARF** düğmesi
+  (`islem=buyuk_harf`, `yetki_var('duzenle')`, onay diyaloğu) → **`it_personel_buyuk_harf()`** ad/soyad/
+  unvan/birimi çevirir ve **bağlı cihazların `zimmetli` / `departman` METİN alanlarını da eşitler**
+  (tutanak ve listeler oradan okur). İdempotent: ikinci çalıştırmada "zaten büyük harfli" der.
+  Test (itsm, 156 kişi / 268 cihaz): "Tayyar Akbulut" · "akbulut tayyar" · "osman caglar" ·
+  "medetogullari" · "yilmaz mesut" hepsi doğru kişiyi buluyor; dönüşüm sonrası arama yine çalışıyor;
+  formdan "ismail / şıhoğlu" → "İSMAİL / ŞIHOĞLU"; 7 IT sayfası fatal/warning vermeden render oluyor.
   **DASHBOARD ELDEN GEÇİRME (2026-09-10, kullanıcı isteği)** — üç somut şikâyet + genel geliştirme:
   • ⚠⚠ **KPI kartı ile açtığı liste TUTMUYORDU**: "Serviste + Arızalı 1" kartı `?durum=arizali`ye
   gidiyordu, cihaz *serviste* olduğu için liste BOŞ açılıyor ve "serviste arızalı yok" görünüyordu.

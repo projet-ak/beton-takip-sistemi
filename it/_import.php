@@ -328,7 +328,14 @@ function pim_satir_cozumle(array $satir, array $harita, array $baslik, array $op
         if ($v[$k] === '') $v[$k] = $c;
     }
     if ($v['ad'] === '' && $v['soyad'] === '' && $v['ad_soyad'] !== '') [$v['ad'], $v['soyad']] = pim_ad_ayir($v['ad_soyad']);
-    if (!empty($opt['bas_harf'])) { $v['ad'] = pim_bas_harf($v['ad']); $v['soyad'] = pim_bas_harf($v['soyad']); $v['unvan'] = pim_bas_harf($v['unvan']); $v['birim'] = pim_bas_harf($v['birim']); }
+    // Ad / soyad / unvan / birim yazım biçimi: 'buyuk' (varsayılan, tek düzen BÜYÜK HARF) ·
+    // 'bas_harf' (AHMET YILMAZ → Ahmet Yılmaz) · '' (dosyadaki hâliyle bırak).
+    // Eski `bas_harf` seçeneği geriye uyumluluk için hâlâ okunur.
+    $yazim = (string)($opt['yazim'] ?? (!empty($opt['bas_harf']) ? 'bas_harf' : 'buyuk'));
+    if ($yazim === 'buyuk' || $yazim === 'bas_harf') {
+        $fn = $yazim === 'buyuk' ? 'it_buyuk' : 'pim_bas_harf';
+        foreach (['ad', 'soyad', 'unvan', 'birim'] as $__a) $v[$__a] = $fn($v[$__a]);
+    }
     $v['telefon'] = pim_telefon($v['telefon']);
     $v['eposta']  = mb_strtolower($v['eposta'], 'UTF-8');
     if ($v['eposta'] !== '' && !filter_var($v['eposta'], FILTER_VALIDATE_EMAIL)) { $v['notlar'][] = 'E-posta (okunamadı): ' . $v['eposta']; $v['eposta'] = ''; }
@@ -428,7 +435,7 @@ function pim_log_kur(PDO $pdo): void
 }
 
 /**
- * Birleştirme. $opt: harita (sütun→alan), baslik_idx, bas_harf, pasif_ayrilmis (durum=pasif → çıkış tarihi bugün),
+ * Birleştirme. $opt: harita (sütun→alan), baslik_idx, yazim (buyuk|bas_harf|''), pasif_ayrilmis (durum=pasif → çıkış tarihi bugün),
  * dosyada_olmayan_ayrilmis, dosya, bicim, kullanici, rapor_tarihi (Y-m-d).
  * Dönüş: sayaçlar + listeler (yeni/guncellenen/degismeyen/atlanan/ayrilan/lokasyon_yok).
  */

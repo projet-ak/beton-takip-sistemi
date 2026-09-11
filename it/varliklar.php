@@ -25,7 +25,7 @@ $pageTitle = 'Merkezi Varlık İzleme — IT Envanter';
 $grup = (string)($_GET['grup'] ?? '');
 if (!isset(IT_GRUP[$grup])) $grup = '';
 
-[$wsql, $par, $etkin] = it_filtre($_GET + ['grup' => $grup]);
+[$wsql, $par, $etkin] = it_filtre($_GET + ['grup' => $grup], $pdoIt);
 $lokId = (int)($_GET['lokasyon_id'] ?? 0); $perId = (int)($_GET['personel_id'] ?? 0);
 $ek = [];
 if ($lokId) { $ek[] = 'lokasyon_id IN (' . implode(',', array_map('intval', it_lokasyon_altlar($pdoIt, $lokId))) . ')'; $etkin['lokasyon_id'] = $lokId; }

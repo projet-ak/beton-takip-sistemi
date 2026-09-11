@@ -30,10 +30,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $al = fn($k, $max) => mb_substr(trim((string)($_POST[$k] ?? '')), 0, $max) ?: null;
     $y = [
         'sicil_no'    => $al('sicil_no', 30),
-        'ad'          => $al('ad', 80),
-        'soyad'       => $al('soyad', 80),
-        'unvan'       => $al('unvan', 100),
-        'birim'       => $al('birim', 100),
+        // Ad / soyad / unvan / birim TEK BİÇİM: Türkçe kurallarına göre BÜYÜK HARF
+        // (kaynak dosyalar karışık geliyor; liste, tutanak ve Excel tek düzen istendi)
+        'ad'          => it_buyuk($al('ad', 80))    ?: null,
+        'soyad'       => it_buyuk($al('soyad', 80)) ?: null,
+        'unvan'       => it_buyuk($al('unvan', 100)) ?: null,
+        'birim'       => it_buyuk($al('birim', 100)) ?: null,
         'lokasyon_id' => (int)($_POST['lokasyon_id'] ?? 0) ?: null,
         'telefon'     => $al('telefon', 30),
         'eposta'      => $al('eposta', 120),
@@ -43,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     ];
     if ($y['lokasyon_id'] && !isset(it_lokasyonlar($pdoIt)[$y['lokasyon_id']])) $y['lokasyon_id'] = null;
     // Birim boşsa lokasyonun birim türündeki adı birim sayılır (Merkez binada direktörlük = birim)
-    if (!$y['birim'] && $y['lokasyon_id']) { $l = it_lokasyonlar($pdoIt)[$y['lokasyon_id']]; if ($l['tur'] === 'birim') $y['birim'] = $l['ad']; }
+    if (!$y['birim'] && $y['lokasyon_id']) { $l = it_lokasyonlar($pdoIt)[$y['lokasyon_id']]; if ($l['tur'] === 'birim') $y['birim'] = it_buyuk($l['ad']); }
 
     if (!$y['ad'] || !$y['soyad']) {
         $error = 'Ad ve soyad zorunludur.';

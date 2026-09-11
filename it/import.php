@@ -140,7 +140,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $bIdx = pim_baslik_satiri($satirlar);
                     $ornek = array_slice($satirlar, $bIdx + 1, 20);
                     $_SESSION['it_pim'] = ['dosya'=>$ad, 'bicim'=>$g['bicim'], 'sayfa'=>$g['sayfa'], 'satirlar'=>$satirlar, 'satir_no'=>$satirNo, 'baslik_idx'=>$bIdx,
-                                           'harita'=>pim_harita($satirlar[$bIdx], $ornek), 'opt'=>['bas_harf'=>1, 'pasif_ayrilmis'=>1, 'dosyada_olmayan_ayrilmis'=>0, 'tam_yenileme'=>0]];
+                                           'harita'=>pim_harita($satirlar[$bIdx], $ornek), 'opt'=>['yazim'=>'buyuk', 'pasif_ayrilmis'=>1, 'dosyada_olmayan_ayrilmis'=>0, 'tam_yenileme'=>0]];
                     unset($_SESSION['it_pim_rapor']);
                     redirect('import.php?adim=2');
                 } catch (Throwable $e) { $hata = $e->getMessage(); }
@@ -162,7 +162,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $s['harita'] = $h;
         }
         $tamYenileme = !empty($_POST['tam_yenileme']) && yetki_var('duzenle') ? 1 : 0;   // silme işlemi → "değiştirme" yetkisi şart
-        $s['opt'] = ['bas_harf'=>!empty($_POST['bas_harf']) ? 1 : 0, 'pasif_ayrilmis'=>!empty($_POST['pasif_ayrilmis']) ? 1 : 0,
+        $__yz = (string)($_POST['yazim'] ?? 'buyuk');
+        $s['opt'] = ['yazim'=>in_array($__yz, ['buyuk','bas_harf',''], true) ? $__yz : 'buyuk',
+                     'pasif_ayrilmis'=>!empty($_POST['pasif_ayrilmis']) ? 1 : 0,
                      'dosyada_olmayan_ayrilmis'=>(!empty($_POST['dosyada_olmayan_ayrilmis']) && !$tamYenileme) ? 1 : 0, 'tam_yenileme'=>$tamYenileme];
         unset($s);
         if ($islem === 'aktar') {
@@ -301,7 +303,13 @@ require_once __DIR__ . '/../includes/header.php';
   <div class="col-lg-7">
     <div class="card border-0 shadow-sm mb-3"><div class="card-body small">
       <div class="fw-semibold mb-2"><i class="bi bi-sliders me-1"></i>Seçenekler</div>
-      <div class="form-check"><input class="form-check-input" type="checkbox" name="bas_harf" id="bas_harf" value="1" <?= !empty($s['opt']['bas_harf'])?'checked':'' ?>><label class="form-check-label" for="bas_harf">BÜYÜK HARFLİ ad / soyad / unvan / birimi baş harfi büyük yaz (AHMET YILMAZ → Ahmet Yılmaz)</label></div>
+      <?php $__yz = (string)($s['opt']['yazim'] ?? 'buyuk'); ?>
+      <div class="mb-1"><label class="form-label small mb-0" for="yazim">Ad / soyad / unvan / birim yazımı</label>
+        <select name="yazim" id="yazim" class="form-select form-select-sm" style="max-width:420px">
+            <option value="buyuk"    <?= $__yz==='buyuk'?'selected':'' ?>>BÜYÜK HARF — tek düzen (Fırat Acı → FIRAT ACI)</option>
+            <option value="bas_harf" <?= $__yz==='bas_harf'?'selected':'' ?>>Baş harfi büyük (AHMET YILMAZ → Ahmet Yılmaz)</option>
+            <option value=""         <?= $__yz===''?'selected':'' ?>>Dosyadaki hâliyle bırak</option>
+        </select></div>
       <div class="form-check"><input class="form-check-input" type="checkbox" name="pasif_ayrilmis" id="pasif_ayrilmis" value="1" <?= !empty($s['opt']['pasif_ayrilmis'])?'checked':'' ?>><label class="form-check-label" for="pasif_ayrilmis">Durum sütunu <em>pasif / disabled</em> olan kişileri işten ayrılmış say (çıkış tarihi bugün; çıkış tarihi sütunu doluysa o esas)</label></div>
       <div class="form-check"><input class="form-check-input" type="checkbox" name="dosyada_olmayan_ayrilmis" id="dosyada_olmayan_ayrilmis" value="1" <?= !empty($s['opt']['dosyada_olmayan_ayrilmis'])?'checked':'' ?>><label class="form-check-label" for="dosyada_olmayan_ayrilmis"><strong>Dosyada olmayan</strong> çalışanları işten ayrılmış say <span class="text-danger">(yalnız dosya TÜM personeli içeriyorsa işaretleyin; üzerinde zimmet olanlar atlanır)</span></label></div>
       <?php if (yetki_var('duzenle')): ?>
