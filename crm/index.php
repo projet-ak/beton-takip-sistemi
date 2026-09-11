@@ -88,21 +88,34 @@ require_once __DIR__ . '/../includes/header.php';
 
 <div class="row g-2 mb-3">
 <?php
+/* Kart = [etiket, değer, renk, ikon, link, alt açıklama].
+   ⚠ Rapor GÜNLÜK yüklenir: "bugün açılan" ancak bugünün raporu yüklendiğinde dolar —
+   kartın altındaki not bunu söyler ki 0 görünce "arıza gelmemiş" sanılmasın. */
+$__raporBugun = $son && substr((string)$son['created'], 0, 10) === $ozet['bugunTarih'];
 $kpi = [
-    ['Açık arıza', $f0($ozet['acik']), 'danger', 'bi-exclamation-triangle-fill', 'arizalar.php?durum=acik'],
-    ['Bu ay yeni', $f0($ozet['buAyYeni']), 'primary', 'bi-plus-circle-fill', 'arizalar.php?bas=' . date('Y-m-01')],
-    ['Bu ay çözülen', $f0($ozet['buAyCozulen']), 'success', 'bi-check-circle-fill', 'arizalar.php?durum=cozuldu'],
-    ['Ort. açık kalma', $f1($ozet['ortAcikGun']) . ' gün', 'info', 'bi-hourglass-split', null],
-    ['30+ gündür açık', $f0($ozet['eski30']), 'warning', 'bi-clock-fill', 'arizalar.php?durum=acik'],
-    ['Toplam kayıt', $f0($ozet['toplam']), 'secondary', 'bi-list-check', 'arizalar.php'],
+    ['Açık arıza', $f0($ozet['acik']), 'danger', 'bi-exclamation-triangle-fill', 'arizalar.php?durum=acik', 'çözülmeyi bekleyen'],
+    ['Bugün açılan', $f0($ozet['bugunYeni']), 'primary', 'bi-calendar-day-fill',
+     'arizalar.php?bas=' . $ozet['bugunTarih'] . '&bit=' . $ozet['bugunTarih'],
+     $__raporBugun ? 'bugünün raporu yüklendi' : 'bugünün raporu HENÜZ yüklenmedi'],
+    ['Bu hafta açılan', $f0($ozet['buHaftaYeni']), 'primary', 'bi-calendar-week-fill',
+     'arizalar.php?bas=' . $ozet['haftaBas'] . '&bit=' . $ozet['bugunTarih'],
+     'Pzt ' . format_date($ozet['haftaBas']) . ' → bugün'],
+    ['Bu ay yeni', $f0($ozet['buAyYeni']), 'primary', 'bi-plus-circle-fill',
+     'arizalar.php?bas=' . date('Y-m-01') . '&bit=' . $ozet['bugunTarih'],
+     format_date(date('Y-m-01')) . ' → bugün'],
+    ['Bu ay çözülen', $f0($ozet['buAyCozulen']), 'success', 'bi-check-circle-fill', 'arizalar.php?durum=cozuldu', 'kapanan kayıt'],
+    ['Ort. açık kalma', $f1($ozet['ortAcikGun']) . ' gün', 'info', 'bi-hourglass-split', null, 'açık arızaların yaşı'],
+    ['30+ gündür açık', $f0($ozet['eski30']), 'warning', 'bi-clock-fill', 'arizalar.php?durum=acik', 'gecikmiş iş yükü'],
+    ['Toplam kayıt', $f0($ozet['toplam']), 'secondary', 'bi-list-check', 'arizalar.php', 'açık + çözülen'],
 ];
-foreach ($kpi as [$ad, $deger, $renk, $ikon, $link]): ?>
-    <div class="col-6 col-md-4 col-xl-2">
+foreach ($kpi as [$ad, $deger, $renk, $ikon, $link, $alt]): ?>
+    <div class="col-6 col-md-4 col-xl-3">
         <?php if ($link): ?><a href="<?= h($link) ?>" class="text-decoration-none text-reset"><?php endif; ?>
         <div class="card border-0 shadow-sm h-100"><div class="card-body py-3 text-center">
             <i class="bi <?= $ikon ?> text-<?= $renk ?> fs-4"></i>
             <div class="fs-4 fw-bold mt-1"><?= $deger ?></div>
             <div class="small text-muted"><?= $ad ?></div>
+            <?php if ($alt): ?><div class="text-muted" style="font-size:.7rem"><?= h($alt) ?></div><?php endif; ?>
         </div></div>
         <?php if ($link): ?></a><?php endif; ?>
     </div>

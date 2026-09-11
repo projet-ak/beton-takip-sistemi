@@ -239,8 +239,15 @@ function crm_belge_sil(PDO $pdo, int $belgeId): bool
 function crm_ozet(PDO $pdo): array
 {
     crm_semasi_kur($pdo);
-    $o = $pdo->query("SELECT
+    // ⚠ Bugün / bu hafta eşikleri PHP'de hesaplanıp BAĞLANIR: `DATE_SUB(NOW(), INTERVAL … )` gibi
+    // MySQL'e özel sözdizimi yerine düz karşılaştırma, SQLite'lı duman testinde de aynen çalışır.
+    // Hafta PAZARTESİ başlar (PHP 'monday this week' ISO haftası: pazar günü önceki pazartesiye düşer).
+    $bugunBas = date('Y-m-d') . ' 00:00:00';
+    $haftaBas = date('Y-m-d', strtotime('monday this week')) . ' 00:00:00';
+    $st = $pdo->prepare("SELECT
             COUNT(*) toplam,
+            SUM(olusturma >= ?) bugunYeni,
+            SUM(olusturma >= ?) buHaftaYeni,
             SUM(durum='acik')    acik,
             SUM(durum='cozuldu') cozuldu,
             SUM(durum='acik' AND olusturma < DATE_SUB(NOW(), INTERVAL 30 DAY)) eski30,
@@ -250,13 +257,18 @@ function crm_ozet(PDO $pdo): array
             SUM(olusturma >= DATE_FORMAT(NOW(),'%Y-%m-01')) buAyYeni,
             SUM(durum='cozuldu' AND cozumlenme >= DATE_FORMAT(NOW(),'%Y-%m-01')) buAyCozulen,
             MAX(olusturma) sonKayit
-        FROM crm_arizalar")->fetch() ?: [];
+        FROM crm_arizalar");
+    $st->execute([$bugunBas, $haftaBas]);
+    $o = $st->fetch() ?: [];
+    $o['bugunTarih'] = substr($bugunBas, 0, 10);
+    $o['haftaBas']   = substr($haftaBas, 0, 10);
     // Ortalama açık kalma (gün): açıklarda bugüne, çözülenlerde çözüm gününe kadar
     $o['ortAcikGun'] = (float)($pdo->query("SELECT AVG(DATEDIFF(NOW(), olusturma)) FROM crm_arizalar
                                             WHERE durum='acik' AND olusturma IS NOT NULL")->fetchColumn() ?: 0);
     $o['ortCozumGun'] = (float)($pdo->query("SELECT AVG(DATEDIFF(cozumlenme, olusturma)) FROM crm_arizalar
                                              WHERE durum='cozuldu' AND cozumlenme IS NOT NULL AND olusturma IS NOT NULL")->fetchColumn() ?: 0);
-    foreach (['toplam','acik','cozuldu','eski30','eski90','major','acil','buAyYeni','buAyCozulen'] as $k) $o[$k] = (int)($o[$k] ?? 0);
+    foreach (['toplam','acik','cozuldu','eski30','eski90','major','acil',
+              'bugunYeni','buHaftaYeni','buAyYeni','buAyCozulen'] as $k) $o[$k] = (int)($o[$k] ?? 0);
     return $o;
 }
 

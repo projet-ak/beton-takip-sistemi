@@ -145,7 +145,17 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   kümülatif açık yükü sağ eksende gösterir. İlk raporda hiç kapanış olmadığından yalnız gelen/çözülen çizgileri
   boş görünüyordu; bant "çözülen serisi ikinci rapordan itibaren dolar" der. ⚠ **Chart.js canvas'ları sabit
   yükseklikli `<div style="height:…">` içinde** olmalı — `maintainAspectRatio:false` yükseklik veren bir kutu
-  ister, yoksa grafik ezilir/şişer) + şikayet türü doughnut + blok yığılmış bar + en sık arıza tipleri + en uzun süredir açık /
+  ister, yoksa grafik ezilir/şişer) + **bugün / bu hafta açılan KPI'ları (2026-09-11, kullanıcı isteği)** — `crm_ozet()`
+  `bugunYeni` · `buHaftaYeni` (+ link için `bugunTarih` · `haftaBas`); hafta **PAZARTESİ** başlar
+  (`strtotime('monday this week')`, pazar önceki pazartesiye düşer). ⚠ Eşikler **PHP'de hesaplanıp
+  BAĞLANIR** (`SUM(olusturma >= ?)`) — `DATE_SUB(NOW(), INTERVAL …)` gibi MySQL'e özel sözdizimi
+  SQLite'lı duman testinde parse edilemiyordu. Kartlar `arizalar.php?bas=&bit=` ile KENDİ sayısını
+  veren listeyi açar (sayı ↔ liste birebir doğrulandı: 2 / 4 / 5). Kartlara **alt açıklama satırı**
+  eklendi; "Bugün açılan" kartı raporun bugün yüklenip yüklenmediğini yazar — **rapor günlük
+  yüklendiği için bugünün raporu gelmeden bu sayı 0 kalır**, 0'a bakıp "arıza gelmemiş" sanılmasın.
+  Türkçe ek yıla göre değiştiğinden ("2026'dan" / "2027'den") alt satırlar **aralık** yazar:
+  "Pzt 07.09.2026 → bugün". Satır 6 → **8 kart**, `col-xl-2` → `col-xl-3` (4'erli iki sıra)
+  + şikayet türü doughnut + blok yığılmış bar + en sık arıza tipleri + en uzun süredir açık /
   en çok arızalı daireler / son gelen arızalar) · **arizalar** (filtreler: durum/blok/kat/tür/konu/detay/sorumlu/
   tarih aralığı/serbest arama, whitelist sıralama, sayfalama, **Excel dışa aktarma**, toplu çöz/yeniden aç, 90+
   gün açık satır sarı) · **ariza_detay** (tüm CRM alanları + aynı dairenin diğer arızaları + elle çöz/yeniden aç +
@@ -167,6 +177,11 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   crm_kat_sira, crm_semasi_kur, crm_ozet, crm_filtre, crm_secenekler) + `crm/_import.php` (CRM_ALAN başlık
   haritası — "Aciklama" EN SONA, yoksa "Sikayet/Durum Aciklamasi" sütununu kapar; crm_sayfa/crm_harita/crm_import).
   İlk dosya (2026-09-03) ile doğrulandı: 610 açık arıza, 211 daire, 7 blok, 2025-07-30 → 2026-08-31.
+  **Duman testi**: scratchpad `csmoke/` (SQLite; `includes/db_crm.php` DATE_FORMAT/DATEDIFF/NOW
+  taklitleri) + **`csmoke/sync.php`** — repodaki crm dosyalarını kopyalarken MySQL'e özel tarih SQL'ini
+  SQLite karşılığıyla değiştirir (`DATE_SUB(NOW(), INTERVAL 30 DAY)` → `datetime('now','-30 day')`,
+  `DATE_FORMAT(NOW(),'%Y-%m-01')` → `strftime(...)`) ve `crm_semasi_kur`'u no-op yapar; **test hep
+  güncel kodu koşar** (elle yamalı kopya bayatlıyordu).
 - **Prekast modülü** = `prekast/` alt klasörü. Cephe prekast (T profil) **montaj iş takibi + hakkediş**.
   **CRM ile aynı veritabanını paylaşır** (`takbulut_crm`, `CRM_DB_NAME`), tablolar `prekast_` önekli;
   `includes/db_prekast.php` → `$pdoPrekast` (istenirse `PREKAST_DB_NAME` ile ayrılır).
