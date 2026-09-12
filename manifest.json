@@ -1,32 +1,31 @@
 {
-  "name": "Beton Takip Sistemi",
-  "short_name": "Beton Takip",
-  "description": "ERN Holding — Beton İrsaliye Takip Sistemi",
-  "start_url": "/",
+  "name": "ERN Şantiye İş Takip Sistemi",
+  "short_name": "ERN Saha",
+  "description": "ERN Holding — Beton, Demir, Depo, IT ve saha takip sistemi",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#003D35",
   "theme_color": "#00584E",
   "orientation": "any",
   "icons": [
-    {
-      "src": "https://ern.com.tr/favicon.png",
-      "sizes": "any",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
+    { "src": "assets/icons/favicon-48.png",  "sizes": "48x48",   "type": "image/png" },
+    { "src": "assets/icons/icon-192.png",    "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-512.png",    "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/maskable-512.png","sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
     {
       "name": "Hızlı Tarama",
       "short_name": "Tara",
-      "url": "/hizli_tarama.php",
-      "icons": [{ "src": "https://ern.com.tr/favicon.png", "sizes": "any" }]
+      "url": "./hizli_tarama.php",
+      "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Yeni İrsaliye",
       "short_name": "Ekle",
-      "url": "/irsaliye_form.php",
-      "icons": [{ "src": "https://ern.com.tr/favicon.png", "sizes": "any" }]
+      "url": "./irsaliye_form.php",
+      "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }

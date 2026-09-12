@@ -941,6 +941,35 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
     `data-renk`, `data-kontrast` değişince MutationObserver açık grafikleri `update('none')` ile yeniler.
   - Playwright + WCAG oran ölçümüyle doğrulandı: yüksek kontrastta ölçülen tüm metin/zemin çiftleri
     **AAA** (7:1+), çoğu 12–21:1; normal temalarda AA.
+- **UYGULAMA İKONLARI / FAVICON (2026-09-12, kullanıcı isteği: "favicon çok kötü duruyor")** —
+  ⚠⚠ Eskiden **tek bir DIŞ görsel** kullanılıyordu: `https://ern.com.tr/favicon.png`. Üç ayrı sorun:
+  (1) her sayfa açılışında **başka bir siteye istek** gidiyordu (o site erişilemezse ikon kırık),
+  (2) `manifest.json`'da `sizes:"any"` ile tek bitmap 16px sekmeden 512px PWA ikonuna kadar her yere
+  esnetiliyordu (bulanık), (3) aynı görsel `purpose:"any maskable"` verilmişti — **maskable ikon ~%20
+  güvenli alan payı ister**, Android maskesi logonun kenarlarını KESİYORDU. Ayrıca logonun altındaki
+  "HOLDING" alt yazısı 16px'te okunaksız bir lekeye dönüşüyordu.
+  • **Çözüm: yerel, çok boyutlu ikon seti** `assets/icons/` + kökte `favicon.ico`. Marka olarak
+  **yalnız "ern" monogramı** kullanılır (HOLDING alt yazısı kırpılır — küçük boyutta okunmuyor);
+  zemin `--ern-light → --ern-dark` dikey degradeli yuvarlak kare, mark beyaz.
+  Boyutlar: favicon-16/32/48 · apple-touch-icon 180 (**köşe yuvarlatma YOK** — iOS kendi maskesini
+  uygular, şeffaf köşe iOS'ta siyah çıkar) · icon-192/512 (`purpose:any`) ·
+  **maskable-512 ayrı dosya** (mark %56 genişlikte, tam kare zemin → Android hangi şekle keserse kessin
+  logo içeride kalır). `favicon.ico` = 16+32+48 PNG gömülü (tüm modern tarayıcılar okur).
+  • **`manifest.json` yolları GÖRELİ oldu** (`./`, `assets/icons/…`) — eskiden `start_url:"/"` idi ve
+  uygulama `/beton/` altında olduğundan PWA **site kökünde** açılıyordu; `scope` de eklendi.
+  • **Sidebar logoları da yerelleşti**: geniş modda `assets/icons/ern-holding-white.png`, daraltılmış
+  modda `assets/icons/ern-mark-white.png` (eskiden `portal.ern.com.tr`'den gelen PNG + dış favicon'u
+  `filter:brightness(0) invert(1)` ile beyaza zorlama).
+  • **Üretici: `tools/ikon_uret.php`** — kaynak `uploads/logo/ERN Holding_Logo_Beyaz.png` (3508x2481);
+  "ern" markasının kutusu x100..3402 / y236..1651 sabit. Köşeler 4x süper örneklemeyle yumuşatılır.
+  ⚠ **Yalnız CLI** (`PHP_SAPI !== 'cli'` → 403). Logo değişirse `php tools/ikon_uret.php` ile
+  9 dosyanın tamamı yeniden üretilir — ikonları elle düzenleme.
+  • İkon bağlantıları `header.php` (`$__rootPath` ile alt klasörlerden de doğru) · `login.php` ·
+  `tanitim.php`'de. ⚠ **`site-kok/index.html` KÖK dizinde durduğu için yolları `/beton/…` MUTLAK**;
+  scratchpad `site_kok_uret.php` ile yeniden üretilirse bu blok da mutlak yola çevrilmeli.
+  Doğrulandı: 9 PNG + ICO geçerli (ICO 16/32/48 ayrıştırılıyor), `php -S` üzerinden hepsi HTTP 200
+  doğru MIME ile, Playwright'ta sayfa ikon bağlantıları çözülüyor ve manifest'in 4 ikonu da 200
+  dönüyor, başarısız istek yok.
 - **`footer.php`** — footer, mobil bottom-nav, `ai_chat_widget.php`, app.js, service worker.
 - **`ai_call.php`** — `ai_call($system,$parts,$maxTokens)` → Claude/Gemini/OpenRouter.
 - **`config.example.php`** — sadece DB_HOST/NAME/USER/PASS şablonu. Gerçek `config.php` git-ignored.

@@ -58,8 +58,15 @@ if ($__user) {
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Beton Takip">
 <title><?= h($pageTitle ?? 'Beton Takip Sistemi') ?></title>
-<link rel="icon" type="image/png" href="https://ern.com.tr/favicon.png">
-<link rel="apple-touch-icon" href="https://ern.com.tr/favicon.png">
+<?php /* Uygulama ikonları YERELDİR (assets/icons + favicon.ico) — eskiden hepsi
+         https://ern.com.tr/favicon.png idi: her sayfada dış siteye istek gidiyor,
+         tek bir bitmap 16px sekmeden 512px PWA ikonuna kadar her yere esnetiliyor
+         ve Android maskesi kenarları kırptığı için logo kesik görünüyordu. */ ?>
+<link rel="icon" href="<?= $__rootPath ?>favicon.ico" sizes="32x32">
+<link rel="icon" type="image/png" sizes="16x16" href="<?= $__rootPath ?>assets/icons/favicon-16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="<?= $__rootPath ?>assets/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="48x48" href="<?= $__rootPath ?>assets/icons/favicon-48.png">
+<link rel="apple-touch-icon" sizes="180x180" href="<?= $__rootPath ?>assets/icons/apple-touch-icon.png">
 <link rel="manifest" href="<?= $__rootPath ?>manifest.json">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
@@ -96,12 +103,13 @@ if ($__user) {
     <a href="<?= $__rootPath ?><?= $__modHome ?>" class="sidebar-brand">
       <!-- Tam logo (expanded modda) -->
       <img class="logo-full"
-           src="https://portal.ern.com.tr/assets/assets/images/ern_holding.613de732dd156fc8c966aeb8159822be.png"
+           src="<?= $__rootPath ?>assets/icons/ern-holding-white.png"
            alt="ERN Holding" style="height:32px;">
-      <!-- Favicon (collapsed modda) -->
+      <!-- Yalnız "ern" markası (collapsed modda) — beyaz, şeffaf zeminli;
+           eski sürüm dış favicon'u brightness(0) invert(1) ile beyaza zorluyordu -->
       <img class="logo-icon"
-           src="https://ern.com.tr/favicon.png"
-           alt="ERN" style="display:none;width:32px;height:32px;object-fit:contain;filter:brightness(0) invert(1);">
+           src="<?= $__rootPath ?>assets/icons/ern-mark-white.png"
+           alt="ERN" style="display:none;width:32px;height:auto;object-fit:contain;">
       <div class="sidebar-brand-label"><strong><?= h($__modAd) ?></strong>Sistemi</div>
     </a>
     <button class="sidebar-collapse-btn d-none d-lg-flex" id="sidebarCollapseBtn" title="Menüyü daralt">
