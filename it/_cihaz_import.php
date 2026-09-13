@@ -534,3 +534,203 @@ function cim_personel_ekle(PDO $pdo, array $adlar): int
     }
     return $n;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * MÜKERRER CİHAZ TESPİTİ + BİRLEŞTİRME
+ *
+ * Aynı cihaz iki kez açılabiliyor: bir kaynaktan **cihaz kodu** ile (N411), başka bir
+ * kaynaktan **IFS nesne no / seri no** ile gelen satır ayrı kayıt olarak düşüyor. Sonuç:
+ * bir kartta yaşam günlüğü + imzalı evrak, diğerinde künye — ikisi de yarım.
+ * Birleştirme ikisini TEK karta indirir: geçmiş ve belgeler korunan karta TAŞINIR.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/** Mükerrer cihaz araması yapılan kimlik alanları: kolon => ekranda görünen ad. */
+const CIM_MUKERRER_ANAHTAR = [
+    'cihaz_kodu'  => 'cihaz kodu',
+    'varlik_kodu' => 'IFS seri nesne no',
+    'seri_no'     => 'seri no',
+    'envanter_no' => 'envanter no',
+    'mac_adresi'  => 'MAC adresi',
+    'imei'        => 'IMEI',
+];
+
+/**
+ * Aynı kimliği taşıyan cihaz gruplarını bulur.
+ * Grup içindeki İLK kayıt ASIL (korunacak) adaydır: künyesi en dolu, belgesi/geçmişi
+ * en çok olan kart kazanır — birleştirmede veri kaybı en aza insin diye.
+ *
+ * @return array<int, array{tur:string, anahtar:string, kayitlar:array}>
+ */
+function cim_cihaz_mukerrer(PDO $pdo): array
+{
+    try { $liste = $pdo->query("SELECT * FROM it_cihazlar")->fetchAll(); } catch (Throwable $e) { return []; }
+    if (!$liste) return [];
+
+    // Belge / hareket sayıları tek sorguda (satır başına sorgu N+1 olurdu)
+    $belge = []; $hareket = [];
+    try { foreach ($pdo->query("SELECT cihaz_id, COUNT(*) n FROM it_belgeler GROUP BY cihaz_id") as $b) $belge[(int)$b['cihaz_id']] = (int)$b['n']; } catch (Throwable $e) {}
+    try { foreach ($pdo->query("SELECT cihaz_id, COUNT(*) n FROM it_hareketler GROUP BY cihaz_id") as $h) $hareket[(int)$h['cihaz_id']] = (int)$h['n']; } catch (Throwable $e) {}
+
+    // Doluluk puanı: kimlik alanları ağır basar, künye/evrak/geçmiş ekler
+    $puan = function (array $c) use ($belge, $hareket): int {
+        $p = 0;
+        foreach (['varlik_kodu'=>40, 'seri_no'=>30, 'cihaz_kodu'=>20, 'envanter_no'=>10, 'snipe_id'=>5] as $kol => $ag)
+            if (trim((string)($c[$kol] ?? '')) !== '') $p += $ag;
+        foreach (['marka','model','model_no','sasi_no','imei','islemci','ram','disk','ekran_karti',
+                  'ip_adresi','mac_adresi','personel_id','lokasyon_id','notlar','ozellikler','foto_url'] as $kol)
+            if (trim((string)($c[$kol] ?? '')) !== '') $p += 3;
+        return $p + ($belge[(int)$c['id']] ?? 0) * 6 + ($hareket[(int)$c['id']] ?? 0) * 2;
+    };
+
+    $gruplar = [];
+    foreach (CIM_MUKERRER_ANAHTAR as $kol => $etiket) {
+        $kova = [];
+        foreach ($liste as $c) {
+            $v = pim_norm((string)($c[$kol] ?? ''));
+            if ($v === '' || $v === '-') continue;
+            $kova[$v][] = $c;
+        }
+        foreach ($kova as $anahtar => $kayitlar) {
+            if (count($kayitlar) < 2) continue;
+            $ids = array_map(fn($c) => (int)$c['id'], $kayitlar); sort($ids);
+            $imza = implode('-', $ids);
+            if (isset($gruplar[$imza])) continue;              // aynı çift iki anahtardan da eşleşmiş
+            foreach ($kayitlar as &$c) { $c['belge'] = $belge[(int)$c['id']] ?? 0; $c['hareket'] = $hareket[(int)$c['id']] ?? 0; }
+            unset($c);
+            usort($kayitlar, fn($a, $b) => ($puan($b) <=> $puan($a)) ?: ((int)$a['id'] <=> (int)$b['id']));
+            $gruplar[$imza] = ['tur' => $etiket, 'anahtar' => (string)$anahtar, 'kayitlar' => $kayitlar,
+                               'celiski' => cim_kimlik_celiskisi($kayitlar, $kol)];
+        }
+    }
+    return array_values($gruplar);
+}
+
+/**
+ * ⚠ MÜKERRER Mİ, FARKLI CİHAZ MI? — Gruptaki kayıtlar BAŞKA bir kimlik alanında birbirinden
+ * FARKLI dolu değer taşıyorsa bu büyük ihtimalle mükerrer değil, **veri hatasıdır**: aynı cihaz
+ * koduna yanlışlıkla iki ayrı cihaz yazılmıştır (ör. N405 kodunda bir Lenovo + bir Acer, seri
+ * numaraları ve IFS kodları apayrı). Bunlar birleştirilirse ikinci cihaz envanterden SİLİNMİŞ olur.
+ * Bu yüzden çelişen alanlar bulunup ekranda kırmızı uyarı olarak gösterilir.
+ *
+ * @param string $eslesenKolon grubu oluşturan kolon (kendisi çelişki sayılmaz)
+ * @return array<string,string> çelişen alan adı => "değer | değer"
+ */
+function cim_kimlik_celiskisi(array $kayitlar, string $eslesenKolon): array
+{
+    // ⚠ `envanter_no` çelişki sayılmaz: o BİZİM kendi sayacımız (IT-00001) ve mükerrer iki kartta
+    // zaten HER ZAMAN farklıdır — buna bakılırsa her grup "farklı cihaz" diye işaretlenir ve uyarı
+    // anlamını yitirir. Yalnız CİHAZIN KENDİSİNDEN gelen kimlikler (seri no · IFS nesne no · IMEI ·
+    // MAC) ve kurum demirbaş etiketi çelişki sayılır.
+    $celiski = [];
+    foreach (CIM_MUKERRER_ANAHTAR as $kol => $etiket) {
+        if ($kol === $eslesenKolon || $kol === 'envanter_no') continue;
+        $degerler = [];
+        foreach ($kayitlar as $c) {
+            $v = trim((string)($c[$kol] ?? ''));
+            if ($v !== '' && $v !== '-') $degerler[pim_norm($v)] = $v;
+        }
+        if (count($degerler) > 1) $celiski[$etiket] = implode(' | ', $degerler);
+    }
+    return $celiski;
+}
+
+/**
+ * İki cihaz kartını birleştirir: $hedefId KORUNUR, $kaynakId silinir.
+ *
+ * • Hedefte BOŞ olan alanlar kaynaktan tamamlanır — dolu alan ASLA ezilmez.
+ * • `notlar` birleştirilir (kaynağın notu kaybolmasın).
+ * • Yaşam günlüğü (`it_hareketler`) ve belgeler (`it_belgeler`) hedefe TAŞINIR.
+ *   ⚠ Aynı dosya iki karta da yüklenmişse (md5 aynı) ikinci kayıt eklenmez, silinir —
+ *   yoksa birleşmiş kartta aynı tutanak iki kez görünürdü.
+ * • Kameranın bağlı olduğu NVR gibi `bagli_id` bağları hedefe yönlendirilir.
+ * • ⚠ `envanter_no` UNIQUE olduğundan kaynağınki hedefe YAZILAMAZ (hedefinki doluysa);
+ *   silinip kaybolmasın diye birleştirme notuna işlenir.
+ * • Hedefin günlüğüne, neyin nereden geldiğini yazan bir "not" satırı eklenir.
+ *
+ * @return array{hedef:string, kaynak:string, hareket:int, belge:int, mukerrer_belge:int, tamamlanan:array, bagli:int}
+ */
+function cim_cihaz_birlestir(PDO $pdo, int $hedefId, int $kaynakId): array
+{
+    if ($hedefId === $kaynakId) throw new RuntimeException('Bir cihaz kendisiyle birleştirilemez.');
+    $al = function (int $id) use ($pdo) {
+        $st = $pdo->prepare("SELECT * FROM it_cihazlar WHERE id=?"); $st->execute([$id]);
+        return $st->fetch(PDO::FETCH_ASSOC) ?: null;
+    };
+    $h = $al($hedefId); $k = $al($kaynakId);
+    if (!$h || !$k) throw new RuntimeException('Cihaz kaydı bulunamadı.');
+
+    $kunye = fn(array $c) => trim(($c['cihaz_kodu'] ?: $c['envanter_no'] ?: ('#' . $c['id'])) . ' — ' . ($c['ad'] ?? ''));
+    // Hedefte zaten dosyası olan belgelerin md5'i (mükerrer belge taşımamak için)
+    $mevcutMd5 = it_belge_md5ler($pdo, $hedefId);
+
+    $pdo->beginTransaction();
+    try {
+        // 1) Hedefte BOŞ olan alanları kaynaktan tamamla
+        $atla = ['id', 'created_at', 'updated_at', 'notlar'];
+        $set = []; $par = []; $tamamlanan = [];
+        foreach ($h as $kol => $v) {
+            if (in_array($kol, $atla, true)) continue;
+            if ($v !== null && trim((string)$v) !== '') continue;
+            $y = $k[$kol] ?? null;
+            if ($y === null || trim((string)$y) === '') continue;
+            $set[] = "$kol=?"; $par[] = $y; $tamamlanan[$kol] = $y;
+        }
+        // 2) Notlar birleşir (üzerine yazılmaz)
+        $nH = trim((string)($h['notlar'] ?? '')); $nK = trim((string)($k['notlar'] ?? ''));
+        if ($nK !== '' && !str_contains($nH, $nK)) { $set[] = 'notlar=?'; $par[] = trim($nH . "\n" . $nK); }
+        if ($set) { $par[] = $hedefId; $pdo->prepare("UPDATE it_cihazlar SET " . implode(', ', $set) . " WHERE id=?")->execute($par); }
+
+        // 3) Yaşam günlüğü hedefe taşınır
+        $u = $pdo->prepare("UPDATE it_hareketler SET cihaz_id=? WHERE cihaz_id=?");
+        $u->execute([$hedefId, $kaynakId]);
+        $hareket = $u->rowCount();
+
+        // 4) Belgeler taşınır — aynı dosya hedefte varsa (md5) ikinci kayıt eklenmez
+        $belge = 0; $mukerrerBelge = 0;
+        $bst = $pdo->prepare("SELECT * FROM it_belgeler WHERE cihaz_id=? ORDER BY id");
+        $bst->execute([$kaynakId]);
+        foreach ($bst->fetchAll(PDO::FETCH_ASSOC) as $b) {
+            $yol = __DIR__ . '/../' . (string)($b['dosya_url'] ?? '');
+            $md5 = is_file($yol) ? md5_file($yol) : null;
+            if ($md5 !== null && isset($mevcutMd5[$md5])) {
+                // Aynı bayt hedefte zaten var → kaynak satırı sil (dosya son bağ koparsa diskten gider)
+                it_belge_sil($pdo, (int)$b['id']);
+                $mukerrerBelge++;
+                continue;
+            }
+            $pdo->prepare("UPDATE it_belgeler SET cihaz_id=? WHERE id=?")->execute([$hedefId, (int)$b['id']]);
+            if ($md5 !== null) $mevcutMd5[$md5] = true;
+            $belge++;
+        }
+
+        // 5) Bu cihaza BAĞLI cihazlar (kamera → NVR) hedefe yönlendirilir
+        $bagli = 0;
+        try {
+            $bu = $pdo->prepare("UPDATE it_cihazlar SET bagli_id=? WHERE bagli_id=?");
+            $bu->execute([$hedefId, $kaynakId]);
+            $bagli = $bu->rowCount();
+        } catch (Throwable $e) { /* bagli_id kolonu yoksa atla */ }
+
+        // 6) Kaynağı sil ve hedefin günlüğüne izini bırak
+        $pdo->prepare("DELETE FROM it_cihazlar WHERE id=?")->execute([$kaynakId]);
+
+        $iz = [];
+        foreach (['cihaz_kodu'=>'Cihaz kodu', 'varlik_kodu'=>'IFS nesne no', 'envanter_no'=>'Envanter no',
+                  'seri_no'=>'Seri no', 'sasi_no'=>'Şasi no', 'imei'=>'IMEI'] as $kol => $et) {
+            $v = trim((string)($k[$kol] ?? ''));
+            if ($v !== '' && $v !== trim((string)($h[$kol] ?? ''))) $iz[] = "$et: $v";
+        }
+        it_hareket_ekle($pdo, $hedefId, 'not', null,
+            'Mükerrer kayıt birleştirildi — "' . $kunye($k) . '" (#' . $kaynakId . ') bu karta katıldı'
+            . ($hareket ? ", $hareket hareket" : '') . ($belge ? ", $belge belge" : '')
+            . ($mukerrerBelge ? ", $mukerrerBelge mükerrer belge atlandı" : '') . '.'
+            . ($iz ? ' Silinen kayıttaki bilgiler → ' . implode(' · ', $iz) : ''));
+
+        if ($pdo->inTransaction()) $pdo->commit();
+        return ['hedef' => $kunye($h), 'kaynak' => $kunye($k), 'hareket' => $hareket, 'belge' => $belge,
+                'mukerrer_belge' => $mukerrerBelge, 'tamamlanan' => $tamamlanan, 'bagli' => $bagli];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+}

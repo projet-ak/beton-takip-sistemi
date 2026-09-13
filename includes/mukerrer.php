@@ -159,8 +159,12 @@ const MK_KURAL = [
         'it_cihazlar'   => ['ad'=>'Cihazlar', 'tablo'=>'it_cihazlar', 'etiket'=>['envanter_no','ad','seri_no'],
                             'anahtar'=>[['Envanter No',['envanter_no']], ['Seri No',['seri_no']],
                                         ['IFS Seri Nesne No',['varlik_kodu']], ['Cihaz Kodu',['cihaz_kodu']],
-                                        ['MAC Adresi',['mac_adresi']]],
-                            'bagli'=>[['it_hareketler','cihaz_id'], ['it_belgeler','cihaz_id']]],
+                                        ['MAC Adresi',['mac_adresi']], ['IMEI',['imei']]],
+                            // bagli_id = kameranın bağlı olduğu NVR gibi cihaz→cihaz bağı; kaynak silinince
+                            // sarkmasın diye hedefe yönlendirilir (özel birleştirme bunu zaten yapar).
+                            'bagli'=>[['it_hareketler','cihaz_id'], ['it_belgeler','cihaz_id'], ['it_cihazlar','bagli_id']],
+                            'ozel'=>'mk_cihaz_birlestir',
+                            'not'=>'Birleştirmede yaşam günlüğü ve belgeler korunan karta taşınır; aynı dosya iki kartta da varsa ikinci kopya eklenmez.'],
         'it_lokasyonlar'=> ['ad'=>'Lokasyonlar', 'tablo'=>'it_lokasyonlar', 'etiket'=>['kod','ad'],
                             'anahtar'=>[['Üst + Ad',['ust_id','ad']], ['Proje Kodu',['kod']]],
                             'bagli'=>[['it_cihazlar','lokasyon_id'], ['it_personel','lokasyon_id'],
@@ -377,6 +381,27 @@ function mk_personel_birlestir(PDO $pdo, int $hedefId, int $kaynakId): bool
 {
     if (function_exists('pim_personel_birlestir')) return (bool)pim_personel_birlestir($pdo, $hedefId, $kaynakId);
     $k = mk_kural('it', 'it_personel');
+    $k['ozel'] = null;
+    mk_birlestir($pdo, $k, $hedefId, [$kaynakId]);
+    return true;
+}
+
+/**
+ * Cihaz birleştirme: IT modülünün kendi `cim_cihaz_birlestir`i devralır — belge mükerrerini md5 ile
+ * eler, `bagli_id` bağlarını yönlendirir ve hedefin yaşam günlüğüne birleştirme notu düşer.
+ * Çekirdek yüklenemezse genel birleştirmeye düşülür (davranış eskisi gibi kalır).
+ */
+function mk_cihaz_birlestir(PDO $pdo, int $hedefId, int $kaynakId): bool
+{
+    if (!function_exists('cim_cihaz_birlestir')) {
+        $it = dirname(__DIR__) . '/it';
+        if (is_file("$it/_ortak.php") && is_file("$it/_cihaz_import.php")) {
+            require_once "$it/_ortak.php";
+            require_once "$it/_cihaz_import.php";
+        }
+    }
+    if (function_exists('cim_cihaz_birlestir')) return (bool)cim_cihaz_birlestir($pdo, $hedefId, $kaynakId);
+    $k = mk_kural('it', 'it_cihazlar');
     $k['ozel'] = null;
     mk_birlestir($pdo, $k, $hedefId, [$kaynakId]);
     return true;

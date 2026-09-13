@@ -12,7 +12,28 @@ require_once __DIR__ . '/../includes/db_it.php';
 require_once __DIR__ . '/_ortak.php';
 
 it_semasi_kur($pdoIt);
+require_once __DIR__ . '/_cihaz_import.php';      // cim_cihaz_mukerrer / cim_cihaz_birlestir
 $pageTitle = 'Cihazlar — IT Envanter';
+
+// ── Mükerrer cihaz birleştirme ──────────────────────────────────────────────
+// Aynı cihaz iki kaynaktan (cihaz kodu / IFS nesne no) ayrı kayıt olarak düşebiliyor;
+// korunan karta geçmiş + belgeler taşınır, diğeri silinir.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['islem'] ?? '') === 'birlestir') {
+    if (!yetki_var('duzenle')) { flash('error', 'Cihaz birleştirmek için değiştirme yetkisi gerekir.'); redirect('cihazlar.php?mukerrer=1'); }
+    try {
+        $son = cim_cihaz_birlestir($pdoIt, (int)($_POST['hedef'] ?? 0), (int)($_POST['kaynak'] ?? 0));
+        audit_log($pdoIt, 'it_cihazlar', (int)($_POST['hedef'] ?? 0), 'UPDATE', null,
+                  ['birlestirilen' => (int)($_POST['kaynak'] ?? 0)] + $son, current_user_id());
+        flash('success', '“' . $son['kaynak'] . '” kaydı “' . $son['hedef'] . '” ile birleştirildi — '
+            . $son['hareket'] . ' hareket, ' . $son['belge'] . ' belge taşındı'
+            . ($son['mukerrer_belge'] ? ', ' . $son['mukerrer_belge'] . ' mükerrer belge atlandı' : '')
+            . ($son['bagli'] ? ', ' . $son['bagli'] . ' bağlı cihaz yönlendirildi' : '')
+            . ($son['tamamlanan'] ? ', ' . count($son['tamamlanan']) . ' boş alan tamamlandı' : '') . '.');
+    } catch (Throwable $e) { flash('error', 'Birleştirilemedi: ' . $e->getMessage()); }
+    redirect('cihazlar.php?mukerrer=1');
+}
+$mukerrerler = cim_cihaz_mukerrer($pdoIt);
+$mukerrerGoster = isset($_GET['mukerrer']);
 
 [$wsql, $par, $etkin] = it_filtre($_GET, $pdoIt);
 $lokId = (int)($_GET['lokasyon_id'] ?? 0); $perId = (int)($_GET['personel_id'] ?? 0);
@@ -93,6 +114,10 @@ require_once __DIR__ . '/../includes/header.php';
             </button>
             <div class="dropdown-menu dropdown-menu-end p-0 shadow" style="min-width:240px" id="kolonMenu"></div>
         </div>
+        <?php if ($mukerrerler): ?>
+        <a href="cihazlar.php?mukerrer=1" class="btn btn-outline-warning btn-sm" title="Aynı cihaz birden çok kez kayıtlı — incele ve birleştir">
+            <i class="bi bi-union me-1"></i>Mükerrer <span class="badge bg-warning text-dark"><?= count($mukerrerler) ?></span></a>
+        <?php endif; ?>
         <a href="cihazlar.php?<?= h(http_build_query(array_merge($_GET, ['export'=>'xlsx']))) ?>" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Excel</a>
         <?php if ($yazabilir): ?><a href="cihaz_import.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-box-arrow-in-down me-1"></i>İçe Aktar</a>
         <a href="cihaz_form.php" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Yeni Cihaz</a><?php endif; ?>
@@ -102,6 +127,92 @@ require_once __DIR__ . '/../includes/header.php';
 <?php foreach(['success','error','warning'] as $t): if($m=get_flash($t)): ?>
 <div class="alert alert-<?= $t==='error'?'danger':$t ?>"><?= h($m) ?></div>
 <?php endif; endforeach; ?>
+
+<?php if ($mukerrerler && !$mukerrerGoster): ?>
+<div class="alert alert-warning py-2 d-flex flex-wrap align-items-center gap-2">
+  <span><i class="bi bi-union me-1"></i><strong><?= count($mukerrerler) ?> mükerrer cihaz grubu</strong> bulundu —
+    aynı cihaz birden çok kez kayıtlı görünüyor (aynı cihaz kodu, IFS nesne no, seri no, envanter no, MAC ya da IMEI).</span>
+  <a href="cihazlar.php?mukerrer=1" class="btn btn-warning btn-sm ms-auto"><i class="bi bi-union me-1"></i>İncele ve birleştir</a>
+</div>
+<?php endif; ?>
+
+<?php if ($mukerrerGoster): ?>
+<div class="card border-warning shadow-sm mb-3">
+  <div class="card-header bg-white d-flex flex-wrap align-items-center gap-2">
+    <strong><i class="bi bi-union text-warning me-1"></i>Mükerrer Cihazlar</strong>
+    <span class="text-muted small">Birleştirmede <strong>korunan</strong> kart kalır; diğerinin
+      <strong>yaşam günlüğü ve belgeleri ona taşınır</strong>, boş alanları tamamlanır, sonra silinir.
+      Dolu alanlar asla ezilmez; aynı dosya iki kartta da varsa ikinci kopya eklenmez.</span>
+    <a href="cihazlar.php" class="btn btn-outline-secondary btn-sm ms-auto"><i class="bi bi-x-lg me-1"></i>Kapat</a>
+  </div>
+  <div class="card-body">
+    <?php if (!$mukerrerler): ?>
+      <div class="text-success mb-0"><i class="bi bi-check-circle me-1"></i>Mükerrer cihaz kaydı yok.</div>
+    <?php endif; ?>
+    <?php foreach ($mukerrerler as $g): $asil = $g['kayitlar'][0]; ?>
+    <div class="border rounded p-2 mb-2">
+      <div class="small text-muted mb-1">Eşleşme: <strong><?= h($g['tur']) ?></strong> — <code><?= h($g['anahtar']) ?></code></div>
+      <?php if (!empty($g['celiski'])): ?>
+      <div class="alert alert-danger py-2 small mb-2">
+        <i class="bi bi-exclamation-octagon-fill me-1"></i>
+        <strong>Dikkat — bunlar FARKLI cihaz olabilir.</strong>
+        Kayıtlar aynı <?= h($g['tur']) ?> taşıyor ama cihazın KENDİ kimlik alanları birbirinden farklı:
+        <?php foreach ($g['celiski'] as $alan => $degerler): ?>
+          <span class="d-block">· <strong><?= h($alan) ?>:</strong> <code><?= h($degerler) ?></code></span>
+        <?php endforeach; ?>
+        Büyük ihtimalle mükerrer değil, <strong>aynı koda iki ayrı cihaz yazılmış</strong> (veri hatası).
+        Birleştirirseniz ikinci cihaz envanterden silinir — önce kartları açıp doğrulayın,
+        gerekiyorsa yanlış olanı düzeltin.
+      </div>
+      <?php endif; ?>
+      <div class="table-responsive">
+      <table class="table table-sm mb-0 align-middle" style="font-size:.84rem">
+        <thead class="table-light"><tr>
+          <th>Kayıt</th><th>Cihaz Kodu</th><th>IFS Seri Nesne No</th><th>Seri No</th>
+          <th>Durum</th><th>Zimmetli</th><th class="text-end">Belge</th><th class="text-end">Hareket</th><th></th>
+        </tr></thead>
+        <tbody>
+        <?php foreach ($g['kayitlar'] as $ki => $c): ?>
+          <tr class="<?= $ki === 0 ? 'table-success' : '' ?>">
+            <td>
+              <a href="cihaz_detay.php?id=<?= (int)$c['id'] ?>"><?= h($c['ad'] ?: 'Cihaz') ?></a>
+              <span class="text-muted">#<?= (int)$c['id'] ?></span>
+              <?= $ki === 0 ? '<span class="badge bg-success ms-1">korunacak</span>' : '' ?>
+              <div class="small text-muted"><?= h(trim(($c['marka'] ?? '') . ' ' . ($c['model'] ?? ''))) ?></div>
+            </td>
+            <td class="font-monospace"><?= h($c['cihaz_kodu'] ?: $c['envanter_no']) ?></td>
+            <td class="font-monospace small"><?= h($c['varlik_kodu']) ?></td>
+            <td class="font-monospace small"><?= h($c['seri_no']) ?></td>
+            <td><?php $d = IT_DURUM[$c['durum']] ?? null; ?>
+                <?php if ($d): ?><span class="badge bg-<?= h($d[1]) ?>"><?= h($d[0]) ?></span><?php endif; ?></td>
+            <td class="small"><?= h($c['zimmetli']) ?></td>
+            <td class="text-end"><?= (int)$c['belge'] ?></td>
+            <td class="text-end"><?= (int)$c['hareket'] ?></td>
+            <td class="text-end">
+              <?php if ($ki > 0 && yetki_var('duzenle')): ?>
+              <form method="post" class="d-inline" onsubmit="return confirm('<?= empty($g['celiski']) ? '' : '⚠ BU KAYITLAR FARKLI CİHAZ OLABİLİR (kimlik alanları çelişiyor).\n\n' ?>#<?= (int)$c['id'] ?> kaydı #<?= (int)$asil['id'] ?> ile BİRLEŞTİRİLECEK.\n\nYaşam günlüğü ve belgeleri korunan karta taşınacak, bu kayıt SİLİNECEK. Devam?')">
+                <input type="hidden" name="islem" value="birlestir">
+                <input type="hidden" name="hedef" value="<?= (int)$asil['id'] ?>">
+                <input type="hidden" name="kaynak" value="<?= (int)$c['id'] ?>">
+                <button class="btn btn-sm text-nowrap btn-<?= empty($g['celiski']) ? 'warning' : 'outline-danger' ?>">
+                  <i class="bi bi-union me-1"></i><?= empty($g['celiski']) ? 'Korunanla birleştir' : 'Yine de birleştir' ?></button>
+              </form>
+              <?php endif; ?>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+      </div>
+      <div class="small text-muted mt-1">
+        Yanlış kartın korunacağını düşünüyorsanız önce doğru karttaki eksikleri tamamlayın ya da
+        <a href="cihaz_detay.php?id=<?= (int)$asil['id'] ?>">korunacak kaydı</a> açıp inceleyin.
+      </div>
+    </div>
+    <?php endforeach; ?>
+  </div>
+</div>
+<?php endif; ?>
 
 <form method="get" class="card border-0 shadow-sm mb-3">
   <div class="card-body py-2">

@@ -692,6 +692,43 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   Test (itsm, 156 kişi / 268 cihaz): "Tayyar Akbulut" · "akbulut tayyar" · "osman caglar" ·
   "medetogullari" · "yilmaz mesut" hepsi doğru kişiyi buluyor; dönüşüm sonrası arama yine çalışıyor;
   formdan "ismail / şıhoğlu" → "İSMAİL / ŞIHOĞLU"; 7 IT sayfası fatal/warning vermeden render oluyor.
+  **CİHAZ BİRLEŞTİRME (2026-09-13, kullanıcı isteği)** — aynı cihaz iki kaynaktan ayrı kayıt olarak
+  düşüyor: biri **cihaz kodundan** (N411 — elle/eski aktarım, künyesi boş), diğeri **IFS nesne no /
+  seri nodan** (aynı N411 — Snipe/ERP satırı). Sonuç: bir kartta yaşam günlüğü + imzalı evrak,
+  diğerinde künye; ikisi de yarım, liste iki satır gösteriyor.
+  • **`cim_cihaz_mukerrer()`** (`it/_cihaz_import.php`) mükerrer grupları bulur —
+  `CIM_MUKERRER_ANAHTAR`: cihaz kodu · IFS seri nesne no · seri no · envanter no · MAC · IMEI
+  (`pim_norm` ile normalize). Grup içi **ASIL (korunacak) kayıt = en dolu kart**: kimlik alanları
+  ağır basar (IFS 40 · seri 30 · cihaz kodu 20 · envanter no 10), künye alanları +3, **belge ×6 ·
+  hareket ×2** — evrakı/geçmişi olan kart kazanır, taşınacak veri en aza insin.
+  • ⚠⚠ **ÇELİŞKİ UYARISI `cim_kimlik_celiskisi()`** — aynı anahtarı taşıyan kayıtlar BAŞKA bir kimlik
+  alanında farklı dolu değer taşıyorsa bu **mükerrer değil VERİ HATASIDIR**: gerçek veride `N405`
+  cihaz kodunda bir **Lenovo** + bir **Acer** var (IFS kodları ve seri numaraları apayrı). Birleştirilse
+  ikinci cihaz envanterden silinirdi. Bu gruplarda kırmızı bant çelişen alanları değerleriyle listeler,
+  düğme "Korunanla birleştir" yerine **"Yine de birleştir"** (outline-danger) olur ve onay diyaloğu
+  uyarıyla başlar. ⚠ **`envanter_no` çelişki SAYILMAZ** — o bizim kendi sayacımız (IT-00001) ve mükerrer
+  iki kartta zaten her zaman farklıdır; dahil edilince HER grup "farklı cihaz" diye işaretlenip uyarı
+  anlamını yitiriyordu (ilk denemede 3/3 grup kırmızıydı, düzeltmeden sonra 1/3 = gerçek N405 vakası).
+  • **`cim_cihaz_birlestir($pdo, $hedefId, $kaynakId)`** tek transaction: hedefte **BOŞ olan** alanlar
+  kaynaktan tamamlanır (dolu alan ASLA ezilmez) · `notlar` birleşir · `it_hareketler` + `it_belgeler`
+  hedefe TAŞINIR · **aynı dosya iki kartta da varsa (md5 eşit) ikinci belge kaydı eklenmez**, `it_belge_sil`
+  ile silinir (dosya yalnız son bağ koptuğunda diskten gider) · **`bagli_id`** bağları (kamera → NVR)
+  hedefe yönlendirilir · kaynak silinir · hedefin günlüğüne **"Mükerrer kayıt birleştirildi …"** `not`
+  satırı yazılır ve **silinen karttaki kimlik kodları o nota işlenir** (⚠ `envanter_no` UNIQUE olduğundan
+  hedefinki doluysa kaynağınki yazılamaz — kaybolmasın diye nota geçer).
+  • **Ekran: `cihazlar.php?mukerrer=1`** (personel ekranındaki desenle aynı) — araç çubuğunda sayaçlı
+  **Mükerrer** düğmesi + liste üstünde bant; panelde grup grup tablo (kayıt · cihaz kodu · IFS · seri ·
+  durum · zimmetli · belge · hareket), korunacak satır yeşil. Yetki `yetki_var('duzenle')`, `audit_log`'lu.
+  • **Merkezî Mükerrer Kayıt Merkezi de bunu kullanır**: `MK_KURAL['it']['it_cihazlar']`'a
+  `'ozel'=>'mk_cihaz_birlestir'` + `['it_cihazlar','bagli_id']` bağı + IMEI anahtarı eklendi; wrapper
+  `it/_ortak.php` + `it/_cihaz_import.php`'yi yükleyip `cim_cihaz_birlestir`e devreder, yüklenemezse
+  genel birleştirmeye düşer (davranış eskisi gibi kalır).
+  Test (itsm): ekrandaki N411 kurgusu (zengin kart + boş kopya, 2+3 hareket, ortak md5'li belge,
+  bağlı kamera) → 3 hareket + 1 belge taşındı, **1 mükerrer belge atlandı ve diskten silindi**, taşınan
+  fatura dosyası yerinde, kamera `bagli_id` hedefe döndü, boş `zimmetli`/`departman` doldu, notlar
+  birleşti, birleştirme izi günlüğe yazıldı, grup tekrar taramada TEMİZ. Hata dayanıklılığı: kendisiyle
+  birleştirme / olmayan kayıt reddedildi, transaction açık kalmadı, kayıt sayısı bozulmadı.
+  Sayfa üzerinden POST birleştirme 449 → 448 ile doğrulandı; 8 IT sayfası fatal/warning vermeden render oluyor.
   **DASHBOARD ELDEN GEÇİRME (2026-09-10, kullanıcı isteği)** — üç somut şikâyet + genel geliştirme:
   • ⚠⚠ **KPI kartı ile açtığı liste TUTMUYORDU**: "Serviste + Arızalı 1" kartı `?durum=arizali`ye
   gidiyordu, cihaz *serviste* olduğu için liste BOŞ açılıyor ve "serviste arızalı yok" görünüyordu.
