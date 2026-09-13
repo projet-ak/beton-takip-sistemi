@@ -598,15 +598,30 @@ function cim_cihaz_mukerrer(PDO $pdo): array
             foreach ($kayitlar as &$c) { $c['belge'] = $belge[(int)$c['id']] ?? 0; $c['hareket'] = $hareket[(int)$c['id']] ?? 0; }
             unset($c);
             usort($kayitlar, fn($a, $b) => ($puan($b) <=> $puan($a)) ?: ((int)$a['id'] <=> (int)$b['id']));
-            $gruplar[$imza] = ['tur' => $etiket, 'anahtar' => (string)$anahtar, 'kayitlar' => $kayitlar,
-                               'celiski' => cim_kimlik_celiskisi($kayitlar, $kol)];
+            $celiski = cim_kimlik_celiskisi($kayitlar, $kol);
+            $gruplar[$imza] = [
+                'tur'      => $etiket,
+                'kolon'    => $kol,
+                'anahtar'  => (string)$anahtar,
+                'kayitlar' => $kayitlar,
+                'celiski'  => $celiski,
+                // ⚠ Çelişki varsa bunlar MÜKERRER DEĞİL, ayrı cihazlardır (aşağıdaki açıklamaya bak)
+                'ayri'     => $celiski !== [],
+                'model_kodu' => $kol === 'cihaz_kodu' && cim_model_numarasi_mi($kayitlar, (string)$anahtar),
+            ];
         }
     }
     return array_values($gruplar);
 }
 
 /**
- * ⚠ MÜKERRER Mİ, FARKLI CİHAZ MI? — Gruptaki kayıtlar BAŞKA bir kimlik alanında birbirinden
+ * ⚠⚠ MÜKERRER Mİ, FARKLI CİHAZ MI? — **İŞ KURALI: farklı IFS seri nesne no + farklı seri no =
+ * FARKLI CİHAZ.** Aynı modelden onlarca adet olabilir (10 Samsung Galaxy Tab Active 3), hepsi
+ * aynı model numarasını taşır ama her biri ayrı bir demirbaştır. Bu yüzden çelişkili gruplar
+ * mükerrer SAYILMAZ (`ayri=true`), birleştirme listesine girmez; ekranda ayrı bir
+ * "aynı kodu taşıyan farklı cihazlar" bölümünde veri hatası olarak gösterilir.
+ *
+ * Gruptaki kayıtlar BAŞKA bir kimlik alanında birbirinden
  * FARKLI dolu değer taşıyorsa bu büyük ihtimalle mükerrer değil, **veri hatasıdır**: aynı cihaz
  * koduna yanlışlıkla iki ayrı cihaz yazılmıştır (ör. N405 kodunda bir Lenovo + bir Acer, seri
  * numaraları ve IFS kodları apayrı). Bunlar birleştirilirse ikinci cihaz envanterden SİLİNMİŞ olur.
@@ -632,6 +647,24 @@ function cim_kimlik_celiskisi(array $kayitlar, string $eslesenKolon): array
         if (count($degerler) > 1) $celiski[$etiket] = implode(' | ', $degerler);
     }
     return $celiski;
+}
+
+/**
+ * Gruptaki cihaz kodu aslında bir **MODEL NUMARASI mı**? (SM-T577 gibi)
+ *
+ * ⚠ Sahada en sık görülen veri hatası: demirbaş etiketi alanına (`cihaz_kodu`) cihazın MODELİ
+ * yazılmış. O zaman aynı modelden kaç adet varsa hepsi aynı "kodu" taşır — 10 Samsung Galaxy
+ * Tab Active 3 hepsi SM-T577 olur. Bunlar mükerrer değildir; yalnız kod alanı yanlış doldurulmuştur.
+ * Gruptaki HER kaydın `model` alanı o kodla aynıysa bunu kesin biliriz ve tek tıkla temizlenebilir
+ * (kod zaten Model alanında duruyor, bilgi kaybı olmaz).
+ */
+function cim_model_numarasi_mi(array $kayitlar, string $anahtar): bool
+{
+    if ($anahtar === '') return false;
+    foreach ($kayitlar as $c) {
+        if (pim_norm((string)($c['model'] ?? '')) !== $anahtar) return false;
+    }
+    return true;
 }
 
 /**
@@ -733,4 +766,31 @@ function cim_cihaz_birlestir(PDO $pdo, int $hedefId, int $kaynakId): array
         if ($pdo->inTransaction()) $pdo->rollBack();
         throw $e;
     }
+}
+
+/**
+ * Model numarası yanlışlıkla **demirbaş etiketi** alanına yazılmış cihazlarda `cihaz_kodu`yu temizler.
+ *
+ * ⚠ Yalnız `cim_model_numarasi_mi()` doğrulanmış gruplarda çağrılmalı: kod, o cihazların `model`
+ * alanıyla birebir aynı olmalı — yoksa gerçek demirbaş etiketi silinir. Bilgi kaybı yoktur
+ * (kod zaten Model alanında duruyor); cihazlar bundan sonra mükerrer sanılmaz.
+ *
+ * @return array{temizlenen:int, atlanan:int}
+ */
+function cim_model_kodu_temizle(PDO $pdo, string $kod): array
+{
+    $n = pim_norm($kod);
+    if ($n === '') throw new RuntimeException('Kod boş olamaz.');
+    $st = $pdo->prepare("SELECT id, cihaz_kodu, model FROM it_cihazlar WHERE cihaz_kodu IS NOT NULL AND cihaz_kodu <> ''");
+    $st->execute();
+    $temizlenen = 0; $atlanan = 0;
+    $u = $pdo->prepare("UPDATE it_cihazlar SET cihaz_kodu = NULL WHERE id = ?");
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $c) {
+        if (pim_norm((string)$c['cihaz_kodu']) !== $n) continue;
+        // Güvenlik: kod gerçekten o cihazın MODELİ mi? Değilse dokunma (gerçek etiket olabilir)
+        if (pim_norm((string)($c['model'] ?? '')) !== $n) { $atlanan++; continue; }
+        $u->execute([(int)$c['id']]);
+        $temizlenen++;
+    }
+    return ['temizlenen' => $temizlenen, 'atlanan' => $atlanan];
 }

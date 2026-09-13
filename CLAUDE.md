@@ -701,14 +701,25 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   (`pim_norm` ile normalize). Grup içi **ASIL (korunacak) kayıt = en dolu kart**: kimlik alanları
   ağır basar (IFS 40 · seri 30 · cihaz kodu 20 · envanter no 10), künye alanları +3, **belge ×6 ·
   hareket ×2** — evrakı/geçmişi olan kart kazanır, taşınacak veri en aza insin.
-  • ⚠⚠ **ÇELİŞKİ UYARISI `cim_kimlik_celiskisi()`** — aynı anahtarı taşıyan kayıtlar BAŞKA bir kimlik
-  alanında farklı dolu değer taşıyorsa bu **mükerrer değil VERİ HATASIDIR**: gerçek veride `N405`
-  cihaz kodunda bir **Lenovo** + bir **Acer** var (IFS kodları ve seri numaraları apayrı). Birleştirilse
-  ikinci cihaz envanterden silinirdi. Bu gruplarda kırmızı bant çelişen alanları değerleriyle listeler,
-  düğme "Korunanla birleştir" yerine **"Yine de birleştir"** (outline-danger) olur ve onay diyaloğu
-  uyarıyla başlar. ⚠ **`envanter_no` çelişki SAYILMAZ** — o bizim kendi sayacımız (IT-00001) ve mükerrer
-  iki kartta zaten her zaman farklıdır; dahil edilince HER grup "farklı cihaz" diye işaretlenip uyarı
-  anlamını yitiriyordu (ilk denemede 3/3 grup kırmızıydı, düzeltmeden sonra 1/3 = gerçek N405 vakası).
+  • ⚠⚠ **İŞ KURALI — FARKLI IFS SERİ NESNE NO + FARKLI SERİ NO = FARKLI CİHAZ** (2026-09-13, kullanıcı:
+  "aynı modelle birden daha fazla olabilir"). Aynı modelden onlarca adet olur (10 Samsung Galaxy Tab
+  Active 3, hepsi `SM-T577`); bunlar mükerrer DEĞİL, ayrı demirbaşlardır. `cim_kimlik_celiskisi()` aynı
+  anahtarı taşıyan kayıtların BAŞKA kimlik alanlarında farklı dolu değer taşıyıp taşımadığına bakar;
+  taşıyorsa grup **`ayri=true`** olur ve **birleştirme listesine HİÇ girmez** (`cihazlar.php`
+  `$mukerrerler` / `$ayriCihazlar` diye ayrılır). İlk sürüm bunları "yine de birleştir" diye gösteriyordu —
+  tek yanlış tıkla ikinci cihaz envanterden silinirdi; kural tersine çevrildi. ⚠ **`envanter_no` çelişki
+  SAYILMAZ** — o bizim kendi sayacımız (IT-00001), mükerrer iki kartta zaten her zaman farklıdır; dahil
+  edilince HER grup "farklı cihaz" işaretleniyordu (3/3 kırmızıydı, düzeltince 1/3 = gerçek N405 vakası).
+  • **"Aynı kodu taşıyan FARKLI cihazlar" paneli** (`?mukerrer=1` ekranının altında, gri kart): grup başına
+  çelişen alanlar değerleriyle + cihaz tablosu. Bu bir **kod düzeltmesi** işidir, birleştirme değil.
+  **`cim_model_numarasi_mi()`** gruptaki HER kaydın `model` alanı ortak koda eşitse kodun aslında bir
+  **model numarası** olduğunu söyler (demirbaş etiketi değil — SM-T577 böyle); o gruplarda tek tıklık
+  **"Cihaz kodunu temizle"** (`islem=kod_temizle` → **`cim_model_kodu_temizle()`**) `cihaz_kodu`yu boşaltır.
+  ⚠ Yalnız `model`i koda EŞİT olan satıra dokunur, diğerleri atlanır ve sayısı raporlanır — gerçek demirbaş
+  etiketi yanlışlıkla silinmesin. Kimlik IFS seri nesne no + seri no üzerinden sürer, model alanı yerinde kalır.
+  Gerçek veride N405 (Lenovo + Acer, ayrı IFS/seri) model numarası DEĞİLDİR → temizleme düğmesi çıkmaz,
+  kartlar elle düzeltilir. Ekranda gösterilen/forma giden kod **normalize anahtar değil ham koddur**
+  ("SM T577" değil `SM-T577`; temizleme yine `pim_norm` ile eşleşir).
   • **`cim_cihaz_birlestir($pdo, $hedefId, $kaynakId)`** tek transaction: hedefte **BOŞ olan** alanlar
   kaynaktan tamamlanır (dolu alan ASLA ezilmez) · `notlar` birleşir · `it_hareketler` + `it_belgeler`
   hedefe TAŞINIR · **aynı dosya iki kartta da varsa (md5 eşit) ikinci belge kaydı eklenmez**, `it_belge_sil`
@@ -729,6 +740,11 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   birleşti, birleştirme izi günlüğe yazıldı, grup tekrar taramada TEMİZ. Hata dayanıklılığı: kendisiyle
   birleştirme / olmayan kayıt reddedildi, transaction açık kalmadı, kayıt sayısı bozulmadı.
   Sayfa üzerinden POST birleştirme 449 → 448 ile doğrulandı; 8 IT sayfası fatal/warning vermeden render oluyor.
+  10 adetlik SM-T577 kurgusu (aynı kod, farklı IFS/seri/IMEI + bir gerçek mükerrer kopya): grup
+  **mükerrer sayılmadı** (`ayri`, `model_kodu=EVET`), gerçek mükerrer (aynı seri no) listede kaldı;
+  sayfadan POST edilen kod temizliği 9 kayıtta `cihaz_kodu`yu boşalttı, `model` duruyor; kodu modelle aynı
+  OLMAYAN kayıtta temizlenen=1/atlanan=1 ile doğrulandı; sayfadaki 5 inline script + 18 olay özniteliği
+  JS ayrıştırmasından hatasız geçti.
   **DASHBOARD ELDEN GEÇİRME (2026-09-10, kullanıcı isteği)** — üç somut şikâyet + genel geliştirme:
   • ⚠⚠ **KPI kartı ile açtığı liste TUTMUYORDU**: "Serviste + Arızalı 1" kartı `?durum=arizali`ye
   gidiyordu, cihaz *serviste* olduğu için liste BOŞ açılıyor ve "serviste arızalı yok" görünüyordu.

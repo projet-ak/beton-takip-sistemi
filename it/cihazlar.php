@@ -32,7 +32,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['islem'] ?? '') === 'birles
     } catch (Throwable $e) { flash('error', 'Birleştirilemedi: ' . $e->getMessage()); }
     redirect('cihazlar.php?mukerrer=1');
 }
-$mukerrerler = cim_cihaz_mukerrer($pdoIt);
+// ── Model numarası demirbaş etiketi alanına yazılmış → cihaz kodunu temizle ──
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['islem'] ?? '') === 'kod_temizle') {
+    if (!yetki_var('duzenle')) { flash('error', 'Bu işlem için değiştirme yetkisi gerekir.'); redirect('cihazlar.php?mukerrer=1'); }
+    try {
+        $kod = trim((string)($_POST['kod'] ?? ''));
+        $son = cim_model_kodu_temizle($pdoIt, $kod);
+        audit_log($pdoIt, 'it_cihazlar', 0, 'UPDATE', null, ['model_kodu_temizle' => $kod] + $son, current_user_id());
+        flash($son['temizlenen'] ? 'success' : 'info',
+            $son['temizlenen'] . ' cihazda “' . h($kod) . '” cihaz kodu temizlendi (model numarasıydı, Model alanında duruyor)'
+            . ($son['atlanan'] ? ' — ' . $son['atlanan'] . ' cihazda kod modelle aynı olmadığı için DOKUNULMADI' : '') . '.');
+    } catch (Throwable $e) { flash('error', 'Temizlenemedi: ' . $e->getMessage()); }
+    redirect('cihazlar.php?mukerrer=1');
+}
+
+// ⚠ Çelişkili gruplar (farklı IFS / seri no) MÜKERRER DEĞİLDİR — ayrı cihazlardır.
+// Birleştirme listesinden ayrılır; aşağıda "aynı kodu taşıyan farklı cihazlar" olarak gösterilir.
+$tumGruplar    = cim_cihaz_mukerrer($pdoIt);
+$mukerrerler   = array_values(array_filter($tumGruplar, fn($g) => empty($g['ayri'])));
+$ayriCihazlar  = array_values(array_filter($tumGruplar, fn($g) => !empty($g['ayri'])));
 $mukerrerGoster = isset($_GET['mukerrer']);
 
 [$wsql, $par, $etkin] = it_filtre($_GET, $pdoIt);
@@ -114,9 +132,13 @@ require_once __DIR__ . '/../includes/header.php';
             </button>
             <div class="dropdown-menu dropdown-menu-end p-0 shadow" style="min-width:240px" id="kolonMenu"></div>
         </div>
-        <?php if ($mukerrerler): ?>
-        <a href="cihazlar.php?mukerrer=1" class="btn btn-outline-warning btn-sm" title="Aynı cihaz birden çok kez kayıtlı — incele ve birleştir">
-            <i class="bi bi-union me-1"></i>Mükerrer <span class="badge bg-warning text-dark"><?= count($mukerrerler) ?></span></a>
+        <?php if ($mukerrerler || $ayriCihazlar): ?>
+        <a href="cihazlar.php?mukerrer=1" class="btn btn-outline-<?= $mukerrerler ? 'warning' : 'secondary' ?> btn-sm"
+           title="<?= $mukerrerler ? count($mukerrerler) . ' mükerrer grup' : 'Mükerrer yok' ?><?= $ayriCihazlar ? ' · ' . count($ayriCihazlar) . ' grupta aynı kod farklı cihazlarda (birleştirilmez)' : '' ?>">
+            <i class="bi bi-union me-1"></i>Mükerrer
+            <?php if ($mukerrerler): ?><span class="badge bg-warning text-dark"><?= count($mukerrerler) ?></span><?php endif; ?>
+            <?php if ($ayriCihazlar): ?><span class="badge bg-secondary" title="Aynı kodu taşıyan farklı cihazlar — birleştirme değil kod düzeltmesi"><?= count($ayriCihazlar) ?></span><?php endif; ?>
+        </a>
         <?php endif; ?>
         <a href="cihazlar.php?<?= h(http_build_query(array_merge($_GET, ['export'=>'xlsx']))) ?>" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Excel</a>
         <?php if ($yazabilir): ?><a href="cihaz_import.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-box-arrow-in-down me-1"></i>İçe Aktar</a>
@@ -131,7 +153,7 @@ require_once __DIR__ . '/../includes/header.php';
 <?php if ($mukerrerler && !$mukerrerGoster): ?>
 <div class="alert alert-warning py-2 d-flex flex-wrap align-items-center gap-2">
   <span><i class="bi bi-union me-1"></i><strong><?= count($mukerrerler) ?> mükerrer cihaz grubu</strong> bulundu —
-    aynı cihaz birden çok kez kayıtlı görünüyor (aynı cihaz kodu, IFS nesne no, seri no, envanter no, MAC ya da IMEI).</span>
+    aynı cihaz birden çok kez kayıtlı görünüyor (kimlik alanları çelişmiyor).</span>
   <a href="cihazlar.php?mukerrer=1" class="btn btn-warning btn-sm ms-auto"><i class="bi bi-union me-1"></i>İncele ve birleştir</a>
 </div>
 <?php endif; ?>
@@ -152,19 +174,6 @@ require_once __DIR__ . '/../includes/header.php';
     <?php foreach ($mukerrerler as $g): $asil = $g['kayitlar'][0]; ?>
     <div class="border rounded p-2 mb-2">
       <div class="small text-muted mb-1">Eşleşme: <strong><?= h($g['tur']) ?></strong> — <code><?= h($g['anahtar']) ?></code></div>
-      <?php if (!empty($g['celiski'])): ?>
-      <div class="alert alert-danger py-2 small mb-2">
-        <i class="bi bi-exclamation-octagon-fill me-1"></i>
-        <strong>Dikkat — bunlar FARKLI cihaz olabilir.</strong>
-        Kayıtlar aynı <?= h($g['tur']) ?> taşıyor ama cihazın KENDİ kimlik alanları birbirinden farklı:
-        <?php foreach ($g['celiski'] as $alan => $degerler): ?>
-          <span class="d-block">· <strong><?= h($alan) ?>:</strong> <code><?= h($degerler) ?></code></span>
-        <?php endforeach; ?>
-        Büyük ihtimalle mükerrer değil, <strong>aynı koda iki ayrı cihaz yazılmış</strong> (veri hatası).
-        Birleştirirseniz ikinci cihaz envanterden silinir — önce kartları açıp doğrulayın,
-        gerekiyorsa yanlış olanı düzeltin.
-      </div>
-      <?php endif; ?>
       <div class="table-responsive">
       <table class="table table-sm mb-0 align-middle" style="font-size:.84rem">
         <thead class="table-light"><tr>
@@ -190,12 +199,12 @@ require_once __DIR__ . '/../includes/header.php';
             <td class="text-end"><?= (int)$c['hareket'] ?></td>
             <td class="text-end">
               <?php if ($ki > 0 && yetki_var('duzenle')): ?>
-              <form method="post" class="d-inline" onsubmit="return confirm('<?= empty($g['celiski']) ? '' : '⚠ BU KAYITLAR FARKLI CİHAZ OLABİLİR (kimlik alanları çelişiyor).\n\n' ?>#<?= (int)$c['id'] ?> kaydı #<?= (int)$asil['id'] ?> ile BİRLEŞTİRİLECEK.\n\nYaşam günlüğü ve belgeleri korunan karta taşınacak, bu kayıt SİLİNECEK. Devam?')">
+              <form method="post" class="d-inline" onsubmit="return confirm('#<?= (int)$c['id'] ?> kaydı #<?= (int)$asil['id'] ?> ile BİRLEŞTİRİLECEK.\n\nYaşam günlüğü ve belgeleri korunan karta taşınacak, bu kayıt SİLİNECEK. Devam?')">
                 <input type="hidden" name="islem" value="birlestir">
                 <input type="hidden" name="hedef" value="<?= (int)$asil['id'] ?>">
                 <input type="hidden" name="kaynak" value="<?= (int)$c['id'] ?>">
-                <button class="btn btn-sm text-nowrap btn-<?= empty($g['celiski']) ? 'warning' : 'outline-danger' ?>">
-                  <i class="bi bi-union me-1"></i><?= empty($g['celiski']) ? 'Korunanla birleştir' : 'Yine de birleştir' ?></button>
+                <button class="btn btn-sm text-nowrap btn-warning">
+                  <i class="bi bi-union me-1"></i>Korunanla birleştir</button>
               </form>
               <?php endif; ?>
             </td>
@@ -212,6 +221,82 @@ require_once __DIR__ . '/../includes/header.php';
     <?php endforeach; ?>
   </div>
 </div>
+
+<?php if ($ayriCihazlar): ?>
+<div class="card border-secondary shadow-sm mb-3">
+  <div class="card-header bg-white d-flex flex-wrap align-items-center gap-2">
+    <strong><i class="bi bi-exclamation-diamond text-secondary me-1"></i>Aynı kodu taşıyan FARKLI cihazlar</strong>
+    <span class="badge bg-secondary"><?= count($ayriCihazlar) ?></span>
+    <span class="text-muted small">Bunlar mükerrer DEĞİLDİR: <strong>IFS seri nesne no ve seri no farklıysa cihazlar ayrıdır</strong>
+      (aynı modelden onlarca adet olabilir). Birleştirme yapılmaz, <strong>kod düzeltilir</strong>.</span>
+  </div>
+  <div class="card-body">
+    <?php foreach ($ayriCihazlar as $g):
+        // Anahtar normalize edilmiştir ("SM T577"); ekranda ve formda cihazın GERÇEK kodunu göster.
+        $hamKod = '';
+        foreach ($g['kayitlar'] as $c) { $hamKod = trim((string)($c[$g['kolon']] ?? '')); if ($hamKod !== '') break; }
+        if ($hamKod === '') $hamKod = $g['anahtar'];
+    ?>
+    <div class="border rounded p-2 mb-2">
+      <div class="small mb-1">
+        Ortak <strong><?= h($g['tur']) ?></strong>: <code><?= h($hamKod) ?></code>
+        <span class="badge bg-light text-dark border ms-1"><?= count($g['kayitlar']) ?> cihaz</span>
+        <?php if (!empty($g['model_kodu'])): ?>
+          <span class="badge bg-warning text-dark ms-1"><i class="bi bi-tag me-1"></i>model numarası</span>
+        <?php endif; ?>
+      </div>
+      <div class="small text-muted mb-2">
+        Farklı olan kimlik alanları:
+        <?php foreach ($g['celiski'] as $alan => $degerler): ?>
+          <span class="d-block">· <strong><?= h($alan) ?>:</strong> <code><?= h($degerler) ?></code></span>
+        <?php endforeach; ?>
+      </div>
+      <?php if (!empty($g['model_kodu'])): ?>
+      <div class="alert alert-warning py-2 small mb-2">
+        <i class="bi bi-info-circle me-1"></i>
+        <code><?= h($hamKod) ?></code> bu kayıtlarda <strong>model numarası</strong> olarak görünüyor
+        (Model alanı da aynı) — demirbaş etiketi değil. Cihaz kodu alanını boşaltırsanız bu cihazlar
+        birbirine karışmaz; kimlikleri IFS seri nesne no ve seri no üzerinden sürer.
+        <?php if (yetki_var('duzenle')): ?>
+        <form method="post" class="d-inline ms-1"
+              onsubmit="return confirm('<?= h($hamKod) ?> kodu, Model alanı da aynı olan cihazlardan TEMİZLENECEK.\n\nBaşka verilere dokunulmaz. Devam?')">
+          <input type="hidden" name="islem" value="kod_temizle">
+          <input type="hidden" name="kod" value="<?= h($hamKod) ?>">
+          <button class="btn btn-warning btn-sm"><i class="bi bi-eraser me-1"></i>Cihaz kodunu temizle</button>
+        </form>
+        <?php endif; ?>
+      </div>
+      <?php endif; ?>
+      <div class="table-responsive">
+      <table class="table table-sm mb-0 align-middle" style="font-size:.84rem">
+        <thead class="table-light"><tr>
+          <th>Kayıt</th><th>Cihaz Kodu</th><th>IFS Seri Nesne No</th><th>Seri No</th>
+          <th>Durum</th><th>Zimmetli</th>
+        </tr></thead>
+        <tbody>
+        <?php foreach ($g['kayitlar'] as $c): ?>
+          <tr>
+            <td>
+              <a href="cihaz_detay.php?id=<?= (int)$c['id'] ?>"><?= h($c['ad'] ?: 'Cihaz') ?></a>
+              <span class="text-muted">#<?= (int)$c['id'] ?></span>
+              <div class="small text-muted"><?= h(trim(($c['marka'] ?? '') . ' ' . ($c['model'] ?? ''))) ?></div>
+            </td>
+            <td class="font-monospace"><?= h($c['cihaz_kodu'] ?: $c['envanter_no']) ?></td>
+            <td class="font-monospace small"><?= h($c['varlik_kodu']) ?></td>
+            <td class="font-monospace small"><?= h($c['seri_no']) ?></td>
+            <td><?php $d = IT_DURUM[$c['durum']] ?? null; ?>
+                <?php if ($d): ?><span class="badge bg-<?= h($d[1]) ?>"><?= h($d[0]) ?></span><?php endif; ?></td>
+            <td class="small"><?= h($c['zimmetli']) ?></td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+      </div>
+    </div>
+    <?php endforeach; ?>
+  </div>
+</div>
+<?php endif; ?>
 <?php endif; ?>
 
 <form method="get" class="card border-0 shadow-sm mb-3">
