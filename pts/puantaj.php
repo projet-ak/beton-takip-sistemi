@@ -17,7 +17,6 @@ require_auth(['admin','teknik_ofis_admin','teknik_ofis','depo','it_sorumlusu','s
 require_once __DIR__ . '/../includes/db_pts.php';
 require_once __DIR__ . '/_ortak.php';
 
-it_semasi_kur($pdoPts);
 pts_semasi_kur($pdoPts);
 $pageTitle = 'Puantaj — Personel Takip';
 
@@ -27,7 +26,7 @@ if ($bit < $bas) [$bas, $bit] = [$bit, $bas];
 
 $f = ['personel_id' => (int)($_GET['personel_id'] ?? 0) ?: null,
       'birim'       => trim((string)($_GET['birim'] ?? '')) ?: null,
-      'lokasyon_id' => (int)($_GET['lokasyon_id'] ?? 0) ?: null];
+      'lokasyon'    => trim((string)($_GET['lokasyon'] ?? '')) ?: null];
 $p = pts_gunluk($pdoPts, $bas, $bit, $f);
 
 // Kişi bazlı toplam (satırlar gün bazlı; üstte kişi özeti daha okunur)
@@ -40,7 +39,7 @@ foreach ($p['satirlar'] as $s) {
 }
 uasort($kisi, fn($a, $b) => $b['dakika'] <=> $a['dakika']);
 
-$birimler = $pdoPts->query("SELECT DISTINCT birim FROM it_personel WHERE birim<>'' AND birim IS NOT NULL ORDER BY birim")
+$birimler = $pdoPts->query("SELECT DISTINCT birim FROM pts_personel WHERE birim<>'' AND birim IS NOT NULL ORDER BY birim")
                   ->fetchAll(PDO::FETCH_COLUMN);
 
 require __DIR__ . '/../includes/header.php';
@@ -74,7 +73,10 @@ require __DIR__ . '/../includes/header.php';
             <option value="<?= h($b) ?>" <?= ($f['birim']===$b)?'selected':'' ?>><?= h($b) ?></option>
           <?php endforeach; ?></select></div>
       <div class="col-md-3"><label class="form-label small mb-0">Lokasyon</label>
-        <select name="lokasyon_id" class="form-select form-select-sm"><?= it_lokasyon_options($pdoPts, $f['lokasyon_id']) ?></select></div>
+        <select name="lokasyon" class="form-select form-select-sm"><option value="">Tümü</option>
+          <?php foreach (pts_personel_secenekler($pdoPts, 'lokasyon') as $l): ?>
+            <option value="<?= h($l) ?>" <?= ($f['lokasyon']===$l)?'selected':'' ?>><?= h($l) ?></option>
+          <?php endforeach; ?></select></div>
       <div class="col-md-2 d-flex gap-1">
         <button class="btn btn-primary btn-sm flex-fill"><i class="bi bi-search"></i></button>
         <a href="puantaj.php" class="btn btn-outline-secondary btn-sm">Temizle</a></div>

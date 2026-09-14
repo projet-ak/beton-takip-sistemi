@@ -183,7 +183,9 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   `DATE_FORMAT(NOW(),'%Y-%m-01')` → `strftime(...)`) ve `crm_semasi_kur`'u no-op yapar; **test hep
   güncel kodu koşar** (elle yamalı kopya bayatlıyordu).
 - **Prekast modülü** = `prekast/` alt klasörü. Cephe prekast (T profil) **montaj iş takibi + hakkediş**.
-  **CRM ile aynı veritabanını paylaşır** (`takbulut_crm`, `CRM_DB_NAME`), tablolar `prekast_` önekli;
+  ⚠ **§0 kuralının bilinen istisnası** — **CRM ile aynı veritabanını paylaşır** (`takbulut_crm`,
+  `CRM_DB_NAME`), tablolar `prekast_` önekli; ayırma (`PREKAST_DB_NAME`) yalnız canlı veri göçü kararı
+  bekliyor, teknik engel yok (prekast tabloları crm tablolarına JOIN atmıyor);
   `includes/db_prekast.php` → `$pdoPrekast` (istenirse `PREKAST_DB_NAME` ile ayrılır).
   **Kaynak: sahadan GÜNLÜK gelen "İŞ TAKİP / HAKKEDİŞ ÇİZELGESİ" Excel'i.** Çizelge SABİT bir iş
   listesidir; her gün aynı satırlar gelir, yalnız **durumlar dolar**: Kesim → Silikon → Metraj →
@@ -858,17 +860,29 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   ⚠ Taşıma sırasında PTS'nin kendi yazdığı auth/rol/giriş-kilidi/Excel/dashboard katmanları ATILDI —
   hepsinin karşılığı sistemde zaten vardı (yetki matrisi · `login.php` deneme kilidi · `ERN_RAPOR`).
   Gerçekten taşınan, PTS'ye ÖZGÜ olan kısımdır: ArUco okuma, kart üretimi, cihaz anahtarı, yön kuralı, puantaj.
-  • ⚠⚠ **PERSONEL AYRI TUTULMAZ — kişi kaydı `it_personel`'dir** (IT Envanter). PTS yalnız "hangi kartta kim"
-  ve "kim ne zaman girdi/çıktı" bilgisini ekler. Bu yüzden **PTS tabloları IT ile AYNI veritabanındadır**
-  (`IT_DB_NAME`, `pts_` önekli — Prekast'ın CRM ile paylaşmasıyla aynı desen) ve JOIN'ler sıradan tek-DB
-  JOIN'idir. **`PTS_DB_NAME` sabiti bilerek YOKTUR**: ayırmak personel bağını veritabanı-ötesi yapardı.
-  `includes/db_pts.php` → `$pdoPts` (aynı bağlantı ayarları, IT_DB_NAME'e bakar).
-  • **Tablolar**: `pts_kartlar` (marker_id + sozluk + personel_id + verildi/iptal — kart kaybolunca eskisi
+  • ⭐⭐ **TAM BAĞIMSIZ MODÜL** (2026-09-14, kullanıcı kuralı — bkz. §0): **kendi veritabanı**
+  (`PTS_DB_NAME`, varsayılan `takbulut_pts`; `includes/db_pts.php` → `$pdoPts`), **kendi uploads klasörü**
+  (`uploads/pts/`) ve **kendi personel listesi** (`pts_personel`). `pts/_ortak.php` başka modülün
+  çekirdeğini `require` ETMEZ, sorguları başka modülün tablosuna JOIN ATMAZ — IT Envanter kurulu
+  olmasa da PTS eksiksiz çalışır. ⚠ İlk sürüm personeli `it_personel`'den okuyup IT ile aynı DB'yi
+  paylaşıyordu; kural gereği ayrıştırıldı.
+  • **IT ENVANTER KÖPRÜSÜ — tek yönlü, isteğe bağlı**: `pts/personel.php` araç çubuğundaki
+  **"IT Envanter'den Aktar"** düğmesi (`pts_it_aktar()`, yalnız `IT_DB_NAME` tanımlıysa görünür)
+  IT'deki personel kartlarını PTS'ye KOPYALAR — 178 kişiyi elle yazmamak için. Eşleşme **sicil no**,
+  sicili olmayanda normalize ad+soyad (aynı adlı 2+ kayıt → atlanır, "elle eşleyin"). Mevcut kayıtta
+  yalnız **BOŞ alanlar** dolar (PTS'de elle düzeltilen veri EZİLMEZ), IT'nin lokasyon ağacı düz metne
+  çevrilir. ⚠ Kopyalama ANLIKTIR: sonrasında iki liste bağımsız yaşar (PTS'deki düzeltme IT'ye,
+  IT'deki düzeltme PTS'ye geçmez). Aynı dosya/liste defalarca aktarılsa da mükerrer kayıt oluşmaz.
+  **Bedeli açıkça bilinsin**: bir kişinin puantajı ile zimmetli cihazı artık TEK kartta buluşmaz,
+  yalnız sicil no ile eşleşir — bu, modül bağımsızlığı kuralının kabul edilmiş karşılığıdır.
+  • **Tablolar**: **`pts_personel`** (sicil_no UNIQUE, ad, soyad, unvan, birim, **lokasyon [serbest METİN —
+  başka modülün lokasyon ağacına bağlanmaz]**, telefon, eposta, ise_giris, **isten_cikis NULL = çalışıyor**,
+  notlar) · `pts_kartlar` (marker_id + sozluk + personel_id + verildi/iptal — kart kaybolunca eskisi
   iptal edilir, geçmiş hareketler eski karta bağlı kalır) · `pts_noktalar` (kod UNIQUE, ad, **cihaz_anahtari**
-  UNIQUE, yon `otomatik|giris|cikis`, lokasyon_id, aktif, son_gorulme) · `pts_hareketler` (personel_id, kart_id,
-  nokta_id, marker_id, yon, zaman, **elle**, foto_url, aciklama).
-  ⚠ **ENUM KULLANILMAZ** — komşu `it_` tabloları da VARCHAR kullanıyor ve SQLite'lı duman testi ENUM'u
-  ayrıştıramıyor; geçerli değerler `PTS_YON` / `PTS_NOKTA_YON` sabitlerinde, doğrulama uygulamada.
+  UNIQUE, yon `otomatik|giris|cikis`, lokasyon [serbest metin], aktif, son_gorulme) · `pts_hareketler`
+  (personel_id, kart_id, nokta_id, marker_id, yon, zaman, **elle**, foto_url, aciklama).
+  ⚠ **ENUM KULLANILMAZ** — SQLite'lı duman testi ENUM'u ayrıştıramıyor (sistemin geri kalanında da VARCHAR
+  deseni var); geçerli değerler `PTS_YON` / `PTS_NOKTA_YON` sabitlerinde, doğrulama uygulamada.
   ⚠ Postgres'te "bir kişide tek aktif kart" **kısmi UNIQUE index**le garantiydi; **MySQL'de kısmi index YOK**,
   bu yüzden kural `pts_kart_ver()` içinde transaction'la tutulur ve `pts_kart_celiskileri()` kurulum
   ekranında ihlal tarar (doğrudan SQL ile bozulmuşsa görünsün).
@@ -886,7 +900,12 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   Excel/PDF/Yazdır; ⚠ ekranda **"resmî puantaj/SGK kaydı değildir"** bandı) · **hareketler** (ham defter:
   tarih/yön/nokta/fotoğraf süzgeci, sayfalama, geçiş görüntüsü küçük resim, **elle hareket ekleme**
   [`elle=1` rozetli — makine kaydından ayırt edilir]; ⚠ **kart okutma kaydı SİLİNEMEZ**, yalnız elle eklenen
-  silinir, düzeltme karşı yönde elle kayıtla yapılır) · **kartlar** (it_personel listesi + kart tanımla/iptal,
+  silinir, düzeltme karşı yönde elle kayıtla yapılır) · **personel** (modülün KENDİ listesi: durum
+  [çalışan/ayrılan/hepsi] + Türkçe harf duyarsız arama `pts_personel_suz` [kelime sırası serbest] + ArUco/geçiş
+  sayısı sütunu + "IT Envanter'den Aktar" + kart/geçiş kaydı olan kişide **silme engeli**) ·
+  **personel_form** (ekle/düzenle; mükerrer sicil engeli, kayıtlar **BÜYÜK HARF** `pts_buyuk` ["ismail şıhoğlu"
+  → İSMAİL ŞIHOĞLU], birim/lokasyon/unvan serbest metin + datalist önerisi, hata halinde form gönderilen
+  değerlerle yeniden çizilir) · **kartlar** (personel listesi + kart tanımla/iptal,
   **"Sicilden"** türetme, canlı ArUco önizlemesi, **A4 kart tabakası yazdırma** `@media print`) ·
   **noktalar** (CRUD + cihaz anahtarı kopyala/yenile; geçiş kaydı varsa SİLİNMEZ pasife alınır) ·
   **kiosk** (tam ekran, sistemin kabuğunu kullanmaz; kamera + yön seçimi localStorage'da) · **kurulum_pts**.
@@ -900,7 +919,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   okunursa YENİ KAYIT AÇILMAZ, `tekrar:true` döner — kamera aynı kareyi saniyede defalarca görür.
   İstemcide ayrıca 3 sn'lik kilit var (gereksiz ağ trafiği kesilir).
   • **Geçiş fotoğrafı**: kiosk her okumada kareyi JPEG gönderir; görüntü **DB'de TUTULMAZ**, gün bazlı
-  `uploads/pts_gecis/Y-m-d/{hareket_id}.jpg` olarak diske yazılır, tabloda yalnız göreli yol durur
+  `uploads/pts/gecis/Y-m-d/{hareket_id}.jpg` olarak diske yazılır (modül kendi klasöründe), tabloda yalnız göreli yol durur
   (yedek küçük kalsın). ⚠ Yazılamazsa **geçiş yine kaydedilir** — kanıt görüntüsü kaydın tamamlayıcısıdır,
   ön koşulu değil. Klasör `.gitignore`'da.
   • ⚠ **Puantaj toplaması SQL'de değil PHP'de** (`pts_gunluk`): Postgres sürümü pencere fonksiyonu +
@@ -913,17 +932,39 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   • **Kamera yalnız GÜVENLİ BAĞLAMDA açılır** (HTTPS ya da localhost) — tablet ağdan açılacaksa sertifika şart;
   kiosk ekranı bunu açıkça yazar (`window.isSecureContext` kontrolü).
   Çekirdek `pts/_ortak.php`: PTS_SOZLUK / PTS_MAX_MARKER / PTS_YON / PTS_NOKTA_YON sabitleri, pts_semasi_kur,
+  **pts_norm / pts_buyuk** (Türkçe harf katlama ve doğru büyük harf — `mb_strtoupper` 'i'yi 'I' yapar),
+  **pts_personel_liste/bul/sicille/suz/options/secenekler**, **pts_it_aktar** (IT köprüsü),
   pts_marker_sicilden (sicildeki rakamlar, baştaki sıfırlar atılır: "00042"→42), pts_aktif_kart,
   pts_marker_sahibi, pts_kart_ver, pts_kart_iptal, pts_kart_celiskileri, pts_anahtar_uret,
   pts_nokta_anahtarla, **pts_scan**, pts_foto_kaydet, **pts_gunluk**, pts_iceridekiler, pts_ozet, pts_filtre.
-  **Test**: itsm harness'ine eklendi (`pts_test.php` 35 sağlama: şema · sicilden türetme · kart çakışmaları ·
-  yön kuralı · debounce · puantaj matematiği) + `php -S` üzerinde **gerçek HTTP** ile scan ucu (anahtarsız 403 ·
-  whoami · okuma · debounce `tekrar` · tanımsız marker · fotoğraf diske yazıldı) + `run_pts.php` ile 7 sayfa
-  fatal/warning'siz render + **Playwright ile vendor kütüphanesi** (250 kod, generateSVG deterministik,
-  ID 250 reddediliyor, JS hatası yok). Gerçekçi kurguda puantaj birebir doğrulandı: 07:45–12:05 + 12:50–17:40
-  → **9s 10dk**, çıkışını unutan personel SARI satır + eksik=1.
+  **Test**: itsm harness'inde PTS **AYRI bir SQLite dosyasında** (`pts.sqlite`) koşar — bağımsızlık iddiası
+  gerçekten sınanır. `pts_test.php` **50 sağlama**: bağımsızlık (bağlantılar ayrı · `_ortak.php` IT'yi
+  yüklemiyor · `it_*` fonksiyonları tanımlı değil) · şema · IT köprüsü (herkes aktarıldı · ikinci aktarımda
+  0 yeni · elle girilen değer korundu) · Türkçe arama/büyük harf · sicilden türetme · kart çakışmaları ·
+  yön kuralı · debounce · puantaj matematiği. Ayrıca `php -S` üzerinde **gerçek HTTP** ile scan ucu
+  (anahtarsız 403 · whoami · okuma · debounce `tekrar` · tanımsız marker · yanlış anahtar ·
+  fotoğraf `uploads/pts/gecis/…` altına yazıldı) + `run_pts.php` ile **9 sayfa** fatal/warning'siz render +
+  inline JS temiz + sayfadan POST ile personel ekleme (büyük harf), mükerrer sicil engeli, geçiş kaydı olan
+  kişide silme engeli, sayfadan IT aktarımında kayıt sayısının değişmemesi doğrulandı.
+  Gerçekçi kurguda puantaj birebir doğrulandı: 07:45–12:05 + 12:50–17:40 → **9s 10dk**,
+  çıkışını unutan personel SARI satır + eksik=1.
   ⚠ `php://input` **CLI'da boştur** — API ucunu `php -r`/include ile değil `php -S` üzerinden test et.
 - Geliştirici: **Tayyar Akbulut**. Sürüm: v3.0. Canlı: `https://ernsaha.com.tr/beton/` (eski: takbulut.com/beton/).
+
+> **⭐⭐ §0 — KURAL: HER MODÜL BAĞIMSIZDIR** (2026-09-14, kullanıcı: *"BU MODÜL AYRI VERİ TABANI VE
+> GÖRSELLER AYRI OLSUN MODÜLLERDEN BAĞIMSIZ OLSUN BÜTÜN MODÜLLER İÇİN GEÇERLİ KURALIMIZ BUDUR"*).
+> **Bütün modüller için geçerlidir**, yeni modül eklerken de bu kurala göre kur:
+> 1. **Kendi veritabanı** — `<MODUL>_DB_NAME` sabiti + `includes/db_<modul>.php` → `$pdo<Modul>`;
+>    tablolar `<modul>_` önekli. Sabit tanımsızsa ana DB'ye düşer (modül boş açılır, kurulum rozetinden görünür).
+> 2. **Kendi uploads klasörü** — `uploads/<modul>/…`; DB'ye yalnız göreli URL yazılır, dosya diskte durur.
+> 3. **Başka modüle bağımlılık YOK** — başka modülün çekirdeğini `require` etme, başka modülün tablosuna
+>    JOIN atma. Komşu modül hiç kurulmasa da modül eksiksiz çalışmalı.
+> 4. **Ortak veri gerekiyorsa köprü kurulur, bağ değil**: tek yönlü, isteğe bağlı, `defined()` ile korunmuş
+>    bir **"aktar" düğmesi** (ör. PTS'nin `pts_it_aktar()`'ı IT personelini sicil no ile kopyalar).
+>    Kopyalama anlıktır; sonrasında iki taraf bağımsız yaşar. **Bedeli kabul edilmiştir**: aynı kişi/varlık
+>    iki modülde iki kayıttır, yalnız bir anahtar (sicil no, VKN…) üzerinden eşleşir.
+>
+> ⚠ Bilinen istisna: **Prekast → CRM DB'sini paylaşıyor** (§6). Ayırma yalnız veri göçü kararı bekliyor.
 
 > **⭐ TEMEL İLKE — Excel şablonu "kutsal kitap" (tek doğru kaynak).** Sistem, ilgili Excel
 > şablonunu **birebir yansıtır**; veri/toplam çelişkisinde **Excel esastır**, sistem ona göre
@@ -1274,18 +1315,21 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · **Sipariş Talepleri** · **
 
 ## 6. Veritabanları
 
-> **Canlıda 7 AYRI veritabanı vardır** (2026-08 ayrıştırması + 2026-09 CRM + IT). Her modül kendi DB'sinde:
+> **Canlıda 8 AYRI veritabanı vardır** — kural §0'da: her modül kendi DB'sinde.
 > `takbulut_beton` (beton) · `takbulut_demir` · `takbulut_seramik` · `takbulut_depo` ·
-> `takbulut_akaryakit` · `takbulut_crm` (**CRM + Prekast birlikte** — `prekast_` önekli tablolar
-> aynı DB'de durur, ayırmak istenirse `PREKAST_DB_NAME`) · **`takbulut_it`** (**IT Envanter + PTS birlikte** —
-> `it_` ve `pts_` önekli tablolar aynı DB'de; ⚠ PTS'nin personeli `it_personel` olduğu ve her sorguda ona
-> JOIN atıldığı için **ayırma sabiti YOKTUR**).
+> `takbulut_akaryakit` · `takbulut_crm` · **`takbulut_it`** (IT Envanter) · **`takbulut_pts`**
+> (Personel Takip — 2026-09-14'te IT'den ayrıldı, kendi `pts_personel` listesiyle).
 > Tümü `config.php`'deki `DEMIR_DB_NAME`/`SERAMIK_DB_NAME`/`DEPO_DB_NAME`/`AKARYAKIT_DB_NAME`/`CRM_DB_NAME`/
-> **`IT_DB_NAME`** sabitleriyle etkinleştirilir; tek DB kullanıcısı hepsine yetkili.
+> `IT_DB_NAME`/**`PTS_DB_NAME`** sabitleriyle etkinleştirilir; tek DB kullanıcısı hepsine yetkili.
 > ⚠️ Bu sabitlerden biri **tanımsız kalırsa** ilgili modül sessizce **ana DB'ye** düşer ve veriler
 > "kaybolmuş" görünür (tablolar önekli olduğu için çakışma olmaz, ama modül boş açılır).
 > Aktif DB'yi ilgili modülün `kurulum_*.php` sayfasındaki **rozetten** görebilirsin
-> (yeşil = ayrı DB, sarı = ana DB). Yedekleme artık **7 DB'yi birden** kapsamalıdır.
+> (yeşil = ayrı DB, sarı = ana DB). Yedekleme artık **8 DB'yi birden** kapsamalıdır.
+>
+> ⚠️ **AÇIK İSTİSNA — Prekast hâlâ CRM'in veritabanını paylaşıyor** (`takbulut_crm`, `prekast_` önekli
+> tablolar). Bu §0 kuralına AYKIRIDIR ve bilinerek bırakılmıştır: ayırmak **canlı veri taşımak** demektir
+> (`PREKAST_DB_NAME` sabiti zaten hazır; yeni DB açılıp `prekast_*` tabloları taşınmalı). Prekast tabloları
+> CRM tablolarına JOIN atmadığı için ayırma teknik olarak risksizdir — **yalnız veri göçü kararı bekliyor.**
 
 ### Beton (`kurulum.php`)
 Tanım tabloları (id/ad/aktif): beton_siniflari, katki_listesi, pompa_turleri, firmalar,
@@ -1362,8 +1406,8 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 - **CRM**: `uploads/crm_ariza/{ariza_id}/` (arıza başına çoklu belge/fotoğraf; kayıtlar `crm_ariza_belgeler`).
 - **Akaryakıt**: `uploads/akaryakit_cikis/{id}/` (imzalı çıkış fişi) · `uploads/akaryakit_giris/{id}/` (mazot giriş irsaliyesi/faturası).
 - **IT Envanter**: `uploads/it_envanter/{cihaz_id}/` (cihaz fotoğrafı, alış faturası, garanti belgesi, imzalı zimmet/iade/transfer/hurda tutanağı; kayıtlar `it_belgeler`, `tur` = IT_BELGE_TUR anahtarı ('zimmet' | 'iade' | 'transfer' | 'hurda' → imzalı tutanak, 'fatura', 'belge'), `hareket_id` = belgenin ait olduğu zimmet/iade dönemi — bir dosya birden çok cihaza bağlı olabilir, diskten yalnız SON bağ koptuğunda silinir).
-- **PTS**: `uploads/pts_gecis/{Y-m-d}/{hareket_id}.jpg` (kart okutma anındaki kamera görüntüsü; DB'de yalnız
-  göreli yol durur, `.gitignore`'da — yazılamazsa geçiş yine kaydedilir).
+- **PTS**: `uploads/pts/gecis/{Y-m-d}/{hareket_id}.jpg` (kart okutma anındaki kamera görüntüsü; DB'de yalnız
+  göreli yol durur, `uploads/pts/` `.gitignore`'da — yazılamazsa geçiş yine kaydedilir).
 - `uploads/.htaccess` PHP çalıştırmayı engeller (alt klasörlere de uygulanır).
 
 ---

@@ -585,6 +585,9 @@ if ($__user) {
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('hareketler.php') ?>" href="<?= $__rootPath ?>pts/hareketler.php" data-label="Hareketler"><i class="bi bi-arrow-left-right"></i><span>Giriş / Çıkış Defteri</span></a>
       </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('personel.php') ?>" href="<?= $__rootPath ?>pts/personel.php" data-label="Personel"><i class="bi bi-people"></i><span>Personel</span></a>
+      </li>
       <?php if(can_edit()): ?>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('kartlar.php') ?>" href="<?= $__rootPath ?>pts/kartlar.php" data-label="Kartlar"><i class="bi bi-person-vcard"></i><span>ArUco Kartlar</span></a>

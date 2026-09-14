@@ -1,19 +1,22 @@
 <?php
 /**
- * pts/_ortak.php — PTS (Personel Takip Sistemi) çekirdeği
+ * pts/_ortak.php — PTS (Personel Takip) çekirdeği
  *
  * ArUco kartlarıyla personel giriş-çıkış takibi. Kamera personelin kartındaki
  * ArUco işaretçisini TARAYICIDA okur (assets/vendor/aruco.js — js-aruco2),
  * sunucuya yalnız marker ID gelir. Sunucuda OpenCV ya da native bağımlılık YOKTUR.
  *
- * ⚠⚠ PERSONEL BU MODÜLDE TUTULMAZ: kişi kaydı **`it_personel`** tablosudur
- * (IT Envanter modülü). PTS yalnız "hangi karta hangi kişi bağlı" ve "kim ne zaman
- * girdi/çıktı" bilgisini ekler. Bu yüzden PTS tabloları IT ile AYNI veritabanında
- * durur (bkz. includes/db_pts.php) ve JOIN'ler sıradan tek-DB JOIN'idir.
- * Böylece bir kişinin puantajı, zimmetli cihazları ve İK bilgisi tek kartta buluşur.
+ * ⭐⭐ MODÜL BAĞIMSIZLIĞI (projenin geneli için geçerli kural): PTS **kendi
+ * veritabanında** (`PTS_DB_NAME`), **kendi uploads klasöründe** (`uploads/pts/`) ve
+ * **kendi personel listesinde** (`pts_personel`) çalışır. Başka bir modülün tablosuna
+ * JOIN atmaz, başka modülün çekirdeğini `require` etmez — IT Envanter kurulu olmasa
+ * da PTS eksiksiz çalışır.
+ *
+ * IT Envanter'de zaten bir personel listesi varsa, `pts/personel.php` ekranındaki
+ * **"IT Envanter'den aktar"** düğmesi onu TEK YÖNLÜ kopyalar: eşleşme **sicil no**
+ * ile yapılır, kopyalama anlıktır ve sonrasında iki liste birbirinden bağımsız yaşar.
+ * Bu bir bağımlılık değil, bir kolaylıktır (düğme yalnız `IT_DB_NAME` tanımlıysa çıkar).
  */
-
-require_once __DIR__ . '/../it/_ortak.php';   // it_personel yardımcıları, it_norm, it_buyuk
 
 /** ArUco sözlüğü — kiosk, kart üretimi ve sunucu AYNI değeri kullanmalı. */
 const PTS_SOZLUK = 'ARUCO_MIP_36h12';
@@ -71,9 +74,30 @@ function pts_semasi_kur(PDO $pdo): void
     static $kuruldu = false;
     if ($kuruldu) return;
 
-    // ⚠ ENUM KULLANILMAZ: komşu IT tabloları da VARCHAR kullanıyor (aynı veritabanı) ve
-    // SQLite'lı duman testi ENUM'u ayrıştıramıyor. Geçerli değerler PTS_YON / PTS_NOKTA_YON
+    // ⚠ ENUM KULLANILMAZ: SQLite'lı duman testi ENUM'u ayrıştıramıyor (sistemin geri
+    // kalanında da VARCHAR deseni var). Geçerli değerler PTS_YON / PTS_NOKTA_YON
     // sabitlerinde durur, doğrulama uygulama katmanındadır.
+
+    // ⭐ PERSONEL BU MODÜLÜNDÜR. Başka modülün personel tablosuna JOIN atılmaz;
+    // IT Envanter'den kopyalamak isteyen `pts_it_aktar()` ile TEK SEFERLİK aktarır.
+    // Lokasyon/birim serbest METİNDİR — başka modülün lokasyon ağacına bağlanmaz.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS pts_personel (
+        id          INT AUTO_INCREMENT PRIMARY KEY,
+        sicil_no    VARCHAR(40)  NULL,
+        ad          VARCHAR(80)  NOT NULL,
+        soyad       VARCHAR(80)  NOT NULL,
+        unvan       VARCHAR(120) NULL,
+        birim       VARCHAR(120) NULL,
+        lokasyon    VARCHAR(160) NULL,
+        telefon     VARCHAR(40)  NULL,
+        eposta      VARCHAR(160) NULL,
+        ise_giris   DATE NULL,
+        isten_cikis DATE NULL,
+        notlar      TEXT NULL,
+        created_at  DATETIME NULL,
+        UNIQUE KEY pts_prs_sicil (sicil_no),
+        KEY pts_prs_ad (ad, soyad)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
     // Kartlar. ⚠ Postgres tarafında "aktif kart" kısmi UNIQUE index ile garanti
     // ediliyordu; MySQL'de kısmi index YOK. Bu yüzden garanti UYGULAMA katmanında:
@@ -99,7 +123,7 @@ function pts_semasi_kur(PDO $pdo): void
         ad             VARCHAR(120) NOT NULL,
         cihaz_anahtari VARCHAR(64)  NOT NULL,
         yon            VARCHAR(10) NOT NULL DEFAULT 'otomatik',   -- PTS_NOKTA_YON
-        lokasyon_id    INT NULL,
+        lokasyon       VARCHAR(160) NULL,
         aktif          TINYINT(1) NOT NULL DEFAULT 1,
         son_gorulme    DATETIME NULL,
         created_at     DATETIME NULL,
@@ -126,6 +150,180 @@ function pts_semasi_kur(PDO $pdo): void
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
     $kuruldu = true;
+}
+
+// ──────────────────────────────────────────────────────────── personel
+/**
+ * Türkçe harf duyarsız normalize (arama için).
+ * ⚠ Süzme SQL LIKE ile YAPILMAZ: LIKE'ta 'İ' ile 'i' eşleşmediğinden "ismail"
+ * yazan kullanıcı "İSMAİL" kaydını bulamıyordu (aynı gerekçe depo/IT tarafında da var).
+ */
+function pts_norm(string $s): string
+{
+    $s = mb_strtoupper(trim($s), 'UTF-8');
+    return str_replace(['İ','I','ı','Ş','Ğ','Ü','Ö','Ç'], ['I','I','I','S','G','U','O','C'], $s);
+}
+
+/**
+ * Türkçe doğru BÜYÜK HARF.
+ * ⚠ `mb_strtoupper` Türkçe bilmez ('i' → 'I' yapar, 'İ' olmalı) — önce elle katlanır.
+ */
+function pts_buyuk(?string $s): string
+{
+    $s = trim((string)$s);
+    if ($s === '') return '';
+    return mb_strtoupper(str_replace(['i', 'ı'], ['İ', 'I'], $s), 'UTF-8');
+}
+
+function pts_personel_ad(array $p): string { return trim(($p['ad'] ?? '') . ' ' . ($p['soyad'] ?? '')); }
+
+/** Personel listesi (istek başına önbellekli — aynı sayfada birkaç kez istenir). */
+function pts_personel_liste(PDO $pdo, bool $yalnizCalisan = true): array
+{
+    static $onbellek = [];
+    $k = $yalnizCalisan ? 'c' : 'h';
+    if (isset($onbellek[$k])) return $onbellek[$k];
+    $sql = "SELECT * FROM pts_personel" . ($yalnizCalisan ? " WHERE isten_cikis IS NULL" : "") . " ORDER BY ad, soyad";
+    try { $onbellek[$k] = $pdo->query($sql)->fetchAll(); }
+    catch (Throwable $e) { $onbellek[$k] = []; }
+    return $onbellek[$k];
+}
+
+function pts_personel_bul(PDO $pdo, int $id): ?array
+{
+    $st = $pdo->prepare("SELECT * FROM pts_personel WHERE id=?");
+    $st->execute([$id]);
+    return $st->fetch() ?: null;
+}
+
+/** Sicil no ile personel (IT aktarımında ve kart üretiminde eşleşme anahtarı). */
+function pts_personel_sicille(PDO $pdo, string $sicil): ?array
+{
+    $sicil = trim($sicil);
+    if ($sicil === '') return null;
+    $st = $pdo->prepare("SELECT * FROM pts_personel WHERE sicil_no=? LIMIT 1");
+    $st->execute([$sicil]);
+    return $st->fetch() ?: null;
+}
+
+/**
+ * Listeyi serbest metinle süzer: kelime sırası SERBEST ("acı fırat" da bulur) ve her
+ * kelime ad+soyad+sicil+unvan+birim+lokasyon+telefon+e-posta bütününde aranır.
+ */
+function pts_personel_suz(array $liste, string $q): array
+{
+    $kelime = array_values(array_filter(explode(' ', pts_norm($q))));
+    if (!$kelime) return $liste;
+    return array_values(array_filter($liste, function ($p) use ($kelime) {
+        $hepsi = pts_norm(pts_personel_ad($p)) . ' '
+               . pts_norm((string)($p['sicil_no'] ?? '')) . ' ' . pts_norm((string)($p['unvan'] ?? ''))    . ' '
+               . pts_norm((string)($p['birim'] ?? ''))    . ' ' . pts_norm((string)($p['lokasyon'] ?? '')) . ' '
+               . pts_norm((string)($p['telefon'] ?? ''))  . ' ' . pts_norm((string)($p['eposta'] ?? ''));
+        foreach ($kelime as $k) if (!str_contains($hepsi, $k)) return false;
+        return true;
+    }));
+}
+
+/** Form için <option> listesi (girintisiz, sicil rozetli). */
+function pts_personel_options(PDO $pdo, $secili = null, bool $yalnizCalisan = true): string
+{
+    $out = '';
+    foreach (pts_personel_liste($pdo, $yalnizCalisan) as $p) {
+        $et = pts_personel_ad($p);
+        if (!empty($p['sicil_no'])) $et .= ' (' . $p['sicil_no'] . ')';
+        if (!empty($p['birim']))    $et .= ' — ' . $p['birim'];
+        $out .= '<option value="' . (int)$p['id'] . '"' . ((int)$secili === (int)$p['id'] ? ' selected' : '')
+              . '>' . htmlspecialchars($et) . '</option>';
+    }
+    return $out;
+}
+
+/** Personelin kullandığı birim / lokasyon değerleri (datalist önerisi). */
+function pts_personel_secenekler(PDO $pdo, string $kolon): array
+{
+    if (!in_array($kolon, ['birim', 'lokasyon', 'unvan'], true)) return [];   // whitelist — ham input SQL'e girmez
+    try {
+        return array_values(array_filter(array_column(
+            $pdo->query("SELECT DISTINCT $kolon FROM pts_personel WHERE $kolon IS NOT NULL AND $kolon<>'' ORDER BY $kolon")->fetchAll(),
+            $kolon)));
+    } catch (Throwable $e) { return []; }
+}
+
+/**
+ * IT Envanter'deki personel listesini PTS'ye **TEK YÖNLÜ** kopyalar.
+ *
+ * ⚠ Bu bir bağımlılık DEĞİL, bir kolaylıktır: 178 kişiyi elle yazmamak için. Kopyalama
+ * bittiğinde iki liste birbirinden bağımsız yaşar (PTS'de yapılan düzeltme IT'ye,
+ * IT'deki düzeltme PTS'ye geçmez — modül bağımsızlığı kuralı budur).
+ *
+ * Eşleşme **sicil no** ile; sicili olmayan kayıtta normalize ad+soyad. Mevcut kayıtta
+ * yalnız BOŞ alanlar doldurulur (PTS'de elle girilmiş veri ezilmez). IT'nin lokasyon
+ * ağacı düz METNE çevrilir.
+ *
+ * @return array{yeni:int, guncellenen:int, degismeyen:int, atlanan:array}
+ */
+function pts_it_aktar(PDO $pdoPts, PDO $pdoIt): array
+{
+    $r = ['yeni' => 0, 'guncellenen' => 0, 'degismeyen' => 0, 'atlanan' => []];
+    $kaynak = $pdoIt->query("SELECT p.*, (SELECT l.ad FROM it_lokasyonlar l WHERE l.id = p.lokasyon_id) AS lok_ad
+                               FROM it_personel p ORDER BY p.ad, p.soyad")->fetchAll();
+
+    $mevcut = $pdoPts->query("SELECT * FROM pts_personel")->fetchAll();
+    $sicilli = []; $adli = [];
+    foreach ($mevcut as $m) {
+        if (!empty($m['sicil_no'])) $sicilli[pts_norm((string)$m['sicil_no'])] = $m;
+        $adli[pts_norm(pts_personel_ad($m))][] = $m;
+    }
+
+    foreach ($kaynak as $k) {
+        $ad = trim((string)($k['ad'] ?? '')); $soyad = trim((string)($k['soyad'] ?? ''));
+        if ($ad === '' && $soyad === '') { $r['atlanan'][] = 'ad/soyad boş (IT #' . (int)$k['id'] . ')'; continue; }
+
+        $eslesen = null;
+        if (!empty($k['sicil_no']) && isset($sicilli[pts_norm((string)$k['sicil_no'])])) {
+            $eslesen = $sicilli[pts_norm((string)$k['sicil_no'])];
+        } else {
+            $anahtar = pts_norm($ad . ' ' . $soyad);
+            if (isset($adli[$anahtar])) {
+                if (count($adli[$anahtar]) > 1) { $r['atlanan'][] = $ad . ' ' . $soyad . ' — PTS\'de aynı adlı birden çok kayıt, elle eşleyin'; continue; }
+                $eslesen = $adli[$anahtar][0];
+            }
+        }
+
+        $veri = [
+            'sicil_no'    => trim((string)($k['sicil_no'] ?? '')) ?: null,
+            'ad'          => pts_buyuk($ad),
+            'soyad'       => pts_buyuk($soyad),
+            'unvan'       => pts_buyuk((string)($k['unvan'] ?? '')) ?: null,
+            'birim'       => pts_buyuk((string)($k['birim'] ?? '')) ?: null,
+            'lokasyon'    => trim((string)($k['lok_ad'] ?? '')) ?: null,
+            'telefon'     => trim((string)($k['telefon'] ?? '')) ?: null,
+            'eposta'      => trim((string)($k['eposta'] ?? '')) ?: null,
+            'ise_giris'   => $k['ise_giris']   ?: null,
+            'isten_cikis' => $k['isten_cikis'] ?: null,
+        ];
+
+        if (!$eslesen) {
+            $pdoPts->prepare("INSERT INTO pts_personel (sicil_no, ad, soyad, unvan, birim, lokasyon, telefon, eposta, ise_giris, isten_cikis, created_at)
+                              VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+                   ->execute([...array_values($veri), date('Y-m-d H:i:s')]);
+            $r['yeni']++;
+            continue;
+        }
+
+        // Mevcut kayıtta yalnız BOŞ alanlar dolar — PTS'de elle düzeltilmiş veri ezilmez.
+        $set = []; $par = [];
+        foreach ($veri as $kol => $deg) {
+            if ($deg === null || $deg === '') continue;
+            if (trim((string)($eslesen[$kol] ?? '')) !== '') continue;
+            $set[] = "$kol=?"; $par[] = $deg;
+        }
+        if (!$set) { $r['degismeyen']++; continue; }
+        $par[] = (int)$eslesen['id'];
+        $pdoPts->prepare("UPDATE pts_personel SET " . implode(', ', $set) . " WHERE id=?")->execute($par);
+        $r['guncellenen']++;
+    }
+    return $r;
 }
 
 // ─────────────────────────────────────────────────────── kart işlemleri
@@ -166,7 +364,7 @@ function pts_aktif_kart(PDO $pdo, int $personelId): ?array
 function pts_marker_sahibi(PDO $pdo, int $markerId, string $sozluk = PTS_SOZLUK): ?array
 {
     $st = $pdo->prepare("SELECT k.*, p.ad, p.soyad, p.sicil_no
-                           FROM pts_kartlar k JOIN it_personel p ON p.id = k.personel_id
+                           FROM pts_kartlar k JOIN pts_personel p ON p.id = k.personel_id
                           WHERE k.marker_id=? AND k.sozluk=? AND k.iptal IS NULL LIMIT 1");
     $st->execute([$markerId, $sozluk]);
     return $st->fetch() ?: null;
@@ -183,7 +381,7 @@ function pts_kart_ver(PDO $pdo, int $personelId, int $markerId, ?int $kullaniciI
     if ($markerId < 0 || $markerId > PTS_MAX_MARKER) {
         throw new RuntimeException('ArUco ID 0 ile ' . PTS_MAX_MARKER . ' arasında olmalı.');
     }
-    $p = it_personel_bul($pdo, $personelId);
+    $p = pts_personel_bul($pdo, $personelId);
     if (!$p) throw new RuntimeException('Personel bulunamadı.');
     if (!empty($p['isten_cikis'])) throw new RuntimeException('İşten ayrılmış personele kart tanımlanamaz.');
 
@@ -265,7 +463,7 @@ function pts_scan(PDO $pdo, int $markerId, ?array $nokta, ?string $zorunluYon = 
 {
     $sozluk = $sozluk ?: PTS_SOZLUK;
     $st = $pdo->prepare("SELECT k.id AS kart_id, p.id AS personel_id, p.ad, p.soyad, p.sicil_no, p.unvan, p.birim
-                           FROM pts_kartlar k JOIN it_personel p ON p.id = k.personel_id
+                           FROM pts_kartlar k JOIN pts_personel p ON p.id = k.personel_id
                           WHERE k.marker_id=? AND k.sozluk=? AND k.iptal IS NULL LIMIT 1");
     $st->execute([$markerId, $sozluk]);
     $kart = $st->fetch();
@@ -308,7 +506,7 @@ function pts_scan(PDO $pdo, int $markerId, ?array $nokta, ?string $zorunluYon = 
 
 /**
  * Kiosk'un gönderdiği JPEG karesini diske yazar ve harekete bağlar.
- * ⚠ Görüntü DB'de TUTULMAZ (yedek şişmesin); `uploads/pts_gecis/Y-m-d/` altına
+ * ⚠ Görüntü DB'de TUTULMAZ (yedek şişmesin); `uploads/pts/gecis/Y-m-d/` altına
  * yazılır, tabloda yalnız göreli yol durur. Yazılamazsa geçiş yine geçerlidir —
  * kanıt görüntüsü kaydın tamamlayıcısıdır, ön koşulu değil.
  */
@@ -319,8 +517,8 @@ function pts_foto_kaydet(PDO $pdo, int $hareketId, string $dataUrl, string $kok 
     if ($ham === false || strlen($ham) < 512 || strlen($ham) > 4 * 1024 * 1024) return null;
 
     $gun    = date('Y-m-d');
-    $gorel  = 'uploads/pts_gecis/' . $gun . '/' . $hareketId . '.jpg';
-    $klasor = rtrim($kok, '/') . '/uploads/pts_gecis/' . $gun;
+    $gorel  = 'uploads/pts/gecis/' . $gun . '/' . $hareketId . '.jpg';
+    $klasor = rtrim($kok, '/') . '/uploads/pts/gecis/' . $gun;
     if (!is_dir($klasor) && !@mkdir($klasor, 0775, true)) return null;
     if (@file_put_contents(rtrim($kok, '/') . '/' . $gorel, $ham) === false) return null;
 
@@ -350,14 +548,11 @@ function pts_gunluk(PDO $pdo, string $bas, string $bit, array $f = []): array
     $p = [$bas . ' 00:00:00', $bit . ' 23:59:59'];
     if (!empty($f['personel_id'])) { $w[] = 'h.personel_id=?';  $p[] = (int)$f['personel_id']; }
     if (!empty($f['birim']))       { $w[] = 'p.birim=?';        $p[] = $f['birim']; }
-    if (!empty($f['lokasyon_id'])) {
-        $alt = it_lokasyon_altlar($pdo, (int)$f['lokasyon_id']);
-        if ($alt) { $w[] = 'p.lokasyon_id IN (' . implode(',', array_fill(0, count($alt), '?')) . ')'; foreach ($alt as $x) $p[] = $x; }
-    }
+    if (!empty($f['lokasyon'])) { $w[] = 'p.lokasyon=?';       $p[] = $f['lokasyon']; }
     $st = $pdo->prepare("SELECT h.personel_id, h.yon, h.zaman, h.id,
                                 p.ad, p.soyad, p.sicil_no, p.unvan, p.birim
                            FROM pts_hareketler h
-                           JOIN it_personel p ON p.id = h.personel_id
+                           JOIN pts_personel p ON p.id = h.personel_id
                           WHERE " . implode(' AND ', $w) . "
                           ORDER BY h.personel_id, h.zaman, h.id");
     $st->execute($p);
@@ -409,7 +604,7 @@ function pts_iceridekiler(PDO $pdo): array
 {
     $st = $pdo->query("SELECT h.personel_id, h.zaman, h.nokta_id, p.ad, p.soyad, p.sicil_no, p.birim
                          FROM pts_hareketler h
-                         JOIN it_personel p ON p.id = h.personel_id
+                         JOIN pts_personel p ON p.id = h.personel_id
                         WHERE h.yon='giris'
                           AND h.id = (SELECT MAX(h2.id) FROM pts_hareketler h2 WHERE h2.personel_id = h.personel_id)
                         ORDER BY h.zaman DESC");
@@ -433,7 +628,7 @@ function pts_ozet(PDO $pdo): array
         $o['bugun_hareket'] = (int)($r['h'] ?? 0);
         $o['son_okuma']     = $pdo->query("SELECT MAX(zaman) FROM pts_hareketler")->fetchColumn() ?: null;
         // Kartı olmayan çalışan personel — "kart dağıtımı bitti mi" sorusunun cevabı
-        $o['kartsiz'] = (int)$pdo->query("SELECT COUNT(*) FROM it_personel p
+        $o['kartsiz'] = (int)$pdo->query("SELECT COUNT(*) FROM pts_personel p
                                            WHERE p.isten_cikis IS NULL
                                              AND NOT EXISTS (SELECT 1 FROM pts_kartlar k
                                                               WHERE k.personel_id=p.id AND k.iptal IS NULL)")->fetchColumn();

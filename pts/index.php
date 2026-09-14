@@ -15,7 +15,6 @@ require_auth(['admin','teknik_ofis_admin','teknik_ofis','depo','it_sorumlusu','s
 require_once __DIR__ . '/../includes/db_pts.php';
 require_once __DIR__ . '/_ortak.php';
 
-it_semasi_kur($pdoPts);
 pts_semasi_kur($pdoPts);
 $pageTitle = 'Personel Takip';
 
@@ -40,7 +39,7 @@ $bugunP = pts_gunluk($pdoPts, $bugun, $bugun);
 
 $sonHareket = $pdoPts->query("SELECT h.*, p.ad, p.soyad, n.kod AS nokta_kod
                                 FROM pts_hareketler h
-                                JOIN it_personel p ON p.id = h.personel_id
+                                JOIN pts_personel p ON p.id = h.personel_id
                                 LEFT JOIN pts_noktalar n ON n.id = h.nokta_id
                                ORDER BY h.zaman DESC, h.id DESC LIMIT 10")->fetchAll();
 
@@ -116,7 +115,7 @@ require __DIR__ . '/../includes/header.php';
           <?php endif; ?>
           <?php foreach ($iceride as $i): ?>
             <tr>
-              <td><a href="../it/personel_detay.php?id=<?= (int)$i['personel_id'] ?>" class="text-decoration-none"><?= h(trim($i['ad'] . ' ' . $i['soyad'])) ?></a>
+              <td><a href="personel_form.php?id=<?= (int)$i['personel_id'] ?>" class="text-decoration-none"><?= h(trim($i['ad'] . ' ' . $i['soyad'])) ?></a>
                   <?php if (!empty($i['birim'])): ?><div class="small text-muted"><?= h($i['birim']) ?></div><?php endif; ?></td>
               <td class="text-end small text-muted text-nowrap">
                 <?= h(date('H:i', strtotime($i['zaman']))) ?>'den beri

@@ -2,7 +2,7 @@
 /**
  * pts/kartlar.php — ArUco kart tanımlama + kart üretme/yazdırma
  *
- * Personel listesi `it_personel`'den gelir (PTS ayrı personel listesi TUTMAZ).
+ * Personel listesi modülün KENDİ tablosundan gelir (`pts_personel`) — başka modüle bağlı değildir.
  * Her satırda kişinin aktif kartı, ArUco ID'si ve kartın önizlemesi durur.
  *
  * ⚠ Marker çizimi `AR.Dictionary(...).generateSVG(id)` ile — yani KIOSKUN OKUDUĞU
@@ -17,7 +17,6 @@ require_auth(['admin','teknik_ofis_admin','teknik_ofis','depo','it_sorumlusu']);
 require_once __DIR__ . '/../includes/db_pts.php';
 require_once __DIR__ . '/_ortak.php';
 
-it_semasi_kur($pdoPts);          // it_personel garanti (PTS ile aynı DB)
 pts_semasi_kur($pdoPts);
 $pageTitle  = 'ArUco Kartlar — Personel Takip';
 $yazabilir  = yetki_var('duzenle') || yetki_var('giris');
@@ -29,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pid   = (int)($_POST['personel_id'] ?? 0);
     try {
         if ($islem === 'ver' || $islem === 'sicilden') {
-            $p = it_personel_bul($pdoPts, $pid);
+            $p = pts_personel_bul($pdoPts, $pid);
             if (!$p) throw new RuntimeException('Personel bulunamadı.');
             $marker = $islem === 'sicilden'
                 ? pts_marker_sicilden((string)($p['sicil_no'] ?? ''))
@@ -40,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('success', trim($p['ad'] . ' ' . $p['soyad']) . ' → ArUco ID ' . $marker . ' tanımlandı. '
                 . 'Kartı yazdırmayı unutmayın.');
         } elseif ($islem === 'iptal') {
-            $p = it_personel_bul($pdoPts, $pid);
+            $p = pts_personel_bul($pdoPts, $pid);
             $n = pts_kart_iptal($pdoPts, $pid);
             audit_log($pdoPts, 'pts_kartlar', 0, 'UPDATE', null, ['iptal_personel' => $pid], current_user_id());
             flash($n ? 'success' : 'info', $n
@@ -55,15 +54,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $q      = trim((string)($_GET['q'] ?? ''));
 $durum  = $_GET['durum'] ?? 'kartsiz';        // kartsiz | kartli | hepsi
 $st = $pdoPts->query("SELECT p.*, k.id AS kart_id, k.marker_id, k.sozluk, k.verildi
-                        FROM it_personel p
+                        FROM pts_personel p
                         LEFT JOIN pts_kartlar k ON k.personel_id = p.id AND k.iptal IS NULL
                        WHERE p.isten_cikis IS NULL
                        ORDER BY p.ad, p.soyad");
 $hepsiListe = $st->fetchAll();
 
-// ⚠ Arama SQL LIKE ile DEĞİL it_personel_suz() ile: Türkçe 'İ' LIKE'ta 'i' ile
+// ⚠ Arama SQL LIKE ile DEĞİL pts_personel_suz() ile: Türkçe 'İ' LIKE'ta 'i' ile
 // eşleşmiyor ve ad+soyad birlikte yazılınca tek alanda geçmediği için sonuç çıkmıyordu.
-if ($q !== '') $hepsiListe = it_personel_suz($hepsiListe, $q);
+if ($q !== '') $hepsiListe = pts_personel_suz($hepsiListe, $q);
 
 $liste = array_values(array_filter($hepsiListe, function ($r) use ($durum) {
     if ($durum === 'kartli')  return !empty($r['kart_id']);
@@ -87,8 +86,8 @@ require __DIR__ . '/../includes/header.php';
 
 <div class="alert alert-info py-2 small no-print">
   <i class="bi bi-info-circle me-1"></i>
-  Personel listesi <strong>IT Envanter'deki personel kartlarından</strong> gelir — burada ayrı bir personel
-  listesi tutulmaz. Kişi eksikse <a href="../it/personel.php">Personel</a> ekranından ekleyin.
+  Personel listesi <strong>bu modülün kendi listesidir</strong>. Kişi eksikse
+  <a href="personel.php">Personel</a> ekranından ekleyin (IT Envanter'deki liste oradan tek tıkla aktarılabilir).
   ArUco ID aralığı <strong>0–<?= PTS_MAX_MARKER ?></strong> (<code><?= h(PTS_SOZLUK) ?></code> sözlüğü).
 </div>
 
@@ -119,7 +118,7 @@ require __DIR__ . '/../includes/header.php';
       <?php endif; ?>
       <?php foreach ($liste as $r): $pid = (int)$r['id']; $kartli = !empty($r['kart_id']); ?>
         <tr>
-          <td><a href="../it/personel_detay.php?id=<?= $pid ?>" class="fw-semibold text-decoration-none"><?= h(trim($r['ad'] . ' ' . $r['soyad'])) ?></a>
+          <td><a href="personel_form.php?id=<?= $pid ?>" class="fw-semibold text-decoration-none"><?= h(trim($r['ad'] . ' ' . $r['soyad'])) ?></a>
               <?php if (!empty($r['unvan'])): ?><div class="small text-muted"><?= h($r['unvan']) ?></div><?php endif; ?></td>
           <td class="font-monospace small"><?= h($r['sicil_no'] ?: '—') ?></td>
           <td class="small"><?= h($r['birim'] ?: '—') ?></td>

@@ -16,7 +16,6 @@ require_auth(['admin','teknik_ofis_admin','teknik_ofis','depo','it_sorumlusu','s
 require_once __DIR__ . '/../includes/db_pts.php';
 require_once __DIR__ . '/_ortak.php';
 
-it_semasi_kur($pdoPts);
 pts_semasi_kur($pdoPts);
 $pageTitle = 'Giriş / Çıkış Defteri — Personel Takip';
 $yazabilir = yetki_var('duzenle') || yetki_var('giris');
@@ -32,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$pid || !isset(PTS_YON[$yon])) throw new RuntimeException('Personel ve yön zorunludur.');
             $ts = strtotime(str_replace('T', ' ', $zaman));
             if (!$ts) throw new RuntimeException('Geçerli bir tarih/saat girin.');
-            if (!it_personel_bul($pdoPts, $pid)) throw new RuntimeException('Personel bulunamadı.');
+            if (!pts_personel_bul($pdoPts, $pid)) throw new RuntimeException('Personel bulunamadı.');
             $pdoPts->prepare("INSERT INTO pts_hareketler (personel_id, yon, zaman, elle, aciklama, kullanici_id, created_at)
                               VALUES (?,?,?,1,?,?,?)")
                    ->execute([$pid, $yon, date('Y-m-d H:i:s', $ts),
@@ -68,7 +67,7 @@ $sayfa    = min($sayfa, $sonSayfa);
 
 $st = $pdoPts->prepare("SELECT h.*, p.ad, p.soyad, p.sicil_no, p.birim, n.kod AS nokta_kod, n.ad AS nokta_ad
                           FROM pts_hareketler h
-                          JOIN it_personel p ON p.id = h.personel_id
+                          JOIN pts_personel p ON p.id = h.personel_id
                           LEFT JOIN pts_noktalar n ON n.id = h.nokta_id
                           $where
                          ORDER BY h.zaman DESC, h.id DESC
@@ -113,7 +112,7 @@ require __DIR__ . '/../includes/header.php';
         <button class="btn btn-primary btn-sm flex-fill"><i class="bi bi-search"></i></button></div>
     </div>
     <?php if (!empty($etkin['personel_id'])):
-        $kp = it_personel_bul($pdoPts, (int)$etkin['personel_id']); ?>
+        $kp = pts_personel_bul($pdoPts, (int)$etkin['personel_id']); ?>
       <input type="hidden" name="personel_id" value="<?= (int)$etkin['personel_id'] ?>">
       <div class="mt-2 small">Süzgeç: <span class="badge bg-primary"><?= h(trim(($kp['ad']??'') . ' ' . ($kp['soyad']??''))) ?></span>
         <a href="hareketler.php" class="ms-1">temizle</a></div>
@@ -132,7 +131,7 @@ require __DIR__ . '/../includes/header.php';
       <?php foreach ($liste as $r): ?>
         <tr>
           <td class="text-nowrap font-monospace small"><?= h(date('d.m.Y H:i', strtotime($r['zaman']))) ?></td>
-          <td><a href="../it/personel_detay.php?id=<?= (int)$r['personel_id'] ?>" class="text-decoration-none"><?= h(trim($r['ad'] . ' ' . $r['soyad'])) ?></a>
+          <td><a href="personel_form.php?id=<?= (int)$r['personel_id'] ?>" class="text-decoration-none"><?= h(trim($r['ad'] . ' ' . $r['soyad'])) ?></a>
               <?php if (!empty($r['birim'])): ?><div class="small text-muted"><?= h($r['birim']) ?></div><?php endif; ?></td>
           <td class="font-monospace small"><?= h($r['sicil_no'] ?: '—') ?></td>
           <td><?= pts_yonRozet($r['yon']) ?></td>
@@ -187,7 +186,7 @@ require __DIR__ . '/../includes/header.php';
       <div class="mb-2"><label class="form-label small">Personel</label>
         <select name="personel_id" class="form-select form-select-sm" required>
           <option value="">— seçin —</option>
-          <?= it_personel_options($pdoPts, null) ?>
+          <?= pts_personel_options($pdoPts, null) ?>
         </select></div>
       <div class="row g-2">
         <div class="col-6"><label class="form-label small">Yön</label>

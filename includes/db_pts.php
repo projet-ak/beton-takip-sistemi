@@ -1,25 +1,21 @@
 <?php
 /**
- * db_pts.php — PTS (Personel Takip Sistemi) modülü bağlantısı ($pdoPts)
+ * db_pts.php — PTS (Personel Takip) modülü AYRI DB bağlantısı ($pdoPts)
+ *   config.php'ye: define('PTS_DB_NAME', 'takbulut_pts');
+ *   Tanımsızsa ana DB'de 'pts_' önekli tablolar kullanılır (tablo çakışması olmaz,
+ *   ama modül boş açılırsa önce bu sabiti kontrol et — bkz. CLAUDE.md §6).
  *
- * ⚠⚠ PTS, **IT Envanter ile AYNI veritabanını paylaşır** (`IT_DB_NAME`, tablolar
- * `pts_` önekli) — Prekast'ın CRM ile paylaşmasıyla aynı desen. Sebebi keyfî değil:
- * PTS'nin personeli `it_personel` tablosudur (ayrı bir personel listesi AÇILMAZ) ve
- * her kart okutmada / her puantaj satırında o tabloya JOIN atılır. Ayrı DB'ye
- * konsaydı bu JOIN'ler veritabanı-ötesi olur, `IT_DB_NAME` tanımsız kalınca da
- * sessizce kırılırdı.
- *
- * Bu yüzden `PTS_DB_NAME` gibi bir ayırma sabiti bilerek YOKTUR. PTS'yi ileride
- * ayırmak isterseniz önce personel kaynağını çözmeniz gerekir.
- *
- * config.php'ye: define('IT_DB_NAME', 'takbulut_it');
+ * ⭐ KURAL (tüm modüller): her modül KENDİ veritabanında, KENDİ uploads klasöründe ve
+ * diğer modüllerden BAĞIMSIZ çalışır. PTS'nin personel listesi de kendisinindir
+ * (`pts_personel`); IT Envanter'deki personel kartlarıyla yalnız istenirse, tek yönlü
+ * ve SİCİL NO üzerinden "aktar" düğmesiyle eşleşir — çalışma anında IT'ye bağımlılık YOKTUR.
  */
 if (!file_exists(__DIR__ . '/../config.php')) { header('Location: ../install.php'); exit; }
 require_once __DIR__ . '/../config.php';
 
-$__ptsDb   = defined('IT_DB_NAME') && IT_DB_NAME !== '' ? IT_DB_NAME : DB_NAME;
-$__ptsUser = defined('IT_DB_USER') && IT_DB_USER !== '' ? IT_DB_USER : DB_USER;
-$__ptsPass = defined('IT_DB_PASS') ? IT_DB_PASS : DB_PASS;
+$__ptsDb   = defined('PTS_DB_NAME') && PTS_DB_NAME !== '' ? PTS_DB_NAME : DB_NAME;
+$__ptsUser = defined('PTS_DB_USER') && PTS_DB_USER !== '' ? PTS_DB_USER : DB_USER;
+$__ptsPass = defined('PTS_DB_PASS') ? PTS_DB_PASS : DB_PASS;
 
 try {
     $pdoPts = new PDO(
@@ -31,5 +27,5 @@ try {
     http_response_code(503);
     die('<div style="font-family:sans-serif;color:#842029;background:#f8d7da;padding:20px;border-radius:8px;max-width:600px;margin:40px auto">'
         . '<strong>PTS veritabanı bağlantı hatası.</strong><br>' . htmlspecialchars($e->getMessage())
-        . '<br><br><small>PTS, IT Envanter ile aynı DB\'yi kullanır: config.php içinde <code>IT_DB_NAME</code> tanımlı olmalı.</small></div>');
+        . '<br><br><small>config.php içinde <code>PTS_DB_NAME</code> tanımlı ve DB oluşturulmuş olmalı.</small></div>');
 }

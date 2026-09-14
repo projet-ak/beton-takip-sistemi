@@ -66,6 +66,11 @@ define('DB_PASS', 'sifre');
 // IT Envanter modülü ayrı veritabanı (isteğe bağlı; tanımsızsa ana DB'de it_ önekli tablolar)
 // define('IT_DB_NAME', 'takbulut_it');
 
+// Personel Takip (PTS) modülü ayrı veritabanı — her modül kendi DB'sinde çalışır.
+// Tanımsızsa ana DB'de pts_ önekli tablolar kullanılır (modül boş açılırsa önce buraya bak).
+// define('PTS_DB_NAME', 'takbulut_pts');
+// define('PTS_SCAN_DEBOUNCE', 30);   // aynı kart kaç saniye içinde tekrar okunursa yeni kayıt açılmaz
+
 // ── Snipe-IT köprüsü (isteğe bağlı) ──────────────────────────────────────────
 // IT Envanter › Cihaz İçe Aktar › "Snipe-IT'den Belge Çek" ekranı cihaz fotoğraflarını ve
 // varlığa yüklenmiş dosyaları (imzalı zimmet tutanağı, fatura…) API ile indirir.
