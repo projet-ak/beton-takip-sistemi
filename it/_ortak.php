@@ -348,7 +348,12 @@ function it_filtre(array $g, ?PDO $pdo = null): array
     elseif ($__d === 'hepsi')                        { $etkin['durum'] = 'hepsi'; }          // süzgeç yok: düşenler de listelenir
     elseif (($__k = it_durum_kume($__d)) !== [])     { $w[] = 'durum IN (' . implode(',', array_fill(0, count($__k), '?')) . ')';
                                                        foreach ($__k as $__x) $p[] = $__x; $etkin['durum'] = $__d; }
-    elseif ($__d === '')                             { $w[] = it_envanterde(); }             // varsayılan: hurda/kayıp/hibe gizli
+    // ⚠ ARAMA YAPILIRKEN DÜŞENLER DE GELİR (2026-09-14, kullanıcı isteği): seri no / envanter no
+    // yazıp sonuç alamayan kullanıcı "kayıt girilmemiş" sanıyordu — oysa cihaz hurdaya ayrılmıştı.
+    // Arama kutusu doluyken varsayılan gizleme UYGULANMAZ; satır soluk + durum rozetiyle görünür,
+    // gerekirse durum süzgecinden daraltılır.
+    elseif ($__d === '' && trim((string)($g['q'] ?? '')) === '') { $w[] = it_envanterde(); }
+    elseif ($__d === '')                             { $etkin['dusen_dahil'] = 1; }          // arama: düşenler de listelenir
     foreach (['zimmetli', 'departman', 'lokasyon', 'marka'] as $k) {
         if (!empty($g[$k])) { $w[] = "$k=?"; $p[] = $g[$k]; $etkin[$k] = $g[$k]; }
     }
@@ -687,6 +692,58 @@ function it_transfer_son(PDO $pdo, int $cihazId): ?array
  * Verilen cihazlar için "kaç gündür yolda": [cihaz_id => gün]. Transfer durumundaki cihazın
  * son transfer hareketinin tarihinden bugüne. Uzun süredir teslim alınmayanlar böyle görünür.
  */
+/**
+ * ⚠⚠ "TRANSFER EDİLMİŞTİR" — tamamlanmış sevkler (2026-09-14, kullanıcı isteği).
+ * Transfer bitince durum `depoda` olur ve ekranda **"Depoda / Boşta"** yazar; bu, başka projeye
+ * gönderilmiş cihazı BİZDE BOŞTA DURUYOR sanmaya yol açıyordu. Cihazın durumu değişmez (hedef
+ * projenin deposundadır, hâlâ envanterdedir) ama yanına **"Transfer edilmiştir → hedef"** rozeti
+ * konur. Bilgi `it_hareketler`'den okunur, yeni kolon açılmaz.
+ *
+ * Sevk çıkışı 'Sevk:' önekli, teslim alma 'Transfer teslim alındı' önekli yazılır (cihaz_detay.php);
+ * ikisi de `tur='transfer'` olduğundan **en son hareket hangisiyse** cihazın transfer hâli odur:
+ * çıkış → yolda (durum zaten `transfer`), teslim alma → TRANSFER EDİLMİŞ.
+ *
+ * @return array<int, array{hedef:string, tarih:string, gun:int}> cihaz_id => tamamlanmış sevk bilgisi
+ */
+function it_transfer_edilenler(PDO $pdo, array $cihazIdler): array
+{
+    $cihazIdler = array_values(array_unique(array_filter(array_map('intval', $cihazIdler))));
+    if (!$cihazIdler) return [];
+    try {
+        $ph = implode(',', array_fill(0, count($cihazIdler), '?'));
+        // Her cihazın EN SON transfer hareketi (id'ye göre — geriye dönük tarihli kayıt sıralamayı bozmasın)
+        $st = $pdo->prepare("SELECT h.cihaz_id, h.tarih, h.aciklama FROM it_hareketler h
+                             WHERE h.tur='transfer' AND h.cihaz_id IN ($ph)
+                               AND h.id = (SELECT MAX(h2.id) FROM it_hareketler h2
+                                           WHERE h2.cihaz_id=h.cihaz_id AND h2.tur='transfer')");
+        $st->execute($cihazIdler);
+        $r = []; $bugun = new DateTimeImmutable('today');
+        foreach ($st->fetchAll() as $x) {
+            $a = (string)($x['aciklama'] ?? '');
+            if (str_starts_with($a, 'Sevk:')) continue;            // hâlâ yolda, tamamlanmamış
+            // "Transfer teslim alındı — <hedef> deposuna girdi · teslim alan: …"
+            $hedef = '';
+            if (preg_match('/—\s*(.+?)\s+deposuna girdi/u', $a, $m)) $hedef = trim($m[1]);
+            $gun = 0; $t = (string)($x['tarih'] ?? '');
+            if ($t !== '') { try { $gun = (int)(new DateTimeImmutable($t))->diff($bugun)->format('%r%a'); } catch (Throwable $e) {} }
+            $r[(int)$x['cihaz_id']] = ['hedef' => $hedef, 'tarih' => $t, 'gun' => $gun];
+        }
+        return $r;
+    } catch (Throwable $e) { return []; }
+}
+
+/** Tamamlanmış sevk rozeti — liste ve kartlarda aynı görünsün diye tek yerde üretilir. */
+function it_transfer_rozet(?array $tr): string
+{
+    if (!$tr) return '';
+    $ip = 'Transfer edilmiştir';
+    if (($tr['hedef'] ?? '') !== '') $ip .= ' → ' . $tr['hedef'];
+    $alt = ($tr['tarih'] ?? '') !== '' ? ' · ' . it_tarih($tr['tarih']) : '';
+    return '<span class="badge bg-info text-dark" title="Başka projeye sevk edildi ve teslim alındı'
+         . htmlspecialchars($alt) . '"><i class="bi bi-arrow-left-right me-1"></i>'
+         . htmlspecialchars($ip) . '</span>';
+}
+
 function it_transfer_gunleri(PDO $pdo, array $cihazIdler): array
 {
     $cihazIdler = array_values(array_unique(array_filter(array_map('intval', $cihazIdler))));

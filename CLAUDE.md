@@ -758,6 +758,27 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   **MÜKERRER**, sayfadan POST ile birleşti (461 → 460), günlüğe silinen kartın kimlik kodları yazıldı.
   ⚠ Duman testi koşucusu `run3.php` **çıktısız ve rc=0 dönerse** kod bozuk değildir — `sess.json`'daki
   `last_activity` bayatlamıştır (auth.php oturum zaman aşımı); `rm sess.json` ile geçer.
+  **"TRANSFER EDİLMİŞTİR" + ARAMADA DÜŞENLER (2026-09-14, kullanıcı isteği)** — iki yanlış anlaşılma:
+  • ⚠ **Sevki tamamlanan cihaz "Depoda / Boşta" yazıyordu**. `transfer_bitti` işlemi durumu `depoda`
+  yapar (cihaz hedef projenin deposundadır, doğru) ama ekranda okunan şey "bizde boşta duruyor" oluyordu.
+  Durum **değiştirilmedi** (sayımlar/mali değer bozulmasın); yanına **`it_transfer_edilenler()` +
+  `it_transfer_rozet()`** ile *"Transfer edilmiştir → &lt;hedef&gt;"* rozeti kondu. Bilgi `it_hareketler`'den
+  okunur, **yeni kolon açılmaz**: sevk çıkışı `Sevk:` önekli, teslim alma `Transfer teslim alındı — <hedef>
+  deposuna girdi` biçiminde yazıldığından (cihaz_detay.php) **cihazın EN SON transfer hareketi** hangisiyse
+  hâli odur — çıkış → yolda (durum zaten `transfer`), teslim alma → TRANSFER EDİLMİŞ. Hedef adı açıklamadan
+  regex ile alınır; sıralama `MAX(id)` ile (geriye dönük tarihli kayıt yanıltmasın — `it_transfer_son` ile
+  aynı gerekçe). Gösterildiği yerler: `cihazlar.php` · `varliklar.php` · `cihaz_detay.php` başlığı
+  (yoldaki cihazda "N gündür yolda" rozeti zaten vardı, o korunur; ikisi birbirinin `elseif`'i).
+  ⚠ `it_transfer_rozet` `h()` değil **`htmlspecialchars`** kullanır — `_ortak.php` functions.php olmadan da
+  yüklenebiliyor (`it_durumBadge` de öyle).
+  • ⚠ **ARAMA YAPILIRKEN ENVANTERDEN DÜŞENLER DE GELİR**: seri no / envanter no yazıp sonuç alamayan
+  kullanıcı "kayıt hiç girilmemiş" sanıyordu — oysa cihaz hurdaya ayrılmıştı ve varsayılan süzgeç onu
+  gizliyordu. `it_filtre()` artık **`q` doluyken** `it_envanterde()` şartını UYGULAMAZ ve `$etkin['dusen_dahil']`
+  bayrağını döndürür. Durum süzgeci açıkça seçilmişse o önceliklidir (`?durum=aktif` + arama → yine daraltır).
+  Liste ve merkezi izlemede satır **soluk** (`text-muted`) + üstte bilgi bandı ("aradığınız kayıt girilmemiş
+  sanılmasın diye… yalnız envanterdekiler için durum süzgecini kullanın"). Test: hurda cihaz seri nosuyla
+  1 sonuç (düşen dahil EVET) · aramasız liste 425 (düşen gizli) · `durum=aktif`+hurda seri = 0 sonuç;
+  8 IT sayfası fatal/warning vermeden render oluyor, inline JS temiz.
   **DASHBOARD ELDEN GEÇİRME (2026-09-10, kullanıcı isteği)** — üç somut şikâyet + genel geliştirme:
   • ⚠⚠ **KPI kartı ile açtığı liste TUTMUYORDU**: "Serviste + Arızalı 1" kartı `?durum=arizali`ye
   gidiyordu, cihaz *serviste* olduğu için liste BOŞ açılıyor ve "serviste arızalı yok" görünüyordu.

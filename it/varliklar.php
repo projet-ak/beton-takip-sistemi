@@ -85,6 +85,9 @@ if ($sayfa > $sonSayfa) $sayfa = $sonSayfa;
 $st = $pdoIt->prepare("SELECT * FROM it_cihazlar $wsql ORDER BY kategori, envanter_no LIMIT $adet OFFSET " . (($sayfa - 1) * $adet));
 $st->execute($par);
 $liste = $st->fetchAll();
+// Tamamlanmış sevkler: durum 'depoda'ya döner ve "Depoda / Boşta" yazar — başka projeye gönderilmiş
+// cihaz bizde boşta sanılmasın diye "Transfer edilmiştir" rozeti konur (it/_ortak.php).
+$trBitti = it_transfer_edilenler($pdoIt, array_column(array_filter($liste, fn($r) => $r['durum'] !== 'transfer'), 'id'));
 $maliGoster = it_mali_goster();                                  // garanti + fiyat gösterimi (varsayılan KAPALI)
 $belgeSay   = it_belge_sayilari($pdoIt, array_column($liste, 'id'));
 
@@ -201,6 +204,15 @@ require_once __DIR__ . '/../includes/header.php';
     <?php if (yetki_var('giris')): ?><div class="mt-2"><a href="cihaz_form.php" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Yeni varlık ekle</a></div><?php endif; ?>
 </div>
 <?php else: ?>
+<?php if (!empty($etkin['dusen_dahil'])): ?>
+<div class="alert alert-info d-flex flex-wrap align-items-center gap-2 py-2 mb-3">
+  <i class="bi bi-info-circle"></i>
+  <span><strong>Arama sonucuna envanterden düşenler de dâhil</strong> (hurda · kayıp/çalıntı · hibe) —
+    aradığınız kayıt girilmemiş sanılmasın diye. Bu satırlar <span class="text-muted">soluk</span> gösterilir;
+    yalnız envanterdekileri görmek için durum süzgecinden seçim yapın.</span>
+</div>
+<?php endif; ?>
+
 <div class="card border-0 shadow-sm">
 <div class="table-responsive"><table id="varlikTablo" class="table table-hover align-middle mb-0 vg-tablo">
     <thead class="table-light"><tr>
@@ -237,7 +249,7 @@ require_once __DIR__ . '/../includes/header.php';
         if (($r['adet'] ?? null) !== null && $r['adet'] !== '') $tek[] = '<strong>' . (int)$r['adet'] . '</strong> adet';
         if (!$tek && !empty($r['ozellikler'])) $tek[] = '<span class="text-muted">' . h(mb_substr($r['ozellikler'], 0, 40)) . '</span>';
     ?>
-        <tr>
+        <tr class="<?= it_durum_dustu($r['durum']) ? 'text-muted' : '' ?>">
             <td class="vg-kod"><a href="cihaz_detay.php?id=<?= (int)$r['id'] ?>" class="text-decoration-none"><?= h($r['envanter_no']) ?></a>
                 <?php if (!empty($arizaSayi[(int)$r['id']])): ?>
                 <span class="badge bg-danger-subtle text-danger-emphasis ms-1" title="arıza / servis kaydı"><i class="bi bi-wrench"></i> <?= (int)$arizaSayi[(int)$r['id']] ?></span>
@@ -255,7 +267,8 @@ require_once __DIR__ . '/../includes/header.php';
             <td class="small"><?= $r['zimmetli']
                 ? (!empty($r['personel_id']) ? '<a href="personel_detay.php?id=' . (int)$r['personel_id'] . '" class="text-decoration-none">' . h($r['zimmetli']) . '</a>' : h($r['zimmetli']))
                 : '<span class="text-muted">—</span>' ?></td>
-            <td><span class="badge bg-<?= h(IT_DURUM[$r['durum']][1] ?? 'secondary') ?>"><?= h(it_durumAd($r['durum'])) ?></span></td>
+            <td><span class="badge bg-<?= h(IT_DURUM[$r['durum']][1] ?? 'secondary') ?>"><?= h(it_durumAd($r['durum'])) ?></span>
+                <?php if (isset($trBitti[(int)$r['id']])): ?><div class="mt-1"><?= it_transfer_rozet($trBitti[(int)$r['id']]) ?></div><?php endif; ?></td>
             <?php if ($maliGoster): ?>
             <td class="text-end small text-nowrap">
                 <?php if ($kalan === null): ?><span class="text-muted">—</span>

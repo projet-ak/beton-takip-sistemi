@@ -222,6 +222,8 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
     <?= it_durumBadge($c['durum']) ?>
     <?php if ($c['durum'] === 'transfer' && ($__trg = it_transfer_gunleri($pdoIt, [$id])[$id] ?? null) !== null): ?>
       <span class="badge bg-<?= $__trg > 14 ? 'danger' : 'light text-dark border' ?>" title="son transfer hareketinden bu yana"><?= (int)$__trg ?> gündür yolda</span>
+    <?php elseif ($c['durum'] !== 'transfer' && ($__trb = it_transfer_edilenler($pdoIt, [$id])[$id] ?? null)): ?>
+      <?= it_transfer_rozet($__trb) ?>
     <?php endif; ?>
     <?php if ($maliGoster && $gk !== null && $gk < 0): ?><span class="badge bg-light text-danger border">garanti bitti</span>
     <?php elseif ($maliGoster && $gk !== null && $gk <= 60): ?><span class="badge bg-warning text-dark">garanti <?= $gk ?> gün</span><?php endif; ?>
