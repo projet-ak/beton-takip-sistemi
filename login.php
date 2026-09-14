@@ -619,11 +619,13 @@ body {
             'prekast'   => 'Cephe prekast montaj takibi, günlük ilerleme, blok icmali ve hakkediş',
             'whatsapp'  => 'Saha grubundan araç giriş / çıkış ve evrak takibi',
             'it'        => 'Bilgisayar, telefon, yazıcı, lisans — zimmet tutanağı, servis ve garanti takibi',
+            'pts'       => 'ArUco kartlı personel giriş / çıkış, kiosk okuma ve günlük puantaj',
         ];
         $__pillAd = [ // şeritteki kısa adlar; yönetici ad verdiyse o kullanılır
             'beton' => 'Beton &amp; İrsaliye', 'demir' => 'İnşaat Demiri', 'seramik' => 'Seramik Ambarı',
             'depo' => 'Depo Yönetimi', 'akaryakit' => 'Akaryakıt Takibi', 'crm' => 'CRM — Üretim Arızaları',
             'prekast' => 'Prekast Takip', 'whatsapp' => 'Saha Takip', 'it' => 'IT Envanter',
+            'pts' => 'Personel Takip',
         ];
         // Tanıtım amaçlı: yöneticinin GİZLEDİĞİ modüller de listelenir (gizleme yalnız uygulama içi menüleri kapatır)
         try { $__piller = function_exists('modul_listesi') ? modul_listesi(true) : []; } catch (Throwable $e) { $__piller = []; }

@@ -113,6 +113,7 @@ const MODULLER = [
     'prekast'   => ['Prekast Takip',            'bi-bricks',     'prekast/index.php'],
     'whatsapp'  => ['Saha Takip',               'bi-chat-dots',  'whatsapp/mesajlar.php'],
     'it'        => ['IT Envanter',              'bi-pc-display', 'it/index.php'],
+    'pts'       => ['Personel Takip',           'bi-person-badge','pts/index.php'],
 ];
 
 /** Modül erişim denetiminden MUAF kök sayfalar (giriş/çıkış, kurulum, yönetim, tanıtım). */
@@ -172,9 +173,12 @@ function yetki_sablon(string $rol): array
         case 'teknik_ofis':
             return $doldur($tum, $hepsi);
         case 'saha_sefi':
-            return $doldur(['beton','demir','depo','crm','prekast','whatsapp'], ['oku','giris','onay']);
+            // Puantajı saha şefi okur ve raporlar; kart/geçiş noktası tanımı IT'dedir
+            return $doldur(['beton','demir','depo','crm','prekast','whatsapp'], ['oku','giris','onay'])
+                 + ['pts' => ['oku','rapor']];
         case 'it_sorumlusu':
-            return ['it' => $hepsi] + $doldur(['beton','depo'], ['oku']);
+            // PTS kartları/kiosk cihazları IT sorumlusunun işi — envanterle birlikte tam yetki
+            return $doldur(['it','pts'], $hepsi) + $doldur(['beton','depo'], ['oku']);
         case 'depo':
             return ['beton' => ['oku','giris']]
                  + $doldur(['seramik','depo','akaryakit'], ['oku','giris','duzenle','rapor'])
@@ -321,7 +325,8 @@ function sayfa_islemi(): string
     $post = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
     $raporSayfa = ['raporlar.php','icmal.php','icmal_beton.php','icmal_pdf.php','zayiat.php','zayiat_takip.php',
                    'mutabakat.php','prp_ustyapi.php','istinat.php','temel_kazik.php','metraj_sayfasi.php',
-                   'mobilizasyon.php','taseron_bakiye.php','arac_takip.php','saha_analiz.php','ai_rapor.php'];
+                   'mobilizasyon.php','taseron_bakiye.php','arac_takip.php','saha_analiz.php','ai_rapor.php',
+                   'puantaj.php'];
     if (!$post && (in_array($s, $raporSayfa, true) || isset($_GET['export']) || isset($_GET['indir']))) return 'rapor';
     $girisSayfa = preg_match('/^(import\d*|cihaz_import|snipe_cek|toplu_irsaliye|hizli_tarama|belge_dagit|fatura_eslestir|faturalar|hizli_kaydet|hizli_guncelle|ai_okut|demir_okut|demir_scan_kaydet|demir_pdf_kaydet|pdf_kaydet|foto_yukle)\.php$/', $s)
                || str_ends_with($s, '_form.php');

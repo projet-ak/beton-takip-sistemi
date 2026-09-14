@@ -370,6 +370,8 @@ backups/*.sql
 # Yüklenen dosyalar
 uploads/irsaliye_fotolar/
 uploads/scans/
+# PTS geçiş fotoğrafları — kanıt görüntüleri sunucuda kalır, repoya girmez
+uploads/pts_gecis/
 
 # Geçici çalışma dosyaları
 scratch/

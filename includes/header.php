@@ -17,14 +17,15 @@ $__module   = (strpos($__self,'/demir/')!==false) ? 'demir'
             : ((strpos($__self,'/crm/')!==false) ? 'crm'
             : ((strpos($__self,'/prekast/')!==false) ? 'prekast'
             : ((strpos($__self,'/it/')!==false) ? 'it'
-            : ((strpos($__self,'/whatsapp/')!==false) ? 'whatsapp' : 'beton')))))));
+            : ((strpos($__self,'/pts/')!==false) ? 'pts'
+            : ((strpos($__self,'/whatsapp/')!==false) ? 'whatsapp' : 'beton'))))))));
 // Modül adı yöneticinin verdiği addır (moduller.php); verilmemişse MODULLER varsayılanı
 $__modAd    = function_exists('modul_ad') ? modul_ad($__module) : ($__module ?: 'Beton Takip');
 // Saha Takip girişi yetkiye göre: onay kuyruğu yetkisi yoksa doğrudan analiz sayfası
 // Saha Takip giriş sayfası: onay kuyruğu yazma yetkisi isteyene, diğerlerine analiz (matrisli kullanıcıda whatsapp modülünün kendi yetkisi)
 $__waHome   = (function_exists('yetki_matris') && yetki_matris() !== null ? yetki_yazma('whatsapp') : (function_exists('can_edit') && can_edit()))
               ? 'whatsapp/mesajlar.php' : 'whatsapp/saha_analiz.php';
-$__modHome  = ['beton'=>'index.php','demir'=>'demir/index.php','seramik'=>'seramik/index.php','depo'=>'depo/index.php','akaryakit'=>'akaryakit/index.php','crm'=>'crm/index.php','prekast'=>'prekast/index.php','it'=>'it/index.php','whatsapp'=>$__waHome][$__module];
+$__modHome  = ['beton'=>'index.php','demir'=>'demir/index.php','seramik'=>'seramik/index.php','depo'=>'depo/index.php','akaryakit'=>'akaryakit/index.php','crm'=>'crm/index.php','prekast'=>'prekast/index.php','it'=>'it/index.php','pts'=>'pts/index.php','whatsapp'=>$__waHome][$__module];
 
 // ── Aktivite izleme (oturum süresi + sayfa gezinme) ──────────────────────────
 // Ana (beton) DB'de tutulur; $pdo varsa onu, yoksa kendi bağlantısını kullanır.
@@ -568,6 +569,36 @@ if ($__user) {
       <?php if(in_array($__user['role'] ?? '', ['admin','teknik_ofis_admin'], true)): /* kurulum sayfaları her zaman rol bazlı */ ?>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('kurulum_it.php') ?>" href="<?= $__rootPath ?>it/kurulum_it.php" data-label="Kurulum"><i class="bi bi-gear"></i><span>Kurulum</span></a>
+      </li>
+      <?php endif; ?>
+    </ul>
+    <?php endif; ?>
+
+    <?php if($__module==='pts'): /* ── PERSONEL TAKİP (PTS / ArUco) MENÜSÜ ── */ ?>
+    <ul class="sidebar-nav">
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('index.php') ?>" href="<?= $__rootPath ?>pts/index.php" data-label="Dashboard"><i class="bi bi-speedometer2"></i><span>Dashboard</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('puantaj.php') ?>" href="<?= $__rootPath ?>pts/puantaj.php" data-label="Puantaj"><i class="bi bi-calendar3"></i><span>Puantaj</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('hareketler.php') ?>" href="<?= $__rootPath ?>pts/hareketler.php" data-label="Hareketler"><i class="bi bi-arrow-left-right"></i><span>Giriş / Çıkış Defteri</span></a>
+      </li>
+      <?php if(can_edit()): ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('kartlar.php') ?>" href="<?= $__rootPath ?>pts/kartlar.php" data-label="Kartlar"><i class="bi bi-person-vcard"></i><span>ArUco Kartlar</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('noktalar.php') ?>" href="<?= $__rootPath ?>pts/noktalar.php" data-label="Geçiş Noktaları"><i class="bi bi-door-open"></i><span>Geçiş Noktaları</span></a>
+      </li>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('kiosk.php') ?>" href="<?= $__rootPath ?>pts/kiosk.php" target="_blank" data-label="Kiosk"><i class="bi bi-camera-video"></i><span>Kiosk (kart okut)</span></a>
+      </li>
+      <?php endif; ?>
+      <?php if(in_array($__user['role'] ?? '', ['admin','teknik_ofis_admin'], true)): /* kurulum sayfaları her zaman rol bazlı */ ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('kurulum_pts.php') ?>" href="<?= $__rootPath ?>pts/kurulum_pts.php" data-label="Kurulum"><i class="bi bi-gear"></i><span>Kurulum</span></a>
       </li>
       <?php endif; ?>
     </ul>

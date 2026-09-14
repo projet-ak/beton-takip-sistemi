@@ -852,6 +852,77 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   `depo` şablonuna it oku+giriş eklendi. Header'da Kurulum linki GERÇEK role bakar (matris eşlemesi duzenle→toa sayar,
   kurulum sayfası ise rol bazlı → 403 olurdu). Test: scratchpad `itsm/` (SQLite; `it_patch.php` DATE_ADD/CURDATE/IF
   eşlemeleri, `run.php` sayfa/POST koşucusu) — form/liste/detay işlemleri/tutanak/dashboard/rapor doğrulandı.
+- **PTS — Personel Takip modülü** = `pts/` alt klasörü (MODULLER anahtarı `pts`, şeritte "Personel Takip").
+  **ArUco kartlarıyla personel giriş-çıkış + günlük puantaj.** Kaynak: `projet-ak/PTS` deposundaki
+  Rust(Axum)+PostgreSQL+React uygulaması; 2026-09-14'te **PHP modülü olarak taşındı** (kullanıcı kararı).
+  ⚠ Taşıma sırasında PTS'nin kendi yazdığı auth/rol/giriş-kilidi/Excel/dashboard katmanları ATILDI —
+  hepsinin karşılığı sistemde zaten vardı (yetki matrisi · `login.php` deneme kilidi · `ERN_RAPOR`).
+  Gerçekten taşınan, PTS'ye ÖZGÜ olan kısımdır: ArUco okuma, kart üretimi, cihaz anahtarı, yön kuralı, puantaj.
+  • ⚠⚠ **PERSONEL AYRI TUTULMAZ — kişi kaydı `it_personel`'dir** (IT Envanter). PTS yalnız "hangi kartta kim"
+  ve "kim ne zaman girdi/çıktı" bilgisini ekler. Bu yüzden **PTS tabloları IT ile AYNI veritabanındadır**
+  (`IT_DB_NAME`, `pts_` önekli — Prekast'ın CRM ile paylaşmasıyla aynı desen) ve JOIN'ler sıradan tek-DB
+  JOIN'idir. **`PTS_DB_NAME` sabiti bilerek YOKTUR**: ayırmak personel bağını veritabanı-ötesi yapardı.
+  `includes/db_pts.php` → `$pdoPts` (aynı bağlantı ayarları, IT_DB_NAME'e bakar).
+  • **Tablolar**: `pts_kartlar` (marker_id + sozluk + personel_id + verildi/iptal — kart kaybolunca eskisi
+  iptal edilir, geçmiş hareketler eski karta bağlı kalır) · `pts_noktalar` (kod UNIQUE, ad, **cihaz_anahtari**
+  UNIQUE, yon `otomatik|giris|cikis`, lokasyon_id, aktif, son_gorulme) · `pts_hareketler` (personel_id, kart_id,
+  nokta_id, marker_id, yon, zaman, **elle**, foto_url, aciklama).
+  ⚠ **ENUM KULLANILMAZ** — komşu `it_` tabloları da VARCHAR kullanıyor ve SQLite'lı duman testi ENUM'u
+  ayrıştıramıyor; geçerli değerler `PTS_YON` / `PTS_NOKTA_YON` sabitlerinde, doğrulama uygulamada.
+  ⚠ Postgres'te "bir kişide tek aktif kart" **kısmi UNIQUE index**le garantiydi; **MySQL'de kısmi index YOK**,
+  bu yüzden kural `pts_kart_ver()` içinde transaction'la tutulur ve `pts_kart_celiskileri()` kurulum
+  ekranında ihlal tarar (doğrudan SQL ile bozulmuşsa görünsün).
+  • **ArUco tarayıcıda okunur** — `assets/vendor/cv.js` + `aruco.js` (js-aruco2 v2.0.0, MIT).
+  ⚠ Bunlar **düz `<script>`**, global `CV`/`AR` tanımlar; ES modülü DEĞİL, **build adımı yok** — React/Vite'a
+  ihtiyaç duymadan PHP sayfalarında doğrudan çalışır. Sunucuda **OpenCV gerekmez**, sunucuya yalnız marker ID gider.
+  Sözlük **`ARUCO_MIP_36h12`** `aruco.js` içinde GÖMÜLÜ (250 kod → geçerli ID **0–249** = `PTS_MAX_MARKER`);
+  1000 markerlı sözlüğe geçilecekse `PTS_SOZLUK` + `PTS_MAX_MARKER` + vendor dosyası BİRLİKTE değişmeli.
+  Kart çizimi `AR.Dictionary(...).generateSVG(id)` ile — **okuyan kütüphanenin kendisi ürettiği için**
+  basılan kart ile kiosk okuması birebir uyumludur (bit sırası elle yorumlanmaz).
+  • Sayfalar: **index** (dashboard: şu an içeride · bugün giriş yapan · aktif kart · geçiş noktası KPI'ları
+  [her kart KENDİ sayısını veren listeye gider] + kartsız personel uyarı bandı + geçiş noktası yoksa uyarı +
+  son 14 gün giriş trendi + içeridekiler + bugünün puantajı + son hareketler) · **puantaj** (kişi özeti +
+  gün gün: ilk giriş / son çıkış / çalışılan süre, eşleşmeyen gün SARI satır + "eksik" rozeti; ERN_RAPOR
+  Excel/PDF/Yazdır; ⚠ ekranda **"resmî puantaj/SGK kaydı değildir"** bandı) · **hareketler** (ham defter:
+  tarih/yön/nokta/fotoğraf süzgeci, sayfalama, geçiş görüntüsü küçük resim, **elle hareket ekleme**
+  [`elle=1` rozetli — makine kaydından ayırt edilir]; ⚠ **kart okutma kaydı SİLİNEMEZ**, yalnız elle eklenen
+  silinir, düzeltme karşı yönde elle kayıtla yapılır) · **kartlar** (it_personel listesi + kart tanımla/iptal,
+  **"Sicilden"** türetme, canlı ArUco önizlemesi, **A4 kart tabakası yazdırma** `@media print`) ·
+  **noktalar** (CRUD + cihaz anahtarı kopyala/yenile; geçiş kaydı varsa SİLİNMEZ pasife alınır) ·
+  **kiosk** (tam ekran, sistemin kabuğunu kullanmaz; kamera + yön seçimi localStorage'da) · **kurulum_pts**.
+  • **`api/pts_scan.php` — kiosk ucu.** ⚠⚠ **OTURUM AÇMAZ**: kiosk bir tablettir, kimse giriş yapmaz; cihaz
+  kendini **`X-Checkpoint-Key`** başlığıyla tanıtır (anahtar sunucuda `pts_anahtar_uret()` ile üretilir,
+  noktalar ekranından kopyalanıp cihaza bir kez girilir). `/api/` yolunda olduğu için CSRF + modül denetiminden
+  muaftır; **güvenlik cihaz anahtarına dayanır**. `?whoami=1` anahtarı doğrular (yanlış yapıştırılan anahtar
+  ilk kart okutulana kadar fark edilmesin diye kurulumda sunucuya doğrulatılır).
+  • **Yön kuralı** (`pts_scan`): nokta SABİT yönlüyse (giriş/çıkış kapısı) o yön; `otomatik` ise personelin
+  **son hareketinin tersi**. **Debounce** `PTS_SCAN_DEBOUNCE` (varsayılan 30 sn): pencere içinde tekrar
+  okunursa YENİ KAYIT AÇILMAZ, `tekrar:true` döner — kamera aynı kareyi saniyede defalarca görür.
+  İstemcide ayrıca 3 sn'lik kilit var (gereksiz ağ trafiği kesilir).
+  • **Geçiş fotoğrafı**: kiosk her okumada kareyi JPEG gönderir; görüntü **DB'de TUTULMAZ**, gün bazlı
+  `uploads/pts_gecis/Y-m-d/{hareket_id}.jpg` olarak diske yazılır, tabloda yalnız göreli yol durur
+  (yedek küçük kalsın). ⚠ Yazılamazsa **geçiş yine kaydedilir** — kanıt görüntüsü kaydın tamamlayıcısıdır,
+  ön koşulu değil. Klasör `.gitignore`'da.
+  • ⚠ **Puantaj toplaması SQL'de değil PHP'de** (`pts_gunluk`): Postgres sürümü pencere fonksiyonu +
+  `FILTER (WHERE …)` + `EXTRACT(EPOCH …)` kullanıyordu; FILTER MySQL'de yok, TIMESTAMPDIFF SQLite'ta yok ve
+  duman testi SQLite'ta koşuyor. Ham hareketler sade sorguyla çekilip katlanır. Çalışılan süre = gün içindeki
+  ardışık giriş→çıkış çiftleri; çıkışsız kapanan gün süreye SAYILMAZ ve `eksik` olarak raporlanır.
+  • Yetki: sayfalar `require_auth([admin,toa,to,depo,it_sorumlusu(,saha_sefi)])`; `puantaj.php`
+  `sayfa_islemi()` rapor listesine eklendi → **rapor** yetkisi. Rol şablonları: **it_sorumlusu** pts tam
+  (kart/kiosk teknik iştir), **saha_sefi** pts `oku+rapor`. `kurulum_pts.php` her zaman rol bazlı.
+  • **Kamera yalnız GÜVENLİ BAĞLAMDA açılır** (HTTPS ya da localhost) — tablet ağdan açılacaksa sertifika şart;
+  kiosk ekranı bunu açıkça yazar (`window.isSecureContext` kontrolü).
+  Çekirdek `pts/_ortak.php`: PTS_SOZLUK / PTS_MAX_MARKER / PTS_YON / PTS_NOKTA_YON sabitleri, pts_semasi_kur,
+  pts_marker_sicilden (sicildeki rakamlar, baştaki sıfırlar atılır: "00042"→42), pts_aktif_kart,
+  pts_marker_sahibi, pts_kart_ver, pts_kart_iptal, pts_kart_celiskileri, pts_anahtar_uret,
+  pts_nokta_anahtarla, **pts_scan**, pts_foto_kaydet, **pts_gunluk**, pts_iceridekiler, pts_ozet, pts_filtre.
+  **Test**: itsm harness'ine eklendi (`pts_test.php` 35 sağlama: şema · sicilden türetme · kart çakışmaları ·
+  yön kuralı · debounce · puantaj matematiği) + `php -S` üzerinde **gerçek HTTP** ile scan ucu (anahtarsız 403 ·
+  whoami · okuma · debounce `tekrar` · tanımsız marker · fotoğraf diske yazıldı) + `run_pts.php` ile 7 sayfa
+  fatal/warning'siz render + **Playwright ile vendor kütüphanesi** (250 kod, generateSVG deterministik,
+  ID 250 reddediliyor, JS hatası yok). Gerçekçi kurguda puantaj birebir doğrulandı: 07:45–12:05 + 12:50–17:40
+  → **9s 10dk**, çıkışını unutan personel SARI satır + eksik=1.
+  ⚠ `php://input` **CLI'da boştur** — API ucunu `php -r`/include ile değil `php -S` üzerinden test et.
 - Geliştirici: **Tayyar Akbulut**. Sürüm: v3.0. Canlı: `https://ernsaha.com.tr/beton/` (eski: takbulut.com/beton/).
 
 > **⭐ TEMEL İLKE — Excel şablonu "kutsal kitap" (tek doğru kaynak).** Sistem, ilgili Excel
@@ -866,6 +937,9 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 - Backend: PHP (framework yok), PDO/MySQL 8, prepared statements her yerde.
 - Frontend: Bootstrap 5.3.3 + Bootstrap Icons, Chart.js 4.4.4, Google Fonts (Outfit), sunucu-tarafı render + PWA (`manifest.json`, `sw.js`).
 - Excel: `Shuchkin\SimpleXLSX` (composer, okuma) + `includes/XlsxWriter.php` (yazma; **varsayılan ERN Taahhüt logolu** — kurucu 2. parametre false ile kapatılır, başlık 4. satıra kayar) + client-side **ExcelJS** (formatlı rapor). **Rapor dışa aktarma ortak katmanı `assets/js/ern_rapor.js`**: ERN_RAPOR.wb/title/hdr/save (logolu çok sayfalı ExcelJS) + ERN_RAPOR.popup({mode:'pdf'|'print'}) (logolu A4 penceresi, jsPDF doğrudan kaydet + yazdır). TÜM modül raporları (beton hariç kendi eski deseninde) bu katmanı kullanır: Excel'e Aktar + PDF İndir + Yazdır üçlüsü. Sayfa script'ten önce `window.ERN_ROOT` tanımlar ('' veya '../'). **Tablo sütunu gizle/göster ortak katmanı `assets/js/kolon_sec.js`** (`ERN_KOLON.kur`, IT listelerinde kullanılıyor — ayrıntı IT Envanter bölümünde).
+- **ArUco okuma/üretme: `assets/vendor/cv.js` + `aruco.js`** (js-aruco2 v2.0.0, MIT) — düz `<script>`,
+  global `CV`/`AR`, **build adımı yok**; PTS modülünde kiosk okuma ve kart basımı bunu kullanır.
+  ⚠ `assets/vendor/` DIŞARIDAN alınan, DEĞİŞTİRİLMEYEN kütüphaneler içindir (bkz. oradaki README).
 - AI: Claude (Haiku 4.5) / Gemini / OpenRouter — `AI_PROVIDER` ile seçilir (`includes/ai_call.php`).
 
 ---
@@ -1203,7 +1277,9 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · **Sipariş Talepleri** · **
 > **Canlıda 7 AYRI veritabanı vardır** (2026-08 ayrıştırması + 2026-09 CRM + IT). Her modül kendi DB'sinde:
 > `takbulut_beton` (beton) · `takbulut_demir` · `takbulut_seramik` · `takbulut_depo` ·
 > `takbulut_akaryakit` · `takbulut_crm` (**CRM + Prekast birlikte** — `prekast_` önekli tablolar
-> aynı DB'de durur, ayırmak istenirse `PREKAST_DB_NAME`) · **`takbulut_it`** (IT Envanter, `it_` önekli).
+> aynı DB'de durur, ayırmak istenirse `PREKAST_DB_NAME`) · **`takbulut_it`** (**IT Envanter + PTS birlikte** —
+> `it_` ve `pts_` önekli tablolar aynı DB'de; ⚠ PTS'nin personeli `it_personel` olduğu ve her sorguda ona
+> JOIN atıldığı için **ayırma sabiti YOKTUR**).
 > Tümü `config.php`'deki `DEMIR_DB_NAME`/`SERAMIK_DB_NAME`/`DEPO_DB_NAME`/`AKARYAKIT_DB_NAME`/`CRM_DB_NAME`/
 > **`IT_DB_NAME`** sabitleriyle etkinleştirilir; tek DB kullanıcısı hepsine yetkili.
 > ⚠️ Bu sabitlerden biri **tanımsız kalırsa** ilgili modül sessizce **ana DB'ye** düşer ve veriler
@@ -1286,6 +1362,8 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 - **CRM**: `uploads/crm_ariza/{ariza_id}/` (arıza başına çoklu belge/fotoğraf; kayıtlar `crm_ariza_belgeler`).
 - **Akaryakıt**: `uploads/akaryakit_cikis/{id}/` (imzalı çıkış fişi) · `uploads/akaryakit_giris/{id}/` (mazot giriş irsaliyesi/faturası).
 - **IT Envanter**: `uploads/it_envanter/{cihaz_id}/` (cihaz fotoğrafı, alış faturası, garanti belgesi, imzalı zimmet/iade/transfer/hurda tutanağı; kayıtlar `it_belgeler`, `tur` = IT_BELGE_TUR anahtarı ('zimmet' | 'iade' | 'transfer' | 'hurda' → imzalı tutanak, 'fatura', 'belge'), `hareket_id` = belgenin ait olduğu zimmet/iade dönemi — bir dosya birden çok cihaza bağlı olabilir, diskten yalnız SON bağ koptuğunda silinir).
+- **PTS**: `uploads/pts_gecis/{Y-m-d}/{hareket_id}.jpg` (kart okutma anındaki kamera görüntüsü; DB'de yalnız
+  göreli yol durur, `.gitignore`'da — yazılamazsa geçiş yine kaydedilir).
 - `uploads/.htaccess` PHP çalıştırmayı engeller (alt klasörlere de uygulanır).
 
 ---
