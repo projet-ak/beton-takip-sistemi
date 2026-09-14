@@ -555,6 +555,20 @@ const CIM_MUKERRER_ANAHTAR = [
 ];
 
 /**
+ * ⚠⚠ CİHAZIN KENDİ KİMLİĞİ — "bu iki kayıt farklı cihaz mı?" sorusuna YALNIZ bunlar cevap verir.
+ * Üreticiden / IFS'ten gelirler, elle uydurulmazlar: iki kayıtta İKİSİ DE DOLU ve FARKLI ise
+ * ortada mükerrer değil iki ayrı demirbaş vardır.
+ *
+ * `cihaz_kodu` ve `envanter_no` BİLEREK DIŞARIDA: ikisi de BİZİM kendi etiketimizdir.
+ * envanter_no bizim sayacımız (IT-00001), mükerrer iki kartta zaten hep farklıdır; cihaz_kodu ise
+ * elle yazılır ve içine sık sık MODEL NUMARASI (SM-T577) ya da SERİ NO yazılır. Bunlar çelişki
+ * sayılırsa aynı cihazın iki kaydı "farklı cihaz" diye işaretlenip birleştirilemez hale gelir
+ * (gerçek vaka: seri no'su aynı olan iki Galaxy Tab kaydı, biri kod alanına seri no yazıldığı için
+ * ayrı sanılıyordu). Etiket farkları çelişki değil, birleştirme panelinde BİLGİ olarak gösterilir.
+ */
+const CIM_KIMLIK_ALAN = ['varlik_kodu', 'seri_no', 'mac_adresi', 'imei'];
+
+/**
  * Aynı kimliği taşıyan cihaz gruplarını bulur.
  * Grup içindeki İLK kayıt ASIL (korunacak) adaydır: künyesi en dolu, belgesi/geçmişi
  * en çok olan kart kazanır — birleştirmede veri kaybı en aza insin diye.
@@ -600,6 +614,7 @@ function cim_cihaz_mukerrer(PDO $pdo): array
             usort($kayitlar, fn($a, $b) => ($puan($b) <=> $puan($a)) ?: ((int)$a['id'] <=> (int)$b['id']));
             $celiski = cim_kimlik_celiskisi($kayitlar, $kol);
             $gruplar[$imza] = [
+                'etiket_farki' => cim_etiket_farki($kayitlar, $kol),
                 'tur'      => $etiket,
                 'kolon'    => $kol,
                 'anahtar'  => (string)$anahtar,
@@ -630,15 +645,43 @@ function cim_cihaz_mukerrer(PDO $pdo): array
  * @param string $eslesenKolon grubu oluşturan kolon (kendisi çelişki sayılmaz)
  * @return array<string,string> çelişen alan adı => "değer | değer"
  */
+/**
+ * Etiket farkları — çelişki DEĞİL, birleştirme panelinde gösterilecek BİLGİ.
+ * Kurum içi etiketlerimiz (cihaz kodu · envanter no) iki kartta farklı olabilir; birleştirmede
+ * hedefin dolu değeri korunur. Etiket alanına yanlışlıkla seri no / model yazılmışsa söylenir —
+ * kullanıcı hangi kodun gerçek demirbaş etiketi olduğunu görsün.
+ *
+ * @return array<string,string> etiket => "deger1 | deger2 (açıklama)"
+ */
+function cim_etiket_farki(array $kayitlar, string $eslesenKolon): array
+{
+    $fark = [];
+    foreach (['cihaz_kodu' => 'cihaz kodu', 'envanter_no' => 'envanter no'] as $kol => $etiket) {
+        if ($kol === $eslesenKolon) continue;
+        $degerler = [];
+        foreach ($kayitlar as $c) {
+            $v = trim((string)($c[$kol] ?? ''));
+            if ($v === '' || $v === '-') continue;
+            $n = pim_norm($v);
+            $not = '';
+            if ($kol === 'cihaz_kodu') {
+                if ($n !== '' && $n === pim_norm((string)($c['seri_no'] ?? ''))) $not = ' (seri no yazılmış)';
+                elseif ($n !== '' && $n === pim_norm((string)($c['model'] ?? ''))) $not = ' (model no yazılmış)';
+            }
+            $degerler[$n] = $v . $not;
+        }
+        if (count($degerler) > 1) $fark[$etiket] = implode(' | ', $degerler);
+    }
+    return $fark;
+}
+
 function cim_kimlik_celiskisi(array $kayitlar, string $eslesenKolon): array
 {
-    // ⚠ `envanter_no` çelişki sayılmaz: o BİZİM kendi sayacımız (IT-00001) ve mükerrer iki kartta
-    // zaten HER ZAMAN farklıdır — buna bakılırsa her grup "farklı cihaz" diye işaretlenir ve uyarı
-    // anlamını yitirir. Yalnız CİHAZIN KENDİSİNDEN gelen kimlikler (seri no · IFS nesne no · IMEI ·
-    // MAC) ve kurum demirbaş etiketi çelişki sayılır.
+    // ⚠ Yalnız CİHAZIN KENDİ kimliğine bakılır (CIM_KIMLIK_ALAN) — bizim etiketlerimiz
+    // (cihaz_kodu · envanter_no) çelişki SAYILMAZ, gerekçesi sabitin başında.
     $celiski = [];
     foreach (CIM_MUKERRER_ANAHTAR as $kol => $etiket) {
-        if ($kol === $eslesenKolon || $kol === 'envanter_no') continue;
+        if ($kol === $eslesenKolon || !in_array($kol, CIM_KIMLIK_ALAN, true)) continue;
         $degerler = [];
         foreach ($kayitlar as $c) {
             $v = trim((string)($c[$kol] ?? ''));

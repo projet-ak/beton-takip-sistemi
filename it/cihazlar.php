@@ -174,6 +174,15 @@ require_once __DIR__ . '/../includes/header.php';
     <?php foreach ($mukerrerler as $g): $asil = $g['kayitlar'][0]; ?>
     <div class="border rounded p-2 mb-2">
       <div class="small text-muted mb-1">Eşleşme: <strong><?= h($g['tur']) ?></strong> — <code><?= h($g['anahtar']) ?></code></div>
+      <?php if (!empty($g['etiket_farki'])): ?>
+      <div class="small text-muted mb-2">
+        <i class="bi bi-info-circle me-1"></i>Kurum içi etiketler kartlarda farklı (cihaz kimliği aynı, birleştirmeye engel değil —
+        korunan kartın dolu değeri kalır):
+        <?php foreach ($g['etiket_farki'] as $alan => $degerler): ?>
+          <span class="d-block">· <strong><?= h($alan) ?>:</strong> <code><?= h($degerler) ?></code></span>
+        <?php endforeach; ?>
+      </div>
+      <?php endif; ?>
       <div class="table-responsive">
       <table class="table table-sm mb-0 align-middle" style="font-size:.84rem">
         <thead class="table-light"><tr>

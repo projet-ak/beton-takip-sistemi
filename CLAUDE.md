@@ -707,9 +707,18 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   anahtarı taşıyan kayıtların BAŞKA kimlik alanlarında farklı dolu değer taşıyıp taşımadığına bakar;
   taşıyorsa grup **`ayri=true`** olur ve **birleştirme listesine HİÇ girmez** (`cihazlar.php`
   `$mukerrerler` / `$ayriCihazlar` diye ayrılır). İlk sürüm bunları "yine de birleştir" diye gösteriyordu —
-  tek yanlış tıkla ikinci cihaz envanterden silinirdi; kural tersine çevrildi. ⚠ **`envanter_no` çelişki
-  SAYILMAZ** — o bizim kendi sayacımız (IT-00001), mükerrer iki kartta zaten her zaman farklıdır; dahil
-  edilince HER grup "farklı cihaz" işaretleniyordu (3/3 kırmızıydı, düzeltince 1/3 = gerçek N405 vakası).
+  tek yanlış tıkla ikinci cihaz envanterden silinirdi; kural tersine çevrildi.
+  • ⚠⚠ **ÇELİŞKİYE YALNIZ CİHAZIN KENDİ KİMLİĞİ GİRER — `CIM_KIMLIK_ALAN`** (varlik_kodu · seri_no ·
+  mac_adresi · imei). Bunlar üreticiden/IFS'ten gelir, uydurulmaz: ikisi de DOLU ve farklıysa cihazlar
+  ayrıdır. **`cihaz_kodu` ve `envanter_no` çelişki SAYILMAZ — ikisi de BİZİM etiketimizdir**:
+  envanter_no bizim sayacımız (IT-00001), mükerrer iki kartta zaten hep farklıdır; `cihaz_kodu` elle
+  yazılır ve içine sık sık MODEL NUMARASI (SM-T577) ya da SERİ NO girilir. ⚠ **Kullanıcının bildirdiği
+  hata**: seri no'su AYNI, IFS'i bir kartta BOŞ olan iki Galaxy Tab kaydı, yalnız `cihaz_kodu` farklı
+  olduğu için ("SM-T577" ↔ kod alanına yazılmış "R52T902Y9EE") "farklı cihaz" sanılıp birleştirme
+  listesine ALINMIYORDU. Etiket farkları artık **`cim_etiket_farki()`** ile birleştirme panelinde
+  BİLGİ bandı olarak gösterilir ("seri no yazılmış" / "model no yazılmış" notuyla) — engel değil,
+  korunan kartın dolu değeri kalır. Aynı sebeple envanter_no ilk sürümde her grubu kırmızı yapıyordu
+  (3/3), çıkarılınca 1/3 = gerçek N405 vakası kaldı.
   • **"Aynı kodu taşıyan FARKLI cihazlar" paneli** (`?mukerrer=1` ekranının altında, gri kart): grup başına
   çelişen alanlar değerleriyle + cihaz tablosu. Bu bir **kod düzeltmesi** işidir, birleştirme değil.
   **`cim_model_numarasi_mi()`** gruptaki HER kaydın `model` alanı ortak koda eşitse kodun aslında bir
@@ -744,7 +753,11 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   **mükerrer sayılmadı** (`ayri`, `model_kodu=EVET`), gerçek mükerrer (aynı seri no) listede kaldı;
   sayfadan POST edilen kod temizliği 9 kayıtta `cihaz_kodu`yu boşalttı, `model` duruyor; kodu modelle aynı
   OLMAYAN kayıtta temizlenen=1/atlanan=1 ile doğrulandı; sayfadaki 5 inline script + 18 olay özniteliği
-  JS ayrıştırmasından hatasız geçti.
+  JS ayrıştırmasından hatasız geçti. Ekrandaki iki grubun birebir kurgusuyla: SM-T577 (kod aynı,
+  IFS+seri+IMEI farklı) → **AYRI**; R52T902Y9EE (seri aynı, IFS bir kartta boş, yalnız kod farklı) →
+  **MÜKERRER**, sayfadan POST ile birleşti (461 → 460), günlüğe silinen kartın kimlik kodları yazıldı.
+  ⚠ Duman testi koşucusu `run3.php` **çıktısız ve rc=0 dönerse** kod bozuk değildir — `sess.json`'daki
+  `last_activity` bayatlamıştır (auth.php oturum zaman aşımı); `rm sess.json` ile geçer.
   **DASHBOARD ELDEN GEÇİRME (2026-09-10, kullanıcı isteği)** — üç somut şikâyet + genel geliştirme:
   • ⚠⚠ **KPI kartı ile açtığı liste TUTMUYORDU**: "Serviste + Arızalı 1" kartı `?durum=arizali`ye
   gidiyordu, cihaz *serviste* olduğu için liste BOŞ açılıyor ve "serviste arızalı yok" görünüyordu.
