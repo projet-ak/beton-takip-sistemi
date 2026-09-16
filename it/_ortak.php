@@ -975,8 +975,11 @@ function it_personel_semasi_kur(PDO $pdo): void
         unvan VARCHAR(100) NULL,
         birim VARCHAR(100) NULL COMMENT 'departman / direktörlük',
         lokasyon_id INT NULL,
-        telefon VARCHAR(30) NULL,
-        eposta VARCHAR(120) NULL,
+        telefon VARCHAR(30) NULL COMMENT 'ŞİRKET hattı (cep) — eski kayıtların telefonu buradadır',
+        eposta VARCHAR(120) NULL COMMENT 'ŞİRKET e-postası — eski kayıtların e-postası buradadır',
+        dahili VARCHAR(10) NULL COMMENT 'masa telefonu kısa kodu (4 hane)',
+        telefon_sahsi VARCHAR(30) NULL,
+        eposta_sahsi VARCHAR(120) NULL,
         ise_giris DATE NULL,
         isten_cikis DATE NULL COMMENT 'NULL = çalışıyor',
         notlar TEXT NULL,
@@ -988,6 +991,44 @@ function it_personel_semasi_kur(PDO $pdo): void
         try { $pdo->query("SELECT $kol FROM it_cihazlar LIMIT 1"); }
         catch (Throwable $e) { try { $pdo->exec("ALTER TABLE it_cihazlar ADD COLUMN $kol $tip"); } catch (Throwable $e2) {} }
     }
+    // ⚠ MEVCUT KURULUMLAR: `telefon`/`eposta` sütunlarının ANLAMI DEĞİŞMEDİ — ikisi de ŞİRKET
+    // bilgisidir (kayıtlı veri zaten kurumsal cep/mail). Yanlarına masa telefonunun kısa kodu ve
+    // şahsi iletişim eklenir; eski kayıtlara dokunulmaz, tutanak/liste/Excel eskisi gibi çalışır.
+    foreach (['dahili' => "VARCHAR(10) NULL", 'telefon_sahsi' => "VARCHAR(30) NULL",
+              'eposta_sahsi' => "VARCHAR(120) NULL"] as $kol => $tip) {
+        try { $pdo->query("SELECT $kol FROM it_personel LIMIT 1"); }
+        catch (Throwable $e) { try { $pdo->exec("ALTER TABLE it_personel ADD COLUMN $kol $tip"); } catch (Throwable $e2) {} }
+    }
+}
+
+/**
+ * **Telefon numarasını tek biçime getirir**: "+905491795463" · "5491795463" · "0549-179-54-63"
+ * → `0549 179 54 63`. Tanınmayan biçim (yurt dışı, dahili yazılmış vb.) OLDUĞU GİBİ bırakılır —
+ * veriyi bozmaktansa ham hâlini saklamak yeğdir. Personel içe aktarması da bunu kullanır
+ * (`pim_telefon` buna devreder) ki form ile dosya aynı biçimi üretsin.
+ */
+function it_telefon(?string $s): string
+{
+    $s = trim((string)$s);
+    if ($s === '') return '';
+    $d = preg_replace('/[^\d+]/', '', $s);
+    if (preg_match('/^\+?90(\d{10})$/', $d, $m)) $d = '0' . $m[1];
+    elseif (preg_match('/^5\d{9}$/', $d)) $d = '0' . $d;
+    if (preg_match('/^0(\d{3})(\d{3})(\d{2})(\d{2})$/', $d, $m)) return "0$m[1] $m[2] $m[3] $m[4]";
+    return $s;
+}
+
+/**
+ * **Masa telefonu kısa kodu (dahili)** — şirkette hepsi 4 hanedir. Yalnız RAKAM bırakılır;
+ * kullanıcı "1234", "#1234" ya da "Dahili: 1234" yazsa da aynı değer kaydedilir.
+ * 3–6 hane kabul edilir (santral değişirse sistem kilitlenmesin); dışına çıkarsa `null` döner
+ * ve çağıran uyarı verir.
+ */
+function it_dahili(?string $s): ?string
+{
+    $d = preg_replace('/\D+/', '', (string)$s);
+    if ($d === '') return null;
+    return (strlen($d) >= 3 && strlen($d) <= 6) ? $d : null;
 }
 
 /** Varsayılan ağacı yükler; var olan (aynı üst + aynı ad) satırları atlar. Eklenen adedi döner. */
@@ -1072,11 +1113,34 @@ function it_lokasyon_etiket(PDO $pdo, ?int $id): string
  * bu tablo o alanların ÖNERİ LİSTESİDİR — Tanımlar ekranından yönetilir, formda datalist olarak çıkar.
  * Kategori ve Durum ise sistem sabitidir (IT_KATEGORI / IT_DURUM), Tanımlar'da yalnız sayımlarıyla gösterilir. */
 const IT_TANIM_TUR = [
-    'uretici'   => ['Üreticiler',  'marka',     'bi-tags'],
-    'model'     => ['Modeller',    'model',     'bi-cpu'],
-    'tedarikci' => ['Tedarikçiler','tedarikci', 'bi-truck'],
-    'sirket'    => ['Şirketler',   'sirket',    'bi-building'],
+    'uretici'   => ['Üreticiler',  'marka',     'bi-tags',          'it_cihazlar'],
+    'model'     => ['Modeller',    'model',     'bi-cpu',           'it_cihazlar'],
+    'tedarikci' => ['Tedarikçiler','tedarikci', 'bi-truck',         'it_cihazlar'],
+    'sirket'    => ['Şirketler',   'sirket',    'bi-building',      'it_cihazlar'],
+    // ⚠ Bu ikisinin kaynağı it_cihazlar DEĞİL **it_personel**'dir — 4. eleman bu yüzden var.
+    // Unvan/birim serbest metin girilince aynı görev "SAHA MÜHENDİSİ" / "Saha Mühendisi" /
+    // "SAHA MÜH." diye üçe bölünüyor ve raporlardaki birim kırılımı dağılıyordu.
+    'unvan'     => ['Unvanlar',    'unvan',     'bi-person-badge',  'it_personel'],
+    'birim'     => ['Birimler',    'birim',     'bi-diagram-3',     'it_personel'],
 ];
+
+/** Bir tanım türünün beslendiği tablo (varsayılan it_cihazlar). */
+function it_tanim_tablosu(string $tur): string { return IT_TANIM_TUR[$tur][3] ?? 'it_cihazlar'; }
+
+/** Tanım adının yazılabileceği en uzun metin (hedef kolonun genişliği). */
+function it_tanim_uzunluk(string $tur): int
+{
+    return match ($tur) { 'uretici' => 80, 'unvan', 'birim' => 100, default => 120 };
+}
+
+/**
+ * Unvan ve birim personel kartında **BÜYÜK HARF** tutulur (`it_buyuk`); tanım listesi de
+ * aynı biçimde durmalı, yoksa select'te "Saha Mühendisi", kayıtta "SAHA MÜHENDİSİ" görünürdü.
+ */
+function it_tanim_bicim(string $tur, string $ad): string
+{
+    return in_array($tur, ['unvan', 'birim'], true) ? it_buyuk($ad) : $ad;
+}
 
 /** Tanım tablosu + lokasyon ek alanları (şehir/adres/renk) + cihazlarda şirket alanı. İdempotent. */
 function it_tanim_semasi_kur(PDO $pdo): void
@@ -1172,11 +1236,13 @@ function it_tanim_liste(PDO $pdo, string $tur, bool $aktifYalniz = false): array
 }
 
 /** Cihaz kartındaki serbest metin alanında bu tanım kaç kez kullanılmış? (ad → adet) */
-function it_tanim_kullanim(PDO $pdo, string $kolon): array
+function it_tanim_kullanim(PDO $pdo, string $kolon, string $tablo = 'it_cihazlar'): array
 {
     $out = [];
+    // Cihazda "envanterde olanlar" sayılır; personelde böyle bir süzgeç yok (ayrılan da o unvandaydı).
+    $sart = $tablo === 'it_cihazlar' ? ' AND ' . it_envanterde() : '';
     try {
-        foreach ($pdo->query("SELECT `$kolon` d, COUNT(*) n FROM it_cihazlar WHERE `$kolon` IS NOT NULL AND `$kolon`<>'' AND " . it_envanterde() . " GROUP BY `$kolon`") as $r)
+        foreach ($pdo->query("SELECT `$kolon` d, COUNT(*) n FROM `$tablo` WHERE `$kolon` IS NOT NULL AND `$kolon`<>''$sart GROUP BY `$kolon`") as $r)
             $out[it_norm((string)$r['d'])] = (int)$r['n'];
     } catch (Throwable $e) {}
     return $out;
@@ -1186,15 +1252,50 @@ function it_tanim_kullanim(PDO $pdo, string $kolon): array
 function it_tanim_oneri(PDO $pdo, string $tur): array
 {
     $kolon = IT_TANIM_TUR[$tur][1] ?? null;
+    $tablo = it_tanim_tablosu($tur);
     $ad = array_map(fn($r) => $r['ad'], it_tanim_liste($pdo, $tur, true));
     if ($kolon) {
-        try { foreach ($pdo->query("SELECT DISTINCT `$kolon` d FROM it_cihazlar WHERE `$kolon` IS NOT NULL AND `$kolon`<>''") as $r) $ad[] = $r['d']; }
+        try { foreach ($pdo->query("SELECT DISTINCT `$kolon` d FROM `$tablo` WHERE `$kolon` IS NOT NULL AND `$kolon`<>''") as $r) $ad[] = $r['d']; }
         catch (Throwable $e) {}
     }
     $var = []; $out = [];
     foreach ($ad as $a) { $n = it_norm((string)$a); if ($n === '' || isset($var[$n])) continue; $var[$n] = 1; $out[] = $a; }
     sort($out, SORT_NATURAL | SORT_FLAG_CASE);
     return $out;
+}
+
+/**
+ * **Unvan / birim tanımlarını mevcut veriden doldurur** (idempotent, ucuz).
+ * Personel kartlarında zaten geçen unvan ve birimler ile lokasyon ağacındaki 'birim' düğümleri
+ * tanım listesine taşınır — aksi halde Tanımlar ekranı BOŞ görünür ve kullanıcı yüzlerce mevcut
+ * unvanı elle eklemek zorunda kalırdı. Eklenen satır sayısını döner.
+ */
+function it_tanim_kisi_seed(PDO $pdo): int
+{
+    static $yapildi = false;
+    if ($yapildi) return 0;
+    $yapildi = true;
+    it_tanim_semasi_kur($pdo);
+    $eklenen = 0;
+    foreach (['unvan', 'birim'] as $tur) {
+        // ⚠ Karşılaştırma TANIM TABLOSUYLA yapılır, `it_tanim_oneri` ile DEĞİL: o zaten kaynak
+        // tablodaki değerleri de katıyor, dolayısıyla her aday "zaten var" görünüp hiçbir şey
+        // eklenmiyordu (86 unvan varken tanım listesi boş kalıyordu).
+        $var = [];
+        foreach (it_tanim_liste($pdo, $tur) as $x) $var[it_norm((string)$x['ad'])] = 1;
+        $aday = [];
+        try {
+            foreach ($pdo->query("SELECT DISTINCT `$tur` d FROM it_personel WHERE `$tur` IS NOT NULL AND `$tur`<>''") as $r) $aday[] = (string)$r['d'];
+        } catch (Throwable $e) {}
+        // Merkez binadaki direktörlükler de birimdir (lokasyon ağacındaki 'birim' düğümleri)
+        if ($tur === 'birim') foreach (it_lokasyonlar($pdo) as $l) if (($l['tur'] ?? '') === 'birim') $aday[] = (string)$l['ad'];
+        foreach ($aday as $ad) {
+            $n = it_norm($ad);
+            if ($n === '' || isset($var[$n])) continue;
+            try { it_tanim_ekle($pdo, $tur, $ad); $var[$n] = 1; $eklenen++; } catch (Throwable $e) {}
+        }
+    }
+    return $eklenen;
 }
 
 /**
@@ -1213,16 +1314,19 @@ function it_tanim_ekle(PDO $pdo, string $tur, string $ad): array
     if (!isset(IT_TANIM_TUR[$tur])) throw new RuntimeException('Geçersiz tanım türü.');
     $ad = trim(preg_replace('/\s+/u', ' ', $ad));
     if ($ad === '') throw new RuntimeException('Ad boş olamaz.');
-    // Cihaz kartındaki karşılık kolonunu aşmasın (marka VARCHAR(80), model/tedarikçi/şirket 120)
-    $ad = mb_substr($ad, 0, $tur === 'uretici' ? 80 : 120);
+    // Hedef kolonu aşmasın (marka 80, unvan/birim 100, diğerleri 120) ve türün yazım biçimine uysun
+    $ad = it_tanim_bicim($tur, mb_substr($ad, 0, it_tanim_uzunluk($tur)));
 
     $n = it_norm($ad);
     foreach (it_tanim_liste($pdo, $tur) as $x)
         if (it_norm((string)$x['ad']) === $n) return ['ad' => (string)$x['ad'], 'yeni' => false];
-    // Tanım tablosunda yok ama cihazlarda geçiyorsa, cihazdaki YAZIM biçimi esas alınır
+    // Tanım tablosunda yok ama kayıtlarda geçiyorsa, oradaki YAZIM biçimi esas alınır
     foreach (it_tanim_oneri($pdo, $tur) as $o)
         if (it_norm((string)$o) === $n) { $ad = (string)$o; break; }
 
+    // ⚠ Biçim EN SONDA uygulanır: yukarıdaki "mevcut yazımı benimse" adımı unvan/birim için
+    // büyük harf kuralını eziyordu (listede "Dizayn Mimarı", kayıtta "DİZAYN MİMARI" oluyordu).
+    $ad = it_tanim_bicim($tur, $ad);
     it_tanim_semasi_kur($pdo);
     $pdo->prepare("INSERT INTO it_tanimlar (tur, ad, sira, aktif) VALUES (?,?,0,1)")->execute([$tur, $ad]);
     return ['ad' => $ad, 'yeni' => true];
@@ -1430,7 +1534,7 @@ function it_personel_ara(PDO $pdo, string $q, int $limit = 25, bool $ayrilanlarD
     foreach (it_personel_liste($pdo, !$ayrilanlarDahil) as $p) {
         $ad   = it_norm(it_personel_ad($p));
         $hepsi = $ad . ' ' . it_norm((string)($p['sicil_no'] ?? '')) . ' ' . it_norm((string)($p['unvan'] ?? ''))
-               . ' ' . it_norm((string)($p['birim'] ?? ''));
+               . ' ' . it_norm((string)($p['birim'] ?? '')) . ' ' . it_norm((string)($p['dahili'] ?? ''));
         $puan = 0;
         if ($kelime) {
             foreach ($kelime as $k) if (!str_contains($hepsi, $k)) { $puan = -1; break; }
@@ -1463,7 +1567,10 @@ function it_personel_suz(array $liste, string $q): array
         $hepsi = it_norm(it_personel_ad($p)) . ' '
                . it_norm((string)($p['sicil_no'] ?? '')) . ' ' . it_norm((string)($p['unvan'] ?? '')) . ' '
                . it_norm((string)($p['birim'] ?? ''))    . ' ' . it_norm((string)($p['telefon'] ?? '')) . ' '
-               . it_norm((string)($p['eposta'] ?? ''))   . ' ' . it_norm((string)($p['lok_ad'] ?? ''));
+               . it_norm((string)($p['eposta'] ?? ''))   . ' ' . it_norm((string)($p['lok_ad'] ?? '')) . ' '
+               // dahili / şahsi iletişim de aranabilsin ("1234" yazıp kişiyi bulmak)
+               . it_norm((string)($p['dahili'] ?? ''))   . ' ' . it_norm((string)($p['telefon_sahsi'] ?? '')) . ' '
+               . it_norm((string)($p['eposta_sahsi'] ?? ''));
         foreach ($kelime as $k) if (!str_contains($hepsi, $k)) return false;
         return true;
     }));

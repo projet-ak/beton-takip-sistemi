@@ -20,6 +20,8 @@ try {
     pim_log_kur($pdoIt);
     it_tanim_semasi_kur($pdoIt);
     cim_semasi_kur($pdoIt);   // varlık/cihaz kodu kolonları + eski envanter no'ların cihaz koduna taşınması
+    // Unvan / birim tanımlarını mevcut personel kartlarından doldur (seçim listesi boş açılmasın)
+    if (($__ts = it_tanim_kisi_seed($pdoIt))) $log[] = "unvan / birim tanımı ($__ts satır mevcut personelden alındı)";
     $log = ['it_cihazlar', 'it_hareketler', 'it_belgeler', 'it_lokasyonlar', 'it_personel', 'it_tanimlar', 'it_import_log'];
     if (!(int)$pdoIt->query("SELECT COUNT(*) FROM it_lokasyonlar")->fetchColumn()) { $n = it_lokasyon_seed($pdoIt); $log[] = "varsayılan lokasyon ağacı ($n satır: Kartal Batı Yakası U030/U031/U039 + ERN Holding Merkez)"; }
     $dir = __DIR__ . '/../uploads/it_envanter';

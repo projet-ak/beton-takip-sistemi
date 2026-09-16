@@ -87,7 +87,7 @@ $wsql = $w ? ' WHERE ' . implode(' AND ', $w) : '';
 
 // Her sütun sıralanabilir (cihaz listesindeki desen); lokasyon adı SELECT'teki alt sorgudan gelir
 $sirala = ['ad' => 'p.soyad, p.ad', 'sicil' => 'p.sicil_no', 'unvan' => 'p.unvan', 'birim' => 'p.birim',
-           'lokasyon' => 'lok_ad', 'telefon' => 'p.telefon',
+           'lokasyon' => 'lok_ad', 'dahili' => 'p.dahili', 'telefon' => 'p.telefon',
            'giris' => 'p.ise_giris', 'cikis' => 'p.isten_cikis', 'cihaz' => 'cihaz'];
 $skA = array_key_exists($_GET['sk'] ?? '', $sirala) ? $_GET['sk'] : 'ad';
 $yon = ($_GET['yon'] ?? '') === 'desc' ? 'DESC' : 'ASC';
@@ -103,11 +103,13 @@ if (($_GET['export'] ?? '') === 'xlsx') {
     require_once __DIR__ . '/../includes/XlsxWriter.php';
     $xl = new \XlsxWriter('Personel');
     $__mg = it_mali_goster();
-    $xl->header(array_merge(['Sicil No','Ad','Soyad','Unvan','Birim','Lokasyon','Telefon','E-posta','İşe Giriş','İşten Çıkış','Durum','Zimmetli Cihaz'],
+    $xl->header(array_merge(['Sicil No','Ad','Soyad','Unvan','Birim','Lokasyon','Dahili','Şirket Hattı','Şahsi Numara','Şirket E-postası','Şahsi E-posta','İşe Giriş','İşten Çıkış','Durum','Zimmetli Cihaz'],
                             $__mg ? ['Zimmet Değeri (TL)'] : [], ['Notlar']));
     foreach ($liste as $r) $xl->row(array_merge([
         ['v'=>$r['sicil_no']], ['v'=>$r['ad']], ['v'=>$r['soyad']], ['v'=>$r['unvan']], ['v'=>$r['birim']], ['v'=>it_lokasyon_yol($pdoIt, (int)$r['lokasyon_id'])],
-        ['v'=>$r['telefon']], ['v'=>$r['eposta']], ['v'=>$r['ise_giris'],'t'=>'date'], ['v'=>$r['isten_cikis'],'t'=>'date'],
+        ['v'=>$r['dahili'] ?? ''], ['v'=>$r['telefon']], ['v'=>$r['telefon_sahsi'] ?? ''],
+        ['v'=>$r['eposta']], ['v'=>$r['eposta_sahsi'] ?? ''],
+        ['v'=>$r['ise_giris'],'t'=>'date'], ['v'=>$r['isten_cikis'],'t'=>'date'],
         ['v'=>it_personel_aktif($r) ? 'Çalışıyor' : 'Ayrıldı'], ['v'=>(int)$r['cihaz'],'t'=>'number'],
     ], $__mg ? [['v'=>(float)$r['mali'],'t'=>'number']] : [], [['v'=>$r['notlar']]]));
     $xl->download('it_personel_' . date('Ymd_Hi') . '.xlsx');
@@ -206,7 +208,7 @@ require_once __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 
 <form method="get" class="card border-0 shadow-sm mb-3"><div class="card-body py-2"><div class="row g-2 align-items-end">
-  <div class="col-md-3"><label class="form-label small mb-0">Ara</label><input name="q" class="form-control form-control-sm" value="<?= h($q) ?>" placeholder="ad soyad, sicil, unvan, telefon, lokasyon"
+  <div class="col-md-3"><label class="form-label small mb-0">Ara</label><input name="q" class="form-control form-control-sm" value="<?= h($q) ?>" placeholder="ad soyad, sicil, unvan, dahili, telefon, lokasyon"
                title="Ad ve soyadı birlikte yazabilirsiniz; kelime sırası serbest ve Türkçe harf duyarsızdır (ismail = İSMAİL)"></div>
   <div class="col-md-2"><label class="form-label small mb-0">Durum</label>
     <select name="durum" class="form-select form-select-sm"><option value="aktif" <?= $durum==='aktif'?'selected':'' ?>>Çalışanlar</option><option value="ayrilan" <?= $durum==='ayrilan'?'selected':'' ?>>Ayrılanlar</option><option value="hepsi" <?= $durum==='hepsi'?'selected':'' ?>>Hepsi</option></select></div>
@@ -251,13 +253,14 @@ require_once __DIR__ . '/../includes/header.php';
     <th data-kol="unvan" data-kol-ad="Unvan"><a href="<?= h($srtUrl('unvan')) ?>" class="text-decoration-none text-dark">Unvan <?= $srtIk('unvan') ?></a></th>
     <th data-kol="birim" data-kol-ad="Birim"><a href="<?= h($srtUrl('birim')) ?>" class="text-decoration-none text-dark">Birim <?= $srtIk('birim') ?></a></th>
     <th data-kol="lokasyon" data-kol-ad="Lokasyon"><a href="<?= h($srtUrl('lokasyon')) ?>" class="text-decoration-none text-dark">Lokasyon <?= $srtIk('lokasyon') ?></a></th>
+    <th data-kol="dahili" data-kol-ad="Dahili"><a href="<?= h($srtUrl('dahili')) ?>" class="text-decoration-none text-dark">Dahili <?= $srtIk('dahili') ?></a></th>
     <th data-kol="telefon" data-kol-ad="Telefon"><a href="<?= h($srtUrl('telefon')) ?>" class="text-decoration-none text-dark">Telefon <?= $srtIk('telefon') ?></a></th>
     <th data-kol="giris" data-kol-ad="İşe Giriş"><a href="<?= h($srtUrl('giris')) ?>" class="text-decoration-none text-dark">İşe Giriş <?= $srtIk('giris') ?></a></th>
     <th data-kol="cikis" data-kol-ad="Çıkış"><a href="<?= h($srtUrl('cikis')) ?>" class="text-decoration-none text-dark">Çıkış <?= $srtIk('cikis') ?></a></th>
     <th class="text-end" data-kol="cihaz" data-kol-ad="Zimmet"><a href="<?= h($srtUrl('cihaz')) ?>" class="text-decoration-none text-dark">Zimmet <?= $srtIk('cihaz') ?></a></th>
     <th></th></tr></thead>
   <tbody>
-  <?php if (!$liste): ?><tr><td colspan="10" class="text-center text-muted py-4">Kayıt yok.<?php if ($yazabilir): ?> <a href="personel_form.php">İlk personeli ekleyin</a>.<?php endif; ?></td></tr><?php endif; ?>
+  <?php if (!$liste): ?><tr><td colspan="11" class="text-center text-muted py-4">Kayıt yok.<?php if ($yazabilir): ?> <a href="personel_form.php">İlk personeli ekleyin</a>.<?php endif; ?></td></tr><?php endif; ?>
   <?php foreach ($liste as $r): $aktif = it_personel_aktif($r); $risk = !$aktif && (int)$r['cihaz'] > 0; ?>
     <tr class="<?= $risk ? 'table-danger' : (!$aktif ? 'text-muted' : '') ?>">
       <td class="font-monospace small"><?= h($r['sicil_no'] ?: '—') ?></td>
@@ -265,6 +268,7 @@ require_once __DIR__ . '/../includes/header.php';
       <td><?= h($r['unvan'] ?: '—') ?></td>
       <td><?= h($r['birim'] ?: '—') ?></td>
       <td class="small"><?= h(it_lokasyon_yol($pdoIt, (int)$r['lokasyon_id']) ?: '—') ?></td>
+      <td class="font-monospace text-center"><?= h($r['dahili'] ?: '—') ?></td>
       <td class="small text-nowrap"><?= h($r['telefon'] ?: '—') ?></td>
       <td class="small text-nowrap"><?= $r['ise_giris'] ? format_date($r['ise_giris']) : '—' ?></td>
       <td class="small text-nowrap"><?= $r['isten_cikis'] ? format_date($r['isten_cikis']) : '—' ?></td>

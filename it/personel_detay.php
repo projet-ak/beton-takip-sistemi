@@ -78,8 +78,11 @@ $bilgi = fn($e, $v) => '<div class="col-sm-6 col-lg-4"><div class="small text-mu
         <?= $bilgi('Unvan', $p['unvan']) ?>
         <?= $bilgi('Birim / Departman', $p['birim']) ?>
         <?= $bilgi('Lokasyon / Proje', it_lokasyon_yol($pdoIt, (int)$p['lokasyon_id'])) ?>
-        <?= $bilgi('Telefon', $p['telefon']) ?>
-        <?= $bilgi('E-posta', $p['eposta']) ?>
+        <?= $bilgi('Dahili (masa tel.)', $p['dahili'] ?? null) ?>
+        <?= $bilgi('Şirket Hattı', $p['telefon']) ?>
+        <?= $bilgi('Şahsi Numara', $p['telefon_sahsi'] ?? null) ?>
+        <?= $bilgi('Şirket E-postası', $p['eposta']) ?>
+        <?= $bilgi('Şahsi E-posta', $p['eposta_sahsi'] ?? null) ?>
         <?= $bilgi('İşe Giriş', $p['ise_giris'] ? format_date($p['ise_giris']) : null) ?>
         <?= $bilgi('İşten Çıkış', $p['isten_cikis'] ? format_date($p['isten_cikis']) : null) ?>
         <?= $bilgi('Zimmetli cihaz', count($cihazlar) . ' adet') ?>

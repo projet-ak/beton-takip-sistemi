@@ -244,7 +244,9 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
     <tr><td class="k">AD SOYAD</td><td><strong><?= h($kisi ?: '—') ?></strong></td>
         <td class="k">SİCİL NO</td><td class="mono"><?= h($per['sicil_no'] ?? '') ?: '—' ?></td></tr>
     <tr><td class="k">MAİL ADRESİ</td><td><?= h($per['eposta'] ?? '') ?: '—' ?></td>
-        <td class="k">TELEFON</td><td><?= h($per['telefon'] ?? '') ?: '—' ?></td></tr>
+        <?php /* Şirket hattı + masa telefonunun kısa kodu: tutanaktan kişiye ulaşılabilsin */ ?>
+        <td class="k">TELEFON</td><td><?= h($per['telefon'] ?? '') ?: '—' ?><?php
+            $__dh = trim((string)($per['dahili'] ?? '')); echo $__dh !== '' ? ' · dahili ' . h($__dh) : ''; ?></td></tr>
     <tr><td class="k">BİRİM / UNVAN</td><td><?= h(trim(($departman ?: '') . ($per && $per['unvan'] ? ' — ' . $per['unvan'] : ''), ' —')) ?: '—' ?></td>
         <td class="k">LOKASYON</td><td><?= h($lokasyon ?: '—') ?></td></tr>
   </table>

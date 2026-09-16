@@ -17,7 +17,7 @@ $pageTitle = 'Personel İçe Aktar — IT Envanter';
 $kisi = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ?? null;
 
 /** Şablonun sütun düzeni = içe aktarmanın tanıdığı başlıklar (pim_harita bu adlarla eşleştirir). */
-const PIM_SABLON_BASLIK = ['Sicil No','Ad','Soyad','Unvan','Birim','Lokasyon','Telefon','E-posta','İşe Giriş','İşten Çıkış','Durum','Notlar'];
+const PIM_SABLON_BASLIK = ['Sicil No','Ad','Soyad','Unvan','Birim','Lokasyon','Dahili','Şirket Hattı','Şahsi Numara','Şirket E-postası','Şahsi E-posta','İşe Giriş','İşten Çıkış','Durum','Notlar'];
 
 /** Bir personel satırını şablon düzenine çevirir. */
 function pim_sablon_satiri(PDO $pdo, array $r): array
@@ -28,7 +28,8 @@ function pim_sablon_satiri(PDO $pdo, array $r): array
     return [
         ['v'=>(string)($r['sicil_no'] ?? '')], ['v'=>(string)($r['ad'] ?? '')], ['v'=>(string)($r['soyad'] ?? '')],
         ['v'=>(string)($r['unvan'] ?? '')], ['v'=>(string)($r['birim'] ?? '')], ['v'=>$lokAd],
-        ['v'=>(string)($r['telefon'] ?? '')], ['v'=>(string)($r['eposta'] ?? '')],
+        ['v'=>(string)($r['dahili'] ?? '')], ['v'=>(string)($r['telefon'] ?? '')], ['v'=>(string)($r['telefon_sahsi'] ?? '')],
+        ['v'=>(string)($r['eposta'] ?? '')], ['v'=>(string)($r['eposta_sahsi'] ?? '')],
         ['v'=>(string)($r['ise_giris'] ?? ''), 't'=>'date'], ['v'=>(string)($r['isten_cikis'] ?? ''), 't'=>'date'],
         ['v'=>it_personel_aktif($r) ? 'Aktif' : 'Pasif'], ['v'=>(string)($r['notlar'] ?? '')],
     ];
@@ -70,10 +71,11 @@ if (isset($_GET['sablon'])) {
     if (!$birimler) $birimler = ['Teknik Ofis', 'Satış Ofisi', 'Bilgi İşlem'];
     if (!$unvanlar) $unvanlar = ['Şantiye Şefi', 'Satış Uzmanı', 'Bilgi İşlem Destek Uzmanı'];
 
+    // [sicil, ad, soyad, şirket hattı, şirket e-postası, işe giriş, çıkış, durum, dahili, şahsi no, şahsi mail]
     $ornek = [
-        ['1001', 'Ahmet', 'Yılmaz',  '0532 123 45 67', 'ahmet.yilmaz@ernholding.com', '2024-03-01', '',           'Aktif'],
-        ['1002', 'Ayşe',  'Kaya',    '0533 987 65 43', 'ayse.kaya@ernholding.com',    '2025-01-15', '',           'Aktif'],
-        ['1003', 'Mehmet','Demir',   '',               '',                             '2022-06-10', '2026-04-30', 'Pasif'],
+        ['1001', 'Ahmet', 'Yılmaz',  '0532 123 45 67', 'ahmet.yilmaz@ernholding.com', '2024-03-01', '',           'Aktif', '1234', '0555 111 22 33', 'ahmet@gmail.com'],
+        ['1002', 'Ayşe',  'Kaya',    '0533 987 65 43', 'ayse.kaya@ernholding.com',    '2025-01-15', '',           'Aktif', '1235', '',               ''],
+        ['1003', 'Mehmet','Demir',   '',               '',                             '2022-06-10', '2026-04-30', 'Pasif', '',     '',               ''],
     ];
     foreach ($ornek as $i => $o) {
         $xl->row([
@@ -81,7 +83,7 @@ if (isset($_GET['sablon'])) {
             ['v'=>(string)($unvanlar[$i % count($unvanlar)] ?? '')],
             ['v'=>(string)($birimler[$i % count($birimler)] ?? '')],
             ['v'=>(string)($lokAdlar[$i % count($lokAdlar)] ?? '')],
-            ['v'=>$o[3]], ['v'=>$o[4]],
+            ['v'=>$o[8]], ['v'=>$o[3]], ['v'=>$o[9]], ['v'=>$o[4]], ['v'=>$o[10]],
             ['v'=>$o[5], 't'=>'date'], ['v'=>$o[6], 't'=>'date'],
             ['v'=>$o[7]],
             ['v'=>$i === 2 ? 'İşten çıkış tarihi dolu olduğu için "ayrıldı" sayılır' : ''],

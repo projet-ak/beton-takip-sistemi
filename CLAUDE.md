@@ -741,6 +741,58 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   seçili geliyor · listede olmayan değer optgroup'ta korunuyor · seçilen marka kayda yazılıyor
   (Dell → ACER); Playwright'ta prompt → fetch gövdesi (csrf dahil) → select'e ekleme + seçme +
   bilgi satırı, boş girişte istek atılmıyor, JS hatası yok; 8 IT sayfası uyarısız render oluyor.
+  **PERSONEL KARTI: SEÇİLEBİLİR UNVAN/BİRİM + AYRIK İLETİŞİM (2026-09-16, kullanıcı: "ünvanlar
+  seçilebilir olsun yoksa ekleme özelliği olsun; telefon kısa kodu var, şirket sabit masa telefonu var,
+  hepsi dört haneli; şirket hattı ve şahsi numara kısmı olsun, mailde aynı şekilde, birimde aynı açılır
+  olsun VERİ BÜTÜNLÜĞÜ İÇİN")** — `personel_form.php`'de Unvan ve Birim serbest METİN + datalist'ti;
+  datalist yalnız ÖNERİdir, kullanıcı istediğini yazabiliyordu ve aynı görev **"Şantiye Şefi" /
+  "ŞANTİYE ŞEFİ" / "Satıs Uzmanı"** diye bölünüyordu (gerçek veride 86 farklı unvan → normalize edilince
+  **81**; 5'i yalnızca YAZIM farkıydı). Telefon/e-posta ise TEK alandı: dahili mi, cep mi, şahsi mi belli değildi.
+  • **Unvan ve Birim artık `<select>`** — `it_tanim_options($pdo,'unvan'|'birim',$secili)`. `IT_TANIM_TUR`'a
+  iki tür eklendi ve sabite **4. eleman: KAYNAK TABLO** geldi (`it_tanim_tablosu()`); marka/model/tedarikçi/
+  şirket `it_cihazlar`dan, **unvan/birim `it_personel`den** beslenir. `it_tanim_oneri` ve `it_tanim_kullanim`
+  bu tablodan okur (kullanım sayısı "N kişi" yazar ve `personel.php?q=`'ya gider).
+  • **"+" düğmesi = listede yoksa oluştur** (`can_edit()`), cihaz formundaki Marka ekleyicisiyle AYNI akış:
+  `prompt` → sayfanın kendi POST ucu (`islem=tanim_ekle`, CSRF gövdede, **beyaz liste yalnız unvan|birim**)
+  → dönen ad select'e eklenip seçilir. Mükerrer engeli `it_norm` ile.
+  • **`it_tanim_kisi_seed()`** — mevcut personel kartlarındaki unvan/birim değerleri + lokasyon ağacındaki
+  'birim' düğümleri tanım listesine BİR KEZ taşınır (idempotent; personel formu, Tanımlar ekranı ve
+  `kurulum_it` çağırır). ⚠⚠ İlk sürüm karşılaştırmayı `it_tanim_oneri` ile yapıyordu — o zaten kaynak
+  tablodaki değerleri de katıyor, dolayısıyla **her aday "zaten var" görünüp HİÇBİR ŞEY eklenmiyordu**
+  (86 unvan varken liste boş kalıyordu); karşılaştırma `it_tanim_liste` (yalnız tanım tablosu) ile yapılır.
+  • ⚠ **`it_tanim_ekle`'de biçim EN SONDA uygulanır**: "kayıtlarda geçen yazımı benimse" adımı
+  unvan/birim için büyük harf kuralını eziyordu (listede "Dizayn Mimarı", kayıtta "DİZAYN MİMARI").
+  `it_tanim_bicim()` (unvan/birim → `it_buyuk`) + `it_tanim_uzunluk()` (marka 80 · unvan/birim 100 · diğer 120).
+  • **İLETİŞİM ÜÇE AYRILDI** — yeni kolonlar (runtime ALTER, `it_personel_semasi_kur`): **`dahili`**
+  (masa telefonu kısa kodu, VARCHAR(10)) · **`telefon_sahsi`** · **`eposta_sahsi`**.
+  ⚠⚠ **`telefon` ve `eposta` sütunlarının ANLAMI DEĞİŞMEDİ — ikisi de ŞİRKET bilgisidir**: kayıtlı veri
+  zaten kurumsal cep/mail olduğundan hiçbir göç gerekmedi, tutanak/liste/Excel/arama eskisi gibi çalışıyor.
+  Formda etiketler **Dahili · Şirket Hattı · Şahsi Numara · Şirket E-postası · Şahsi E-posta**.
+  • **`it_telefon()`** (çekirdek): "+905491795463" · "5491795463" · "0549-179-54-63" → `0549 179 54 63`;
+  tanınmayan biçim (yurt dışı) OLDUĞU GİBİ kalır. **`pim_telefon` artık buna devreder** — form ile içe
+  aktarma TEK biçim üretir. **`it_dahili()`**: yalnız rakam ("#1234" → 1234), 3–6 hane dışında `null`
+  döner ve form "3–6 hane olmalı (şirkette 4 hanelidir)" uyarısı verir (santralde bulunamayan numara
+  sessizce kaydedilmesin). E-posta `FILTER_VALIDATE_EMAIL` ile denetlenir, küçük harfe çevrilir.
+  • Gösterim: `personel.php`'ye **Dahili sütunu** (sıralanabilir, `ERN_KOLON` gövde hücresi başlık
+  sırasıyla eşleştiği için `td` de aynı sıraya kondu, "Kayıt yok" colspan 10→11) + Excel 5 yeni sütun ·
+  `personel_detay` beş satır · **zimmet tutanağı** TELEFON hücresine "· dahili 1234" · arama
+  (`it_personel_suz`/`it_personel_ara`) dahili ve şahsi alanları da kapsar.
+  • **İçe aktarma**: `PIM_ALAN`'a `dahili` · `telefon_sahsi` · `eposta_sahsi`; merge alan listeleri,
+  INSERT, "en dolu kart" puanı ve mükerrer birleştirme yeni alanları taşır. Şablon 12 → **15 sütun**.
+  ⚠⚠ **Eş anlamlılar NORMALİZE yazılmalı** — `pim_norm` noktalamayı BOŞLUĞA çevirir: "Şirket E-postası"
+  → `SIRKET E POSTASI`, "Şahsi E-posta" → `SAHSI E POSTA`. İlk sürümde tireli yazılmıştı, round-trip
+  testinde **"Şirket Hattı"→notlar · "Şirket E-postası"→notlar · "Şahsi E-posta"→eposta** diye yanlış
+  eşleşti (cihaz aktarımındaki "FIYAT (USD)" tuzağının aynısı). Düzeltildikten sonra `?sablon=mevcut`
+  round-trip **158 satır → 0 yeni / 0 güncellenen / 155 değişmeyen**, eşleşmeyen sütun YOK
+  (3 atlanan = sicili/e-postası olmayan aynı adlı 4 kayıt — içe aktarma bilerek tahmin etmiyor).
+  • **Tanımlar ekranına iki sekme**: **Unvanlar** · **Birimler** (`it/tanimlar.php`); açıklama bandı
+  türe göre değişir ("seçenek listesidir, serbest metin girilemez").
+  Test (itsm): tanım ucu — yeni unvan · farklı yazımla tekrar → `yeni:false` · izinsiz tür (`sirket`)
+  reddedildi · boş ad reddedildi; kayıt — "#1234"→1234, "+905491795463"→"0549 179 54 63",
+  "Erdem.Cankur@ERN.com.tr"→küçük harf, ad/soyad/unvan/birim BÜYÜK HARF; doğrulama — dahili "12"/"abc"
+  ve bozuk e-posta engellendi; seed 81 unvan + 8 birim üretti, **ikinci çalıştırmada değişmedi**,
+  tanımlarda küçük harf 0; 12 IT sayfası uyarısız render, inline JS temiz.
+
   **ALIŞ / FİYAT / KUR KÜNYESİ (2026-09-16, kullanıcı: "cihaz bilgileri ve alış ve fiyat kur bilgileri
   ekliyelim")** — kaynak: **Zekeriyaköy envanter dosyası** (`ZEKERİYAKÖY Env..xlsx`, 8 sayfa × 65 sütun,
   132 veri satırı: notebook 43 · monitör 28 · kamera 29 · OEM 18 · masaüstü 6 · tablet 5 · network 3 ·

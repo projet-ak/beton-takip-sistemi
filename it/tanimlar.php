@@ -26,8 +26,11 @@ const IT_LOK_TUR_AD = ['proje' => 'Proje / Şantiye', 'bina' => 'Bina / Ofis', '
 
 $sekmeler = ['lokasyon' => ['Lokasyonlar', 'bi-geo-alt'], 'kategori' => ['Kategoriler', 'bi-grid'], 'uretici' => ['Üreticiler', 'bi-tags'],
              'model' => ['Modeller', 'bi-cpu'], 'tedarikci' => ['Tedarikçiler', 'bi-truck'], 'sirket' => ['Şirketler', 'bi-building'],
+             'unvan' => ['Unvanlar', 'bi-person-badge'], 'birim' => ['Birimler', 'bi-diagram-3'],
              'durum' => ['Durumlar', 'bi-toggles'], 'personel' => ['Personel', 'bi-people']];
 $t = array_key_exists($_GET['t'] ?? '', $sekmeler) ? $_GET['t'] : 'lokasyon';
+// Unvan/birim sekmeleri mevcut personel verisiyle dolu açılsın (idempotent)
+if ($t === 'unvan' || $t === 'birim') { try { it_tanim_kisi_seed($pdoIt); } catch (Throwable $e) {} }
 $duzenleId = isset($_GET['duzenle']) && ctype_digit((string)$_GET['duzenle']) ? (int)$_GET['duzenle'] : 0;
 $yazabilir = yetki_var('duzenle');
 $pageTitle = 'Tanımlar — IT Envanter';
@@ -211,7 +214,10 @@ require_once __DIR__ . '/../includes/header.php';
   </table></div>
 </div>
 
-<?php elseif (isset(IT_TANIM_TUR[$t])): [$baslik, $kolon] = IT_TANIM_TUR[$t]; $liste = it_tanim_liste($pdoIt, $t); $kullanim = it_tanim_kullanim($pdoIt, $kolon); $d = $duzenlenen; ?>
+<?php elseif (isset(IT_TANIM_TUR[$t])): [$baslik, $kolon] = IT_TANIM_TUR[$t]; $liste = it_tanim_liste($pdoIt, $t);
+      // ⚠ "Kullanım" sayısı türün KENDİ tablosundan gelir: marka/model cihazdan, unvan/birim PERSONELDEN
+      $kullanim = it_tanim_kullanim($pdoIt, $kolon, it_tanim_tablosu($t));
+      $__kisiTuru = it_tanim_tablosu($t) === 'it_personel'; $d = $duzenlenen; ?>
 <?php if ($yazabilir): ?>
 <form method="post" class="card border-0 shadow-sm mb-3">
   <input type="hidden" name="islem" value="tanim_kaydet"><input type="hidden" name="t" value="<?= h($t) ?>"><input type="hidden" name="tur" value="<?= h($t) ?>"><input type="hidden" name="id" value="<?= (int)$duzenleId ?>">
@@ -234,13 +240,20 @@ require_once __DIR__ . '/../includes/header.php';
   <div class="table-responsive"><table class="table table-hover align-middle mb-0" style="font-size:.88rem">
     <thead class="table-light"><tr><th>Ad</th><th>Kod</th><th>Açıklama</th><th class="text-end">Kullanım</th><th></th></tr></thead>
     <tbody>
-    <?php if (!$liste): ?><tr><td colspan="5" class="text-center text-muted py-4">Tanım yok. Cihaz kartlarında yazılan değerler zaten öneri olarak çıkar; buraya eklerseniz liste standartlaşır.</td></tr><?php endif; ?>
+    <?php if (!$liste): ?><tr><td colspan="5" class="text-center text-muted py-4"><?= $__kisiTuru
+      ? 'Tanım yok. Personel kartlarında geçen değerler bu ekran açılınca otomatik alınır.'
+      : 'Tanım yok. Cihaz kartlarında yazılan değerler zaten öneri olarak çıkar; buraya eklerseniz liste standartlaşır.' ?></td></tr><?php endif; ?>
     <?php foreach ($liste as $r): $n = $kullanim[it_norm($r['ad'])] ?? 0; ?>
       <tr class="<?= (int)$r['aktif'] ? '' : 'text-muted' ?>">
         <td><?= $nokta($r['renk']) ?><strong><?= h($r['ad']) ?></strong><?= (int)$r['aktif'] ? '' : ' <span class="badge bg-secondary">pasif</span>' ?></td>
         <td class="font-monospace"><?= $r['kod'] ? h($r['kod']) : '<span class="text-muted">—</span>' ?></td>
         <td class="small"><?= $r['aciklama'] ? h($r['aciklama']) : '<span class="text-muted">—</span>' ?></td>
-        <td class="text-end"><?= $n ? '<a href="cihazlar.php?q=' . urlencode($r['ad']) . '">' . $f0($n) . ' cihaz</a>' : '<span class="text-muted">—</span>' ?></td>
+        <td class="text-end"><?php
+          // Sayı, tanımın beslendiği tablonun ekranına gider: cihaz tanımı → cihaz listesi, unvan/birim → personel
+          $__hedef = $__kisiTuru ? 'personel.php?q=' : 'cihazlar.php?q=';
+          echo $n ? '<a href="' . $__hedef . urlencode($r['ad']) . '">' . $f0($n) . ($__kisiTuru ? ' kişi' : ' cihaz') . '</a>'
+                  : '<span class="text-muted">—</span>';
+        ?></td>
         <td class="text-end text-nowrap">
           <?php if ($yazabilir): ?>
             <a href="tanimlar.php?t=<?= h($t) ?>&duzenle=<?= (int)$r['id'] ?>" class="btn btn-link btn-sm p-0 me-2" title="Düzenle"><i class="bi bi-pencil"></i></a>
@@ -255,7 +268,16 @@ require_once __DIR__ . '/../includes/header.php';
     </tbody>
   </table></div>
 </div>
-<div class="small text-muted mt-2"><i class="bi bi-info-circle me-1"></i>Bu liste cihaz formundaki <strong><?= h($baslik) ?></strong> alanının öneri kaynağıdır. Cihaz kartındaki değer serbest metin olduğundan eski kayıtlar etkilenmez; "Kullanım" sütunu tanımın kaç cihazda geçtiğini gösterir.</div>
+<div class="small text-muted mt-2"><i class="bi bi-info-circle me-1"></i>
+  <?php if ($__kisiTuru): ?>
+    Bu liste <strong>personel formundaki <?= h($baslik === 'Unvanlar' ? 'Unvan' : 'Birim / Departman') ?></strong> alanının
+    <strong>seçenek listesidir</strong> — veri bütünlüğü için serbest metin girilemez, buradaki değerlerden biri seçilir
+    (formdaki <strong>+</strong> düğmesiyle de eklenebilir). "Kullanım" sütunu kaç personelde geçtiğini gösterir.
+  <?php else: ?>
+    Bu liste cihaz formundaki <strong><?= h($baslik) ?></strong> alanının öneri kaynağıdır. Cihaz kartındaki değer serbest
+    metin olduğundan eski kayıtlar etkilenmez; "Kullanım" sütunu tanımın kaç cihazda geçtiğini gösterir.
+  <?php endif; ?>
+</div>
 
 <?php elseif ($t === 'kategori' || $t === 'durum'): $sistem = $t === 'kategori' ? IT_KATEGORI : IT_DURUM; $kolon = $t === 'kategori' ? 'kategori' : 'durum';
       $say = []; try { foreach ($pdoIt->query("SELECT `$kolon` d, COUNT(*) n FROM it_cihazlar GROUP BY `$kolon`") as $r) $say[(string)$r['d']] = (int)$r['n']; } catch (Throwable $e) {} ?>

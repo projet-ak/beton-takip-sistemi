@@ -26,8 +26,12 @@ const PIM_ALAN = [
     'unvan'       => ['etiket' => 'Unvan',           'es' => ['UNVAN','UNVANI','TITLE','JOB TITLE','JOBTITLE','GOREV','GOREVI','POZISYON','POSITION','ROLE','ROL']],
     'birim'       => ['etiket' => 'Birim / Departman','es' => ['BIRIM','BIRIMI','DEPARTMAN','DEPARTMANI','DEPARTMENT','BOLUM','BOLUMU','DIREKTORLUK','MUDURLUK','DIVISION','UNIT','ORGANIZATIONAL UNIT','OU']],
     'lokasyon'    => ['etiket' => 'Lokasyon / Proje', 'es' => ['LOKASYON','LOKASYONU','KONUM','OFIS','OFFICE','OFFICE LOCATION','OFFICELOCATION','LOCATION','PHYSICALDELIVERYOFFICENAME','PROJE','PROJESI','PROJE KODU','SANTIYE','SITE','ISYERI','IS YERI','CALISTIGI YER','LOKASYON/PROJE']],
-    'telefon'     => ['etiket' => 'Telefon',         'es' => ['TELEFON','TELEFONU','TEL','TEL NO','TELEFON NO','TELEFON NUMARASI','CEP','CEP TEL','CEP TELEFONU','GSM','MOBILE','MOBILE PHONE','MOBILEPHONE','MOBIL','PHONE','PHONE NUMBER','TELEPHONE','TELEPHONE NUMBER','TELEPHONENUMBER','OFFICE PHONE','BUSINESS PHONE','IS TELEFONU']],
-    'eposta'      => ['etiket' => 'E-posta',         'es' => ['EPOSTA','E-POSTA','E POSTA','EMAIL','E-MAIL','E MAIL','MAIL','MAIL ADRESI','EMAIL ADDRESS','EMAILADDRESS','USER PRINCIPAL NAME','USERPRINCIPALNAME','UPN','PRIMARY SMTP','KURUMSAL MAIL']],
+    'telefon'     => ['etiket' => 'Telefon',         'es' => ['TELEFON','TELEFONU','TEL','TEL NO','TELEFON NO','TELEFON NUMARASI','CEP','CEP TEL','CEP TELEFONU','GSM','MOBILE','MOBILE PHONE','MOBILEPHONE','MOBIL','PHONE','PHONE NUMBER','TELEPHONE','TELEPHONE NUMBER','TELEPHONENUMBER','OFFICE PHONE','BUSINESS PHONE','IS TELEFONU','SIRKET HATTI','SIRKET TELEFONU','SIRKET NUMARASI','KURUMSAL HAT','KURUMSAL NUMARA']],
+    'eposta'      => ['etiket' => 'Şirket E-postası','es' => ['EPOSTA','E-POSTA','E POSTA','EMAIL','E-MAIL','E MAIL','MAIL','MAIL ADRESI','EMAIL ADDRESS','EMAILADDRESS','USER PRINCIPAL NAME','USERPRINCIPALNAME','UPN','PRIMARY SMTP','KURUMSAL MAIL','SIRKET MAILI','SIRKET EPOSTASI','SIRKET E POSTASI','SIRKET E POSTA','KURUMSAL E POSTA','IS MAILI','IS E POSTASI']],
+    // Masa telefonunun 4 haneli kısa kodu + şahsi iletişim (şirket bilgisinden AYRI tutulur)
+    'dahili'      => ['etiket' => 'Dahili (masa tel.)', 'es' => ['DAHILI','DAHILI NO','DAHILI NUMARA','KISA KOD','KISAKOD','EXTENSION','EXT','IP EXTENSION','MASA TELEFONU','SABIT TELEFON','SANTRAL NO']],
+    'telefon_sahsi'=> ['etiket' => 'Şahsi Numara',   'es' => ['SAHSI NUMARA','SAHSI NUMARASI','SAHSI TELEFON','SAHSI TEL','SAHSI HAT','OZEL TELEFON','OZEL NUMARA','KISISEL TELEFON','KISISEL NUMARA','PERSONAL PHONE','PRIVATE PHONE']],
+    'eposta_sahsi'=> ['etiket' => 'Şahsi E-posta',   'es' => ['SAHSI EPOSTA','SAHSI E POSTA','SAHSI E POSTASI','SAHSI MAIL','OZEL MAIL','OZEL EPOSTA','OZEL E POSTA','KISISEL MAIL','KISISEL EPOSTA','KISISEL E POSTA','PERSONAL EMAIL','PRIVATE EMAIL']],
     'ise_giris'   => ['etiket' => 'İşe Giriş',       'es' => ['ISE GIRIS','ISE GIRIS TARIHI','ISE BASLAMA','ISE BASLAMA TARIHI','GIRIS TARIHI','GIRIS','BASLANGIC','BASLANGIC TARIHI','BASLAMA TARIHI','HIRE DATE','HIREDATE','START DATE','STARTDATE','DATE OF JOINING']],
     'isten_cikis' => ['etiket' => 'İşten Çıkış',     'es' => ['ISTEN CIKIS','ISTEN CIKIS TARIHI','ISTEN AYRILMA','AYRILMA TARIHI','CIKIS TARIHI','CIKIS','BITIS TARIHI','END DATE','ENDDATE','TERMINATION DATE','LEAVE DATE','LEAVING DATE']],
     'durum'       => ['etiket' => 'Durum (aktif/pasif)', 'es' => ['DURUM','DURUMU','STATUS','AKTIF','AKTIF MI','ENABLED','ACCOUNT ENABLED','ACCOUNTENABLED','ACTIVE','HESAP DURUMU','ACCOUNT STATUS','CALISMA DURUMU','BLOCK CREDENTIAL','BLOCKCREDENTIAL']],
@@ -251,16 +255,7 @@ function pim_bas_harf(string $s): string
 }
 
 /** Telefon: boşluk/parantez sadeleştirilir; 10 haneli 5xx… başına 0 eklenir; +90 korunur. */
-function pim_telefon(string $s): string
-{
-    $s = trim($s);
-    if ($s === '') return '';
-    $d = preg_replace('/[^\d+]/', '', $s);
-    if (preg_match('/^\+?90(\d{10})$/', $d, $m)) $d = '0' . $m[1];
-    elseif (preg_match('/^5\d{9}$/', $d)) $d = '0' . $d;
-    if (preg_match('/^0(\d{3})(\d{3})(\d{2})(\d{2})$/', $d, $m)) return "0$m[1] $m[2] $m[3] $m[4]";
-    return $s;
-}
+function pim_telefon(string $s): string { return it_telefon($s); }   // çekirdek: it/_ortak.php
 
 /** Ad Soyad tek sütun → [ad, soyad]: son kelime soyad ("Ayşe Nur Kaya" → Ayşe Nur / Kaya); "Kaya, Ayşe" biçimi de tanınır. */
 function pim_ad_ayir(string $s): array
@@ -319,7 +314,9 @@ function pim_lokasyon_bul(PDO $pdo, string $s): ?int
 /** Bir grid satırını harita ile alanlara çözer. Dönüş: alanlar + 'ham_lokasyon' + 'durum' (bool|null). */
 function pim_satir_cozumle(array $satir, array $harita, array $baslik, array $opt = []): array
 {
-    $v = ['sicil_no'=>'', 'ad'=>'', 'soyad'=>'', 'ad_soyad'=>'', 'unvan'=>'', 'birim'=>'', 'lokasyon'=>'', 'telefon'=>'', 'eposta'=>'', 'ise_giris'=>'', 'isten_cikis'=>'', 'durum'=>'', 'notlar'=>[]];
+    $v = ['sicil_no'=>'', 'ad'=>'', 'soyad'=>'', 'ad_soyad'=>'', 'unvan'=>'', 'birim'=>'', 'lokasyon'=>'',
+          'dahili'=>'', 'telefon'=>'', 'telefon_sahsi'=>'', 'eposta'=>'', 'eposta_sahsi'=>'',
+          'ise_giris'=>'', 'isten_cikis'=>'', 'durum'=>'', 'notlar'=>[]];
     foreach ($harita as $i => $k) {
         if ($k === '' || $k === null) continue;
         $c = trim((string)($satir[$i] ?? ''));
@@ -336,9 +333,16 @@ function pim_satir_cozumle(array $satir, array $harita, array $baslik, array $op
         $fn = $yazim === 'buyuk' ? 'it_buyuk' : 'pim_bas_harf';
         foreach (['ad', 'soyad', 'unvan', 'birim'] as $__a) $v[$__a] = $fn($v[$__a]);
     }
-    $v['telefon'] = pim_telefon($v['telefon']);
-    $v['eposta']  = mb_strtolower($v['eposta'], 'UTF-8');
-    if ($v['eposta'] !== '' && !filter_var($v['eposta'], FILTER_VALIDATE_EMAIL)) { $v['notlar'][] = 'E-posta (okunamadı): ' . $v['eposta']; $v['eposta'] = ''; }
+    $v['telefon']       = pim_telefon($v['telefon']);
+    $v['telefon_sahsi']  = pim_telefon($v['telefon_sahsi']);
+    // Dahili yalnız rakamdır; 3-6 hane dışına çıkan değer okunamamış sayılır ve nota düşer
+    $__dhHam = $v['dahili'];
+    $v['dahili'] = (string)(it_dahili($__dhHam) ?? '');
+    if ($__dhHam !== '' && $v['dahili'] === '') $v['notlar'][] = 'Dahili (okunamadı): ' . $__dhHam;
+    foreach (['eposta' => 'E-posta', 'eposta_sahsi' => 'Şahsi e-posta'] as $__ek => $__et) {
+        $v[$__ek] = mb_strtolower($v[$__ek], 'UTF-8');
+        if ($v[$__ek] !== '' && !filter_var($v[$__ek], FILTER_VALIDATE_EMAIL)) { $v['notlar'][] = "$__et (okunamadı): " . $v[$__ek]; $v[$__ek] = ''; }
+    }
     $v['ise_giris_ham'] = $v['ise_giris'];     $v['ise_giris']   = pim_tarih($v['ise_giris']);
     $v['isten_cikis_ham'] = $v['isten_cikis']; $v['isten_cikis'] = pim_tarih($v['isten_cikis']);
     $v['durum_ham'] = $v['durum']; $v['durum'] = pim_durum($v['durum']);
@@ -368,7 +372,7 @@ function pim_mukerrer_gruplar(PDO $pdo): array
         // bu yüzden zimmet sahibi olmak tek başına belirleyici değildir.
         $puan = function (array $k): int {
             $p = trim((string)($k['sicil_no'] ?? '')) !== '' ? 100 : 0;
-            foreach (['unvan','birim','lokasyon_id','telefon','eposta','ise_giris','notlar'] as $kol) if (trim((string)($k[$kol] ?? '')) !== '') $p += 5;
+            foreach (['unvan','birim','lokasyon_id','dahili','telefon','telefon_sahsi','eposta','eposta_sahsi','ise_giris','notlar'] as $kol) if (trim((string)($k[$kol] ?? '')) !== '') $p += 5;
             return $p + (($k['cihaz'] ?? 0) > 0 ? 1 : 0);
         };
         usort($kayitlar, fn($a, $b) => ($puan($b) <=> $puan($a)) ?: ((int)$a['id'] <=> (int)$b['id']));
@@ -398,7 +402,7 @@ function pim_personel_birlestir(PDO $pdo, int $hedefId, int $kaynakId): array
     $pdo->beginTransaction();
     try {
         $set = []; $par = [];
-        foreach (['sicil_no','unvan','birim','lokasyon_id','telefon','eposta','ise_giris'] as $kol) {
+        foreach (['sicil_no','unvan','birim','lokasyon_id','dahili','telefon','telefon_sahsi','eposta','eposta_sahsi','ise_giris'] as $kol) {
             if ((string)($h[$kol] ?? '') === '' && (string)($k[$kol] ?? '') !== '') { $set[] = "$kol=?"; $par[] = $k[$kol]; }
         }
         // Çıkış tarihi: ikisinde de varsa GEÇ olan (kişi geri dönmüş olabilir), hedefte yoksa kaynaktan
@@ -444,7 +448,7 @@ function pim_import(PDO $pdo, array $satirlar, array $opt): array
     $harita = $opt['harita']; $bIdx = (int)$opt['baslik_idx']; $baslik = $satirlar[$bIdx] ?? [];
     $bugun = $opt['rapor_tarihi'] ?? date('Y-m-d');
     $r = ['okunan'=>0, 'yeni'=>[], 'guncellenen'=>[], 'degismeyen'=>0, 'atlanan'=>[], 'ayrilan'=>[], 'lokasyon_yok'=>[], 'gorulen'=>[], 'eksik'=>[], 'silinen'=>[], 'korunan'=>[]];
-    $alanlar = ['sicil_no','ad','soyad','unvan','birim','lokasyon_id','telefon','eposta','ise_giris','isten_cikis'];
+    $alanlar = ['sicil_no','ad','soyad','unvan','birim','lokasyon_id','dahili','telefon','telefon_sahsi','eposta','eposta_sahsi','ise_giris','isten_cikis'];
 
     pim_log_kur($pdo); // ⚠ CREATE TABLE transaction'ı örtük commit eder — MUTLAKA beginTransaction ÖNCESİ
     $mevcut = $pdo->query("SELECT * FROM it_personel")->fetchAll();
@@ -477,7 +481,7 @@ function pim_import(PDO $pdo, array $satirlar, array $opt): array
                 $byAd[$adAnahtar($m['ad'], $m['soyad'])][] = $m;
             }
         }
-        $ins = $pdo->prepare("INSERT INTO it_personel (sicil_no,ad,soyad,unvan,birim,lokasyon_id,telefon,eposta,ise_giris,isten_cikis,notlar) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
+        $ins = $pdo->prepare("INSERT INTO it_personel (sicil_no,ad,soyad,unvan,birim,lokasyon_id,dahili,telefon,telefon_sahsi,eposta,eposta_sahsi,ise_giris,isten_cikis,notlar) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
         foreach ($satirlar as $i => $sat) {
             if ($i <= $bIdx) continue;
             if (!array_filter($sat, fn($c) => trim((string)$c) !== '')) continue;
@@ -510,7 +514,8 @@ function pim_import(PDO $pdo, array $satirlar, array $opt): array
             if ($v['isten_cikis'] === null && !pim_tarih_bos($v['isten_cikis_ham'])) $v['notlar'][] = 'İşten çıkış (okunamadı): ' . $v['isten_cikis_ham'];
 
             $yeni = ['sicil_no'=>$v['sicil_no'] ?: null, 'ad'=>$v['ad'], 'soyad'=>$v['soyad'], 'unvan'=>$v['unvan'] ?: null, 'birim'=>$v['birim'] ?: null,
-                     'lokasyon_id'=>$lokId, 'telefon'=>$v['telefon'] ?: null, 'eposta'=>$v['eposta'] ?: null, 'ise_giris'=>$v['ise_giris'], 'isten_cikis'=>$cikis];
+                     'lokasyon_id'=>$lokId, 'dahili'=>$v['dahili'] ?: null, 'telefon'=>$v['telefon'] ?: null, 'telefon_sahsi'=>$v['telefon_sahsi'] ?: null,
+                     'eposta'=>$v['eposta'] ?: null, 'eposta_sahsi'=>$v['eposta_sahsi'] ?: null, 'ise_giris'=>$v['ise_giris'], 'isten_cikis'=>$cikis];
             $notSatiri = $v['notlar'] ? implode("\n", array_unique($v['notlar'])) : '';
 
             // Eşleşme: sicil → e-posta → ad+soyad
@@ -562,7 +567,9 @@ function pim_import(PDO $pdo, array $satirlar, array $opt): array
                     else $r['degismeyen']++;
                 } else $r['degismeyen']++;
             } else {
-                $ins->execute([$yeni['sicil_no'], $yeni['ad'], $yeni['soyad'], $yeni['unvan'], $yeni['birim'], $yeni['lokasyon_id'], $yeni['telefon'], $yeni['eposta'], $yeni['ise_giris'], $yeni['isten_cikis'], $notSatiri ?: null]);
+                $ins->execute([$yeni['sicil_no'], $yeni['ad'], $yeni['soyad'], $yeni['unvan'], $yeni['birim'], $yeni['lokasyon_id'],
+                               $yeni['dahili'], $yeni['telefon'], $yeni['telefon_sahsi'], $yeni['eposta'], $yeni['eposta_sahsi'],
+                               $yeni['ise_giris'], $yeni['isten_cikis'], $notSatiri ?: null]);
                 $id = (int)$pdo->lastInsertId();
                 $dosyadaGorulen[$id] = true;
                 $kayit = $yeni + ['id'=>$id, 'notlar'=>$notSatiri];
