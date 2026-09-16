@@ -316,7 +316,16 @@ function pk_icmal(PDO $pdo, string $cizelge = ''): array
         unset($g);
     }
     ksort($blok);
+    // ⚠ ÖLÇÜLEN metraj da ayrıca verilir: `kesimMt` Excel'in İCMAL mantığını izler ve metrajı
+    // ölçülmemiş satırlara ortalamayı yazar — bu sayı ÇİZELGEDE HİÇBİR YERDE GEÇMEZ ve
+    // "veriler uyuşmuyor" şikâyetinin kaynağıydı. `kesimOlculen` = yalnız gerçekten ölçülmüş
+    // metraj → çizelgedeki Metraj sütununun toplamıyla BİREBİR aynıdır.
+    foreach ($blok as $b => $g) {
+        $blok[$b]['kesimOlculen']   = $g['kesimMt']   - $g['kesimTahmini'];
+        $blok[$b]['silikonOlculen'] = $g['silikonMt'] - $g['silikonTahmini'];
+    }
     $toplam = $bos();
+    $toplam['kesimOlculen'] = 0.0; $toplam['silikonOlculen'] = 0.0;
     foreach ($blok as $b => $g) {
         $blok[$b]['oran'] = $g['kesimDaire'] ? $g['silikonDaire'] / $g['kesimDaire'] : 0.0;
         foreach ($toplam as $k => $v) $toplam[$k] += $g[$k];

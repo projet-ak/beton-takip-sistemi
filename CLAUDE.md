@@ -235,6 +235,30 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   pk_is_tipi/pk_dosya_tarihi/**pk_excel_icmal**/pk_import). İlk dosya (KARTAL BATIYAKASI C ve B PARSEL **T PROFİL** MONTAJ İŞİ) ile
   doğrulandı: 82 iş satırı, 5 blok (F42/C17/D11/B10/H2), kesim 82, silikon 47, metraj **250,50** ve hakkediş
   **473.445,00 TL** Excel'le birebir; birim fiyat sabit 1890, metraj×fiyat sağlamasında 0 sapma.
+  **16 EYLÜL ÇİZELGESİ + "VERİLER UYUŞMUYOR" (2026-09-16, kullanıcı kontrolü)** — yeni çizelge
+  (115 iş satırı, 6 blok: B10/C17/D15/**E13 yeni**/F57/H3; kesim 115, silikon 81, metraj **510,55**,
+  hakkediş **964.939,50 TL**, birim fiyat 1890, metraj×fiyat sağlamasında 0 sapma; 6 boş şablon satırı).
+  • **Modül birebir doğru çıktı.** Üç dosya sahadaki sırayla (05.09 → 08.09 İCMALLİ → 16.09) üst üste
+  yüklendi: her adımda sistem KPI'ları Excel'le **birebir** tuttu (82/64/115 satır; düşen 0/18/0 —
+  08.09 dosyası kısa geldiği için 18 satır `dosyada=0` oldu, 16.09'da hepsi geri döndü). **Satır satır
+  mutabakat**: 115 Excel satırının her biri DB'deki karşılığıyla blok·daire·kesim·silikon·metraj·hakkediş
+  olarak karşılaştırıldı → **0 fark, DB'de fazladan kayıt yok**. `raporlar.php` blok tablosu da birebir
+  (B 50,75 / C 4,50 / D 50,15 / E 108,50 / F 268,35 / H 28,30). Aynı dosya üst üste 3 kez yüklendiğinde
+  `prekast_gunluk.yeni_*` sayaçları ŞİŞMİYOR (idempotent). Gruplardaki **tekrar sırası kaymamış**
+  (yeni işler grubun SONUNA eklenmiş) → kimlik anahtarları kaydı doğru satıra bağlıyor.
+  • ⚠⚠ **TEK UYUŞMAYAN SAYI: İCMAL ekranındaki "Kesim (mt)"** — 724,85 gösteriyordu, çizelge 510,55 diyor.
+  Sebep hata değil, **Excel'in İCMAL mantığıydı**: metrajı henüz ölçülmemiş 34 satıra ölçülenlerin
+  ortalaması (6,30 m) yazılıyor → 510,55 + 214,30 = 724,85. **Bu sayı çizelgenin hiçbir yerinde geçmiyor**,
+  kullanıcı haklı olarak "uyuşmuyor" dedi. **Varsayılan görünüm ÖLÇÜLEN metraja çevrildi**:
+  `pk_icmal()` artık blok ve toplam bazında **`kesimOlculen` / `silikonOlculen`** (= `kesimMt − kesimTahmini`)
+  da döndürür; `icmal.php` varsayılan bunları gösterir (çizelgedeki Metraj sütunuyla BİREBİR), Excel'in
+  tahminli hâli **`?tahmin=1`** anahtarıyla bir tık uzakta durur (bant rengi sarıya döner ve "bu toplam
+  çizelgede geçmez" der). Blok satırındaki rozet "N tahmini" → **"N ölçülmemiş"** oldu (satır sayısı
+  tahmin değil, ölçülmemiş satır sayısıdır). Excel/PDF çıktıları da seçili görünümü izler (`IC.mtK/mtS`).
+  • **Duman testi artık repodan ÜRETİLİYOR**: scratchpad `pk_sync.php` → `pksmoke/_ortak.php` + `_import.php`
+  (MySQL DDL/upsert → SQLite; iş mantığına dokunmaz) — elle yamalı kopya bayatlıyordu (csmoke deseni).
+  `pk_zincir.php` (üç dosyalık gerçek akış + Excel karşılaştırması), `pk_satir.php` (satır satır mutabakat),
+  `pk_tekrar.php` (aynı dosyayı 3 kez yükleme), `pksm/run.php` (sayfa render).
   ⚠ **İCMALLİ kitap (2026-09-08)**: iş sayfası 64 satır (kesim 64, silikon 24, metraj 125,95, hakkediş
   238.045,50 birebir); İCMAL sayfası HESAPLAMA üzerinden SUMIFS ile hesaplanır ama HESAPLAMA'nın **sayaç/metraj
   sütunları (D–G) formül değil elle yazılıdır ve BAYATTIR** (35 artık satır F|6…F|63, Silikon(mt)=Kesim(mt)

@@ -5,7 +5,11 @@
  * Kaynak kitabın İCMAL sayfası HESAPLAMA'daki ELLE YAZILMIŞ sayaç/metraj sütunlarından
  * beslendiğinden bayat kalabiliyor; burası aynı mantığı (benzersiz daire + ölçülmemiş
  * satırlara ölçülenlerin ortalaması) güncel iş satırlarına uygular — bkz. pk_icmal().
- * Tahmini metraj ölçülenden AYRI gösterilir; hakkediş yalnız ölçülen metrajdan doğar.
+ * ⚠⚠ VARSAYILAN GÖRÜNÜM = ÖLÇÜLEN METRAJ (2026-09-16, kullanıcı: "veriler uyuşmuyor").
+ * Ekran eskiden Kesim (mt)'yi Excel'in mantığıyla TAHMİN DAHİL gösteriyordu (16.09 çizelgesinde
+ * 724,85) — bu sayı çizelgenin hiçbir yerinde geçmiyor, kullanıcı 510,55 bekliyordu. Artık
+ * varsayılan ölçülen metrajdır (çizelgedeki Metraj sütununun toplamıyla BİREBİR); Excel'in
+ * tahminli hâli `?tahmin=1` anahtarıyla bir tık uzakta durur.
  */
 $rootPath = '../';
 require_once __DIR__ . '/../includes/functions.php';
@@ -21,8 +25,16 @@ $pageTitle = 'Prekast Blok İcmali';
 $cizelgeler = pk_secenekler($pdoPrekast, 'cizelge');
 $secili = trim((string)($_GET['cizelge'] ?? ''));
 if ($secili !== '' && !in_array($secili, $cizelgeler, true)) $secili = '';
-$ic = pk_icmal($pdoPrekast, $secili);
+$ic  = pk_icmal($pdoPrekast, $secili);
 $son = pk_son_import($pdoPrekast);
+
+// Metraj görünümü: ölçülen (çizelgeyle birebir, VARSAYILAN) | tahmin dahil (Excel İCMAL mantığı)
+$tahmin = ($_GET['tahmin'] ?? '') === '1';
+$mtK = $tahmin ? 'kesimMt'   : 'kesimOlculen';      // hangi alan gösterilecek
+$mtS = $tahmin ? 'silikonMt' : 'silikonOlculen';
+$tahminVar = ($ic['toplam']['kesimTahmini'] ?? 0) > 0;
+$qs = fn(array $ek = []) => '?' . http_build_query(array_filter(
+        ['cizelge' => $secili] + $ek, fn($v) => $v !== '' && $v !== null));
 
 $f0 = fn($n) => number_format((float)$n, 0, ',', '.');
 $f1 = fn($n) => number_format((float)$n, 1, ',', '.');
@@ -51,22 +63,37 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="alert alert-info"><i class="bi bi-info-circle me-1"></i>Henüz iş satırı yok — önce <a href="import.php" class="alert-link">günlük çizelgeyi yükleyin</a>.</div>
 <?php else: $t = $ic['toplam']; ?>
 
-<div class="alert alert-secondary py-2 small">
-    <i class="bi bi-calculator me-1"></i>
-    Excel'in İCMAL mantığı canlı uygulanır: daire sayıları <strong>benzersiz blok/daire</strong> üzerinden
-    (aynı dairedeki ikinci iş ayrı daire sayılmaz), metrajı ölçülmemiş satırlara
-    <strong>ölçülenlerin ortalaması</strong> yazılır (<?= $f2($ic['ortMetraj']) ?> m = <?= $f2($ic['olculenToplam']) ?> m
-    / <?= $f0($ic['olculenAdet']) ?> ölçülen satır). Tahmini kısım tabloda <em>ayrı</em> gösterilir;
-    <strong>hakkediş yalnız ölçülen metrajdan</strong> doğar.
-    <?php if ($son): ?><span class="text-muted">· Son çizelge: <?= h(date('d.m.Y', strtotime($son['rapor_tarihi']))) ?></span><?php endif; ?>
+<div class="alert alert-<?= $tahmin ? 'warning' : 'secondary' ?> py-2 small d-flex flex-wrap align-items-center gap-2">
+    <div class="flex-grow-1">
+        <i class="bi bi-calculator me-1"></i>
+        Daire sayıları <strong>benzersiz blok/daire</strong> üzerinden sayılır (aynı dairedeki ikinci iş
+        ayrı daire sayılmaz).
+        <?php if ($tahmin): ?>
+            <strong>Metraj: TAHMİN DAHİL</strong> — Excel'in İCMAL mantığı; metrajı ölçülmemiş
+            <?= $f0($ic['toplam']['tahminiSatir']) ?> satıra ölçülenlerin ortalaması
+            (<?= $f2($ic['ortMetraj']) ?> m = <?= $f2($ic['olculenToplam']) ?> m / <?= $f0($ic['olculenAdet']) ?> ölçülen satır)
+            yazılır. ⚠ Bu toplam <strong>çizelgede geçmez</strong>; hakkediş yalnız ölçülen metrajdan doğar.
+        <?php else: ?>
+            <strong>Metraj: ÖLÇÜLEN</strong> — çizelgedeki <em>Metraj</em> sütununun toplamıyla birebir aynıdır
+            (<?= $f2($ic['olculenToplam']) ?> m / <?= $f0($ic['olculenAdet']) ?> ölçülen satır).
+            <?php if ($tahminVar): ?>Metrajı henüz ölçülmemiş <?= $f0($ic['toplam']['tahminiSatir']) ?> satır
+            <strong>0 sayılır</strong>.<?php endif; ?>
+        <?php endif; ?>
+        <?php if ($son): ?><span class="text-muted">· Son çizelge: <?= h(date('d.m.Y', strtotime($son['rapor_tarihi']))) ?></span><?php endif; ?>
+    </div>
+    <?php if ($tahminVar): ?>
+    <a href="<?= h($qs($tahmin ? [] : ['tahmin' => '1'])) ?>" class="btn btn-sm btn-outline-<?= $tahmin ? 'warning' : 'secondary' ?>">
+        <i class="bi bi-<?= $tahmin ? 'rulers' : 'magic' ?> me-1"></i><?= $tahmin ? 'Ölçülen metraja dön' : 'Excel gibi tahmin dahil göster' ?>
+    </a>
+    <?php endif; ?>
 </div>
 
 <div class="row g-2 mb-3">
 <?php foreach ([
     ['Kesim yapılan daire', $f0($t['kesimDaire']), 'warning', 'bi-scissors'],
-    ['Kesim (mt)', $f2($t['kesimMt']) . ($t['kesimTahmini'] > 0 ? ' <span class="small text-muted fw-normal">(' . $f2($t['kesimTahmini']) . ' tahmini)</span>' : ''), 'warning', 'bi-rulers'],
+    ['Kesim (mt)', $f2($t[$mtK]) . ($tahmin && $t['kesimTahmini'] > 0 ? ' <span class="small text-muted fw-normal">(' . $f2($t['kesimTahmini']) . ' tahmini)</span>' : ''), 'warning', 'bi-rulers'],
     ['Silikon yapılan daire', $f0($t['silikonDaire']), 'success', 'bi-check-circle-fill'],
-    ['Silikon (mt)', $f2($t['silikonMt']) . ($t['silikonTahmini'] > 0 ? ' <span class="small text-muted fw-normal">(' . $f2($t['silikonTahmini']) . ' tahmini)</span>' : ''), 'success', 'bi-rulers'],
+    ['Silikon (mt)', $f2($t[$mtS]) . ($tahmin && $t['silikonTahmini'] > 0 ? ' <span class="small text-muted fw-normal">(' . $f2($t['silikonTahmini']) . ' tahmini)</span>' : ''), 'success', 'bi-rulers'],
     ['Silikon / Kesim', $yuzde($t['oran']), 'primary', 'bi-percent'],
     ['Ort. metraj', $f2($ic['ortMetraj']) . ' m', 'info', 'bi-calculator'],
 ] as [$ad, $deger, $renk, $ikon]): ?>
@@ -96,13 +123,13 @@ require_once __DIR__ . '/../includes/header.php';
                 <?php foreach ($ic['blok'] as $b => $g): ?>
                     <tr>
                         <td class="fw-semibold"><a href="isler.php?blok=<?= urlencode($b) ?>" class="text-decoration-none"><?= h($b) ?></a>
-                            <?php if ($g['tahminiSatir']): ?><span class="badge bg-light text-dark border ms-1" title="Metrajı ölçülmemiş satır sayısı — ortalama ile tahmin edildi"><?= (int)$g['tahminiSatir'] ?> tahmini</span><?php endif; ?></td>
+                            <?php if ($g['tahminiSatir']): ?><span class="badge bg-light text-dark border ms-1" title="Metrajı henüz ölçülmemiş satır sayısı"><?= (int)$g['tahminiSatir'] ?> ölçülmemiş</span><?php endif; ?></td>
                         <td class="text-end"><?= $f0($g['kesimDaire']) ?></td>
-                        <td class="text-end"><?= $f2($g['kesimMt']) ?>
-                            <?php if ($g['kesimTahmini'] > 0): ?><div class="text-muted" style="font-size:.72rem">~<?= $f2($g['kesimTahmini']) ?> tahmini</div><?php endif; ?></td>
+                        <td class="text-end"><?= $f2($g[$mtK]) ?>
+                            <?php if ($tahmin && $g['kesimTahmini'] > 0): ?><div class="text-muted" style="font-size:.72rem">~<?= $f2($g['kesimTahmini']) ?> tahmini</div><?php endif; ?></td>
                         <td class="text-end text-success fw-semibold"><?= $f0($g['silikonDaire']) ?></td>
-                        <td class="text-end"><?= $f2($g['silikonMt']) ?>
-                            <?php if ($g['silikonTahmini'] > 0): ?><div class="text-muted" style="font-size:.72rem">~<?= $f2($g['silikonTahmini']) ?> tahmini</div><?php endif; ?></td>
+                        <td class="text-end"><?= $f2($g[$mtS]) ?>
+                            <?php if ($tahmin && $g['silikonTahmini'] > 0): ?><div class="text-muted" style="font-size:.72rem">~<?= $f2($g['silikonTahmini']) ?> tahmini</div><?php endif; ?></td>
                         <td class="text-end">
                             <div class="d-flex align-items-center justify-content-end gap-2">
                                 <div class="progress flex-grow-1" style="height:8px;max-width:90px"><div class="progress-bar bg-success" style="width:<?= min(100, $g['oran'] * 100) ?>%"></div></div>
@@ -114,8 +141,8 @@ require_once __DIR__ . '/../includes/header.php';
                 </tbody>
                 <tfoot class="table-light fw-bold"><tr>
                     <td>TOPLAM</td>
-                    <td class="text-end"><?= $f0($t['kesimDaire']) ?></td><td class="text-end"><?= $f2($t['kesimMt']) ?></td>
-                    <td class="text-end text-success"><?= $f0($t['silikonDaire']) ?></td><td class="text-end"><?= $f2($t['silikonMt']) ?></td>
+                    <td class="text-end"><?= $f0($t['kesimDaire']) ?></td><td class="text-end"><?= $f2($t[$mtK]) ?></td>
+                    <td class="text-end text-success"><?= $f0($t['silikonDaire']) ?></td><td class="text-end"><?= $f2($t[$mtS]) ?></td>
                     <td class="text-end"><?= $yuzde($t['oran']) ?></td>
                 </tr></tfoot>
             </table>
@@ -134,7 +161,9 @@ require_once __DIR__ . '/../includes/header.php';
 <script>window.ERN_ROOT = '../';</script>
 <script src="../assets/js/ern_rapor.js?v=<?= @filemtime(__DIR__ . '/../assets/js/ern_rapor.js') ?>"></script>
 <script>
-const IC = <?= json_encode(['blok'=>$ic['blok'], 'toplam'=>$t, 'ort'=>$ic['ortMetraj'], 'cizelge'=>$secili !== '' ? $secili : 'Tüm çizelgeler'], JSON_UNESCAPED_UNICODE) ?>;
+const IC = <?= json_encode(['blok'=>$ic['blok'], 'toplam'=>$t, 'ort'=>$ic['ortMetraj'],
+    'cizelge'=>$secili !== '' ? $secili : 'Tüm çizelgeler',
+    'mtK'=>$mtK, 'mtS'=>$mtS, 'tahmin'=>$tahmin], JSON_UNESCAPED_UNICODE) ?>;
 const f0 = n => Number(n || 0).toLocaleString('tr-TR');
 const f2 = n => Number(n || 0).toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2});
 const pct = o => (Number(o || 0) * 100).toLocaleString('tr-TR', {maximumFractionDigits:1}) + '%';
@@ -151,8 +180,8 @@ new Chart(document.getElementById('chIcmal'), {
 });
 
 function icSatirlar() {
-    const r = bloklar.map(b => { const g = IC.blok[b]; return [b, f0(g.kesimDaire), f2(g.kesimMt), f0(g.silikonDaire), f2(g.silikonMt), pct(g.oran)]; });
-    const t = IC.toplam; r.push(['TOPLAM', f0(t.kesimDaire), f2(t.kesimMt), f0(t.silikonDaire), f2(t.silikonMt), pct(t.oran)]);
+    const r = bloklar.map(b => { const g = IC.blok[b]; return [b, f0(g.kesimDaire), f2(g[IC.mtK]), f0(g.silikonDaire), f2(g[IC.mtS]), pct(g.oran)]; });
+    const t = IC.toplam; r.push(['TOPLAM', f0(t.kesimDaire), f2(t[IC.mtK]), f0(t.silikonDaire), f2(t[IC.mtS]), pct(t.oran)]);
     return r;
 }
 function icPdf(mode) {
@@ -168,8 +197,8 @@ async function icExcel() {
     ws.columns = [{width:10},{width:20},{width:14},{width:22},{width:14},{width:16}];
     ERN_RAPOR.title(wb, ws, 'BLOK BAZINDA İŞLEM İCMALİ', 6, IC.cizelge);
     ERN_RAPOR.hdr(ws.addRow(['Blok','Kesim Yapılan Daire','Kesim (mt)','Silikon Yapılan Daire','Silikon (mt)','Silikon / Kesim']));
-    bloklar.forEach(b => { const g = IC.blok[b]; ws.addRow([b, g.kesimDaire, +g.kesimMt.toFixed(2), g.silikonDaire, +g.silikonMt.toFixed(2), +(g.oran).toFixed(4)]); });
-    const t = IC.toplam; ws.addRow(['TOPLAM', t.kesimDaire, +t.kesimMt.toFixed(2), t.silikonDaire, +t.silikonMt.toFixed(2), +(t.oran).toFixed(4)]).font = { bold: true };
+    bloklar.forEach(b => { const g = IC.blok[b]; ws.addRow([b, g.kesimDaire, +g[IC.mtK].toFixed(2), g.silikonDaire, +g[IC.mtS].toFixed(2), +(g.oran).toFixed(4)]); });
+    const t = IC.toplam; ws.addRow(['TOPLAM', t.kesimDaire, +t[IC.mtK].toFixed(2), t.silikonDaire, +t[IC.mtS].toFixed(2), +(t.oran).toFixed(4)]).font = { bold: true };
     await ERN_RAPOR.save(wb, 'ERN_Prekast_Icmal_' + new Date().toISOString().slice(0,10) + '.xlsx');
 }
 </script>
