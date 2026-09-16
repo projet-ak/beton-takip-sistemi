@@ -15,11 +15,11 @@ it_semasi_kur($pdoIt);
 $pageTitle = 'IT Envanter Dashboard';
 $o = it_ozet($pdoIt);
 
-$kat = $pdoIt->query("SELECT kategori, COUNT(*) adet, SUM(durum='aktif') aktif, COALESCE(SUM(fiyat),0) mali
+$kat = $pdoIt->query("SELECT kategori, COUNT(*) adet, SUM(durum='aktif') aktif, COALESCE(SUM(" . it_mali_tl() . "),0) mali
                       FROM it_cihazlar WHERE " . it_envanterde() . " GROUP BY kategori ORDER BY adet DESC")->fetchAll();
 $dep = $pdoIt->query("SELECT COALESCE(NULLIF(departman,''),'(tanımsız)') departman, COUNT(*) adet
                       FROM it_cihazlar WHERE durum='aktif' GROUP BY departman ORDER BY adet DESC LIMIT 12")->fetchAll();
-$kisiler = $pdoIt->query("SELECT zimmetli, MAX(personel_id) personel_id, COUNT(*) adet, COALESCE(SUM(fiyat),0) mali, MAX(departman) departman
+$kisiler = $pdoIt->query("SELECT zimmetli, MAX(personel_id) personel_id, COUNT(*) adet, COALESCE(SUM(" . it_mali_tl() . "),0) mali, MAX(departman) departman
                           FROM it_cihazlar WHERE durum='aktif' AND zimmetli<>'' GROUP BY zimmetli ORDER BY adet DESC, mali DESC LIMIT 10")->fetchAll();
 // Varlık grupları (BT / ağ / iletişim / güvenlik / multimedya / yazılım / sarf) — kategori
 // sayımından türetilir, ek sorgu gerekmez; merkezi izleme ekranına giriş kapısıdır.

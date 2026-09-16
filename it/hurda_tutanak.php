@@ -252,7 +252,7 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
         <td><?= h($r['ad']) ?><div style="font-size:10.5px;color:#666"><?= h(it_kategoriAd($r['kategori'])) ?><?= $r['ozellikler'] ? ' · ' . h($r['ozellikler']) : '' ?></div></td>
         <td><?= h(trim(($r['marka'] ?? '') . ' ' . ($r['model'] ?? '')) ?: '—') ?></td>
         <td class="mono"><?= h($r['seri_no'] ?: '—') ?></td>
-        <?php if ($maliGoster): ?><td class="mono" style="text-align:right"><?= $r['fiyat'] !== null ? number_format((float)$r['fiyat'], 2, ',', '.') : '—' ?></td><?php endif; ?>
+        <?php if ($maliGoster): ?><td class="mono" style="text-align:right"><?= $r['fiyat'] !== null ? h(it_para_yaz($r['fiyat'], $r['para_birimi'] ?? 'TRY')) : '—' ?></td><?php endif; ?>
         <?php if (count($liste) > 1): ?><td style="font-size:10.5px"><?= h($s['gerekce'] ?: '—') ?></td><?php endif; ?>
       </tr>
     <?php endforeach; ?>

@@ -51,7 +51,7 @@ if (($_GET['export'] ?? '') === 'xlsx') {
     $xl->header(['Grup','Kategori','Envanter No','Cihaz Kodu','IFS Seri Nesne No','Cihaz','Marka','Model','Seri No','Şasi No','IMEI','Durum',
                  'IP Adresi','MAC Adresi','Dahili','Telefon No','Operatör','Firmware','Lisans Durumu',
                  'İşlemci','RAM','Ekran Kartı','Disk','Anakart','Ekran Boyutu','Kapasite','Kullanım Amacı','Adet',
-                 'Lokasyon','Zimmetli','Departman','Kiralanan Firma','Garanti Bitiş','Fiyat (TL)','Notlar']);
+                 'Lokasyon','Zimmetli','Departman','Kiralanan Firma','Garanti Bitiş','Alış Tutarı','Para Birimi','Kur','TL Karşılığı','Notlar']);
     foreach ($st->fetchAll() as $r) {
         $xl->row([
             ['v'=>IT_GRUP[it_grup($r['kategori'])][0] ?? ''], ['v'=>it_kategoriAd($r['kategori'])],
@@ -63,14 +63,17 @@ if (($_GET['export'] ?? '') === 'xlsx') {
             ['v'=>$r['anakart'] ?? ''], ['v'=>$r['ekran_boyutu'] ?? ''], ['v'=>$r['kapasite'] ?? ''],
             ['v'=>$r['kullanim_amaci'] ?? ''], ['v'=>$r['adet'] ?? '', 't'=>'number'],
             ['v'=>$r['lokasyon']], ['v'=>$r['zimmetli']], ['v'=>$r['departman']], ['v'=>$r['kiralik_firma'] ?? ''],
-            ['v'=>$r['garanti_bitis'], 't'=>'date'], ['v'=>(float)$r['fiyat'], 't'=>'number'], ['v'=>$r['notlar']],
+            ['v'=>$r['garanti_bitis'], 't'=>'date'],
+            ['v'=>$r['fiyat']!==null?(float)$r['fiyat']:null, 't'=>'number'], ['v'=>$r['para_birimi'] ?? ''],
+            ['v'=>$r['kur']!==null?(float)$r['kur']:null, 't'=>'number'],
+            ['v'=>$r['fiyat_tl']!==null?(float)$r['fiyat_tl']:null, 't'=>'number'], ['v'=>$r['notlar']],
         ]);
     }
     $xl->download('it_varliklar_' . ($grup ?: 'tumu') . '_' . date('Ymd_Hi') . '.xlsx');
 }
 
 // ── Liste ────────────────────────────────────────────────────────────────────
-$oz = $pdoIt->prepare("SELECT COUNT(*) adet, COALESCE(SUM(fiyat),0) mali,
+$oz = $pdoIt->prepare("SELECT COUNT(*) adet, COALESCE(SUM(" . it_mali_tl() . "),0) mali,
                               SUM(durum='aktif') aktif, SUM(durum IN ('serviste','arizali')) sorunlu,
                               COUNT(DISTINCT CASE WHEN lokasyon_id IS NOT NULL THEN lokasyon_id END) lokasyon,
                               SUM(ip_adresi IS NOT NULL AND ip_adresi<>'') ipli
@@ -88,7 +91,7 @@ $liste = $st->fetchAll();
 // Tamamlanmış sevkler: durum 'depoda'ya döner ve "Depoda / Boşta" yazar — başka projeye gönderilmiş
 // cihaz bizde boşta sanılmasın diye "Transfer edilmiştir" rozeti konur (it/_ortak.php).
 $trBitti = it_transfer_edilenler($pdoIt, array_column(array_filter($liste, fn($r) => $r['durum'] !== 'transfer'), 'id'));
-$maliGoster = it_mali_goster();                                  // garanti + fiyat gösterimi (varsayılan KAPALI)
+$maliGoster = it_mali_goster();                                  // garanti + fiyat gösterimi (IT_MALI_GOSTER)
 $belgeSay   = it_belge_sayilari($pdoIt, array_column($liste, 'id'));
 
 // Bağlı cihaz adları (kamera → NVR, turnike → geçiş ünitesi) tek sorguda

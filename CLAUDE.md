@@ -597,8 +597,9 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   **"… Atanmış" → aktif** (depo kelimelerinden ÖNCE denenir, "Boş / Yedek Atanmış" kullanımdadır) ·
   Boş/Yedek · Transfer · Bekliyor · Dağıtılabilir → depoda · Servis/Onarım → serviste · Hurda → hurda ·
   Kayıp/Çalınmış → kayip · Hibe → hibe.
-  • **GARANTİ + FİYAT GİZLENDİ** — `it_mali_goster()` (varsayılan **false**; `config.php`'de
-  `define('IT_MALI_GOSTER', true);` ile geri açılır). Kapalıyken cihaz listesi/merkezi izleme/cihaz kartı/
+  • **GARANTİ + FİYAT GİZLENDİ** — `it_mali_goster()`. ⚠ **2026-09-16'da varsayılan `true` oldu**
+  (alış/fiyat/kur künyesi eklendi, bkz. aşağıdaki bölüm); gizlemek için `config.php`'ye
+  `define('IT_MALI_GOSTER', false);` yazılır. Kapalıyken cihaz listesi/merkezi izleme/cihaz kartı/
   cihaz formu/zimmet tutanağı/dashboard/raporlar (Excel + PDF dahil) garanti sütununu, garanti süzgecini,
   garanti grafiğini, fiyat ve mali değer alanlarını göstermez; formda mevcut değerler **gizli alanla korunur**
   (kaydetmek veriyi silmez). Yerine dashboard'da **"İmzalı evrakı eksik zimmet"**, listelerde **imzalı evrak**
@@ -740,6 +741,71 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   seçili geliyor · listede olmayan değer optgroup'ta korunuyor · seçilen marka kayda yazılıyor
   (Dell → ACER); Playwright'ta prompt → fetch gövdesi (csrf dahil) → select'e ekleme + seçme +
   bilgi satırı, boş girişte istek atılmıyor, JS hatası yok; 8 IT sayfası uyarısız render oluyor.
+  **ALIŞ / FİYAT / KUR KÜNYESİ (2026-09-16, kullanıcı: "cihaz bilgileri ve alış ve fiyat kur bilgileri
+  ekliyelim")** — kaynak: **Zekeriyaköy envanter dosyası** (`ZEKERİYAKÖY Env..xlsx`, 8 sayfa × 65 sütun,
+  132 veri satırı: notebook 43 · monitör 28 · kamera 29 · OEM 18 · masaüstü 6 · tablet 5 · network 3 ·
+  Yazıcı boş). Dosyanın ayırt edici yanı **fiyatın üç sütunda** tutulması: *Fiyat (USD)* · *Fiyat (TL)* · *Kur*.
+  • ⚠⚠ **`fiyat` sütununun ANLAMI DEĞİŞTİ**: eskiden birimsizdi ve her yerde TL sanılıyordu; artık
+  **alındığı para birimindeki tutardır**. Yeni kolonlar (`it_ek_alan_semasi_kur`, runtime ALTER):
+  **`para_birimi`** (VARCHAR(3), varsayılan `TRY`) · **`kur`** (alış GÜNÜNDEKİ kur) · **`fiyat_tl`**
+  (TL karşılığı, türetilir ve SAKLANIR) · `sas_ref` (satın alma referansı) · `transfer_birim` /
+  `transfer_tarihi` (cihazın geldiği birim) · `cozunurluk` · `disk_seri`.
+  • **`IT_PARA` sabiti** (TRY · USD · EUR · GBP → [ad, simge, ondalık]); yeni birim = tek satır.
+  `it_para_norm()` serbest metni anahtara çevirir ("$"/"Dolar" → USD).
+  • **`it_fiyat_coz($fiyat,$para,$kur,$tlTutar)` — tek çözümleyici**: kaynak dosyalarda üçü birden gelmez,
+  eksik olan TÜRETİLİR → TRY ise kur 1 · fiyat+kur → TL · **fiyat + TL tutarı → kur = TL ÷ fiyat**
+  (dosyada Kur çoğu satırda 0'dır) · yalnız TL tutarı → TRY. Form da içe aktarma da BUNU çağırır.
+  • ⚠⚠ **MALİ DEĞER ARTIK `fiyat` TOPLAMI DEĞİL**: farklı para birimlerindeki tutarları toplamak yanlıştır.
+  SQL parçası **`it_mali_tl($alias='')`** = `COALESCE(fiyat_tl, CASE WHEN para_birimi='TRY' THEN fiyat END)`
+  (eski kayıtlar TRY varsayıldığından `fiyat`a düşer; **TL karşılığı bilinmeyen döviz tutarı toplama GİRMEZ**).
+  PHP karşılığı `it_mali_deger($satir)`. `it_envanterde()` ile aynı gerekçe: kural TEK yerde, sorgulara
+  elle yazılmaz. Dönüştürülen 11 çağrı: _ortak(it_ozet) · cihazlar · varliklar · index(2) · personel ·
+  raporlar(5) + zimmet/hurda tutanağı ve personel kartındaki PHP toplamları.
+  • ⚠⚠ **KURUN NOKTASI ONDALIKTIR** — `it_kur()`: genel sayı okuyucu `it_sayi("8.171")`i Türkçe binlik
+  ayracı sayıp **8171** yapıyordu; kur 1000 kat şişince TL karşılığı da şişiyordu (round-trip testinde
+  `kur 8.171 → 8171`, `fiyat_tl 9448,94 → 9.448.944` diye yakalandı). Kur asla binliğe çıkmaz, bu yüzden
+  ayrı ayrıştırılır; virgül varsa nokta binliktir ("8.171,25"). Aynı tuzak akaryakıtta `ak_sayi` /
+  `ak_sayi_form` ayrımına yol açmıştı. `cim_kur()` buna devreder — form ve içe aktarma TEK kuralı paylaşır.
+  • **Cihaz formunda "SATIN ALMA & FİYAT / KUR" bloğu**: Alış Tutarı · Para Birimi (select) · Kur ·
+  **TL Karşılığı (salt okunur, canlı hesaplanır)** + SAS Ref · Alınan Şirket · Transfer Geldiği Birim/Tarihi.
+  Para birimi TL seçilince kur ve TL kutuları GİZLENİR (kur 1, tekrar yazdırmak anlamsız). Sunucudaki
+  `it_fiyat_coz` aynı hesabı yapar; JS yalnız ön izlemedir. Cihaz kartında döviz alışında "Kur (alış günü)"
+  ve "TL Karşılığı" ayrı satır (TL alışta gösterilmez).
+  • **Raporlara "Para birimine göre alış" tablosu**: para birimi başına cihaz adedi · alış tutarı (kendi
+  biriminde) · TL karşılığı + **"N cihazın kuru girilmemiş — TL karşılığı toplama girmedi"** rozeti
+  (toplam sessizce eksik kalmasın). Excel'e ayrı sayfa, PDF/yazdırmaya ayrı bölüm. "En Değerli Cihazlar"
+  artık **TL karşılığına göre** sıralanır ve tutarı para birimiyle yazar (`it_fiyat_yaz`).
+  • **İçe aktarma** (`CIM_ALAN`): `fiyat_usd` (döviz) · `fiyat` (TL) · `kur` · `para_birimi` · `sas_ref` ·
+  `transfer_birim` · `transfer_tarihi` · `cozunurluk` · `disk_seri` eş anlamlıları; `cim_fiyat_kunyesi()`
+  üçlüyü `it_fiyat_coz`a verir. ⚠ **Eş anlamlılar NORMALİZE biçimde yazılır** — `pim_norm` noktalama
+  attığından "FIYAT (USD)" hiç eşleşmez, doğrusu `FIYAT USD`. Ayrıca bu dosyanın başlıkları için
+  `CIHAZ TIPI`→kategori · `CIHAZ NO`→cihaz_kodu · `IFS KOD`→varlik_kodu · `ANA KART`→anakart ·
+  `RPM`/`HARDDISK *`→disk eklendi; **"… Versiyon" sütunları (Autocad/Netcad/SAP/Probina/Visio) nota
+  "Başlık: değer" olarak** yazılır. Şablon 32 → **38 sütun** (Fiyat (TL) · Fiyat (USD) · Kur · SAS Ref ·
+  Şirket · Transfer Geldiği Birim · Transfer Tarihi).
+  • ⚠⚠ **`cim_kategori()`'de İKİ HATA düzeltildi** (round-trip testi ortaya çıkardı):
+  (1) **`'IHA'` (drone) "AĞ CİHAZI"nın İÇİNDE geçiyordu** → düz `str_contains` yüzünden **her ağ cihazı
+  drone sayılıyordu**. Kısa anahtar kelimeler (**≤4 harf**: IHA · TV · PC · PTZ · DECT · UPS…) artık
+  **kelime sınırıyla** aranır; uzun kelimelerde substring kalır (Türkçe ekleri yakalasın: "MONİTÖRÜ"→monitor).
+  (2) Şablon "Kategori" sütununa **etiketi** yazdığından (`?sablon=mevcut`) geri yüklemede kategori
+  kayıyordu ("Aksesuar" hiçbir kelimeyle eşleşmeyip `diger`e düşüyordu) → artık **önce birebir
+  anahtar/etiket** eşleşmesi denenir.
+  • **Yeni kategoriler**: **`ups`** (UPS / Kesintisiz Güç) ve **`kabinet`** (Kabinet / Rack), ikisi de
+  `ag` grubunda. UPS eskiden `aksesuar` kelime listesindeydi — altyapı varlığıdır, aksesuar değil;
+  kelime `aksesuar`dan ÇIKARILDI. Ayrıca `DECK/DECT TELEFON`→ip_telefon · `BAZ İSTASYONU`→ag ·
+  `HDD STATION`/`DOCKING STATION`/`KONFERANS`→aksesuar.
+  **Gerçek dosyayla doğrulandı**: 8 sayfa üst üste → 132 okunan = 56 yeni + 55 güncellenen + 3 değişmeyen
+  + 18 atlanan (**sağlama tutuyor**); **2. ve 3. yükleme 0 yeni / 0 güncellenen / 114 değişmeyen**
+  (mükerrer oluşmuyor). Kur matematiği Excel'le birebir: 1040,76 $ × 7,6708 = 7.983,46 ₺ ·
+  1156,40 $ × **8,171 (Kur sütunu 0'dı, TL'den türetildi)** = 9.448,94 ₺. `?sablon=mevcut` round-trip
+  **505 satır → 0 yeni / 0 güncellenen / 505 değişmeyen**, eşleşmeyen sütun YOK.
+  ⚠ Kaynak dosyada **8 DECT telefonun "Serial" sütununda aynı değer** var (`S30852-H2974-R102` — bu bir
+  MODEL/parça numarasıdır, seri no değil): 7'si "aynı dosyada tekrar" diye atlanır. Bu §"aynı modelden
+  onlarca adet" kuralının veri kalitesi tarafıdır — ayrı kayıt isteniyorsa her cihaza gerçek seri no girilmeli.
+  Duman testi: `itsm/sync.php` (repodaki it/*.php + includes'ı harness'e kopyalar — elle yamalı kopya
+  bayatlıyordu, csmoke/pk_sync deseni), `itsm/kur_test.php` (17 sağlama), `itsm/zk_tam.php` (8 sayfa zinciri),
+  `itsm/rt.php` (round-trip).
+
   **PERSONEL ARAMA + BÜYÜK HARF (2026-09-11, kullanıcı isteği)** — iki şikâyet:
   "personel adı ve soyadı yazıldığı zaman kayıt bulunamıyor" + "kayıtların hepsi büyük harf olsun".
   • ⚠⚠ **Ad SOYAD birlikte yazılınca HİÇ sonuç çıkmıyordu**: `personel.php` araması

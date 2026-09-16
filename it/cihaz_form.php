@@ -81,7 +81,8 @@ $error = '';
 $v = $c ?: ['envanter_no'=>'', 'kategori'=>'laptop', 'ad'=>'', 'marka'=>'', 'model'=>'', 'seri_no'=>'',
             'varlik_kodu'=>'', 'cihaz_kodu'=>'', 'sasi_no'=>'', 'imei'=>'', 'sirket'=>'', 'durum'=>'depoda',
             'personel_id'=>'', 'zimmetli'=>'', 'departman'=>'', 'lokasyon_id'=>'', 'lokasyon'=>'', 'zimmet_tarihi'=>'', 'alis_tarihi'=>'', 'garanti_bitis'=>'',
-            'fiyat'=>'', 'tedarikci'=>'', 'fatura_no'=>'', 'ip_adresi'=>'', 'mac_adresi'=>'', 'isletim_sistemi'=>'',
+            'fiyat'=>'', 'para_birimi'=>'TRY', 'kur'=>'', 'fiyat_tl'=>'',
+            'tedarikci'=>'', 'fatura_no'=>'', 'ip_adresi'=>'', 'mac_adresi'=>'', 'isletim_sistemi'=>'',
             'ozellikler'=>'', 'lisans_anahtari'=>'', 'lisans_adet'=>'', 'notlar'=>'']
      + array_fill_keys(array_keys(IT_EK_ALAN), '');
 
@@ -109,7 +110,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'zimmet_tarihi'   => it_tarih($_POST['zimmet_tarihi'] ?? ''),
         'alis_tarihi'     => it_tarih($_POST['alis_tarihi'] ?? ''),
         'garanti_bitis'   => it_tarih($_POST['garanti_bitis'] ?? ''),
-        'fiyat'           => it_sayi($_POST['fiyat'] ?? ''),
+        // Alış tutarı / para birimi / kur birlikte anlamlıdır: TL karşılığı `it_fiyat_coz` ile
+        // türetilip `fiyat_tl`'ye yazılır — mali değer toplamları o sütundan alınır.
         'tedarikci'       => $al('tedarikci', 120),
         'fatura_no'       => $al('fatura_no', 60),
         'ip_adresi'       => $al('ip_adresi', 45),
@@ -118,8 +120,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'ozellikler'      => $al('ozellikler', 255),
         'lisans_anahtari' => $al('lisans_anahtari', 160),
         'lisans_adet'     => ($_POST['lisans_adet'] ?? '') !== '' ? max(0, (int)$_POST['lisans_adet']) : null,
+        'sas_ref'         => $al('sas_ref', 40),
+        'transfer_birim'  => $al('transfer_birim', 120),
+        'transfer_tarihi' => it_tarih($_POST['transfer_tarihi'] ?? ''),
         'notlar'          => trim((string)($_POST['notlar'] ?? '')) ?: null,
     ];
+    // ── Alış tutarı / para birimi / kur ──────────────────────────────────────────
+    // Üçü tek künyedir: TL karşılığı (`fiyat_tl`) buradan TÜRETİLİR ve saklanır; mali değer
+    // toplamları hep o sütundan alınır (farklı para birimlerindeki tutarlar toplanamaz).
+    // Mali gösterim kapalıyken alanlar gizli input'la geldiğinden mevcut değer yine korunur.
+    $y += it_fiyat_coz($_POST['fiyat'] ?? '', $_POST['para_birimi'] ?? 'TRY', $_POST['kur'] ?? '');
+
     // Kategoriye özel alanlar (IP telefon dahilisi, superbox IMEI'si, NVR disk kapasitesi…).
     // Yalnız o kategoride GÖSTERİLEN alanlar yazılır; kategori değişirse eskiler temizlenir —
     // aksi halde monitöre dönüşen bir kayıtta "dahili no" hayalet veri olarak kalırdı.
@@ -339,17 +350,46 @@ if (!empty($v['personel_id'])) {
         <input type="hidden" name="lokasyon" value="<?= $tv('lokasyon') ?>"><?php if (!empty($v['lokasyon']) && empty($v['lokasyon_id'])): ?><div class="form-text">Eski kayıt: <?= $tv('lokasyon') ?></div><?php endif; ?></div>
       <div class="col-md-2"><label class="form-label">Zimmet Tarihi</label><input type="date" name="zimmet_tarihi" class="form-control" value="<?= $tv('zimmet_tarihi') ?>"></div>
 
-      <div class="col-12"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-receipt me-1"></i>SATIN ALMA<?= it_mali_goster() ? ' &amp; GARANTİ' : '' ?></div></div>
+      <div class="col-12"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-receipt me-1"></i>SATIN ALMA<?= it_mali_goster() ? ' &amp; FİYAT / KUR' : '' ?></div></div>
       <div class="col-md-2"><label class="form-label">Alış Tarihi</label><input type="date" name="alis_tarihi" class="form-control" value="<?= $tv('alis_tarihi') ?>"></div>
+      <div class="col-md-3"><label class="form-label">Tedarikçi</label><input name="tedarikci" list="dl_tedarikci" class="form-control" value="<?= $tv('tedarikci') ?>" maxlength="120"><?= $dl('tedarikci') ?></div>
+      <div class="col-md-3"><label class="form-label">Fatura No</label><input name="fatura_no" class="form-control" value="<?= $tv('fatura_no') ?>" maxlength="60"></div>
+      <div class="col-md-2"><label class="form-label">SAS Ref</label><input name="sas_ref" class="form-control" value="<?= $tv('sas_ref') ?>" maxlength="40" placeholder="satın alma ref.">
+        <div class="form-text">Satın alma talep/sipariş referansı.</div></div>
       <?php if (it_mali_goster()): ?>
       <div class="col-md-2"><label class="form-label">Garanti Bitiş</label><input type="date" name="garanti_bitis" class="form-control" value="<?= $tv('garanti_bitis') ?>"></div>
-      <div class="col-md-2"><label class="form-label">Fiyat (TL)</label><input name="fiyat" class="form-control text-end" value="<?= $v['fiyat'] !== null && $v['fiyat'] !== '' ? number_format((float)$v['fiyat'], 2, ',', '.') : '' ?>" placeholder="0,00"></div>
+
+      <?php
+        // Alış tutarı ALINDIĞI para biriminde girilir; TL karşılığı alış günündeki kurla hesaplanır
+        // ve `fiyat_tl`'ye yazılır — mali değer toplamları HEP TL karşılığından alınır.
+        $paraSecili = it_para_norm($v['para_birimi'] ?? 'TRY');
+        $nf = fn($x, $d = 2) => ($x !== null && $x !== '') ? number_format((float)$x, $d, ',', '.') : '';
+      ?>
+      <div class="col-md-2"><label class="form-label">Alış Tutarı</label>
+        <input name="fiyat" id="fiyat" class="form-control text-end" value="<?= h($nf($v['fiyat'] ?? null)) ?>" placeholder="0,00" inputmode="decimal"></div>
+      <div class="col-md-2"><label class="form-label">Para Birimi</label>
+        <select name="para_birimi" id="para_birimi" class="form-select">
+          <?php foreach (IT_PARA as $pk => $pt): ?>
+            <option value="<?= h($pk) ?>"<?= $pk === $paraSecili ? ' selected' : '' ?>><?= h($pk . ' — ' . $pt[1]) ?></option>
+          <?php endforeach; ?>
+        </select></div>
+      <div class="col-md-2" id="kurKutu"><label class="form-label">Kur (alış günü)</label>
+        <input name="kur" id="kur" class="form-control text-end" value="<?= h($nf($v['kur'] ?? null, 4)) ?>" placeholder="0,0000" inputmode="decimal">
+        <div class="form-text" id="kurNot">1 birim = ? ₺</div></div>
+      <div class="col-md-2" id="tlKutu"><label class="form-label">TL Karşılığı</label>
+        <input id="fiyat_tl_gos" class="form-control text-end bg-body-secondary" value="<?= h($nf($v['fiyat_tl'] ?? null)) ?>" readonly tabindex="-1">
+        <div class="form-text">Tutar × kur (otomatik).</div></div>
       <?php else: /* garanti + fiyat gizli — mevcut değerler kaybolmasın diye gizli alanla taşınır */ ?>
       <input type="hidden" name="garanti_bitis" value="<?= $tv('garanti_bitis') ?>">
       <input type="hidden" name="fiyat" value="<?= $v['fiyat'] !== null && $v['fiyat'] !== '' ? number_format((float)$v['fiyat'], 2, ',', '.') : '' ?>">
+      <input type="hidden" name="para_birimi" value="<?= h(it_para_norm($v['para_birimi'] ?? 'TRY')) ?>">
+      <input type="hidden" name="kur" value="<?= $v['kur'] !== null && $v['kur'] !== '' ? number_format((float)$v['kur'], 4, ',', '.') : '' ?>">
       <?php endif; ?>
-      <div class="col-md-3"><label class="form-label">Tedarikçi</label><input name="tedarikci" list="dl_tedarikci" class="form-control" value="<?= $tv('tedarikci') ?>" maxlength="120"><?= $dl('tedarikci') ?></div>
-      <div class="col-md-3"><label class="form-label">Fatura No</label><input name="fatura_no" class="form-control" value="<?= $tv('fatura_no') ?>" maxlength="60"></div>
+      <div class="col-md-3"><label class="form-label">Alınan Şirket</label><input name="sirket_alis" class="form-control" value="<?= $tv('sirket') ?>" maxlength="120" disabled>
+        <div class="form-text">Üstteki <strong>Şirket</strong> alanından gelir.</div></div>
+      <div class="col-md-3"><label class="form-label">Transfer Geldiği Birim</label><input name="transfer_birim" class="form-control" value="<?= $tv('transfer_birim') ?>" maxlength="120" placeholder="HALKALI / MERKEZ…">
+        <div class="form-text">Cihaz başka birimden geldiyse kaynağı.</div></div>
+      <div class="col-md-2"><label class="form-label">Transfer Tarihi</label><input type="date" name="transfer_tarihi" class="form-control" value="<?= $tv('transfer_tarihi') ?>"></div>
 
       <div class="col-12 teknik"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-cpu me-1"></i>TEKNİK</div></div>
       <div class="col-md-3 teknik"><label class="form-label">IP Adresi</label><input name="ip_adresi" class="form-control font-monospace" value="<?= $tv('ip_adresi') ?>" maxlength="45"></div>
@@ -539,6 +579,44 @@ if (!empty($v['personel_id'])) {
             })
             .catch(function () { dugme.disabled = false; alert('Marka eklenemedi (bağlantı hatası).'); });
     });
+})();
+
+/* ── Alış tutarı × kur = TL karşılığı (canlı) ─────────────────────────────────
+   Sunucuda `it_fiyat_coz()` aynı hesabı yapar; buradaki yalnız ÖN İZLEMEdir.
+   Para birimi TL ise kur 1'dir ve kur/TL kutuları gizlenir (tekrar yazdırmaya gerek yok). */
+(function () {
+    var fi = document.getElementById('fiyat'), pb = document.getElementById('para_birimi'),
+        ku = document.getElementById('kur'), tl = document.getElementById('fiyat_tl_gos'),
+        kk = document.getElementById('kurKutu'), tk = document.getElementById('tlKutu'),
+        kn = document.getElementById('kurNot');
+    if (!fi || !pb) return;                                  // mali gösterim kapalı
+
+    /* "1.040,76" → 1040.76 · "6.5" → 6.5  (nokta yalnız ÜÇERLİ gruplardaysa binlik ayracıdır) */
+    function say(v) {
+        v = String(v == null ? '' : v).replace(/[\s₺$€£]/g, '');
+        if (v === '') return null;
+        if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(v)) v = v.replace(/\./g, '');
+        v = v.replace(',', '.');
+        var n = parseFloat(v);
+        return isFinite(n) ? n : null;
+    }
+    function yaz(n, d) {
+        return n == null ? '' : n.toLocaleString('tr-TR', { minimumFractionDigits: d, maximumFractionDigits: d });
+    }
+    function guncelle() {
+        var tryMi = pb.value === 'TRY';
+        if (kk) kk.classList.toggle('d-none', tryMi);
+        if (tk) tk.classList.toggle('d-none', tryMi);
+        if (kn) kn.textContent = '1 ' + pb.value + ' = ? ₺ (alış günü)';
+        var f = say(fi.value), k = tryMi ? 1 : say(ku ? ku.value : '');
+        if (tl) tl.value = (f != null && k != null) ? yaz(Math.round(f * k * 100) / 100, 2) : '';
+    }
+    [fi, pb, ku].forEach(function (el) {
+        if (!el) return;
+        el.addEventListener('input', guncelle);
+        el.addEventListener('change', guncelle);
+    });
+    guncelle();
 })();
 </script>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

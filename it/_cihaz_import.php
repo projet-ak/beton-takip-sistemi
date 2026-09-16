@@ -20,11 +20,11 @@
 require_once __DIR__ . '/_import.php';   // pim_* yardımcıları (ortak okuma/normalize katmanı)
 
 const CIM_ALAN = [
-    'varlik_kodu'  => ['etiket' => 'Varlık / Seri Nesne Kodu', 'es' => ['SERI NESNE KODU','SERINESNE KODU','IFS SERI NESNE NO','IFS NESNE NO','IFS CIHAZ KODU','NESNE NO','VARLIK KODU','ZIMMET KODU','ASSET CODE','ASSET ID','BARKOD','BARKOD NO','ETIKET NO','TAG']],
-    'cihaz_kodu'   => ['etiket' => 'Cihaz Kodu (demirbaş etiketi)', 'es' => ['CIHAZ KODU','CIHAZKODU','DEMIRBAS ETIKETI','ASSET TAG','DEMIRBAS KODU','DEMIRBAS NO','DEMIRBAS SIRA','ETIKET','SIRA KODU','DEVICE CODE','DEVICE ID']],
+    'varlik_kodu'  => ['etiket' => 'Varlık / Seri Nesne Kodu', 'es' => ['SERI NESNE KODU','SERINESNE KODU','IFS SERI NESNE NO','IFS NESNE NO','IFS CIHAZ KODU','IFS KOD','IFS KODU','NESNE NO','VARLIK KODU','ZIMMET KODU','ASSET CODE','ASSET ID','BARKOD','BARKOD NO','ETIKET NO','TAG']],
+    'cihaz_kodu'   => ['etiket' => 'Cihaz Kodu (demirbaş etiketi)', 'es' => ['CIHAZ KODU','CIHAZKODU','CIHAZ NO','DEMIRBAS ETIKETI','ASSET TAG','DEMIRBAS KODU','DEMIRBAS NO','DEMIRBAS SIRA','ETIKET','SIRA KODU','DEVICE CODE','DEVICE ID']],
     'envanter_no'  => ['etiket' => 'Envanter No (IT-00001)',   'es' => ['ENVANTER NO','ENVANTER KODU','INVENTORY NO']],
     'ad'           => ['etiket' => 'Cihaz Adı / Cinsi',        'es' => ['SERI NESNE ADI','SERINESNE ADI','DEMIRBAS ADI','CIHAZ ADI','CIHAZ CINSI','CINSI','MALZEME ADI','URUN ADI','TANIM','ACIKLAMA ADI','ITEM','ITEM NAME','ASSET NAME','DESCRIPTION']],
-    'kategori'     => ['etiket' => 'Kategori',                 'es' => ['KATEGORI','KATEGORISI','TUR','TURU','CIHAZ TURU','GRUP','GRUBU','CATEGORY','TYPE']],
+    'kategori'     => ['etiket' => 'Kategori',                 'es' => ['KATEGORI','KATEGORISI','TUR','TURU','CIHAZ TURU','CIHAZ TIPI','CIHAZ CINSI TIPI','GRUP','GRUBU','CATEGORY','TYPE']],
     'marka'        => ['etiket' => 'Marka',                    'es' => ['MARKA','MARKASI','BRAND','MANUFACTURER','URETICI']],
     'model'        => ['etiket' => 'Model',                    'es' => ['MODEL','MODELI','MODEL ADI','MODEL ISMI']],
     'model_no'     => ['etiket' => 'Model No (gerçek model)',  'es' => ['MODEL NO','MODEL NO.','MODEL KODU','MODEL NUMARASI','MODEL NUMBER']],
@@ -39,7 +39,18 @@ const CIM_ALAN = [
     'durum'        => ['etiket' => 'Durum',                    'es' => ['DURUM','DURUMU','STATUS','CIHAZ DURUMU','KULLANIM DURUMU']],
     'alis_tarihi'  => ['etiket' => 'Alış Tarihi',              'es' => ['ALIS TARIHI','SATIN ALMA TARIHI','SATIN ALMA','ALIM TARIHI','FATURA TARIHI','PURCHASE DATE','BUY DATE']],
     'garanti_bitis'=> ['etiket' => 'Garanti Bitiş',            'es' => ['GARANTI BITIS','GARANTI BITIS TARIHI','GARANTI SURESI SONA ERDI','WARRANTY','WARRANTY END']],
-    'fiyat'        => ['etiket' => 'Fiyat',                    'es' => ['FIYAT','SATIN ALMA UCRETI','BIRIM FIYAT','TUTAR','BEDEL','PRICE','COST','AMOUNT']],
+    // ⚠ Fiyat ÜÇ sütundan gelebilir: döviz tutarı · TL tutarı · kur. `it_fiyat_coz()` üçünü
+    // tek künyeye indirir (eksik olanı türetir) — eş anlamlılarda DÖVİZ olanlar önce denenir,
+    // yoksa yalnız 'FIYAT' yazan sütun TL sayılır.
+    'fiyat_usd'    => ['etiket' => 'Fiyat (döviz)',            'es' => ['FIYAT USD','USD FIYAT','FIYAT DOLAR','FIYAT EUR','EUR FIYAT','DOVIZ TUTARI','PRICE USD','USD','USD PRICE']],
+    'fiyat'        => ['etiket' => 'Fiyat (TL)',               'es' => ['FIYAT TL','TL FIYAT','TUTAR TL','FIYAT','SATIN ALMA UCRETI','BIRIM FIYAT','TUTAR','BEDEL','PRICE','COST','AMOUNT']],
+    'kur'          => ['etiket' => 'Kur (alış günü)',          'es' => ['KUR','DOVIZ KURU','EXCHANGE RATE','RATE']],
+    'para_birimi'  => ['etiket' => 'Para Birimi',              'es' => ['PARA BIRIMI','DOVIZ','DOVIZ CINSI','CURRENCY']],
+    'sas_ref'      => ['etiket' => 'SAS Ref (satın alma)',     'es' => ['SAS REF','SAS REFERANS','SAS','SATIN ALMA REF','TALEP NO','PURCHASE REF']],
+    'transfer_birim'  => ['etiket' => 'Transfer Geldiği Birim','es' => ['TRANSFER GELDIGI BIRIM','GELDIGI BIRIM','TRANSFER BIRIM','TRANSFER GELDIGI YER']],
+    'transfer_tarihi' => ['etiket' => 'Transfer Tarihi',       'es' => ['TRANSFER TARIHI','TRANSFER TARIH']],
+    'cozunurluk'   => ['etiket' => 'Ekran Çözünürlüğü',        'es' => ['COZUNURLUK','EKRAN COZUNURLUK','EKRAN COZUNURLUGU','1 EKRAN COZUNURLUGU','DIZUSTU EKRAN COZUNURLUK','RESOLUTION']],
+    'disk_seri'    => ['etiket' => 'Disk Seri No',             'es' => ['HARDDISK SERIAL','DISK SERI NO','HDD SERIAL','HDD SERI NO']],
     'tedarikci'    => ['etiket' => 'Tedarikçi',                'es' => ['TEDARIKCI','SATICI','FIRMA','VENDOR','SUPPLIER']],
     'fatura_no'    => ['etiket' => 'Fatura No',                'es' => ['FATURA NO','FATURANO','SIPARIS NUMARASI','SIPARIS NO','INVOICE','INVOICE NO','ORDER NUMBER']],
     'ip_adresi'    => ['etiket' => 'IP Adresi',                'es' => ['IP','IP ADRESI','IP ADDRESS']],
@@ -50,8 +61,8 @@ const CIM_ALAN = [
     'islemci'      => ['etiket' => 'İşlemci (birleşir)', 'es' => ['ISLEMCI MARKA','ISLEMCI MODEL','ISLEMCI','CPU','PROCESSOR']],
     'ram'          => ['etiket' => 'RAM (birleşir)',     'es' => ['RAM','RAM TIPI','RAM MARKA','BELLEK','BELLEK TIPI']],
     'ekran_karti'  => ['etiket' => 'Ekran Kartı (birleşir)', 'es' => ['EKRAN KARTI','EKRAN KARTI MODELI','GPU','GRAFIK KARTI']],
-    'disk'         => ['etiket' => 'Disk / HDD (birleşir)',  'es' => ['HDD','HDD MODELI','HDD BILGISI','DISK','SSD','DEPOLAMA','SABIT DISK']],
-    'anakart'      => ['etiket' => 'Anakart',            'es' => ['ANAKART','MAINBOARD','MOTHERBOARD']],
+    'disk'         => ['etiket' => 'Disk / HDD (birleşir)',  'es' => ['HDD','HDD MODELI','HDD BILGISI','DISK','SSD','DEPOLAMA','SABIT DISK','HARDDISK','HARDDISK TIPI','HARDDISK MARKASI','HARDDISK MODELI','HARDDISK KAPASITESI','RPM']],
+    'anakart'      => ['etiket' => 'Anakart',            'es' => ['ANAKART','ANA KART','MAINBOARD','MOTHERBOARD']],
     'ekran_boyutu' => ['etiket' => 'Ekran Boyutu',       'es' => ['EKRAN BOYUTU','EKRAN','COZUNURLUK','SCREEN SIZE']],
     'imei'         => ['etiket' => 'IMEI',               'es' => ['IMEI','IMEI NO','IMEI NUMARASI']],
     'kapasite'     => ['etiket' => 'Kapasite',           'es' => ['KAPASITE','KAPASITESI','CAPACITY']],
@@ -60,7 +71,7 @@ const CIM_ALAN = [
     'sicil_no'     => ['etiket' => 'Zimmetli kişinin sicil no', 'es' => ['CALISAN NUMARASI','SICIL NO','SICIL','PERSONEL NO','EMPLOYEE NUMBER','EMPLOYEE NO']],
     'snipe_id'     => ['etiket' => 'Snipe-IT Kimlik (belge köprüsü)', 'es' => ['KIMLIK','SNIPE ID','SNIPE-IT ID','ASSET ID']],
     'sirket'       => ['etiket' => 'Şirket',                  'es' => ['SIRKET','SIRKETI','COMPANY','FIRMA ADI']],
-    'notlar'       => ['etiket' => 'Not (nota eklenir)',       'es' => ['NOT','NOTLAR','ACIKLAMA','DESCRIPTION','REMARKS','COMMENT','INFO','DEMIRBAS DURUMU']],
+    'notlar'       => ['etiket' => 'Not (nota eklenir)',       'es' => ['NOT','NOTLAR','ACIKLAMA','DESCRIPTION','REMARKS','COMMENT','INFO','DEMIRBAS DURUMU','VERSIYON','SURUM','VERSION']],
 ];
 
 /** Birden çok sütundan beslenebilen alanlar (değerler " · " ile birleşir). */
@@ -75,16 +86,23 @@ function cim_kategori(string $s): string
 {
     $n = pim_norm($s);
     if ($n === '') return 'diger';
+    // ⚠ ÖNCE BİREBİR: metin bir kategori ANAHTARI ya da ETİKETİ ise doğrudan o kategoridir.
+    // Şablon "Kategori" sütununa etiketi yazdığından (`?sablon=mevcut`), bu olmadan geri yüklemede
+    // kategori kayıyordu ("Aksesuar" hiçbir kelimeyle eşleşmeyip 'diger'e düşüyordu).
+    foreach (IT_KATEGORI as $anahtar => $t)
+        if ($n === pim_norm($anahtar) || $n === pim_norm($t[0])) return $anahtar;
     // ⚠ SIRA ÖNEMLİ: özel tipler önce denenir — "IP KAMERA" genel 'kamera' aksesuarına değil
     // güvenlik kategorisine, "IP TELEFON" cep telefonuna değil iletişim kategorisine düşmeli.
     $harita = [
-        'ip_telefon'   => ['IP TELEFON','MASA TELEFONU','VOIP','SIP TELEFON','DAHILI TELEFON'],
+        'ip_telefon'   => ['IP TELEFON','MASA TELEFONU','VOIP','SIP TELEFON','DAHILI TELEFON','DECK TELEFON','DECT TELEFON','DECT'],
         'santral'      => ['SANTRAL','PBX','IP SANTRAL','TELEFON SANTRALI'],
         'hat'          => ['TELEFON HATTI','GSM HAT','SABIT HAT','DATA HAT','HAT NUMARASI'],
         'nvr'          => ['NVR','DVR','KAYIT CIHAZI','KAMERA KAYIT'],
         'kamera'       => ['IP KAMERA','GUVENLIK KAMERASI','KAMERA SISTEMI','DOME KAMERA','BULLET KAMERA','PTZ'],
         'kartli_gecis' => ['KARTLI GECIS','GECIS KONTROL','ACCESS CONTROL','KART OKUYUCU','PDKS'],
         'turnike'      => ['TURNIKE','BARIYER','TURNSTILE'],
+        'ups'          => ['UPS','KESINTISIZ GUC','KGK','GUC KAYNAGI UPS'],
+        'kabinet'      => ['KABINET','RACK KABIN','RACK DOLAP','RACK KABINET'],
         'firewall'     => ['FIREWALL','GUVENLIK DUVARI','UTM','FORTIGATE','SOPHOS','PALO ALTO'],
         'switch'       => ['SWITCH','OMURGA','ANAHTAR CIHAZ','POE SWITCH'],
         'access_point' => ['ACCESS POINT','ERISIM NOKTASI','KABLOSUZ AP','WIFI AP'],
@@ -100,13 +118,21 @@ function cim_kategori(string $s): string
         'yazici'       => ['YAZICI','PRINTER','PLOTER','PLOTTER','CIZICI','TARAYICI','SCANNER','FOTOKOPI','COK FONKSIYONLU'],
         'telefon'      => ['TELEFON','PHONE','CEP'],
         'tablet'       => ['TABLET','IPAD'],
-        'ag'           => ['ROUTER','MODEM','AG CIHAZI','NETWORK'],
+        'ag'           => ['ROUTER','MODEM','AG CIHAZI','NETWORK','BAZ ISTASYONU','BAZ ISTASYON'],
         'sunucu'       => ['SUNUCU','SERVER','NAS','DEPOLAMA UNITESI','STORAGE'],
         'yazilim'      => ['LISANS','LICENSE','YAZILIM','SOFTWARE','OFFICE','WINDOWS LISANS','ANTIVIRUS'],
         'fotograf'     => ['FOTOGRAF MAKINE','FOTOGRAF MAKINESI','AKSIYON KAMERA','VIDEO KAMERA','KAMERA','CAMERA'],
-        'aksesuar'     => ['KLAVYE','MOUSE','FARE','KULAKLIK','DOCK','ADAPTOR','WEBCAM','HOPARLOR','CANTA','HARICI DISK','UPS','BARKOD','KABLO'],
+        'aksesuar'     => ['KLAVYE','MOUSE','FARE','KULAKLIK','DOCK','ADAPTOR','WEBCAM','HOPARLOR','CANTA','HARICI DISK','BARKOD','KABLO','HDD STATION','DOCKING STATION','KONFERANS'],
     ];
-    foreach ($harita as $anahtar => $kelimeler) foreach ($kelimeler as $k) if (str_contains($n, $k)) return $anahtar;
+    // ⚠ KISA anahtar kelimeler (≤4 harf) KELİME SINIRIYLA aranır: düz `str_contains` ile
+    // 'IHA' (drone) "AĞ CİHAZI"nın içinde geçiyor ve her ağ cihazı drone sayılıyordu.
+    // Uzun kelimelerde substring kalır — Türkçe ekleri yakalasın ("MONİTÖRÜ" → MONITOR).
+    foreach ($harita as $anahtar => $kelimeler) foreach ($kelimeler as $k) {
+        $var = strlen($k) <= 4
+            ? (bool)preg_match('/(?:^|\s)' . preg_quote($k, '/') . '(?:\s|$)/', $n)
+            : str_contains($n, $k);
+        if ($var) return $anahtar;
+    }
     return 'diger';
 }
 
@@ -197,6 +223,27 @@ function cim_fiyat(string $s): ?float
     if (preg_match('/^-?\d{1,3}(,\d{3})+(\.\d+)?$/', $s)) return (float)str_replace(',', '', $s);
     return it_sayi($s);
 }
+
+/**
+ * Dosya satırındaki fiyat sütunlarını tek künyeye indirir: fiyat · para_birimi · kur · fiyat_tl.
+ * Kaynak dosyalarda üçü birden gelmez — `it_fiyat_coz()` eksik olanı türetir
+ * (ör. Zekeriyaköy dosyasında Kur sütunu çoğu satırda boş, TL tutarından hesaplanır).
+ * Para birimi sütunu yoksa: döviz tutarı dolu → USD, değilse TL.
+ */
+function cim_fiyat_kunyesi(array $v): array
+{
+    $doviz = cim_fiyat((string)($v['fiyat_usd'] ?? ''));
+    $tl    = cim_fiyat((string)($v['fiyat'] ?? ''));
+    $kur   = cim_kur((string)($v['kur'] ?? ''));
+    $para  = trim((string)($v['para_birimi'] ?? ''));
+    if ($para === '') $para = $doviz !== null && $doviz > 0 ? 'USD' : 'TRY';
+    return $doviz !== null && $doviz > 0
+        ? it_fiyat_coz($doviz, $para, $kur, $tl)      // döviz alışı: TL karşılığı kur ya da TL sütunundan
+        : it_fiyat_coz($tl, 'TRY', 1, $tl);           // yalnız TL tutarı
+}
+
+/** Kur ayrıştırma çekirdekte (`it_kur`): kurun noktası ondalıktır, binlik ayracı DEĞİL. */
+function cim_kur(string $s): ?float { return it_kur($s); }
 
 /** Grid satırı → cihaz alanları (ham). 'ozellik'/'notlar' sütunları "Başlık: değer" olarak birikir. */
 function cim_satir_cozumle(array $satir, array $harita, array $baslik): array
@@ -295,8 +342,9 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
     $r = ['okunan'=>0, 'yeni'=>[], 'guncellenen'=>[], 'degismeyen'=>0, 'atlanan'=>[], 'kisi_yok'=>[], 'lokasyon_yok'=>[], 'kisi_eklenen'=>[]];
     // ⚠ 'envanter_no' BİLEREK YOK: bizim sabit numaramızdır (tutanaklarda geçer), dosya onu ezmez.
     $alanlar = ['varlik_kodu','cihaz_kodu','kategori','ad','marka','model','seri_no','sasi_no','imei','durum','zimmetli','personel_id','departman','lokasyon','lokasyon_id',
-                'zimmet_tarihi','alis_tarihi','garanti_bitis','fiyat','tedarikci','fatura_no','sirket','snipe_id','ip_adresi','mac_adresi','isletim_sistemi',
-                'islemci','ram','ekran_karti','disk','anakart','ekran_boyutu','kapasite','kiralik_firma','ozellikler'];
+                'zimmet_tarihi','alis_tarihi','garanti_bitis','fiyat','para_birimi','kur','fiyat_tl','sas_ref',
+                'transfer_birim','transfer_tarihi','tedarikci','fatura_no','sirket','snipe_id','ip_adresi','mac_adresi','isletim_sistemi',
+                'islemci','ram','ekran_karti','disk','disk_seri','anakart','ekran_boyutu','cozunurluk','kapasite','kiralik_firma','ozellikler'];
 
     cim_semasi_kur($pdo);                       // ⚠ DDL transaction'ı örtük commit eder → ÖNCE
     $mevcut = $pdo->query("SELECT * FROM it_cihazlar")->fetchAll();
@@ -395,8 +443,13 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
                 'lokasyon'    => $lokAd ?: null, 'lokasyon_id' => $lokId,
                 'zimmet_tarihi'=> $kisiAd !== '' ? pim_tarih($v['zimmet_tarihi']) : null,
                 'alis_tarihi' => pim_tarih($v['alis_tarihi']), 'garanti_bitis' => pim_tarih($v['garanti_bitis']),
-                'fiyat'       => cim_fiyat($v['fiyat']),
+                // Fiyat künyesi: döviz tutarı · TL tutarı · kur birlikte çözülür (eksik olan türetilir).
+                // Para birimi sütunu yoksa döviz sütunu doluysa USD, değilse TL sayılır.
                 'tedarikci'   => $v['tedarikci'] ?: null, 'fatura_no' => $v['fatura_no'] ?: null,
+                'sas_ref'     => $v['sas_ref'] ?: null,
+                'transfer_birim'  => $v['transfer_birim'] ?: null,
+                'transfer_tarihi' => pim_tarih($v['transfer_tarihi']),
+                'cozunurluk'  => $v['cozunurluk'] ?: null, 'disk_seri' => $v['disk_seri'] ?: null,
                 'sirket'      => $v['sirket'] ?: null,
                 'snipe_id'    => ctype_digit($v['snipe_id']) ? (int)$v['snipe_id'] : null,
                 'ip_adresi'   => $v['ip_adresi'] ?: null, 'mac_adresi' => $v['mac_adresi'] ?: null,
@@ -407,7 +460,7 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
                 'anakart'     => $v['anakart'] ?: null, 'ekran_boyutu' => $v['ekran_boyutu'] ?: null,
                 'kapasite'    => $v['kapasite'] ?: null, 'kiralik_firma' => $v['kiralik_firma'] ?: null,
                 'ozellikler'  => null,   // aşağıda künyeden ya da serbest sütunlardan doldurulur
-            ];
+            ] + cim_fiyat_kunyesi($v);
             // Serbest "özellik" sütunları varsa onlar, yoksa donanım künyesinin özeti
             $yeni['ozellikler'] = $v['ozellik']
                 ? mb_substr(implode(' · ', array_unique($v['ozellik'])), 0, 255)

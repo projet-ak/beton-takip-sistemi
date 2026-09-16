@@ -20,8 +20,8 @@ $kisi = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ?? null;
 
 /** Şablonun sütun düzeni = içe aktarmanın tanıdığı başlıklar (cim_harita bu adlarla eşleştirir). */
 const CIM_SABLON_BASLIK = ['Envanter No','Cihaz Kodu','IFS Seri Nesne No','Seri Nesne Adı','Kategori','Marka','Model','Seri No','Şasi No','IMEI',
-                           'Durum','Kişi','Departman','Mevcut Proje','Kiralanan Firma','Alış Tarihi','Garanti Bitiş','Fiyat',
-                           'Tedarikçi','Fatura No','IP Adresi','MAC Adresi','İşletim Sistemi',
+                           'Durum','Kişi','Departman','Mevcut Proje','Kiralanan Firma','Alış Tarihi','Garanti Bitiş','Fiyat (TL)','Fiyat (USD)','Kur',
+                           'Tedarikçi','Fatura No','SAS Ref','Şirket','Transfer Geldiği Birim','Transfer Tarihi','IP Adresi','MAC Adresi','İşletim Sistemi',
                            'İşlemci','Ram','Ekran Kartı','Hdd','Anakart','Ekran Boyutu','Kapasite','Teknik Özellik','Not'];
 
 /** Bir cihaz kaydını şablon düzenine çevirir. */
@@ -40,8 +40,14 @@ function cim_sablon_satiri(PDO $pdo, array $r): array
         ['v'=>(string)($r['zimmetli'] ?? '')], ['v'=>(string)($r['departman'] ?? '')], ['v'=>$lokAd],
         ['v'=>(string)($r['kiralik_firma'] ?? '')],
         ['v'=>(string)($r['alis_tarihi'] ?? ''), 't'=>'date'], ['v'=>(string)($r['garanti_bitis'] ?? ''), 't'=>'date'],
-        ['v'=>($r['fiyat'] !== null && $r['fiyat'] !== '') ? (float)$r['fiyat'] : '', 't'=>'number'],
+        // Fiyat üçlüsü: TL karşılığı · döviz tutarı · kur. TL cihazlarda döviz/kur boş bırakılır ki
+        // şablon geri yüklendiğinde `cim_fiyat_kunyesi()` aynı künyeyi yeniden üretsin (round-trip).
+        ['v'=>($r['fiyat_tl'] !== null && $r['fiyat_tl'] !== '') ? (float)$r['fiyat_tl'] : '', 't'=>'number'],
+        ['v'=>(($r['para_birimi'] ?? 'TRY') !== 'TRY' && $r['fiyat'] !== null && $r['fiyat'] !== '') ? (float)$r['fiyat'] : '', 't'=>'number'],
+        ['v'=>(($r['para_birimi'] ?? 'TRY') !== 'TRY' && $r['kur'] !== null && $r['kur'] !== '') ? (float)$r['kur'] : '', 't'=>'number'],
         ['v'=>(string)($r['tedarikci'] ?? '')], ['v'=>(string)($r['fatura_no'] ?? '')],
+        ['v'=>(string)($r['sas_ref'] ?? '')], ['v'=>(string)($r['sirket'] ?? '')],
+        ['v'=>(string)($r['transfer_birim'] ?? '')], ['v'=>(string)($r['transfer_tarihi'] ?? ''), 't'=>'date'],
         ['v'=>(string)($r['ip_adresi'] ?? '')], ['v'=>(string)($r['mac_adresi'] ?? '')], ['v'=>(string)($r['isletim_sistemi'] ?? '')],
         ['v'=>(string)($r['islemci'] ?? '')], ['v'=>(string)($r['ram'] ?? '')], ['v'=>(string)($r['ekran_karti'] ?? '')],
         ['v'=>(string)($r['disk'] ?? '')], ['v'=>(string)($r['anakart'] ?? '')], ['v'=>(string)($r['ekran_boyutu'] ?? '')],
@@ -76,13 +82,16 @@ if (isset($_GET['sablon'])) {
     $ornek = [
         ['IT-00001','N221','FRM-0002-82026-2552600167','Dizüstü Bilgisayar','Dizüstü','Lenovo','ThinkPad E14','PF3ABCDE','TCNXCV00V025494','356938035643809',
          'Kullanımda',0,'','2025-02-10','2027-02-10',28500,'Bilgi İşlem A.Ş.','FTR2025000123','','','Windows 11 Pro',
-         'İntel i7 · Intel(R) Core(TM) 7 240H','DDR5 16 GB · Samsung','Intel Raptor Lake-H','NVMe 512 GB','ThinkPad E14 · Lenovo','14"','512 GB','',''],
+         'İntel i7 · Intel(R) Core(TM) 7 240H','DDR5 16 GB · Samsung','Intel Raptor Lake-H','NVMe 512 GB','ThinkPad E14 · Lenovo','14"','512 GB','','',
+         850, 33.5294, 'SAS-24118', 'ERN Taahhüt', 'HALKALI', '2025-03-01'],
         ['IT-00002','M160','FRM-0002-MON-2551900855','Monitör','Monitör','AOC','24B2XH','FUAE1HA035655','','',
          'Kullanımda',1,'','2025-02-10','2027-02-10',3250,'Bilgi İşlem A.Ş.','FTR2025000123','','','',
-         '','','','','','24"','','IPS Full HD',''],
+         '','','','','','24"','','IPS Full HD','',
+         '', '', 'SAS-24119', 'ERN Taahhüt', '', ''],
         ['IT-00003','Y031','FRM-0002-YZC-2551901004','Yazıcı','Yazıcı','HP','LaserJet M404dn','VNC3K12345','','',
          'Depoda',2,'','2024-11-05','2026-11-05',9750,'Ofis Market','FTR2024000987','192.168.1.45','A4:BB:6D:11:22:33','',
-         '','','','','','','','Mono lazer, ağ bağlantılı','Depoda yedek olarak bekliyor'],
+         '','','','','','','','Mono lazer, ağ bağlantılı','Depoda yedek olarak bekliyor',
+         '', '', '', 'ERN Holding', 'MERKEZ', '2024-12-01'],
     ];
     foreach ($ornek as $i => $o) {
         $xl->row([
@@ -90,7 +99,10 @@ if (isset($_GET['sablon'])) {
             ['v'=>$o[10]], ['v'=>(string)($kisiler[(int)$o[11]] ?? '')], ['v'=>$o[12]],
             ['v'=>(string)($lokAdlar[$i % count($lokAdlar)] ?? '')], ['v'=>''],
             ['v'=>$o[13], 't'=>'date'], ['v'=>$o[14], 't'=>'date'], ['v'=>(float)$o[15], 't'=>'number'],
-            ['v'=>$o[16]], ['v'=>$o[17]], ['v'=>$o[18]], ['v'=>$o[19]], ['v'=>$o[20]],
+            ['v'=>$o[30] !== '' ? (float)$o[30] : '', 't'=>'number'], ['v'=>$o[31] !== '' ? (float)$o[31] : '', 't'=>'number'],
+            ['v'=>$o[16]], ['v'=>$o[17]],
+            ['v'=>$o[32]], ['v'=>$o[33]], ['v'=>$o[34]], ['v'=>$o[35], 't'=>'date'],
+            ['v'=>$o[18]], ['v'=>$o[19]], ['v'=>$o[20]],
             ['v'=>$o[21]], ['v'=>$o[22]], ['v'=>$o[23]], ['v'=>$o[24]], ['v'=>$o[25]], ['v'=>$o[26]], ['v'=>$o[27]],
             ['v'=>$o[28]], ['v'=>$o[29]],
         ]);

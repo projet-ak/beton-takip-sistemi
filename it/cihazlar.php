@@ -62,15 +62,15 @@ if ($lokId || $perId) {
     $wsql = ($wsql ? $wsql . ' AND ' : ' WHERE ') . implode(' AND ', $ek);
 }
 
-$oz = $pdoIt->prepare("SELECT COUNT(*) adet, COALESCE(SUM(fiyat),0) mali, SUM(durum='aktif') aktif,
+$oz = $pdoIt->prepare("SELECT COUNT(*) adet, COALESCE(SUM(" . it_mali_tl() . "),0) mali, SUM(durum='aktif') aktif,
                               COUNT(DISTINCT CASE WHEN zimmetli<>'' THEN zimmetli END) kisi FROM it_cihazlar $wsql");
 $oz->execute($par);
 $oz = $oz->fetch() ?: ['adet'=>0,'mali'=>0,'aktif'=>0,'kisi'=>0];
 
-$maliGoster = it_mali_goster();      // garanti + fiyat gösterimi (varsayılan KAPALI)
+$maliGoster = it_mali_goster();      // garanti + fiyat gösterimi (IT_MALI_GOSTER)
 $sirala = ['kod'=>'cihaz_kodu, envanter_no', 'ifs'=>'varlik_kodu, envanter_no', 'no'=>'envanter_no',
            'ad'=>'ad', 'kategori'=>'kategori, ad', 'seri'=>'seri_no, ad', 'durum'=>'durum, ad', 'zimmetli'=>'zimmetli, ad',
-           'lokasyon'=>'lokasyon, ad', 'garanti'=>'garanti_bitis', 'fiyat'=>'fiyat', 'alis'=>'alis_tarihi', 'guncel'=>'updated_at'];
+           'lokasyon'=>'lokasyon, ad', 'garanti'=>'garanti_bitis', 'fiyat'=>it_mali_tl(), 'alis'=>'alis_tarihi', 'guncel'=>'updated_at'];
 $skAnahtar = array_key_exists($_GET['sk'] ?? '', $sirala) ? $_GET['sk'] : 'kod';
 $sk  = $sirala[$skAnahtar];
 $yon = ($_GET['yon'] ?? '') === 'desc' ? 'DESC' : 'ASC';
@@ -83,15 +83,20 @@ if (($_GET['export'] ?? '') === 'xlsx') {
     $xl = new \XlsxWriter('IT Envanter');
     $xl->header(array_merge(
         ['Envanter No','Cihaz Kodu','IFS Seri Nesne No','Kategori','Cihaz','Marka','Model','Seri No','Şasi No','IMEI','Durum','Zimmetli','Departman','Lokasyon','Zimmet Tarihi','Alış Tarihi'],
-        $maliGoster ? ['Garanti Bitiş','Fiyat (TL)'] : [],
-        ['Tedarikçi','Fatura No','IP','MAC','İşletim Sistemi','Özellikler','Lisans Adet','Notlar']));
+        $maliGoster ? ['Garanti Bitiş','Alış Tutarı','Para Birimi','Kur','TL Karşılığı'] : [],
+        ['Tedarikçi','Fatura No','SAS Ref','Alınan Şirket','Transfer Geldiği Birim','Transfer Tarihi','IP','MAC','İşletim Sistemi','Özellikler','Lisans Adet','Notlar']));
     foreach ($st->fetchAll() as $r) {
         $xl->row(array_merge([
             ['v'=>$r['envanter_no']], ['v'=>$r['cihaz_kodu'] ?? ''], ['v'=>$r['varlik_kodu'] ?? ''], ['v'=>it_kategoriAd($r['kategori'])], ['v'=>$r['ad']], ['v'=>$r['marka']], ['v'=>$r['model']],
             ['v'=>$r['seri_no']], ['v'=>$r['sasi_no'] ?? ''], ['v'=>$r['imei'] ?? ''], ['v'=>it_durumAd($r['durum'])], ['v'=>$r['zimmetli']], ['v'=>$r['departman']], ['v'=>$r['lokasyon']],
             ['v'=>$r['zimmet_tarihi'],'t'=>'date'], ['v'=>$r['alis_tarihi'],'t'=>'date'],
-        ], $maliGoster ? [['v'=>$r['garanti_bitis'],'t'=>'date'], ['v'=>(float)$r['fiyat'],'t'=>'number']] : [], [
-            ['v'=>$r['tedarikci']], ['v'=>$r['fatura_no']], ['v'=>$r['ip_adresi']],
+        ], $maliGoster ? [
+            ['v'=>$r['garanti_bitis'],'t'=>'date'], ['v'=>$r['fiyat']!==null?(float)$r['fiyat']:null,'t'=>'number'],
+            ['v'=>$r['para_birimi'] ?? ''], ['v'=>$r['kur']!==null?(float)$r['kur']:null,'t'=>'number'],
+            ['v'=>$r['fiyat_tl']!==null?(float)$r['fiyat_tl']:null,'t'=>'number'],
+        ] : [], [
+            ['v'=>$r['tedarikci']], ['v'=>$r['fatura_no']], ['v'=>$r['sas_ref'] ?? ''], ['v'=>$r['sirket'] ?? ''],
+            ['v'=>$r['transfer_birim'] ?? ''], ['v'=>$r['transfer_tarihi'] ?? '','t'=>'date'], ['v'=>$r['ip_adresi']],
             ['v'=>$r['mac_adresi']], ['v'=>$r['isletim_sistemi']], ['v'=>$r['ozellikler']], ['v'=>$r['lisans_adet'],'t'=>'number'], ['v'=>$r['notlar']],
         ]));
     }
@@ -384,7 +389,7 @@ require_once __DIR__ . '/../includes/header.php';
           <th data-kol="lokasyon" data-kol-ad="Lokasyon"><a href="<?= h($srtUrl('lokasyon')) ?>" class="text-decoration-none text-dark">Lokasyon <?= $srtIk('lokasyon') ?></a></th>
           <?php if ($maliGoster): ?>
           <th data-kol="garanti" data-kol-ad="Garanti"><a href="<?= h($srtUrl('garanti')) ?>" class="text-decoration-none text-dark">Garanti <?= $srtIk('garanti') ?></a></th>
-          <th class="text-end" data-kol="fiyat" data-kol-ad="Fiyat"><a href="<?= h($srtUrl('fiyat')) ?>" class="text-decoration-none text-dark">Fiyat <?= $srtIk('fiyat') ?></a></th>
+          <th class="text-end" data-kol="fiyat" data-kol-ad="Alış Tutarı"><a href="<?= h($srtUrl('fiyat')) ?>" class="text-decoration-none text-dark">Alış Tutarı <?= $srtIk('fiyat') ?></a></th>
           <?php endif; ?>
           <th class="text-center" data-kol="evrak" data-kol-ad="Evrak" title="İmzalı zimmet tutanağı / belge">Evrak</th>
           <th></th>
@@ -432,7 +437,7 @@ require_once __DIR__ . '/../includes/header.php';
             <?php elseif ($gk <= 60): ?><span class="badge bg-warning text-dark"><?= $gk ?> gün</span>
             <?php else: ?><span class="small"><?= format_date($r['garanti_bitis']) ?></span><?php endif; ?>
           </td>
-          <td class="text-end"><?= $r['fiyat'] !== null ? $f2($r['fiyat']) : '—' ?></td>
+          <td class="text-end"><?= h(it_fiyat_yaz($r)) ?></td>
           <?php endif; ?>
           <td class="text-center">
             <?php

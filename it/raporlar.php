@@ -18,7 +18,7 @@ $o = it_ozet($pdoIt);
 
 // Kategori × durum matrisi
 $matris = [];
-foreach ($pdoIt->query("SELECT kategori, durum, COUNT(*) adet, COALESCE(SUM(fiyat),0) mali FROM it_cihazlar GROUP BY kategori, durum") as $r) {
+foreach ($pdoIt->query("SELECT kategori, durum, COUNT(*) adet, COALESCE(SUM(" . it_mali_tl() . "),0) mali FROM it_cihazlar GROUP BY kategori, durum") as $r) {
     $k = $r['kategori'];
     $matris[$k] ??= ['ad'=>it_kategoriAd($k), 'toplam'=>0, 'mali'=>0.0] + array_fill_keys(array_keys(IT_DURUM), 0);
     $matris[$k][$r['durum']] = (int)$r['adet'];
@@ -29,7 +29,7 @@ $matris = array_values($matris);
 
 // Varlık grubu × durum (BT / Ağ / İletişim / Güvenlik / Multimedya / Yazılım / Sarf)
 $grupMatris = [];
-foreach ($pdoIt->query("SELECT kategori, durum, COUNT(*) adet, COALESCE(SUM(fiyat),0) mali FROM it_cihazlar GROUP BY kategori, durum") as $r) {
+foreach ($pdoIt->query("SELECT kategori, durum, COUNT(*) adet, COALESCE(SUM(" . it_mali_tl() . "),0) mali FROM it_cihazlar GROUP BY kategori, durum") as $r) {
     $g = it_grup((string)$r['kategori']);
     $grupMatris[$g] ??= ['ad'=>IT_GRUP[$g][0] ?? $g, 'ikon'=>IT_GRUP[$g][1] ?? 'bi-box', 'kod'=>$g, 'toplam'=>0, 'mali'=>0.0]
                         + array_fill_keys(array_keys(IT_DURUM), 0);
@@ -40,7 +40,7 @@ uasort($grupMatris, fn($a, $b) => $b['toplam'] <=> $a['toplam']);
 
 $kirilim = function (string $sutun) use ($pdoIt): array {
     return $pdoIt->query("SELECT COALESCE(NULLIF($sutun,''),'(tanımsız)') ad, COUNT(*) adet, SUM(durum='aktif') aktif,
-                                 COALESCE(SUM(fiyat),0) mali
+                                 COALESCE(SUM(" . it_mali_tl() . "),0) mali
                           FROM it_cihazlar WHERE " . it_envanterde() . " GROUP BY $sutun ORDER BY adet DESC LIMIT 40")->fetchAll();
 };
 $dep = $kirilim('departman'); $marka = $kirilim('marka');
@@ -50,7 +50,7 @@ try {
     $hepsi = it_lokasyonlar($pdoIt);
     $kokOf = function (int $id) use ($hepsi) { $g = 0; while ($id && isset($hepsi[$id]) && (int)$hepsi[$id]['ust_id'] && $g++ < 10) $id = (int)$hepsi[$id]['ust_id']; return $id; };
     $tmp = [];
-    foreach ($pdoIt->query("SELECT lokasyon_id, COUNT(*) adet, SUM(durum='aktif') aktif, COALESCE(SUM(fiyat),0) mali FROM it_cihazlar WHERE " . it_envanterde() . " GROUP BY lokasyon_id") as $r) {
+    foreach ($pdoIt->query("SELECT lokasyon_id, COUNT(*) adet, SUM(durum='aktif') aktif, COALESCE(SUM(" . it_mali_tl() . "),0) mali FROM it_cihazlar WHERE " . it_envanterde() . " GROUP BY lokasyon_id") as $r) {
         $k = $r['lokasyon_id'] ? $kokOf((int)$r['lokasyon_id']) : 0;
         $ad = $k ? it_lokasyon_etiket($pdoIt, $k) : '(lokasyonsuz)';
         $tmp[$ad] ??= ['ad'=>$ad,'adet'=>0,'aktif'=>0,'mali'=>0.0];
@@ -61,7 +61,7 @@ try {
 // Etap / birim düzeyi (alt lokasyon) kırılımı
 $etap = [];
 try {
-    foreach ($pdoIt->query("SELECT lokasyon_id, COUNT(*) adet, SUM(durum='aktif') aktif, COALESCE(SUM(fiyat),0) mali FROM it_cihazlar WHERE " . it_envanterde() . " AND lokasyon_id IS NOT NULL GROUP BY lokasyon_id ORDER BY adet DESC") as $r)
+    foreach ($pdoIt->query("SELECT lokasyon_id, COUNT(*) adet, SUM(durum='aktif') aktif, COALESCE(SUM(" . it_mali_tl() . "),0) mali FROM it_cihazlar WHERE " . it_envanterde() . " AND lokasyon_id IS NOT NULL GROUP BY lokasyon_id ORDER BY adet DESC") as $r)
         $etap[] = ['ad'=>it_lokasyon_yol($pdoIt, (int)$r['lokasyon_id']), 'adet'=>(int)$r['adet'], 'aktif'=>(int)$r['aktif'], 'mali'=>(float)$r['mali']];
 } catch (Throwable $e) {}
 
@@ -89,10 +89,35 @@ $seri = [];
 for ($i = 11; $i >= 0; $i--) { $ay = date('Y-m', strtotime("-$i month")); $seri[] = ['ay'=>$ay] + array_map('intval', ($aylik[$ay] ?? []) + ['giris'=>0,'zimmet'=>0,'iade'=>0,'sorun'=>0,'hurda'=>0]); }
 
 // En değerli cihazlar
-$maliGoster = it_mali_goster();      // garanti + fiyat gösterimi (varsayılan KAPALI)
+$maliGoster = it_mali_goster();      // garanti + fiyat gösterimi (IT_MALI_GOSTER)
 $degerli = $maliGoster
-    ? $pdoIt->query("SELECT envanter_no, ad, kategori, zimmetli, fiyat FROM it_cihazlar WHERE " . it_envanterde() . " AND fiyat IS NOT NULL ORDER BY fiyat DESC LIMIT 20")->fetchAll()
+    ? $pdoIt->query("SELECT envanter_no, ad, kategori, zimmetli, fiyat, para_birimi, kur, fiyat_tl,
+                             " . it_mali_tl() . " mali_tl
+                      FROM it_cihazlar WHERE " . it_envanterde() . " AND fiyat IS NOT NULL
+                      ORDER BY " . it_mali_tl() . " DESC, fiyat DESC LIMIT 20")->fetchAll()
     : [];
+// PDF/yazdırma çıktısı hazır metni kullanır (JS'te para birimi biçimlemesi tekrarlanmasın)
+foreach ($degerli as &$__d) $__d['fiyat_metin'] = it_fiyat_yaz($__d);
+unset($__d);
+
+// ── Para birimi kırılımı ─────────────────────────────────────────────────────
+// "Neyi hangi parayla aldık" + kaç cihazın TL karşılığı bilinmiyor (kuru girilmemiş döviz alışı
+// mali değere GİRMEZ; bu tablo o boşluğu görünür kılar, aksi halde toplam sessizce eksik kalırdı).
+$paraKirilim = [];
+if ($maliGoster) {
+    foreach ($pdoIt->query("SELECT COALESCE(para_birimi,'TRY') pb, COUNT(*) adet,
+                                   COALESCE(SUM(fiyat),0) tutar,
+                                   COALESCE(SUM(" . it_mali_tl() . "),0) mali,
+                                   SUM(CASE WHEN " . it_mali_tl() . " IS NULL THEN 1 ELSE 0 END) kursuz
+                            FROM it_cihazlar
+                            WHERE " . it_envanterde() . " AND fiyat IS NOT NULL
+                            GROUP BY COALESCE(para_birimi,'TRY') ORDER BY mali DESC") as $r) {
+        $pb = it_para_norm($r['pb']);
+        $paraKirilim[] = ['pb'=>$pb, 'ad'=>IT_PARA[$pb][0] ?? $pb, 'simge'=>IT_PARA[$pb][1] ?? '',
+                          'adet'=>(int)$r['adet'], 'tutar'=>(float)$r['tutar'],
+                          'mali'=>(float)$r['mali'], 'kursuz'=>(int)$r['kursuz']];
+    }
+}
 
 $f0 = fn($n) => number_format((float)$n, 0, ',', '.');
 $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
@@ -177,11 +202,30 @@ $tablo = function (string $baslik, string $ikon, array $l, string $ilk) use ($f0
 </div>
 
 <?php if ($degerli): ?>
+<?php if ($paraKirilim): ?>
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-white"><strong><i class="bi bi-currency-exchange me-1"></i>Para birimine göre alış</strong>
+    <span class="text-muted small ms-2">tutarlar alındığı para biriminde, mali değer TL karşılığıyla</span></div>
+  <div class="table-responsive"><table class="table table-sm mb-0" style="font-size:.84rem">
+    <thead class="table-light"><tr><th>Para Birimi</th><th class="text-end">Cihaz</th><th class="text-end">Alış Tutarı</th><th class="text-end">TL Karşılığı</th><th>Not</th></tr></thead>
+    <tbody>
+    <?php foreach ($paraKirilim as $pk): ?>
+      <tr><td><strong><?= h($pk['pb']) ?></strong> <span class="text-muted"><?= h($pk['ad']) ?></span></td>
+        <td class="text-end"><?= $f0($pk['adet']) ?></td>
+        <td class="text-end"><?= h(it_para_yaz($pk['tutar'], $pk['pb'])) ?></td>
+        <td class="text-end fw-semibold"><?= h(it_para_yaz($pk['mali'], 'TRY')) ?></td>
+        <td class="small text-muted"><?= $pk['kursuz'] ? '<span class="badge bg-warning text-dark">' . (int)$pk['kursuz'] . ' cihazın kuru girilmemiş</span> — TL karşılığı toplama girmedi' : '—' ?></td></tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+</div>
+<?php endif; ?>
+
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-white"><strong><i class="bi bi-gem me-1"></i>En değerli cihazlar</strong></div>
   <div class="table-responsive"><table class="table table-sm table-hover mb-0" style="font-size:.84rem">
-    <thead class="table-light"><tr><th>Envanter No</th><th>Cihaz</th><th>Kategori</th><th>Zimmetli</th><th class="text-end">Fiyat (TL)</th></tr></thead>
-    <tbody><?php foreach ($degerli as $r): ?><tr><td class="font-monospace"><?= h($r['envanter_no']) ?></td><td><?= h($r['ad']) ?></td><td><?= h(it_kategoriAd($r['kategori'])) ?></td><td><?= h($r['zimmetli'] ?: '—') ?></td><td class="text-end"><?= $f2($r['fiyat']) ?></td></tr><?php endforeach; ?></tbody>
+    <thead class="table-light"><tr><th>Envanter No</th><th>Cihaz</th><th>Kategori</th><th>Zimmetli</th><th class="text-end">Alış Tutarı</th></tr></thead>
+    <tbody><?php foreach ($degerli as $r): ?><tr><td class="font-monospace"><?= h($r['envanter_no']) ?></td><td><?= h($r['ad']) ?></td><td><?= h(it_kategoriAd($r['kategori'])) ?></td><td><?= h($r['zimmetli'] ?: '—') ?></td><td class="text-end"><?= h(it_fiyat_yaz($r)) ?></td></tr><?php endforeach; ?></tbody>
   </table></div>
 </div>
 <?php endif; ?>
@@ -197,7 +241,8 @@ const IT = {
     dep: <?= json_encode($dep, JSON_UNESCAPED_UNICODE) ?>, lok: <?= json_encode($lok, JSON_UNESCAPED_UNICODE) ?>, etap: <?= json_encode($etap, JSON_UNESCAPED_UNICODE) ?>, marka: <?= json_encode($marka, JSON_UNESCAPED_UNICODE) ?>,
     mali: <?= $maliGoster ? 'true' : 'false' ?>,
     yas: <?= json_encode(array_map('intval', $yas)) ?>, garanti: <?= json_encode(array_map('intval', $garanti)) ?>,
-    seri: <?= json_encode($seri) ?>, degerli: <?= json_encode($degerli, JSON_UNESCAPED_UNICODE) ?>
+    seri: <?= json_encode($seri) ?>, degerli: <?= json_encode($degerli, JSON_UNESCAPED_UNICODE) ?>,
+    para: <?= json_encode($paraKirilim, JSON_UNESCAPED_UNICODE) ?>
 };
 const f0 = n => Number(n || 0).toLocaleString('tr-TR');
 const f2 = n => Number(n || 0).toLocaleString('tr-TR', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -229,7 +274,10 @@ function itPdf(mode){
         + '<h2>Kategori × Durum</h2>' + tbl(['Kategori', ...IT.durumlar, 'Toplam', ...(IT.mali ? ['Mali (TL)'] : [])],
             IT.matris.map(m => [m.ad, ...Object.keys(IT.durumlar).map(d => f0(m[d])), f0(m.toplam), ...(IT.mali ? [f2(m.mali)] : [])]))
         + kir('Proje / Bina Bazında', IT.lok, 'Proje / Bina') + kir('Etap / Birim Bazında', IT.etap, 'Lokasyon') + kir('Departman Bazında', IT.dep, 'Departman') + kir('Marka Bazında', IT.marka, 'Marka')
-        + (IT.mali && IT.degerli.length ? '<h2>En Değerli Cihazlar</h2>' + tbl(['Envanter No','Cihaz','Zimmetli','Fiyat (TL)'], IT.degerli.map(r => [r.envanter_no, r.ad, r.zimmetli || '—', f2(r.fiyat)])) : '');
+        + (IT.mali && IT.para.length ? '<h2>Para Birimine Göre Alış</h2>'
+            + tbl(['Para Birimi','Cihaz','Alış Tutarı','TL Karşılığı','Kuru girilmemiş'],
+                  IT.para.map(r => [r.pb + ' — ' + r.ad, f0(r.adet), f2(r.tutar) + ' ' + r.simge, f2(r.mali) + ' ₺', r.kursuz ? f0(r.kursuz) : '—'])) : '')
+        + (IT.mali && IT.degerli.length ? '<h2>En Değerli Cihazlar</h2>' + tbl(['Envanter No','Cihaz','Zimmetli','Alış Tutarı','TL Karşılığı'], IT.degerli.map(r => [r.envanter_no, r.ad, r.zimmetli || '—', r.fiyat_metin, f2(r.mali_tl)])) : '');
     ERN_RAPOR.popup({title:'IT ENVANTER RAPORU', body:html, mode:mode, filename:'ERN_IT_Envanter'});
 }
 async function itExcel(){
@@ -250,9 +298,13 @@ async function itExcel(){
     ws = wb.addWorksheet('Aylık Hareket'); ws.columns = [{width:12},{width:10},{width:10},{width:10},{width:16},{width:10}];
     ERN_RAPOR.title(wb, ws, 'AYLIK HAREKET TRENDİ', 6); ERN_RAPOR.hdr(ws.addRow(['Ay','Giriş','Zimmet','İade','Servis / Arıza','Hurda']));
     IT.seri.forEach(s => ws.addRow([ayEt(s.ay), s.giris, s.zimmet, s.iade, s.sorun, s.hurda]));
-    if (IT.degerli.length) { ws = wb.addWorksheet('En Değerli'); ws.columns = [{width:14},{width:36},{width:22},{width:24},{width:16}];
-        ERN_RAPOR.title(wb, ws, 'EN DEĞERLİ CİHAZLAR', 5); ERN_RAPOR.hdr(ws.addRow(['Envanter No','Cihaz','Kategori','Zimmetli','Fiyat (TL)']));
-        IT.degerli.forEach(r => ws.addRow([r.envanter_no, r.ad, r.kategori, r.zimmetli || '', +r.fiyat])); }
+    if (IT.para.length) { ws = wb.addWorksheet('Para Birimi'); ws.columns = [{width:26},{width:12},{width:18},{width:18},{width:20}];
+        ERN_RAPOR.title(wb, ws, 'PARA BİRİMİNE GÖRE ALIŞ', 5);
+        ERN_RAPOR.hdr(ws.addRow(['Para Birimi','Cihaz','Alış Tutarı','TL Karşılığı','Kuru girilmemiş']));
+        IT.para.forEach(r => ws.addRow([r.pb + ' — ' + r.ad, r.adet, +r.tutar, +r.mali, r.kursuz])); }
+    if (IT.degerli.length) { ws = wb.addWorksheet('En Değerli'); ws.columns = [{width:14},{width:36},{width:22},{width:24},{width:14},{width:10},{width:12},{width:16}];
+        ERN_RAPOR.title(wb, ws, 'EN DEĞERLİ CİHAZLAR', 8); ERN_RAPOR.hdr(ws.addRow(['Envanter No','Cihaz','Kategori','Zimmetli','Alış Tutarı','Para Birimi','Kur','TL Karşılığı']));
+        IT.degerli.forEach(r => ws.addRow([r.envanter_no, r.ad, r.kategori, r.zimmetli || '', +r.fiyat, r.para_birimi, +r.kur || '', +r.mali_tl || ''])); }
     await ERN_RAPOR.save(wb, 'ERN_IT_Envanter_' + new Date().toISOString().slice(0,10) + '.xlsx');
 }
 </script>

@@ -50,7 +50,7 @@ $hst = $pdoIt->prepare("SELECT h.*, c.envanter_no, c.ad cihaz_ad FROM it_hareket
                         ORDER BY h.tarih DESC, h.id DESC LIMIT 100");
 $hst->execute([$id, $adSoyad]);
 $gecmis = $hst->fetchAll();
-$mali = array_sum(array_map(fn($c) => (float)($c['fiyat'] ?? 0), $cihazlar));
+$mali = array_sum(array_map('it_mali_deger', $cihazlar));  // TL karşılığı (it_mali_tl ile aynı kural)
 $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
 $pageTitle = $adSoyad . ' — Personel';
 require_once __DIR__ . '/../includes/header.php';
@@ -103,7 +103,7 @@ $bilgi = fn($e, $v) => '<div class="col-sm-6 col-lg-4"><div class="small text-mu
               <td class="font-monospace small text-muted"><?= h(($c['varlik_kodu'] ?? '') !== '' ? $c['varlik_kodu'] : '—') ?></td>
               <td><a href="cihaz_detay.php?id=<?= (int)$c['id'] ?>" class="text-decoration-none"><?= h($c['ad']) ?></a><div class="small text-muted"><?= h(trim(($c['marka'] ?? '') . ' ' . ($c['model'] ?? ''))) ?></div></td>
               <td><?= h(it_kategoriAd($c['kategori'])) ?></td><td class="font-monospace small"><?= h($c['seri_no'] ?: '—') ?></td><td><?= $c['zimmet_tarihi'] ? format_date($c['zimmet_tarihi']) : '—' ?></td>
-              <td><?= it_durumBadge($c['durum']) ?></td><?php if (it_mali_goster()): ?><td class="text-end"><?= $c['fiyat'] !== null ? $f2($c['fiyat']) : '—' ?></td><?php endif; ?>
+              <td><?= it_durumBadge($c['durum']) ?></td><?php if (it_mali_goster()): ?><td class="text-end"><?= $c['fiyat'] !== null ? h(it_para_yaz($c['fiyat'], $c['para_birimi'] ?? 'TRY')) : '—' ?></td><?php endif; ?>
               <td class="text-end"><a href="zimmet_tutanak.php?id=<?= (int)$c['id'] ?>" target="_blank" class="btn btn-sm btn-outline-secondary py-0" title="Tutanak"><i class="bi bi-file-earmark-text"></i></a></td></tr>
         <?php endforeach; ?>
         </tbody></table></div>

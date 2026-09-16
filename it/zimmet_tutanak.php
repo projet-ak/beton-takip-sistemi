@@ -58,7 +58,7 @@ $ilk = $liste[0];
 $departman = $per['birim'] ?? ($ilk['departman'] ?: '');
 $lokasyon  = $per && $per['lokasyon_id'] ? it_lokasyon_yol($pdoIt, (int)$per['lokasyon_id']) : ($ilk['lokasyon_id'] ? it_lokasyon_yol($pdoIt, (int)$ilk['lokasyon_id']) : ($ilk['lokasyon'] ?: ''));
 $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
-$toplam = array_sum(array_map(fn($r) => (float)($r['fiyat'] ?? 0), $liste));
+$toplam = array_sum(array_map('it_mali_deger', $liste));   // TL karşılığı — döviz tutarları toplanamaz
 $teslimEden = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ?? '';
 $maliGoster = it_mali_goster();      // "Değer (TL)" sütunu (varsayılan KAPALI)
 
@@ -213,7 +213,7 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
         <td><?= h($r['ad']) ?><div style="font-size:10.5px;color:#666"><?= h(it_kategoriAd($r['kategori'])) ?><?= $r['ozellikler'] ? ' · ' . h($r['ozellikler']) : '' ?></div></td>
         <td><?= h(trim(($r['marka'] ?? '') . ' ' . ($r['model'] ?? '')) ?: '—') ?></td>
         <td class="mono"><?= h($r['seri_no'] ?: '—') ?></td>
-        <?php if ($maliGoster): ?><td class="r"><?= $r['fiyat'] !== null ? $f2($r['fiyat']) : '—' ?></td><?php endif; ?>
+        <?php if ($maliGoster): ?><td class="r"><?= $r['fiyat'] !== null ? h(it_para_yaz($r['fiyat'], $r['para_birimi'] ?? 'TRY')) : '—' ?></td><?php endif; ?>
       </tr>
     <?php endforeach; ?>
     </tbody>

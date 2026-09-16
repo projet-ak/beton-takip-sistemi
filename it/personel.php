@@ -94,7 +94,7 @@ $yon = ($_GET['yon'] ?? '') === 'desc' ? 'DESC' : 'ASC';
 
 $sql = "SELECT p.*, (SELECT l.ad FROM it_lokasyonlar l WHERE l.id=p.lokasyon_id) lok_ad,
                (SELECT COUNT(*) FROM it_cihazlar c WHERE c.personel_id=p.id AND " . it_envanterde('c') . ") cihaz,
-               (SELECT COALESCE(SUM(c.fiyat),0) FROM it_cihazlar c WHERE c.personel_id=p.id AND " . it_envanterde('c') . ") mali
+               (SELECT COALESCE(SUM(" . it_mali_tl('c') . "),0) FROM it_cihazlar c WHERE c.personel_id=p.id AND " . it_envanterde('c') . ") mali
         FROM it_personel p $wsql ORDER BY {$sirala[$skA]} $yon, p.id";
 $st = $pdoIt->prepare($sql); $st->execute($p);
 $liste = it_personel_suz($st->fetchAll(), $q);

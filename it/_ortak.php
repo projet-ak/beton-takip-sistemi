@@ -42,6 +42,9 @@ const IT_KATEGORI = [
     'access_point' => ['Access Point',        'bi-wifi',        'network'],
     'superbox'     => ['Superbox / Mobil Modem', 'bi-broadcast','network'],
     'ag'           => ['Ağ Cihazı (diğer)',   'bi-router',      'network'],
+    // Güç ve kabinet altyapısı (UPS eskiden 'aksesuar'a düşüyordu — altyapı varlığıdır, aksesuar değil)
+    'ups'          => ['UPS / Kesintisiz Güç','bi-battery-charging','ag'],
+    'kabinet'      => ['Kabinet / Rack',      'bi-server',      'ag'],
     // İletişim
     'ip_telefon'   => ['IP Telefon',          'bi-telephone-inbound', 'iletisim'],
     'santral'      => ['Santral',             'bi-pc-horizontal','iletisim'],
@@ -82,6 +85,8 @@ const IT_EK_ALAN = [
     'disk'              => ['Disk / HDD bilgisi',      ['bilgisayar','laptop','sunucu','nvr'], 'text', 'NVMe 512 GB'],
     'anakart'           => ['Anakart',                 ['bilgisayar','laptop','sunucu'], 'text', ''],
     'ekran_boyutu'      => ['Ekran Boyutu',            ['monitor','tv','laptop','tablet','projeksiyon'], 'text', '14"'],
+    'cozunurluk'        => ['Ekran Çözünürlüğü',      ['monitor','tv','laptop','tablet','projeksiyon'], 'text', '1920*1080'],
+    'disk_seri'         => ['Disk Seri No',            ['bilgisayar','laptop','sunucu','nvr'], 'text', ''],
     'kiralik_firma'     => ['Kiralanan Firma',         ['bilgisayar','laptop','monitor','yazici','sunucu','telefon','tablet','tv','ag','switch','firewall','superbox','diger'], 'text', 'cihaz kiralıksa kiralandığı firma'],
     'firmware'          => ['Firmware Sürümü',      ['firewall','switch','access_point','nvr','kamera','kartli_gecis','turnike','santral'], 'text', ''],
     'lisans_durumu'     => ['Lisans Durumu',        ['firewall','yazilim','santral','nvr'], 'text', 'ör. UTM lisansı 2027-05-01\'e kadar'],
@@ -120,7 +125,7 @@ function it_kategori_agaci(): array
 function it_ozellik_ozet(array $r): string
 {
     $p = [];
-    foreach (['islemci', 'ram', 'ekran_karti', 'disk', 'ekran_boyutu', 'kapasite'] as $k) {
+    foreach (['islemci', 'ram', 'ekran_karti', 'disk', 'ekran_boyutu', 'cozunurluk', 'kapasite'] as $k) {
         $v = trim((string)($r[$k] ?? ''));
         if ($v !== '') $p[] = $v;
     }
@@ -433,7 +438,7 @@ function it_ozet(PDO $pdo): array
                 SUM(durum='aktif') aktif, SUM(durum='depoda') depoda, SUM(durum='transfer') transfer, SUM(durum='serviste') serviste,
                 SUM(durum='arizali') arizali, SUM(durum='hurda') hurda,
                 SUM(durum='kayip') kayip, SUM(durum='hibe') hibe,
-                COALESCE(SUM(CASE WHEN " . it_envanterde() . " THEN fiyat END),0) mali,
+                COALESCE(SUM(CASE WHEN " . it_envanterde() . " THEN " . it_mali_tl() . " END),0) mali,
                 SUM(" . it_envanterde() . " AND garanti_bitis BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 60 DAY)) garantiBitiyor,
                 SUM(" . it_envanterde() . " AND garanti_bitis < CURDATE()) garantiBitti,
                 COUNT(DISTINCT CASE WHEN durum='aktif' AND zimmetli<>'' THEN zimmetli END) zimmetliKisi,
@@ -769,13 +774,134 @@ function it_transfer_gunleri(PDO $pdo, array $cihazIdler): array
 }
 
 /**
+ * **Para birimleri** — anahtar => [ad, simge, ondalık].
+ * Cihaz `fiyat` alanı bu birimlerden birindedir; TL karşılığı `fiyat_tl`'de saklanır.
+ * ⚠ Yeni birim eklemek için yalnız buraya satır eklemek yeterlidir (form, içe aktarma
+ * ve raporlar listeyi buradan okur).
+ */
+const IT_PARA = [
+    'TRY' => ['Türk Lirası', '₺',   2],
+    'USD' => ['ABD Doları',  '$',   2],
+    'EUR' => ['Euro',        '€',   2],
+    'GBP' => ['İngiliz Sterlini', '£', 2],
+];
+
+/** Serbest metni geçerli bir para birimi anahtarına çevirir (bilinmiyorsa TRY). */
+function it_para_norm(?string $p): string
+{
+    $p = strtoupper(trim((string)$p));
+    if (isset(IT_PARA[$p])) return $p;
+    return match (true) {
+        str_contains($p, '$') || str_contains($p, 'USD') || str_contains($p, 'DOLAR') => 'USD',
+        str_contains($p, '€') || str_contains($p, 'EUR') || str_contains($p, 'AVRO')  => 'EUR',
+        str_contains($p, '£') || str_contains($p, 'GBP') || str_contains($p, 'STERLIN') => 'GBP',
+        default => 'TRY',
+    };
+}
+
+/**
+ * **Kur değerini ayrıştırır** — kur asla binlik basamağa çıkmaz, bu yüzden noktası HER ZAMAN
+ * ondalıktır. ⚠ Genel sayı okuyucu (`it_sayi`) "8.171"i Türkçe binlik ayracı sayıp **8171**
+ * yapıyordu: kur 1000 kat şişince TL karşılığı da şişiyordu. Aynı tuzak akaryakıt modülünde
+ * `ak_sayi` / `ak_sayi_form` ayrımına yol açmıştı. Virgül varsa nokta binliktir ("8.171,25").
+ */
+function it_kur($s): ?float
+{
+    if (is_numeric($s)) return (float)$s;
+    $s = trim(str_replace(' ', '', (string)$s));
+    if ($s === '') return null;
+    if (str_contains($s, ',')) $s = str_replace(',', '.', str_replace('.', '', $s));
+    return is_numeric($s) ? (float)$s : null;
+}
+
+/**
+ * **Alış tutarını çözümler**: (fiyat, para birimi, kur, TL tutarı) dörtlüsünden tutarlı bir
+ * künye üretir. Kaynak dosyalarda üçü de eksiksiz gelmez — eksik olan türetilir:
+ *   • para birimi TRY  → kur 1, TL karşılığı = fiyat
+ *   • fiyat + kur      → TL karşılığı = fiyat × kur
+ *   • fiyat + TL tutarı→ kur = TL ÷ fiyat   (Zekeriyaköy dosyasında Kur sütunu çoğu satırda boş)
+ *   • yalnız TL tutarı → para birimi TRY sayılır
+ * Dönen dizi doğrudan `it_cihazlar` kolon adlarını taşır: fiyat · para_birimi · kur · fiyat_tl.
+ */
+function it_fiyat_coz($fiyat, ?string $para = null, $kur = null, $tlTutar = null): array
+{
+    $f  = is_string($fiyat)  ? it_sayi($fiyat)  : (is_numeric($fiyat)  ? (float)$fiyat  : null);
+    $k  = it_kur($kur);                           // ⚠ kurun noktası ondalıktır, binlik DEĞİL
+    $tl = is_string($tlTutar)? it_sayi($tlTutar): (is_numeric($tlTutar)? (float)$tlTutar: null);
+    if ($f  !== null && $f  <= 0) $f  = null;      // kaynak dosyalarda "boş" 0 olarak gelir
+    if ($k  !== null && $k  <= 0) $k  = null;
+    if ($tl !== null && $tl <= 0) $tl = null;
+
+    $pb = it_para_norm($para);
+    if ($f === null && $tl !== null) { $f = $tl; $pb = 'TRY'; }   // yalnız TL tutarı verilmiş
+    if ($f === null) return ['fiyat' => null, 'para_birimi' => $pb, 'kur' => null, 'fiyat_tl' => null];
+
+    if ($pb === 'TRY')                     { $k = 1.0;  $tl = $f; }
+    elseif ($k !== null)                   { $tl = round($f * $k, 2); }
+    elseif ($tl !== null && $f > 0)        { $k = round($tl / $f, 4); }
+
+    return ['fiyat' => round($f, 2), 'para_birimi' => $pb, 'kur' => $k, 'fiyat_tl' => $tl !== null ? round($tl, 2) : null];
+}
+
+/**
+ * **Mali değer SQL parçası** — toplamlar/sıralamalar bunu kullanır, `fiyat` sütununu DEĞİL.
+ * `fiyat` alındığı para biriminin tutarıdır; farklı birimleri toplamak yanlış olur.
+ * Karşılaştırılabilir değer `fiyat_tl`'dir; eski kayıtlarda (para birimi TRY, fiyat_tl boş)
+ * `fiyat`'a düşülür. TL karşılığı bilinmeyen döviz tutarı toplama GİRMEZ.
+ * $alias JOIN'lerde tablo öneki verir ("c" → c.fiyat_tl).
+ */
+function it_mali_tl(string $alias = ''): string
+{
+    $on = $alias !== '' ? rtrim($alias, '.') . '.' : '';
+    return "COALESCE({$on}fiyat_tl, CASE WHEN {$on}para_birimi = 'TRY' THEN {$on}fiyat END)";
+}
+
+/**
+ * Bir cihaz satırının **karşılaştırılabilir TL değeri** (PHP tarafı karşılığı `it_mali_tl()`).
+ * Toplamlarda `fiyat` DEĞİL bu kullanılır — farklı para birimlerindeki tutarlar toplanamaz.
+ * TL karşılığı bilinmeyen döviz alışı 0 sayılır (toplamı şişirmesin).
+ */
+function it_mali_deger(array $r): float
+{
+    if (($r['fiyat_tl'] ?? null) !== null && $r['fiyat_tl'] !== '') return (float)$r['fiyat_tl'];
+    if (it_para_norm($r['para_birimi'] ?? 'TRY') === 'TRY') return (float)($r['fiyat'] ?? 0);
+    return 0.0;
+}
+
+/** Tutarı para birimiyle yazar: "1.040,76 $". */
+function it_para_yaz($tutar, ?string $para = 'TRY'): string
+{
+    if ($tutar === null || $tutar === '') return '—';
+    $p = it_para_norm($para);
+    return number_format((float)$tutar, IT_PARA[$p][2], ',', '.') . ' ' . IT_PARA[$p][1];
+}
+
+/**
+ * Cihazın alış künyesi tek satırda: "1.040,76 $ · kur 7,6708 · 7.983,46 ₺".
+ * Para birimi TL ise yalnız tutar yazılır (kur 1, tekrar etmeye gerek yok).
+ */
+function it_fiyat_yaz(array $r): string
+{
+    $f = $r['fiyat'] ?? null;
+    if ($f === null || $f === '') return '—';
+    $p = it_para_norm($r['para_birimi'] ?? 'TRY');
+    $s = it_para_yaz($f, $p);
+    if ($p === 'TRY') return $s;
+    if (($r['kur'] ?? null) > 0) $s .= ' · kur ' . number_format((float)$r['kur'], 4, ',', '.');
+    if (($r['fiyat_tl'] ?? null) > 0) $s .= ' · ' . it_para_yaz($r['fiyat_tl'], 'TRY');
+    return $s;
+}
+
+/**
  * Garanti / fiyat (mali) bilgisi gösterilsin mi?
- * Kurumsal envanterde bu iki alan çoğu cihazda boş ve mali veri paylaşıma açık olmamalı —
- * varsayılan GİZLİ. `config.php`'de `define('IT_MALI_GOSTER', true);` ile geri açılır.
+ * Alış fiyatı/kur künyesi envanterin bir parçası olduğundan varsayılan AÇIK.
+ * Mali veriyi gizlemek isteyen `config.php`'ye `define('IT_MALI_GOSTER', false);` yazar —
+ * o zaman fiyat/kur/garanti alanları hiçbir ekranda, Excel'de ve PDF'te görünmez
+ * (form mevcut değerleri gizli alanda korur, kaydetmek veriyi SİLMEZ).
  */
 function it_mali_goster(): bool
 {
-    return defined('IT_MALI_GOSTER') ? (bool)IT_MALI_GOSTER : false;
+    return defined('IT_MALI_GOSTER') ? (bool)IT_MALI_GOSTER : true;
 }
 
 /** Çoklu $_FILES dizisini tek tek dosya dizilerine ayırır. */
@@ -1002,6 +1128,8 @@ function it_ek_alan_semasi_kur(PDO $pdo): void
         'disk'              => 'VARCHAR(160) NULL',
         'anakart'           => 'VARCHAR(160) NULL',
         'ekran_boyutu'      => 'VARCHAR(40) NULL',
+        'cozunurluk'        => 'VARCHAR(40) NULL',
+        'disk_seri'         => 'VARCHAR(80) NULL',
         'kiralik_firma'     => 'VARCHAR(120) NULL',
         'dahili_no'         => 'VARCHAR(20) NULL',
         'telefon_no'        => 'VARCHAR(40) NULL',
@@ -1015,6 +1143,16 @@ function it_ek_alan_semasi_kur(PDO $pdo): void
         'kapasite'          => 'VARCHAR(80) NULL',
         'kullanim_amaci'    => 'VARCHAR(150) NULL',
         'adet'              => 'INT NULL',
+        // ── ALIŞ / MALİ KÜNYE ────────────────────────────────────────────────────────
+        // ⚠ `fiyat` artık **alındığı para biriminin** tutarıdır (eskiden birimsizdi, TL sanılıyordu).
+        // Karşılaştırılabilir tek sayı `fiyat_tl`'dir: mali değer toplamları HEP bunun üzerinden alınır —
+        // farklı para birimlerindeki tutarları toplamak yanlış sonuç verir.
+        'para_birimi'       => "VARCHAR(3) NOT NULL DEFAULT 'TRY'",
+        'kur'               => 'DECIMAL(12,4) NULL',   // alış günündeki kur (TL karşılığı = fiyat × kur)
+        'fiyat_tl'          => 'DECIMAL(14,2) NULL',   // alış günündeki TL karşılığı (türetilir, saklanır)
+        'sas_ref'           => 'VARCHAR(40) NULL',     // satın alma talep/sipariş referansı (ERP)
+        'transfer_birim'    => 'VARCHAR(120) NULL',    // cihazın geldiği birim/proje (envantere giriş kaynağı)
+        'transfer_tarihi'   => 'DATE NULL',
     ];
     foreach ($kolonlar as $kol => $tip) {
         try { $pdo->query("SELECT $kol FROM it_cihazlar LIMIT 1"); }

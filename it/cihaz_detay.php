@@ -195,7 +195,7 @@ $zincir  = it_zimmet_donemleri($pdoIt, $id, (string)($c['zimmetli'] ?? ''));
 $donemler = $zincir['donemler'];
 $faturaBelge = array_values(array_filter($belgeler, fn($b) => ($b['tur'] ?? '') === 'fatura'));
 $gk = it_garanti_kalan($c['garanti_bitis']);
-$maliGoster = it_mali_goster();      // garanti + fiyat gösterimi (varsayılan KAPALI)
+$maliGoster = it_mali_goster();      // garanti + fiyat gösterimi (IT_MALI_GOSTER)
 
 // Aynı kişinin diğer cihazları (zimmet tutanağında bir arada çıkar)
 $digerleri = [];
@@ -253,9 +253,20 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
             <?= $bilgi('Zimmet Tarihi', $c['zimmet_tarihi'] ? format_date($c['zimmet_tarihi']) : null) ?>
             <?= $bilgi('Alış Tarihi', $c['alis_tarihi'] ? format_date($c['alis_tarihi']) : null) ?>
             <?= $maliGoster ? $bilgi('Garanti Bitiş', $c['garanti_bitis'] ? format_date($c['garanti_bitis']) . ($gk !== null ? ($gk < 0 ? ' (bitti)' : ' (' . $gk . ' gün)') : '') : null) : '' ?>
-            <?= $maliGoster ? $bilgi('Fiyat', $c['fiyat'] !== null ? $f2($c['fiyat']) . ' TL' : null) : '' ?>
+            <?php if ($maliGoster): ?>
+              <?= $bilgi('Alış Tutarı', $c['fiyat'] !== null ? it_para_yaz($c['fiyat'], $c['para_birimi'] ?? 'TRY') : null) ?>
+              <?php /* Döviz alışında kur ve TL karşılığı ayrı satırlarda — TL alışta tekrar olurdu */ ?>
+              <?php if (it_para_norm($c['para_birimi'] ?? 'TRY') !== 'TRY'): ?>
+                <?= $bilgi('Kur (alış günü)', $c['kur'] !== null ? number_format((float)$c['kur'], 4, ',', '.') : null) ?>
+                <?= $bilgi('TL Karşılığı', $c['fiyat_tl'] !== null ? it_para_yaz($c['fiyat_tl'], 'TRY') : 'kur girilmemiş') ?>
+              <?php endif; ?>
+            <?php endif; ?>
             <?= $bilgi('Tedarikçi', $c['tedarikci']) ?>
             <?= $bilgi('Fatura No', $c['fatura_no']) ?>
+            <?= $bilgi('SAS Ref', $c['sas_ref'] ?? null) ?>
+            <?= $bilgi('Alınan Şirket', $c['sirket'] ?? null) ?>
+            <?= $bilgi('Transfer Geldiği Birim', $c['transfer_birim'] ?? null) ?>
+            <?= $bilgi('Transfer Tarihi', !empty($c['transfer_tarihi']) ? format_date($c['transfer_tarihi']) : null) ?>
             <?php if ($c['kategori'] === 'yazilim'): ?>
             <?= $bilgi('Lisans Anahtarı', $c['lisans_anahtari'], true) ?>
             <?= $bilgi('Lisans Adedi', $c['lisans_adet']) ?>
