@@ -14,6 +14,26 @@ require_once __DIR__ . '/_ortak.php';
 
 it_semasi_kur($pdoIt);
 
+/* ── "Listede yoksa oluştur" ucu (marka) ──────────────────────────────────────
+   Marka artık serbest METİN değil LİSTEDEN seçilir; sahada olmayan bir marka çıkarsa
+   kullanıcı formdan ayrılmadan ekleyebilsin diye burada açılır (Tanımlar ekranına gidip
+   geri dönmek akışı kesiyordu). Mükerrer engeli `it_tanim_ekle` içinde `it_norm` ile.
+   ⚠ POST'tur: `auth.php` CSRF'i merkezî doğrular, istemci token'ı gövdede gönderir. */
+if (($_POST['islem'] ?? '') === 'tanim_ekle') {
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        if (!yetki_var('duzenle') && !yetki_var('giris')) throw new RuntimeException('Tanım ekleme yetkiniz yok.');
+        $tur = (string)($_POST['tur'] ?? '');
+        if (!in_array($tur, ['uretici'], true)) throw new RuntimeException('Bu alan için tanım eklenemez.');
+        $r = it_tanim_ekle($pdoIt, $tur, (string)($_POST['ad'] ?? ''));
+        audit_log($pdoIt, 'it_tanimlar', 0, 'INSERT', null, ['tur' => $tur, 'ad' => $r['ad']], current_user_id());
+        echo json_encode(['ok' => true] + $r, JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        echo json_encode(['ok' => false, 'hata' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
 /* ── Personel arama ucu (zimmet kutusundaki yazarak seçme) ────────────────────
    Süzme it_personel_ara() ile PHP'de yapılır — SQL LIKE'ta Türkçe 'İ' ile 'i' eşleşmediğinden
    "ismail" yazınca "İSMAİL" sessizce düşüyordu; kelime sırası da serbest ("ince fatih").
@@ -186,7 +206,7 @@ require_once __DIR__ . '/../includes/header.php';
 // Öneri listeleri: Tanımlar ekranındaki kayıtlar + cihazlarda geçen mevcut değerler (it_tanim_oneri birleştirir)
 $sec = ['zimmetli' => it_secenekler($pdoIt, 'zimmetli'), 'departman' => it_secenekler($pdoIt, 'departman'),
         'lokasyon' => it_secenekler($pdoIt, 'lokasyon'),
-        'marka' => it_tanim_oneri($pdoIt, 'uretici'), 'model' => it_tanim_oneri($pdoIt, 'model'),
+        'model' => it_tanim_oneri($pdoIt, 'model'),   // marka artık select (it_tanim_options)
         'tedarikci' => it_tanim_oneri($pdoIt, 'tedarikci'), 'sirket' => it_tanim_oneri($pdoIt, 'sirket')];
 $dl = function (string $k) use ($sec) {
     if (empty($sec[$k])) return '';
@@ -250,7 +270,17 @@ if (!empty($v['personel_id'])) {
         <div class="form-text">Zimmetli kişi girilirse durum otomatik "Kullanımda" olur.</div>
       </div>
 
-      <div class="col-md-3"><label class="form-label">Marka</label><input name="marka" list="dl_marka" class="form-control" value="<?= $tv('marka') ?>" maxlength="80"><?= $dl('marka') ?></div>
+      <?php /* Marka LİSTEDEN seçilir (elle yazım "LENOVO"/"Lenovo"/"lenova" gibi üç ayrı marka
+                üretiyordu). Listede olmayan marka, formdan ayrılmadan "+ Yeni" ile eklenir. */ ?>
+      <div class="col-md-3"><label class="form-label">Marka</label>
+        <div class="input-group">
+          <select name="marka" id="marka" class="form-select"><?= it_tanim_options($pdoIt, 'uretici', $v['marka'] ?? '') ?></select>
+          <?php if (can_edit()): ?>
+          <button type="button" class="btn btn-outline-secondary" id="markaEkle" title="Listede olmayan markayı ekle">
+            <i class="bi bi-plus-lg"></i></button>
+          <?php endif; ?>
+        </div>
+        <div class="form-text" id="markaNot">Listeden seçin<?= can_edit() ? '; yoksa <strong>+</strong> ile ekleyin' : '' ?>.</div></div>
       <div class="col-md-4"><label class="form-label">Model</label><input name="model" list="dl_model" class="form-control" value="<?= $tv('model') ?>" maxlength="120"><?= $dl('model') ?></div>
       <div class="col-md-2"><label class="form-label">Seri No</label><input name="seri_no" class="form-control font-monospace" value="<?= $tv('seri_no') ?>" maxlength="120"></div>
       <div class="col-md-3"><label class="form-label">Şirket</label><input name="sirket" list="dl_sirket" class="form-control" value="<?= $tv('sirket') ?>" maxlength="120" placeholder="ERN Holding / ERN Taahhüt…"><?= $dl('sirket') ?></div>
@@ -475,6 +505,39 @@ if (!empty($v['personel_id'])) {
                 + 'Listeden seçin, "Yeni personel" ile ekleyin ya da "Zimmeti kaldır" ile kutuyu boşaltın.');
             ara.focus();
         }
+    });
+})();
+
+/* ── Marka: "listede yoksa oluştur" ───────────────────────────────────────────
+   Sayfanın kendi POST ucuna (islem=tanim_ekle) gider; dönen ad select'e eklenip
+   seçilir — kullanıcı formu terk etmeden devam eder. Mükerrer engeli SUNUCUDA
+   (it_norm ile), "LENOVO" yazılsa da mevcut "Lenovo" kaydı döner. */
+(function () {
+    var dugme = document.getElementById('markaEkle'), sel = document.getElementById('marka'),
+        not = document.getElementById('markaNot');
+    if (!dugme || !sel) return;
+    dugme.addEventListener('click', function () {
+        var ad = (window.prompt('Eklenecek marka adı:', '') || '').trim();
+        if (!ad) return;
+        dugme.disabled = true;
+        var g = new FormData();
+        g.append('islem', 'tanim_ekle'); g.append('tur', 'uretici'); g.append('ad', ad);
+        g.append('csrf', <?= json_encode(csrf_token()) ?>);
+        fetch('cihaz_form.php', { method: 'POST', body: g, headers: { 'X-Requested-With': 'fetch' } })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                dugme.disabled = false;
+                if (!j || !j.ok) { alert(j && j.hata ? j.hata : 'Marka eklenemedi.'); return; }
+                var v = null;
+                for (var i = 0; i < sel.options.length; i++)
+                    if (sel.options[i].value === j.ad) { v = sel.options[i]; break; }
+                if (!v) { v = new Option(j.ad, j.ad); sel.add(v); }
+                sel.value = j.ad;
+                if (not) not.innerHTML = j.yeni
+                    ? '<span class="text-success"><i class="bi bi-check-lg me-1"></i><strong>' + j.ad.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</strong> markası listeye eklendi.</span>'
+                    : '<span class="text-muted">Bu marka listede zaten vardı, seçildi.</span>';
+            })
+            .catch(function () { dugme.disabled = false; alert('Marka eklenemedi (bağlantı hatası).'); });
     });
 })();
 </script>

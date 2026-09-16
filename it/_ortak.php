@@ -1059,6 +1059,59 @@ function it_tanim_oneri(PDO $pdo, string $tur): array
     return $out;
 }
 
+/**
+ * Tanım listesine yeni satır ekler (marka/model/tedarikçi/şirket) — "listede yoksa oluştur" akışı.
+ *
+ * ⚠ Mükerrer engeli `it_norm` ile: "Lenovo" ile "LENOVO" aynı markadır, ikinci kez AÇILMAZ —
+ * mevcut kaydın YAZILDIĞI hâli döner ki cihaz kartında tek biçim kalsın.
+ * Cihazlarda geçen ama tanım tablosunda olmayan bir ad verilirse (Excel'den gelmiş marka)
+ * tanım olarak kaydedilir; böylece liste zamanla sahadaki gerçek markalara oturur.
+ *
+ * @return array{ad:string, yeni:bool}
+ * @throws RuntimeException ad boşsa ya da tür tanınmıyorsa
+ */
+function it_tanim_ekle(PDO $pdo, string $tur, string $ad): array
+{
+    if (!isset(IT_TANIM_TUR[$tur])) throw new RuntimeException('Geçersiz tanım türü.');
+    $ad = trim(preg_replace('/\s+/u', ' ', $ad));
+    if ($ad === '') throw new RuntimeException('Ad boş olamaz.');
+    // Cihaz kartındaki karşılık kolonunu aşmasın (marka VARCHAR(80), model/tedarikçi/şirket 120)
+    $ad = mb_substr($ad, 0, $tur === 'uretici' ? 80 : 120);
+
+    $n = it_norm($ad);
+    foreach (it_tanim_liste($pdo, $tur) as $x)
+        if (it_norm((string)$x['ad']) === $n) return ['ad' => (string)$x['ad'], 'yeni' => false];
+    // Tanım tablosunda yok ama cihazlarda geçiyorsa, cihazdaki YAZIM biçimi esas alınır
+    foreach (it_tanim_oneri($pdo, $tur) as $o)
+        if (it_norm((string)$o) === $n) { $ad = (string)$o; break; }
+
+    it_tanim_semasi_kur($pdo);
+    $pdo->prepare("INSERT INTO it_tanimlar (tur, ad, sira, aktif) VALUES (?,?,0,1)")->execute([$tur, $ad]);
+    return ['ad' => $ad, 'yeni' => true];
+}
+
+/**
+ * Tanım listesinden `<select>` seçenekleri. Kayıtta duran ama listede olmayan değer
+ * (eski/Excel'den gelmiş marka) KAYBOLMASIN diye ayrı bir optgroup'ta en üste eklenir.
+ */
+function it_tanim_options(PDO $pdo, string $tur, ?string $secili, string $bosEtiket = '— seçilmedi —'): string
+{
+    $secili = trim((string)$secili);
+    $liste  = it_tanim_oneri($pdo, $tur);
+    $o = '<option value="">' . htmlspecialchars($bosEtiket) . '</option>';
+    $bulundu = false;
+    foreach ($liste as $ad) if (it_norm((string)$ad) === it_norm($secili)) { $bulundu = true; break; }
+    if ($secili !== '' && !$bulundu) {
+        $o .= '<optgroup label="kayıtta duran (listede yok)"><option value="' . htmlspecialchars($secili)
+            . '" selected>' . htmlspecialchars($secili) . '</option></optgroup>';
+    }
+    foreach ($liste as $ad) {
+        $s = it_norm((string)$ad) === it_norm($secili) ? ' selected' : '';
+        $o .= '<option value="' . htmlspecialchars((string)$ad) . '"' . $s . '>' . htmlspecialchars((string)$ad) . '</option>';
+    }
+    return $o;
+}
+
 /** Lokasyon + tüm alt lokasyon id'leri (filtrelerde "proje seçilince etapları da kapsa"). */
 function it_lokasyon_altlar(PDO $pdo, int $id): array
 {

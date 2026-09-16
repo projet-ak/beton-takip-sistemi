@@ -714,6 +714,32 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   kutu dolu açılıyor; zimmet kaldırma `personel_id`+`zimmetli`+`zimmet_tarihi`'ni birlikte temizliyor,
   eski metin kaydı korunuyor; atamada durum `aktif` + zimmet tarihi bugüne düşüyor; Playwright'ta ok tuşu
   seçimi, otomatik departman, temizleme, boş gönderim engeli ve popup dönüşü JS hatasız çalışıyor.
+  **MARKA ARTIK LİSTEDEN SEÇİLİR (2026-09-16, kullanıcı: "marka listesinden seçilsin elle giriş
+  olmasın, marka yoksa oluşturalım")** — `cihaz_form.php`'de Marka serbest METİN + datalist'ti;
+  datalist yalnız ÖNERİ olduğundan kullanıcı istediğini yazabiliyordu ve aynı üretici
+  "LENOVO" / "Lenovo" / "lenova" diye ÜÇ ayrı marka olarak sayılıyordu (raporlardaki marka
+  kırılımı bölünüyordu).
+  • Alan **`<select>`** oldu: **`it_tanim_options($pdo,'uretici',$secili)`** (`_ortak.php`) —
+  seçenekler `it_tanim_oneri` ile **`it_tanimlar` (tur=uretici) + cihazlarda geçen markalar**
+  birleşiminden gelir, `it_norm` ile tekilleşir. ⚠ Kayıtta duran ama listede olmayan bir değer
+  (çok eski/elle bozulmuş kayıt) **KAYBOLMAZ**: en üste *"kayıtta duran (listede yok)"* optgroup'u
+  olarak seçili hâlde eklenir — select'e geçmek veri silmemeli.
+  • **"+" düğmesi = listede yoksa oluştur** (`can_edit()`): `prompt` ile ad alınır, sayfanın kendi
+  POST ucuna (`islem=tanim_ekle`, CSRF token gövdede) gider, dönen ad select'e eklenip **seçilir** —
+  kullanıcı formdan ayrılmadan devam eder (Tanımlar ekranına gidip geri dönmek akışı kesiyordu).
+  • Çekirdek **`it_tanim_ekle($pdo,$tur,$ad)`**: boşluklar sadeleşir, ad uzunluğu cihaz kolonuna göre
+  kırpılır (marka VARCHAR(80)), **mükerrer engeli `it_norm` ile** — "HUAWEİ TECHNOLOGIES" yazılsa da
+  mevcut "huawei technologies" kaydı döner (`yeni:false`) ve cihaz kartında tek yazım kalır. Tanım
+  tablosunda yok ama CİHAZLARDA geçen bir ad verilirse **cihazdaki yazım biçimi esas alınır**
+  ("acer" → "ACER") ve tanım olarak kaydedilir → liste zamanla sahadaki gerçek markalara oturur.
+  ⚠ Uç yalnız `uretici` türünü kabul eder (beyaz liste); diğer tanımlar Tanımlar ekranından yönetilir.
+  • Model / Tedarikçi / Şirket **serbest metin + datalist KALDI** (kullanıcı yalnız markayı istedi);
+  aynı desen gerekirse `it_tanim_options` + uçtaki beyaz listeye tür eklemek yeterli.
+  Test (itsm): yeni marka eklendi · farklı yazımla tekrar → `yeni:false` + mevcut ad · cihazlarda olan
+  "acer" → "ACER" olarak tanımlandı · boş ad ve izinsiz tür reddedildi · düzenlemede kayıtlı marka
+  seçili geliyor · listede olmayan değer optgroup'ta korunuyor · seçilen marka kayda yazılıyor
+  (Dell → ACER); Playwright'ta prompt → fetch gövdesi (csrf dahil) → select'e ekleme + seçme +
+  bilgi satırı, boş girişte istek atılmıyor, JS hatası yok; 8 IT sayfası uyarısız render oluyor.
   **PERSONEL ARAMA + BÜYÜK HARF (2026-09-11, kullanıcı isteği)** — iki şikâyet:
   "personel adı ve soyadı yazıldığı zaman kayıt bulunamıyor" + "kayıtların hepsi büyük harf olsun".
   • ⚠⚠ **Ad SOYAD birlikte yazılınca HİÇ sonuç çıkmıyordu**: `personel.php` araması
