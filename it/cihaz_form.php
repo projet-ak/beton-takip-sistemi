@@ -14,6 +14,35 @@ require_once __DIR__ . '/_ortak.php';
 
 it_semasi_kur($pdoIt);
 
+/* ── Personel arama ucu (zimmet kutusundaki yazarak seçme) ────────────────────
+   Süzme it_personel_ara() ile PHP'de yapılır — SQL LIKE'ta Türkçe 'İ' ile 'i' eşleşmediğinden
+   "ismail" yazınca "İSMAİL" sessizce düşüyordu; kelime sırası da serbest ("ince fatih").
+   Kişi başına cihaz sayısı TEK sorguyla toplanır (satır satır sayılsa 25 kişi = 25 sorgu). */
+if (isset($_GET['personel_ara'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $sayac = [];
+    try {
+        foreach ($pdoIt->query("SELECT personel_id, COUNT(*) n FROM it_cihazlar
+                                WHERE personel_id IS NOT NULL AND " . it_envanterde() . " GROUP BY personel_id") as $r)
+            $sayac[(int)$r['personel_id']] = (int)$r['n'];
+    } catch (Throwable $e) {}
+    $out = [];
+    foreach (it_personel_ara($pdoIt, (string)$_GET['personel_ara'], 25) as $p) {
+        $out[] = [
+            'id'     => (int)$p['id'],
+            'ad'     => it_personel_ad($p),
+            'sicil'  => (string)($p['sicil_no'] ?? ''),
+            'unvan'  => (string)($p['unvan'] ?? ''),
+            'birim'  => (string)($p['birim'] ?? ''),
+            'lok_id' => (int)($p['lokasyon_id'] ?? 0),
+            'lok'    => $p['lokasyon_id'] ? it_lokasyon_etiket($pdoIt, (int)$p['lokasyon_id']) : '',
+            'cihaz'  => $sayac[(int)$p['id']] ?? 0,
+        ];
+    }
+    echo json_encode($out, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 $id = isset($_GET['id']) && ctype_digit($_GET['id']) ? (int)$_GET['id'] : (int)($_POST['id'] ?? 0);
 $c  = null;
 if ($id) {
@@ -92,6 +121,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Serbest "Özellikler" metni boşsa donanım künyesinden özet üretilir (liste/Excel/tutanak için)
     if (!$y['ozellikler']) { $ozet = it_ozellik_ozet($y); if ($ozet !== '') $y['ozellikler'] = $ozet; }
     it_cihaz_bag_esitle($pdoIt, $y);   // personel seçildiyse zimmetli/departman, lokasyon seçildiyse yol metni dolar
+    // ⚠ "Zimmeti kaldır" ile kişi çıkarıldıysa ESKİ AD METNİ de silinmeli — gizli `zimmetli` alanı
+    // eski değeri taşıdığı için cihaz kimsede değilken listede hâlâ o kişide görünüyordu.
+    // Kişi kartına hiç bağlanmamış ESKİ kayıtların metnine dokunulmaz (personel_id zaten yoktu).
+    if (empty($y['personel_id']) && !empty($c['personel_id'])) { $y['zimmetli'] = null; $y['departman'] = $y['departman'] ?: null; }
     // Zimmetli kişi doluysa durum otomatik "kullanımda", boşsa "kullanımda" olamaz
     if ($y['zimmetli'] && in_array($y['durum'], ['depoda'], true)) $y['durum'] = 'aktif';
     if (!$y['zimmetli'] && $y['durum'] === 'aktif' && $y['kategori'] !== 'yazilim') $y['durum'] = 'depoda';   // lisans kişisiz de kullanımda olabilir
@@ -162,6 +195,22 @@ $dl = function (string $k) use ($sec) {
     return $o . '</datalist>';
 };
 $tv = fn($k) => h($v[$k] ?? '');
+
+// Zimmet kutusu açılışta DOLU gelsin: seçili kişinin künyesi (düzenleme ya da hatalı POST sonrası)
+$zKisi = null;
+if (!empty($v['personel_id'])) {
+    $__p = it_personel_bul($pdoIt, (int)$v['personel_id']);
+    if ($__p) $zKisi = [
+        'id'     => (int)$__p['id'],
+        'ad'     => it_personel_ad($__p),
+        'sicil'  => (string)($__p['sicil_no'] ?? ''),
+        'unvan'  => (string)($__p['unvan'] ?? ''),
+        'birim'  => (string)($__p['birim'] ?? ''),
+        'lok_id' => (int)($__p['lokasyon_id'] ?? 0),
+        'lok'    => $__p['lokasyon_id'] ? it_lokasyon_etiket($pdoIt, (int)$__p['lokasyon_id']) : '',
+        'ayrildi'=> !empty($__p['isten_cikis']),
+    ];
+}
 ?>
 <div class="d-flex align-items-center gap-2 mb-3">
     <a href="<?= $duzenleme ? 'cihaz_detay.php?id=' . $id : 'cihazlar.php' ?>" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i></a>
@@ -193,7 +242,7 @@ $tv = fn($k) => h($v[$k] ?? '');
       </div>
       <div class="col-md-4">
         <label class="form-label">Durum</label>
-        <select name="durum" class="form-select">
+        <select name="durum" id="durum" class="form-select">
           <?php foreach (IT_DURUM as $k => [$ad, $r, $ik]): ?>
           <option value="<?= $k ?>" <?= ($v['durum'] ?? '') === $k ? 'selected' : '' ?>><?= h($ad) ?></option>
           <?php endforeach; ?>
@@ -221,9 +270,38 @@ $tv = fn($k) => h($v[$k] ?? '');
         <input name="imei" class="form-control font-monospace" value="<?= $tv('imei') ?>" maxlength="32" placeholder="356938035643809"></div>
 
       <div class="col-12"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-person-check me-1"></i>ZİMMET</div></div>
-      <div class="col-md-4"><label class="form-label">Zimmetli Personel</label>
-        <select name="personel_id" id="personel_id" class="form-select"><?= it_personel_options($pdoIt, (int)($v['personel_id'] ?? 0), !empty($v['personel_id'])) ?></select>
-        <div class="form-text">Listede yoksa önce <a href="personel_form.php" target="_blank">personel ekleyin</a>.<?php if (!empty($v['zimmetli']) && empty($v['personel_id'])): ?> Eski kayıt: <strong><?= $tv('zimmetli') ?></strong> (kişi kartına bağlı değil).<?php endif; ?></div>
+      <?php /* ⚠ ARANABİLİR PERSONEL SEÇİCİ — 180 kişilik açılır menüde doğru kişiyi bulmak zordu.
+                Cihaz kartındaki (cihaz_detay.php) seçiciyle AYNI desen: süzme sayfanın kendi JSON ucunda
+                (?personel_ara=) it_norm ile yapılır, SQL LIKE ile DEĞİL — Türkçe 'İ' LIKE'ta 'i' ile
+                eşleşmiyor ve ad+soyad birlikte yazılınca tek alanda geçmediği için sonuç çıkmıyordu.
+                JS kapalıysa <noscript> klasik select devreye girer. */ ?>
+      <div class="col-md-4" id="kisiKutu"><label class="form-label">Zimmetli Personel</label>
+        <div class="position-relative">
+          <input type="text" id="kisiAra" class="form-control" autocomplete="off"
+                 placeholder="Ad, soyad, sicil ya da birim yazın…"
+                 value="<?= $zKisi ? h($zKisi['ad']) : '' ?>">
+          <input type="hidden" name="personel_id" id="personel_id" value="<?= (int)($v['personel_id'] ?? 0) ?: '' ?>">
+          <div id="kisiListe" class="list-group position-absolute w-100 shadow d-none"
+               style="z-index:1080;max-height:280px;overflow:auto"></div>
+        </div>
+        <div id="kisiSecili" class="small mt-1 <?= $zKisi ? '' : 'd-none' ?>">
+          <?php if ($zKisi): ?>
+            <span class="badge bg-<?= $zKisi['ayrildi'] ? 'danger' : 'success' ?>"><i class="bi bi-person-check me-1"></i><?= h($zKisi['ad']) ?></span>
+            <span class="text-muted"><?= h(implode(' · ', array_filter([$zKisi['sicil'], $zKisi['birim'], $zKisi['lok']]))) ?></span>
+            <?php if ($zKisi['ayrildi']): ?><span class="text-danger">· işten ayrılmış</span><?php endif; ?>
+          <?php endif; ?>
+        </div>
+        <div class="form-text d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <span>Adın bir kısmını yazmanız yeter.</span>
+          <span class="d-flex gap-1">
+            <button type="button" class="btn btn-outline-secondary btn-sm py-0" id="kisiTemizle"><i class="bi bi-x-lg me-1"></i>Zimmeti kaldır</button>
+            <button type="button" class="btn btn-outline-primary btn-sm py-0" id="yeniKisi"><i class="bi bi-person-plus me-1"></i>Yeni personel</button>
+          </span>
+        </div>
+        <?php if (!empty($v['zimmetli']) && empty($v['personel_id'])): ?>
+        <div class="form-text text-warning-emphasis">Eski kayıt: <strong><?= $tv('zimmetli') ?></strong> — kişi kartına bağlı değil, yukarıdan seçerek bağlayın.</div>
+        <?php endif; ?>
+        <noscript><select name="personel_id" class="form-select mt-1"><?= it_personel_options($pdoIt, (int)($v['personel_id'] ?? 0), !empty($v['personel_id'])) ?></select></noscript>
         <input type="hidden" name="zimmetli" value="<?= $tv('zimmetli') ?>"></div>
       <div class="col-md-3"><label class="form-label">Departman</label><input name="departman" id="departman" list="dl_departman" class="form-control" value="<?= $tv('departman') ?>" maxlength="80"><?= $dl('departman') ?></div>
       <div class="col-md-3"><label class="form-label">Lokasyon / Proje</label>
@@ -312,13 +390,91 @@ $tv = fn($k) => h($v[$k] ?? '');
         document.querySelectorAll('.ekalan:not([data-kat])').forEach(function (e) { e.classList.toggle('d-none', acik === 0); });
     }
     sel.addEventListener('change', uygula); uygula();
-    // Personel seçilince birim ve lokasyon kişinin kartından dolar
-    var ps = document.getElementById('personel_id');
-    ps.addEventListener('change', function () {
-        var o = ps.options[ps.selectedIndex]; if (!o || !o.value) return;
-        var dep = document.getElementById('departman'), lok = document.getElementById('lokasyon_id');
-        if (o.dataset.birim && !dep.value) dep.value = o.dataset.birim;
-        if (o.dataset.lok && o.dataset.lok !== '0' && !lok.value) lok.value = o.dataset.lok;
+})();
+
+/* ── Aranabilir personel seçici ───────────────────────────────────────────────
+   Sayfanın kendi ucu (?personel_ara=) JSON döndürür; süzme sunucuda it_norm ile yapılır
+   (Türkçe harf duyarsız, kelime sırası serbest). Ok tuşları/Enter/Esc çalışır; seçim gizli
+   personel_id'ye yazılır. Kişi seçilince boş olan departman/lokasyon kartından dolar. */
+(function () {
+    var ara = document.getElementById('kisiAra'), liste = document.getElementById('kisiListe'),
+        gizli = document.getElementById('personel_id'), secili = document.getElementById('kisiSecili'),
+        durum = document.getElementById('durum'), lok = document.getElementById('lokasyon_id'),
+        dep = document.getElementById('departman');
+    if (!ara || !liste || !gizli) return;
+    var veri = [], sec = -1, zaman = null;
+
+    function kapat() { liste.classList.add('d-none'); sec = -1; }
+    function kacir(x) { return String(x == null ? '' : x).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+    function ciz() {
+        if (!veri.length) { liste.innerHTML = '<div class="list-group-item small text-muted">Eşleşen personel yok — <strong>Yeni personel</strong> ile ekleyebilirsiniz.</div>'; liste.classList.remove('d-none'); return; }
+        liste.innerHTML = veri.map(function (p, i) {
+            return '<button type="button" class="list-group-item list-group-item-action py-1' + (i === sec ? ' active' : '') + '" data-i="' + i + '">'
+                 + '<div class="d-flex justify-content-between gap-2"><span class="fw-semibold">' + kacir(p.ad) + '</span>'
+                 + (p.cihaz ? '<span class="badge bg-secondary">' + p.cihaz + ' cihaz</span>' : '') + '</div>'
+                 + '<div class="small text-muted">' + [p.sicil, p.unvan, p.birim, p.lok].filter(Boolean).map(kacir).join(' · ') + '</div></button>';
+        }).join('');
+        liste.classList.remove('d-none');
+    }
+    function getir() {
+        fetch('cihaz_form.php?personel_ara=' + encodeURIComponent(ara.value.trim()), { headers: { 'X-Requested-With': 'fetch' } })
+            .then(function (r) { return r.json(); })
+            .then(function (j) { veri = j || []; sec = -1; ciz(); })
+            .catch(function () { kapat(); });
+    }
+    function secKisi(p) {
+        gizli.value = p.id;
+        ara.value = p.ad;
+        secili.innerHTML = '<span class="badge bg-success"><i class="bi bi-person-check me-1"></i>' + kacir(p.ad) + '</span> '
+            + '<span class="text-muted">' + [p.sicil, p.birim, p.lok].filter(Boolean).map(kacir).join(' · ') + '</span>';
+        secili.classList.remove('d-none');
+        if (dep && !dep.value && p.birim) dep.value = p.birim;
+        if (lok && !lok.value && p.lok_id) lok.value = p.lok_id;
+        // Kişi seçildiyse cihaz kullanımdadır — durum "depoda" kalmasın (kaydetmede de aynı kural var)
+        if (durum && (durum.value === 'depoda' || durum.value === '')) durum.value = 'aktif';
+        kapat();
+    }
+    ara.addEventListener('input', function () { gizli.value = ''; secili.classList.add('d-none'); clearTimeout(zaman); zaman = setTimeout(getir, 180); });
+    ara.addEventListener('focus', getir);
+    ara.addEventListener('keydown', function (e) {
+        if (liste.classList.contains('d-none')) return;
+        if (e.key === 'ArrowDown') { sec = Math.min(sec + 1, veri.length - 1); ciz(); e.preventDefault(); }
+        else if (e.key === 'ArrowUp') { sec = Math.max(sec - 1, 0); ciz(); e.preventDefault(); }
+        else if (e.key === 'Enter' && sec >= 0) { secKisi(veri[sec]); e.preventDefault(); }
+        else if (e.key === 'Escape') kapat();
+    });
+    liste.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-i]'); if (b) secKisi(veri[+b.getAttribute('data-i')]);
+    });
+    document.addEventListener('click', function (e) { if (!e.target.closest('#kisiKutu')) kapat(); });
+
+    // Zimmeti kaldır: kutu boşalır, kayıt "kimsede değil" olur (eski select'teki boş seçeneğin karşılığı)
+    var temizle = document.getElementById('kisiTemizle');
+    if (temizle) temizle.addEventListener('click', function () {
+        gizli.value = ''; ara.value = ''; secili.classList.add('d-none'); kapat(); ara.focus();
+    });
+
+    // Yeni personel → AYRI PENCERE; kaydedince pencere kendini kapatır ve kişiyi buraya bildirir
+    var dugme = document.getElementById('yeniKisi');
+    if (dugme) dugme.addEventListener('click', function () {
+        window.open('personel_form.php?popup=1&ad=' + encodeURIComponent(ara.value.trim()),
+                    'ernYeniPersonel', 'width=940,height=800,scrollbars=yes,resizable=yes');
+    });
+    window.addEventListener('message', function (e) {
+        if (!e.data || e.data.tip !== 'it_personel' || !e.data.kisi) return;
+        secKisi(e.data.kisi);
+        ara.focus();
+    });
+
+    // ⚠ Kutuda ad yazılı ama listeden SEÇİLMEMİŞSE kaydetme — sessizce zimmetsiz kaydedilirdi
+    var form = ara.closest('form');
+    if (form) form.addEventListener('submit', function (e) {
+        if (ara.value.trim() !== '' && !gizli.value) {
+            e.preventDefault();
+            alert('"' + ara.value.trim() + '" için listeden bir personel seçilmedi.\n\n'
+                + 'Listeden seçin, "Yeni personel" ile ekleyin ya da "Zimmeti kaldır" ile kutuyu boşaltın.');
+            ara.focus();
+        }
     });
 })();
 </script>

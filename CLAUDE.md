@@ -665,6 +665,31 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   Test: itsm'de 5 dönemlik el değiştirme kurgusu (zimmet→iade→zimmet→iade→devir) zinciri doğru kurdu,
   imzalı belge doğru döneme bağlandı (#1 yeşil, diğerleri sarı), Playwright ile yazarak seçme + ok tuşları +
   otomatik departman/lokasyon + boş gönderim engeli + popup dönüşü doğrulandı (JS hatası yok).
+  **CİHAZ FORMUNDA ARANABİLİR ZİMMET SEÇİCİSİ (2026-09-16, kullanıcı: "bu kısmı daha kullanışlı yap")** —
+  `cihaz_form.php`'deki *Zimmetli Personel* alanı 180+ kişilik düz bir `<select>`'ti; doğru kişiyi bulmak
+  kaydırarak aramak demekti ve altındaki tek yönlendirme "listede yoksa personel ekleyin" idi.
+  **Cihaz kartındaki (`cihaz_detay.php`) seçicinin AYNISI forma taşındı** — iki ekran aynı davranır,
+  tek yerde düzeltilir:
+  • Sayfanın kendi JSON ucu **`?personel_ara=`** → `it_personel_ara()`; süzme **SQL LIKE ile DEĞİL**
+  PHP'de `it_norm` ile (Türkçe 'İ' LIKE'ta 'i' ile eşleşmiyor: "ismail" → "İSMAİL"), **kelime sırası
+  serbest** ("engin ismail" → "İSMAİL ENGİN"), sicil/unvan/birim üzerinde de arar. Satırda sicil · unvan ·
+  birim · lokasyon + **kişinin kaç cihazı olduğu** (tek GROUP BY sorgusu). Ok tuşları / Enter / Esc.
+  • **Düzenlemede kutu DOLU açılır** (`$zKisi` künyesi: ad + sicil · birim · lokasyon rozeti; kişi işten
+  ayrılmışsa rozet KIRMIZI + "işten ayrılmış" notu).
+  • **"Zimmeti kaldır"** düğmesi = eski select'teki boş seçeneğin karşılığı. ⚠⚠ **Eski sürümde burada
+  veri hatası vardı**: `zimmetli` METİN alanı gizli input'ta taşındığı için kişi çıkarılsa bile ad metni
+  kayıtta kalıyor, cihaz kimsede değilken listede hâlâ o kişide görünüyordu. Artık `personel_id`
+  boşaldığında (ve kayıtta ÖNCEDEN bir personel_id varsa) `zimmetli` de temizlenir —
+  **kişi kartına hiç bağlanmamış ESKİ kayıtların metnine dokunulmaz**.
+  • **"Yeni personel"** ayrı pencerede (`personel_form.php?popup=1&ad=<yazılan>`), `postMessage` ile dönüp
+  kişi seçili hâle gelir. Kişi seçilince boş `departman`/`lokasyon_id` kartından dolar ve **durum `depoda`
+  ise `aktif`e çekilir** (sunucudaki `zimmetli → durum=aktif` kuralının ekrandaki karşılığı).
+  • ⚠ **Kutuda ad yazılı ama listeden seçilmemişse form GÖNDERİLMEZ** (uyarı verir) — aksi halde yazdığını
+  seçtiğini sanan kullanıcı cihazı sessizce zimmetsiz kaydediyordu. JS kapalıysa `<noscript>` klasik select.
+  Test (itsm): "ismail" · "engin ismail" · sicil "1000209" aramaları doğru kişiyi döndürüyor; düzenlemede
+  kutu dolu açılıyor; zimmet kaldırma `personel_id`+`zimmetli`+`zimmet_tarihi`'ni birlikte temizliyor,
+  eski metin kaydı korunuyor; atamada durum `aktif` + zimmet tarihi bugüne düşüyor; Playwright'ta ok tuşu
+  seçimi, otomatik departman, temizleme, boş gönderim engeli ve popup dönüşü JS hatasız çalışıyor.
   **PERSONEL ARAMA + BÜYÜK HARF (2026-09-11, kullanıcı isteği)** — iki şikâyet:
   "personel adı ve soyadı yazıldığı zaman kayıt bulunamıyor" + "kayıtların hepsi büyük harf olsun".
   • ⚠⚠ **Ad SOYAD birlikte yazılınca HİÇ sonuç çıkmıyordu**: `personel.php` araması
