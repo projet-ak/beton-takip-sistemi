@@ -26,6 +26,9 @@ $raporlar = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['dosya'])) {
     $tarih = preg_match('/^\d{4}-\d{2}-\d{2}$/', $_POST['rapor_tarihi'] ?? '') ? $_POST['rapor_tarihi'] : date('Y-m-d');
     $kisi  = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ?? null;
+    // Kutular formda varsayılan İŞARETLİ; kaldırılırsa eski davranışa döner (bkz. pk_import).
+    $dusenKoru = isset($_POST['veri_koru']);   // tek kutu: satır düşürme + ilerleme geri alma
+    $hesapEkle = isset($_POST['hesap_ekle']);
 
     $f = $_FILES['dosya'];
     $dosyalar = [];
@@ -53,7 +56,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['dosya'])) {
         } else {
             $dt = pk_dosya_tarihi($ad) ?: $tarih;
             try {
-                $rap['sonuc'] = pk_import($pdoPrekast, $x, ['rapor_tarihi'=>$dt, 'dosya'=>$ad, 'kullanici'=>$kisi]);
+                $rap['sonuc'] = pk_import($pdoPrekast, $x, ['rapor_tarihi'=>$dt, 'dosya'=>$ad, 'kullanici'=>$kisi,
+                                                            'dusen_koru'=>$dusenKoru, 'ilerleme_koru'=>$dusenKoru,
+                                                            'hesap_ekle'=>$hesapEkle]);
             } catch (Throwable $e) {
                 $rap['hata'] = $e->getMessage() . ' — bu dosyadan hiçbir değişiklik uygulanmadı.';
             }
@@ -107,6 +112,37 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
                 <?php if ($s['dusen']): ?>
                 <span><span class="badge bg-dark"><?= $f0($s['dusen']) ?></span> çizelgede yok</span>
                 <?php endif; ?>
+                <?php if ($s['hesapEklenen']): ?>
+                <span><span class="badge bg-info text-dark"><?= $f0(count($s['hesapEklenen'])) ?></span> HESAPLAMA'dan eklenen daire</span>
+                <?php endif; ?>
+                <?php if ($s['degistirilen']): ?>
+            <details class="mt-2" open><summary style="cursor:pointer" class="text-danger">
+                <i class="bi bi-arrow-left-right me-1"></i><strong><?= count($s['degistirilen']) ?> işte sistemdeki değer bu dosyayla DEĞİŞTİ</strong>
+                — ikisi de doluydu, sahadan teyit edin</summary>
+                <div class="table-responsive mt-2">
+                <table class="table table-sm table-bordered mb-0" style="font-size:.8rem">
+                    <thead class="table-light"><tr><th>Blok</th><th>Daire</th><th>Sıra</th><th>Alan</th><th class="text-end">Sistemde</th><th class="text-end">Bu dosyada</th></tr></thead>
+                    <tbody>
+                    <?php foreach (array_slice($s['degistirilen'], 0, 80) as $dgs): ?>
+                        <tr><td><?= h($dgs['blok']) ?></td><td><?= h($dgs['daire']) ?></td>
+                            <td><?= (int)$dgs['tekrar'] ?>. iş</td><td><?= h($dgs['alan']) ?></td>
+                            <td class="text-end text-muted"><?= $f2($dgs['eski']) ?></td>
+                            <td class="text-end fw-semibold"><?= $f2($dgs['yeni']) ?></td></tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+                </div>
+                <div class="text-muted mt-1">Excel esas alındığı için dosyadaki değer yazıldı. Aynı dairede birden çok iş
+                    varsa satır sırası kaymış olabilir — eski bir dosya yüklendiyse çizelgenin son hâlini tekrar yükleyin.</div>
+            </details>
+            <?php endif; ?>
+
+            <?php if ($s['korunan']): ?>
+                <span><span class="badge bg-success"><?= $f0(count($s['korunan'])) ?></span> işte sistemdeki veri korundu</span>
+                <?php endif; ?>
+                <?php if ($s['dusenKoru']): ?>
+                <span class="text-muted"><i class="bi bi-shield-check me-1"></i>veri koruma açık</span>
+                <?php endif; ?>
             </div>
             <div class="text-muted mb-2">
                 Çizelge toplamı: <strong><?= $f2($s['toplamMetraj']) ?></strong> m metraj ·
@@ -135,6 +171,8 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
                     (metraj <?= $f2($gr['metraj'][0]) ?> → <?= $f2($gr['metraj'][1]) ?> m ·
                     silikon <?= $f0($gr['silikon'][0]) ?> → <?= $f0($gr['silikon'][1]) ?>).
                     <?php if ($gr['dusen']): ?><strong><?= $f0($gr['dusen']) ?></strong> satır çizelgeden düştü.<?php endif; ?>
+                    <?php if ($s['dusenKoru']): ?><em>Veri koruma açık olduğu için satırlar ve dolu alanlar yerinde bırakıldı;
+                        yukarıdaki toplamlar dosyanın kendi toplamıdır.</em><?php endif; ?>
                 </div>
                 <?php if ($gr['ayni']): ?>
                 <div class="small mt-1">
@@ -144,9 +182,13 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
                 </div>
                 <?php endif; ?>
                 <div class="small mt-1">
-                    <i class="bi bi-shield-check me-1"></i>Hiçbir kayıt silinmedi; düşen satırlar
-                    <a href="isler.php?dosyada=0" class="alert-link">“çizelgeden düşenler”</a> olarak duruyor ve
-                    doğru dosya yüklenince hepsi geri döner.
+                    <i class="bi bi-shield-check me-1"></i>Hiçbir kayıt silinmedi.
+                    <?php if ($s['dusenKoru']): ?>
+                        Dosyada olmayan işler <a href="isler.php" class="alert-link">çizelgede duruyor</a>.
+                    <?php else: ?>
+                        Düşen satırlar <a href="isler.php?dosyada=0" class="alert-link">“çizelgeden düşenler”</a>
+                        olarak duruyor ve doğru dosya yüklenince hepsi geri döner.
+                    <?php endif; ?>
                 </div>
             </div>
             <?php endif; ?>
@@ -167,6 +209,72 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
                     <?php endif; ?>
                 </div>
             <?php endforeach; ?>
+
+            <?php if ($s['korunan']): ?>
+            <details class="mt-2"><summary style="cursor:pointer" class="text-success">
+                <i class="bi bi-shield-check me-1"></i><strong><?= count($s['korunan']) ?> işte sistemdeki veri korundu</strong>
+                — dosyada boş geliyordu, listeyi göster</summary>
+                <div class="table-responsive mt-2">
+                <table class="table table-sm table-bordered mb-0" style="font-size:.8rem">
+                    <thead class="table-light"><tr><th>Blok</th><th>Daire</th><th>Korunan alan</th><th class="text-end">Metraj</th><th class="text-end">Hakkediş</th></tr></thead>
+                    <tbody>
+                    <?php foreach (array_slice($s['korunan'], 0, 80) as $kr): ?>
+                        <tr><td><?= h($kr['blok']) ?></td><td><?= h($kr['daire']) ?></td>
+                            <td><?= h($kr['alan']) ?></td>
+                            <td class="text-end"><?= $f2($kr['metraj']) ?></td>
+                            <td class="text-end"><?= $f2($kr['hakkedis']) ?></td></tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+                </div>
+                <?php if (count($s['korunan']) > 80): ?>
+                <div class="text-muted mt-1">… ve <?= count($s['korunan']) - 80 ?> kayıt daha.</div>
+                <?php endif; ?>
+            </details>
+            <?php endif; ?>
+
+            <?php if ($s['hesapEklenen'] || $s['hesapAtlanan']): ?>
+            <div class="mb-1">
+                <span class="badge bg-info text-dark">HESAPLAMA sayfası</span>
+                <span class="text-muted">
+                    <?= count($s['hesapEklenen']) ?> daire çizelgeye eklendi<?php if ($s['hesapAtlanan']): ?>,
+                    <?= count($s['hesapAtlanan']) ?> satır alınmadı<?php endif; ?>
+                    — kitabın İCMAL'i bu sayfadan hesaplanıyor; iş sayfasında olmayan daireler buradan tamamlandı.
+                </span>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($s['hesapEklenen']): ?>
+            <details class="mt-2"><summary style="cursor:pointer" class="text-info-emphasis">
+                <i class="bi bi-plus-square me-1"></i><strong><?= count($s['hesapEklenen']) ?> daire HESAPLAMA sayfasından eklendi</strong> — listeyi göster</summary>
+                <div class="table-responsive mt-2">
+                <table class="table table-sm table-bordered mb-0" style="font-size:.8rem">
+                    <thead class="table-light"><tr><th>Blok</th><th>Daire</th><th>Kesim</th><th>Silikon</th><th class="text-end">Metraj</th><th class="text-end">Hakkediş</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($s['hesapEklenen'] as $he): ?>
+                        <tr>
+                            <td><?= h($he['blok']) ?></td><td><?= h($he['daire']) ?></td>
+                            <td><?= $he['kesim'] ? '<span class="badge bg-warning text-dark">Yapıldı</span>' : '—' ?></td>
+                            <td><?= $he['silikon'] ? '<span class="badge bg-success">Yapıldı</span>' : '—' ?></td>
+                            <td class="text-end"><?= $he['metraj'] > 0 ? $f2($he['metraj']) : '<span class="text-muted">ölçülmemiş</span>' ?></td>
+                            <td class="text-end"><?= $he['hakkedis'] > 0 ? $f2($he['hakkedis']) : '—' ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+                </div>
+                <div class="text-muted mt-1">Metrajı ölçülmemiş satırlara Excel ortalamayı yazar; o değer gerçek metraj
+                    olmadığı için boş bırakıldı — çizelgeye işlendiğinde dolacak.</div>
+            </details>
+            <?php endif; ?>
+
+            <?php if ($s['hesapAtlanan']): ?>
+            <div class="text-warning-emphasis mt-1 small">
+                <i class="bi bi-exclamation-triangle me-1"></i>HESAPLAMA sayfasından alınmayan satırlar:
+                <?= h(implode(' · ', array_slice($s['hesapAtlanan'], 0, 20))) ?>
+                <?php if (count($s['hesapAtlanan']) > 20): ?> … (<?= count($s['hesapAtlanan']) - 20 ?> satır daha)<?php endif; ?>
+            </div>
+            <?php endif; ?>
 
             <?php if ($s['degisenler']): ?>
             <details class="mt-2"><summary style="cursor:pointer" class="text-success">
@@ -232,6 +340,25 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
         <div class="col-md-3">
             <button class="btn btn-primary btn-sm w-100" id="pkBtn"><i class="bi bi-arrow-repeat me-1"></i>Aktar / Güncelle</button>
         </div>
+        <div class="col-12">
+            <div class="form-check form-check-inline small">
+                <input class="form-check-input" type="checkbox" name="veri_koru" id="pkKoru" checked>
+                <label class="form-check-label" for="pkKoru">
+                    <strong>Sistemdeki veriyi koru</strong>
+                    <span class="text-muted">— dosyada olmayan satır çizelgede kalır ve dosyada BOŞ gelen
+                    kesim/silikon/metraj sistemdeki doluyu ezmez. Çizelge yalnız dolar, boşalmaz.
+                    Kapatılırsa dosya birebir esas alınır (eski bir dosya ilerlemeyi geri alabilir).</span>
+                </label>
+            </div>
+            <div class="form-check form-check-inline small">
+                <input class="form-check-input" type="checkbox" name="hesap_ekle" id="pkHesap" checked>
+                <label class="form-check-label" for="pkHesap">
+                    <strong>HESAPLAMA sayfasındaki eksik daireleri de ekle</strong>
+                    <span class="text-muted">— kitapta İCMAL güncellenip iş sayfası güncellenmediyse o daireler de girer.
+                    Çizelgede hiç geçmeyen bloklar alınmaz.</span>
+                </label>
+            </div>
+        </div>
     </form>
 </div></div>
 
@@ -246,7 +373,10 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
                 <tr><td>Çizelgede var, sistemde var</td><td>Alanlar güncellenir, "son görülme" yenilenir</td></tr>
                 <tr><td>Kesim ilk kez "Yapıldı"</td><td><span class="badge bg-warning text-dark">Kesim tarihi</span> o günün raporuyla damgalanır</td></tr>
                 <tr><td>Silikon ilk kez "Yapıldı"</td><td><span class="badge bg-success">Tamamlandı</span> — silikon tarihi damgalanır, hakkedişe girer</td></tr>
-                <tr><td>Sistemde var, çizelgede yok</td><td><span class="badge bg-dark">Çizelgede yok</span> işaretlenir — <strong>silinmez</strong></td></tr>
+                <tr><td>Sistemde var, çizelgede yok</td><td><strong>Veri koruma açıkken</strong> çizelgede kalır; kapalıysa <span class="badge bg-dark">Çizelgede yok</span> işaretlenir — <strong>hiçbir hâlde silinmez</strong></td></tr>
+                <tr><td>Alan sistemde dolu, dosyada boş</td><td><strong>Veri koruma açıkken</strong> sistemdeki değer korunur (çizelge yalnız dolar, boşalmaz)</td></tr>
+                <tr><td>Alan iki tarafta da dolu ve farklı</td><td>Excel esas alınır, fark <span class="badge bg-danger">değeri değişen iş</span> olarak listelenir</td></tr>
+                <tr><td>HESAPLAMA'da var, iş sayfasında yok</td><td><span class="badge bg-info text-dark">Daire eklenir</span> — çizelgede hiç geçmeyen bloklar alınmaz</td></tr>
                 <tr><td>Blok ve daire boş satır</td><td>Çizelgenin boş şablon satırı sayılır, sessizce atlanır</td></tr>
                 <tr><td>Aynı dosya ikinci kez yüklenir</td><td>Hiçbir şey değişmez — kimlik içerikten üretilir, mükerrer oluşmaz</td></tr>
             </tbody>

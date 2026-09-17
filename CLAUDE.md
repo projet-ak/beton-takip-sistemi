@@ -287,6 +287,29 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   çıkmaz (geri gidiş yok). Test: `pk_geri.php` altı adımlık zincir (05.09 → 08.09 → 16.09 → 17.09 →
   16.09 tekrar → 16.09 tekrar) — bant yalnız 08.09 ve 17.09'da çıktı, "aynı dosya" eşleşmesi 17.09'da
   doğru günü buldu, zincir sonunda sistem 115/964.939,50/düşen 0 ile kapandı.
+  • ⭐ **"A BLOK YOK, BURDAKİ TÜM VERİLER OLSUN" (2026-09-17, kullanıcı)** — dosyanın hiçbir satırı
+  kaybolmayacak, çizelge yalnız DOLACAK. İçe aktarmaya **iki kutu** (ikisi de VARSAYILAN AÇIK):
+  ① **"Sistemdeki veriyi koru"** → `dusen_koru` + `ilerleme_koru`. Dosyada olmayan satır `dosyada=0`
+  YAPILMAZ (çizelgede kalır) **ve dosyada BOŞ gelen kesim/silikon/metraj/hakkediş sistemdeki doluyu
+  EZMEZ** — 08.09 tarihli kitap 16.09'da tamamlanmış 6 işi boşaltıyordu; korunanlar raporda listelenir.
+  ⚠ **İki taraf da DOLU ve farklıysa Excel esas alınır** (sessizce en büyüğü seçmek hiçbir dosyada
+  olmayan kayıt uydurmak olurdu) ama fark **"değeri değişen iş"** tablosunda eski → yeni gösterilir:
+  gerçek veride B/61 2. iş metraj 9,35 → 3,65 · F/6 5,50 → 9,35 · F/37 11,50 → 11,60 (aynı dairedeki
+  ikinci işin satır SIRASI iki dosya arasında kaymış). Kapatılırsa eski davranış birebir döner.
+  ② **"HESAPLAMA sayfasındaki eksik daireleri de ekle"** → yeni okuyucu **`pk_hesaplama()`**: kitabın
+  HESAPLAMA sayfası (İCMAL'i besleyen türetilmiş sayfa) okunur, iş sayfasında OLMAYAN daireler çizelgeye
+  yeni satır olarak girer. ⚠⚠ **Metrajı ölçülmemiş satırlara Excel ORTALAMAYI yazar** (başlık satırının
+  sağındaki hücre, ör. 5,2704…) — ortalamaya eşit hücre **ölçülmemiş** sayılıp metraj 0 alınır, yoksa
+  uydurma metraj hakkedişe girerdi. ⚠ **Yalnız ÇİZELGEDE ZATEN GEÇEN bloklar alınır**: HESAPLAMA'daki
+  `A|34` satırı elle yazılmış çöptür ("a blok yok" — kullanıcı), raporda "çizelgede böyle bir blok yok"
+  diye listelenir. Eklenen 4 daire: E/72 · F/44 · F/50 · F/51.
+  • ⚠⚠ **EXCEL'İN İCMAL SAYFASI KENDİ HESAPLAMA SAYFASIYLA DA TUTMUYOR**: İCMAL "112 kesim dairesi"
+  diyor ama HESAPLAMA'da **96 benzersiz daire** var (A1 B9 C18 D15 E8 F40 H5) — 16 daire hayalet
+  (İCMAL'in SUMIFS aralığı silinmiş satırları da kapsıyor / sayaçlar elle yazılı ve bayat). Sistem
+  aktarım sonrası **95 daire** gösterir = 96 gerçek − 1 sahte A. Yani sistem dosyadaki TÜM gerçek
+  veriyi taşıyor; Excel İCMAL'indeki 112 hiçbir satır kümesine karşılık gelmiyor.
+  • Zincir sonunda sistem: **129 iş · 85 tamamlanan · 95 daire · 508,80 m · 961.632,00 TL**; aynı dosya
+  ikinci kez yüklendiğinde **0 yeni / 0 güncellenen / 0 eklenen daire** (idempotent). Test `pk_tum.php`.
   • Duman testi koşucusu `pk_sync.php` artık **`pksm/prekast/` sayfa kopyalarını da repodan tazeler**
   (elle yamalı kopya bayatlıyordu); `pksm/post.php` ile import ekranı gerçek dosya POST'uyla render
   edilip bant doğrulandı, 5 prekast sayfası uyarısız çalışıyor.
