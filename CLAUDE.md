@@ -679,11 +679,29 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   günlüğünde **"hurdaya ayirma (i̇mha) tutanaği"** yazıyordu.
   • Üst bilgi tutanak no'yu başa alır, kapanış paragrafı "İşbu tutanak taraflarca imza altına alınmıştır"
   ile biter (gerekçeyi TEKRARLAMAZ), imza bloğunda ad satırı ayrı.
+  • ⚠⚠ **ANTET HER SAYFADA TEKRAR EDER** (2026-09-17, kullanıcı: "ikinci sayfaya geçince antetli
+  şekilde devam etsin, kesik gibi olmasın"): çok cihazlı / künyesi uzun belge 2. sayfaya taştığında
+  o sayfa ANTETSİZ başlıyor, belge ortasından kesilmiş gibi duruyordu. Belge artık `thead`/`tfoot`'lu
+  **tek bir tabloya** sarılır (`table.sayfa`) — tarayıcı sayfa taşmasında thead ile tfoot'u KENDİ
+  tekrarlar ve her sayfada yer ayırır; her sayfa ERN Taahhüt logosu + tutanak no + işlem tarihiyle
+  başlar, altında aynı künye satırı biter. ⚠ Önce `position:fixed` denendi (Chromium sabit öğeyi
+  her sayfaya basar) ama akıştan çıktığı için negatif offset TAŞMA sayılıp **boş bir sayfa** açıyordu —
+  tek cihazlık belge 2 sayfa görünüyordu; thead/tfoot deseni bu tuzağa düşmez.
+  • **Kapanış beyanı + imza bloğu birlikte kalır** (`.kapanis` break-inside:avoid) — imzalar tek başına
+  son sayfaya düşerse belge yarıda kesilmiş görünür.
+  • **Alt bilgide "N sayfa"**: okuyan "devamı var mı" diye şüphelenmesin diye toplam sayfa sayısı
+  her sayfaya basılır. Ekrandaki `.sheet` geometrisi **baskıyla birebir aynıdır** (210mm genişlik +
+  `@page margin:12mm 14mm` ile eşit iç boşluk), bu yüzden JS ölçümü baskıya birebir taşınır:
+  sayfa = ⌈gövde yüksekliği ÷ (A4 − kenar boşlukları − antet − alt bilgi)⌉; `load` ve `beforeprint`'te
+  yenilenir (görseller geç yükleniyor). Gerçek PDF çıktısıyla doğrulandı: tek cihaz "1 sayfa" / 1 sayfa,
+  iki cihazlık toplu belge "2 sayfa" / 2 sayfa, **iki sayfada da antet + alt bilgi basılı**.
   Test (itsm): `ht_test.php` **10 sağlama** (serbest cümle · iki nokta içeren cümle alan sayılmasın ·
   tekrar düşer · çelişki yakalanır · sistemde olmayan alan kalır · boş/"—" atılır · tek satıra sıkışmış
   "·" ayraçlı · yalnız künye · boş metin · kısmi eşleşme). Chromium ile **gerçek PDF sayfa sayısı**:
   hurda (fotoğraf + tam künye + 5 satır fark + uzun gerekçe) · zayi · hibe · monitör **hepsi 1 sayfa**
-  (önce 2'ydi); iki cihazlık toplu belge 2 sayfa, bloklar bölünmüyor. İmzalı evrak yükleme çekirdeği
+  (önce 2'ydi); iki cihazlık toplu belge 2 sayfa, bloklar bölünmüyor ve **ikinci sayfa antetle başlıyor**
+  (pypdf ile sayfa sayfa metin çıkarılıp doğrulandı; ⚠ antetteki `letter-spacing` yüzünden çıkarılan
+  metin "B İ L G İ İ Ş L E M" gelir — kelime bazlı arayan test yanlış negatif verir). İmzalı evrak yükleme çekirdeği
   (`hurda_belge_test.php`) ve 8 IT sayfası uyarısız çalışıyor, inline JS temiz.
   **CİHAZ İŞLEM PANELİ + EL DEĞİŞTİRME ZİNCİRİ (2026-09-11, kullanıcı isteği)** — iş gerçeği:
   **bir cihaz 5-6 kez el değiştirir ve HER KULLANICININ kendi zimmet + İADE formu olur; yeni gelen

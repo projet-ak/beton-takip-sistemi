@@ -232,10 +232,17 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
 <style>
   * { box-sizing:border-box; }
   body { font-family: 'Segoe UI', Arial, sans-serif; color:#111; margin:0; background:#eceff0; }
-  .sheet { width:210mm; min-height:297mm; margin:10px auto; background:#fff; padding:14mm 15mm; box-shadow:0 0 8px rgba(0,0,0,.15); }
-  .top { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #00584E; padding-bottom:8px; }
-  .top .logo { font-size:22px; font-weight:800; color:#00584E; letter-spacing:-.5px; }
-  .top .meta { text-align:right; font-size:10.5px; color:#555; line-height:1.55; }
+  /* Ekran ölçüleri baskıyla AYNI: 210mm genişlik + @page kenar boşluklarıyla eşit iç boşluk. */
+  .sheet { width:210mm; min-height:297mm; margin:10px auto; background:#fff; padding:12mm 14mm; box-shadow:0 0 8px rgba(0,0,0,.15); }
+  .antet { display:flex; justify-content:space-between; align-items:flex-start;
+           border-bottom:3px solid #00584E; padding-bottom:6px; background:#fff; }
+  .antet .logo { font-size:22px; font-weight:800; color:#00584E; letter-spacing:-.5px; }
+  .antet .meta { text-align:right; font-size:10.5px; color:#555; line-height:1.55; }
+  .antet-alt { margin-top:10px; text-align:center; font-size:9.5px; color:#999;
+               border-top:1px solid #e3e3e3; padding-top:5px; }
+  table.sayfa { width:100%; border-collapse:collapse; }
+  table.sayfa > thead > tr > td, table.sayfa > tbody > tr > td, table.sayfa > tfoot > tr > td { padding:0; border:0; }
+  .kapanis { break-inside:avoid; page-break-inside:avoid; }
   .doc-title { text-align:center; margin:14px 0 4px; font-size:17px; font-weight:800; letter-spacing:.8px; }
   .doc-no { text-align:center; font-size:12px; color:#00584E; font-weight:700; margin-bottom:12px; }
   .info { width:100%; border-collapse:collapse; margin-bottom:10px; font-size:11.5px; }
@@ -266,17 +273,14 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
   .kunye-satir table.kunye { flex:1; }
   .foto.yan { width:42mm; flex:0 0 42mm; }
   .foto.yan img { height:36mm; }
-  .note { font-size:11px; color:#222; margin:10px 0 0; line-height:1.6; text-align:justify;
-          break-inside:avoid; page-break-inside:avoid; }
+  .note { font-size:11px; color:#222; margin:10px 0 0; line-height:1.6; text-align:justify; }
   .note ol { margin:5px 0 0 16px; padding:0; }
   .note li { margin-bottom:2px; }
-  .signs { display:flex; justify-content:space-between; gap:10px; margin-top:20px;
-           break-inside:avoid; page-break-inside:avoid; }
+  .signs { display:flex; justify-content:space-between; gap:10px; margin-top:20px; }
   .sign { flex:1; text-align:center; }
   .sign .line { border-top:1px solid #333; margin-top:34px; padding-top:5px; font-size:11px; font-weight:700; }
   .sign .ad { font-size:10.5px; color:#222; min-height:13px; }
   .sign .sub { font-size:9.5px; color:#888; }
-  .foot { margin-top:14px; text-align:center; font-size:9.5px; color:#999; border-top:1px solid #eee; padding-top:6px; }
   .toolbar { text-align:center; padding:10px; }
   .toolbar button, .toolbar a { font:inherit; padding:8px 18px; border-radius:8px; border:none; cursor:pointer; text-decoration:none; margin:0 4px; }
   .btn-print { background:#00584E; color:#fff; }
@@ -289,10 +293,13 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
   .evrak input[type=file] { flex:1 1 240px; font:inherit; }
   .evrak button { background:#1b6b3a; color:#fff; border:none; border-radius:8px; padding:8px 16px; font:inherit; cursor:pointer; }
   .evrak .uyari { color:#b00; } .evrak .tamam { color:#1b6b3a; }
-  @page { size:A4; margin:0; }
+  @page { size:A4; margin:12mm 14mm; }
   @media print {
     body { background:#fff; }
-    .sheet { margin:0; box-shadow:none; width:auto; min-height:0; padding:10mm 13mm; }
+    .sheet { margin:0; box-shadow:none; width:auto; min-height:0; padding:0; }
+    /* thead/tfoot her sayfada yeniden basılır; gövde ikisinin arasında akar. */
+    table.sayfa > thead { display:table-header-group; }
+    table.sayfa > tfoot { display:table-footer-group; }
     .toolbar, .evrak { display:none; }
   }
 </style>
@@ -349,7 +356,12 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
 <?php endif; ?>
 
 <div class="sheet">
-  <div class="top">
+<?php /* ⚠⚠ ANTET HER SAYFADA TEKRAR EDER — belge `thead`/`tfoot`'lu TEK bir tabloya sarılır:
+       tarayıcı sayfa taşmasında thead'i ve tfoot'u KENDİ tekrarlar, yer de ayırır. `position:fixed`
+       ile de tekrar ediyor ama akıştan çıktığı için negatif offset taşma sayılıp BOŞ bir sayfa
+       açıyordu (tek cihazlık belge 2 sayfa görünüyordu). 2. sayfa artık antetsiz başlamaz. */ ?>
+<table class="sayfa"><thead><tr><td>
+  <div class="antet">
     <div><img src="../uploads/logo/ERN%20Taahhut_Logo_Renkli.png" alt="ERN Taahhüt" style="height:44px" onerror="this.outerHTML='<div class=\'logo\'>ERN TAAHHÜT</div>'"><div style="font-size:9.5px;font-weight:600;color:#555;letter-spacing:2px;margin-top:3px">BİLGİ İŞLEM — IT ENVANTER</div></div>
     <div class="meta">
       Tutanak No: <strong style="color:#00584E"><?= h($no) ?></strong><br>
@@ -357,6 +369,12 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
       Düzenleme: <strong><?= date('d.m.Y') ?></strong>
     </div>
   </div>
+</td></tr></thead>
+<tfoot><tr><td>
+  <div class="antet-alt">ERN Taahhüt — Bilgi İşlem Envanter Sistemi · <?= h($no) ?> · <?= date('d.m.Y H:i') ?><span id="sayfaBilgi"></span></div>
+</td></tr></tfoot>
+<tbody><tr><td>
+  <div class="govde">
 
   <div class="doc-title"><?= h($baslik) ?></div>
   <div class="doc-no"><?= h($no) ?></div>
@@ -459,6 +477,9 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
   </div>
   <?php endif; ?>
 
+  <?php /* Kapanış beyanı ve imzalar BİRLİKTE kalır — imza bloğu tek başına son sayfaya düşerse
+         belge yarıda kesilmiş gibi görünür. */ ?>
+  <div class="kapanis">
   <div class="note">
     Yukarıda künyesi çıkarılan <strong><?= count($liste) ?> adet</strong> bilgi işlem cihazı,
     <strong><?= format_date($hTarih) ?></strong> tarihinde yapılan inceleme sonucunda
@@ -489,7 +510,31 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
       <div class="sub">Adı Soyadı / Tarih / İmza</div></div>
     <?php endforeach; ?>
   </div>
-
-  <div class="foot">ERN Taahhüt — Bilgi İşlem Envanter Sistemi · <?= h($no) ?> · <?= date('d.m.Y H:i') ?></div>
+  </div><?php /* .kapanis */ ?>
+  </div><?php /* .govde */ ?>
+</td></tr></tbody></table>
 </div>
+<script>
+/* Belgenin KAÇ SAYFA olduğunu her sayfadaki alt bilgiye yazar — okuyan "devamı var mı" diye
+   şüphelenmesin. Ekrandaki .sheet geometrisi baskıyla AYNI (210mm genişlik, aynı kenar boşlukları),
+   bu yüzden ölçüm birebir taşınır. Görseller geç yüklendiğinden load + beforeprint'te yenilenir. */
+(function () {
+  var govde = document.querySelector('.govde'), et = document.getElementById('sayfaBilgi');
+  if (!govde || !et) return;
+  function mm() { var d = document.createElement('div'); d.style.cssText = 'height:100mm;position:absolute;visibility:hidden';
+    document.body.appendChild(d); var h = d.getBoundingClientRect().height / 100; d.remove(); return h; }
+  function yuk(sec) { var e = document.querySelector(sec); return e ? e.getBoundingClientRect().height : 0; }
+  function say() {
+    var birim = mm(); if (!birim) return;
+    // Kullanılabilir gövde yüksekliği = A4 − kenar boşlukları − her sayfada tekrar eden antet/alt bilgi
+    var sayfaIc = (297 - 24) * birim - yuk('.antet') - yuk('.antet-alt');
+    if (sayfaIc <= 0) return;
+    var n = Math.max(1, Math.ceil((govde.getBoundingClientRect().height - 1) / sayfaIc));
+    et.textContent = ' · ' + n + ' sayfa';
+  }
+  window.addEventListener('load', say);
+  window.addEventListener('beforeprint', say);
+  say();
+})();
+</script>
 </body></html>
