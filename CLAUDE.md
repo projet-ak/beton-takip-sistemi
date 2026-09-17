@@ -689,10 +689,20 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   tek cihazlık belge 2 sayfa görünüyordu; thead/tfoot deseni bu tuzağa düşmez.
   • **Kapanış beyanı + imza bloğu birlikte kalır** (`.kapanis` break-inside:avoid) — imzalar tek başına
   son sayfaya düşerse belge yarıda kesilmiş görünür.
+  • ⚠⚠ **TARAYICININ KENDİ ÜSTBİLGİSİ (URL · saat · sayfa no) BASILMAZ** (2026-09-17, kullanıcı:
+  "bu bilgiler olmasın"): çıktının tepesinde `https://ernsaha.com.tr/beton/it/hurda_tutanak.php?id=347`
+  ve `17.09.2026 16:57 … 1/2` yazıyordu — bunlar BİZİM HTML'imizde değil, tarayıcının yazdırma
+  üstbilgisidir ve **sayfa kenar boşluğuna** çizilir. **`@page { margin:0 }`** yapıldı: çizecek yer
+  kalmıyor. Kenar boşluğu bunun yerine **tablo hücrelerine** taşındı — `thead td` 12mm üst,
+  `tbody td` 14mm yan, `tfoot td` 10mm alt; thead/tfoot her sayfada tekrar ettiği için üst/alt boşluk
+  da her sayfada korunur (tek `.sheet` padding'i yalnız ilk/son sayfaya uygulanırdı).
+  ⚠ Kesin kapatma yine de **yazdırma kutusundaki "Üstbilgi ve altbilgi" kutucuğudur**; CSS yalnız
+  Chrome/Edge'de yeri kaldırır. Headless testte doğrulanamaz — Playwright'ın `displayHeaderFooter`
+  bayrağı kendi kenar boşluğunu zorlar, gerçek yazdırma kutusunu temsil etmez.
   • **Alt bilgide "N sayfa"**: okuyan "devamı var mı" diye şüphelenmesin diye toplam sayfa sayısı
   her sayfaya basılır. Ekrandaki `.sheet` geometrisi **baskıyla birebir aynıdır** (210mm genişlik +
-  `@page margin:12mm 14mm` ile eşit iç boşluk), bu yüzden JS ölçümü baskıya birebir taşınır:
-  sayfa = ⌈gövde yüksekliği ÷ (A4 − kenar boşlukları − antet − alt bilgi)⌉; `load` ve `beforeprint`'te
+  aynı hücre boşlukları), bu yüzden JS ölçümü baskıya birebir taşınır:
+  sayfa = ⌈gövde yüksekliği ÷ (A4 − thead − tfoot)⌉; `load` ve `beforeprint`'te
   yenilenir (görseller geç yükleniyor). Gerçek PDF çıktısıyla doğrulandı: tek cihaz "1 sayfa" / 1 sayfa,
   iki cihazlık toplu belge "2 sayfa" / 2 sayfa, **iki sayfada da antet + alt bilgi basılı**.
   Test (itsm): `ht_test.php` **10 sağlama** (serbest cümle · iki nokta içeren cümle alan sayılmasın ·

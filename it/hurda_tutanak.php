@@ -233,7 +233,10 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
   * { box-sizing:border-box; }
   body { font-family: 'Segoe UI', Arial, sans-serif; color:#111; margin:0; background:#eceff0; }
   /* Ekran ölçüleri baskıyla AYNI: 210mm genişlik + @page kenar boşluklarıyla eşit iç boşluk. */
-  .sheet { width:210mm; min-height:297mm; margin:10px auto; background:#fff; padding:12mm 14mm; box-shadow:0 0 8px rgba(0,0,0,.15); }
+  /* ⚠ Kenar boşluğu `.sheet` padding'inde DEĞİL, tablo hücrelerinde (aşağıda): thead/tfoot her
+     sayfada tekrar ettiği için üst/alt boşluğu da her sayfada onlar verir. `@page margin:0` —
+     tarayıcı URL/saat/sayfa no üstbilgisini SAYFA KENAR BOŞLUĞUNA çizer, boşluk yoksa çizemez. */
+  .sheet { width:210mm; min-height:297mm; margin:10px auto; background:#fff; padding:0; box-shadow:0 0 8px rgba(0,0,0,.15); }
   .antet { display:flex; justify-content:space-between; align-items:flex-start;
            border-bottom:3px solid #00584E; padding-bottom:6px; background:#fff; }
   .antet .logo { font-size:22px; font-weight:800; color:#00584E; letter-spacing:-.5px; }
@@ -241,7 +244,9 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
   .antet-alt { margin-top:10px; text-align:center; font-size:9.5px; color:#999;
                border-top:1px solid #e3e3e3; padding-top:5px; }
   table.sayfa { width:100%; border-collapse:collapse; }
-  table.sayfa > thead > tr > td, table.sayfa > tbody > tr > td, table.sayfa > tfoot > tr > td { padding:0; border:0; }
+  table.sayfa > thead > tr > td { padding:12mm 14mm 0; border:0; }
+  table.sayfa > tbody > tr > td { padding:0 14mm;      border:0; }
+  table.sayfa > tfoot > tr > td { padding:0 14mm 10mm; border:0; }
   .kapanis { break-inside:avoid; page-break-inside:avoid; }
   .doc-title { text-align:center; margin:14px 0 4px; font-size:17px; font-weight:800; letter-spacing:.8px; }
   .doc-no { text-align:center; font-size:12px; color:#00584E; font-weight:700; margin-bottom:12px; }
@@ -293,7 +298,7 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
   .evrak input[type=file] { flex:1 1 240px; font:inherit; }
   .evrak button { background:#1b6b3a; color:#fff; border:none; border-radius:8px; padding:8px 16px; font:inherit; cursor:pointer; }
   .evrak .uyari { color:#b00; } .evrak .tamam { color:#1b6b3a; }
-  @page { size:A4; margin:12mm 14mm; }
+  @page { size:A4; margin:0; }
   @media print {
     body { background:#fff; }
     .sheet { margin:0; box-shadow:none; width:auto; min-height:0; padding:0; }
@@ -526,8 +531,8 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
   function yuk(sec) { var e = document.querySelector(sec); return e ? e.getBoundingClientRect().height : 0; }
   function say() {
     var birim = mm(); if (!birim) return;
-    // Kullanılabilir gövde yüksekliği = A4 − kenar boşlukları − her sayfada tekrar eden antet/alt bilgi
-    var sayfaIc = (297 - 24) * birim - yuk('.antet') - yuk('.antet-alt');
+    // Kullanılabilir gövde yüksekliği = A4 − her sayfada tekrar eden thead/tfoot (kenar boşlukları dahil)
+    var sayfaIc = 297 * birim - yuk('table.sayfa > thead') - yuk('table.sayfa > tfoot');
     if (sayfaIc <= 0) return;
     var n = Math.max(1, Math.ceil((govde.getBoundingClientRect().height - 1) / sayfaIc));
     et.textContent = ' · ' + n + ' sayfa';
