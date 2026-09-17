@@ -91,6 +91,9 @@ function cim_kategori(string $s): string
     // kategori kayıyordu ("Aksesuar" hiçbir kelimeyle eşleşmeyip 'diger'e düşüyordu).
     foreach (IT_KATEGORI as $anahtar => $t)
         if ($n === pim_norm($anahtar) || $n === pim_norm($t[0])) return $anahtar;
+    // ⚠ TAŞIYICI/KILIF sözcüğü cihazın KENDİSİ değildir: "Laptop Çantası" laptop DEĞİL aksesuardır
+    // (düz sıra 'LAPTOP'ı önce yakalayıp çantayı dizüstü sayıyor, cihaz sayısını ve mali değeri şişiriyordu).
+    foreach (['CANTA', 'KILIF', 'TASIMA KUTUSU'] as $k) if (str_contains($n, $k)) return 'aksesuar';
     // ⚠ SIRA ÖNEMLİ: özel tipler önce denenir — "IP KAMERA" genel 'kamera' aksesuarına değil
     // güvenlik kategorisine, "IP TELEFON" cep telefonuna değil iletişim kategorisine düşmeli.
     $harita = [
@@ -110,6 +113,13 @@ function cim_kategori(string $s): string
         'tv'           => ['TELEVIZYON','TV','SMART TV','LED TV','EKRAN PANEL','DIGITAL SIGNAGE'],
         'projeksiyon'  => ['PROJEKSIYON','PROJEKTOR','PROJECTOR','BEAMER'],
         'drone'        => ['DRONE','IHA','QUADCOPTER','DJI'],
+        // ⚠ Kullanıcıya dağıtılan küçük donanım — 'bilesen' ve 'aksesuar'dan ÖNCE denenir:
+        // 'SSD'/'HARDDISK' bileşen listesinde geçtiğinden "HARİCİ SSD" oraya düşüyordu.
+        'harici_disk'  => ['HARICI DISK','HARICI HDD','HARICI SSD','TASINABILIR DISK','TASINABILIR HDD','TASINABILIR SSD','PORTABLE HDD','PORTABLE SSD','EXTERNAL HDD','EXTERNAL SSD','EXTERNAL DISK'],
+        'usb_bellek'   => ['USB BELLEK','FLASH BELLEK','FLASH DISK','USB DISK','USB FLASH','MEMORY STICK','TASINABILIR BELLEK'],
+        'klavye'       => ['KLAVYE','KEYBOARD'],
+        'mouse'        => ['MOUSE','FARE'],
+        'kulaklik'     => ['KULAKLIK','HEADSET','HEADPHONE','KULAKLIK SETI'],
         'bilesen'      => ['RAM','BELLEK MODULU','ISLEMCI','CPU','GUC KAYNAGI','POWER SUPPLY','ANAKART','SSD','HARDDISK','HARD DISK','EKRAN KARTI'],
         'sarf'         => ['TONER','KARTUS','KARTUS','DRUM','SARF','KAGIT','PIL','BATARYA','ETIKET SERIT'],
         'laptop'       => ['DIZUSTU','NOTEBOOK','LAPTOP','TASINABILIR BILGISAYAR'],
@@ -122,7 +132,7 @@ function cim_kategori(string $s): string
         'sunucu'       => ['SUNUCU','SERVER','NAS','DEPOLAMA UNITESI','STORAGE'],
         'yazilim'      => ['LISANS','LICENSE','YAZILIM','SOFTWARE','OFFICE','WINDOWS LISANS','ANTIVIRUS'],
         'fotograf'     => ['FOTOGRAF MAKINE','FOTOGRAF MAKINESI','AKSIYON KAMERA','VIDEO KAMERA','KAMERA','CAMERA'],
-        'aksesuar'     => ['KLAVYE','MOUSE','FARE','KULAKLIK','DOCK','ADAPTOR','WEBCAM','HOPARLOR','CANTA','HARICI DISK','BARKOD','KABLO','HDD STATION','DOCKING STATION','KONFERANS'],
+        'aksesuar'     => ['DOCK','ADAPTOR','WEBCAM','HOPARLOR','CANTA','BARKOD','KABLO','HDD STATION','DOCKING STATION','KONFERANS'],
     ];
     // ⚠ KISA anahtar kelimeler (≤4 harf) KELİME SINIRIYLA aranır: düz `str_contains` ile
     // 'IHA' (drone) "AĞ CİHAZI"nın içinde geçiyor ve her ağ cihazı drone sayılıyordu.
@@ -889,4 +899,39 @@ function cim_model_kodu_temizle(PDO $pdo, string $kod): array
         $temizlenen++;
     }
     return ['temizlenen' => $temizlenen, 'atlanan' => $atlanan];
+}
+
+/**
+ * Mevcut kayıtları YENİ küçük donanım kategorilerine ayıklar (2026-09-17).
+ *
+ * "Klavye" · "Mouse" · "Kulaklık" · "USB Bellek" · "Taşınabilir Disk" eskiden tek bir
+ * `aksesuar` kovasındaydı; kategori eklendikten sonra eski kayıtlar orada kalır ve
+ * "kimde kaç taşınabilir disk var" sorusu yine cevapsız olurdu.
+ *
+ * ⚠ YALNIZ bu beş kategoriye taşır ve yalnız `aksesuar`/`diger`den alır — başka bir
+ * kategori kaymasın (bir cihazın kategorisi elle düzeltilmiş olabilir). Cihaz ADI,
+ * yoksa modeli okunur; eşleşmeyen satıra dokunulmaz.
+ *
+ * @param bool $uygula false ise yalnız SAYAR (ekranda "N kayıt ayıklanabilir" bandı için).
+ * @return array ['tasinan'=>int, 'kirilim'=>[kategori=>adet], 'ornek'=>[satır listesi]]
+ */
+function cim_kategori_ayikla(PDO $pdo, bool $uygula = true): array
+{
+    $hedef  = ['harici_disk', 'usb_bellek', 'klavye', 'mouse', 'kulaklik'];
+    $sonuc  = ['tasinan' => 0, 'kirilim' => [], 'ornek' => []];
+    $st = $pdo->query("SELECT id, ad, model, envanter_no, cihaz_kodu, kategori
+                       FROM it_cihazlar WHERE kategori IN ('aksesuar','diger')");
+    $upd = $pdo->prepare("UPDATE it_cihazlar SET kategori=? WHERE id=?");
+    foreach ($st->fetchAll() as $r) {
+        $metin = trim((string)$r['ad']) !== '' ? (string)$r['ad'] : (string)$r['model'];
+        $yeni  = cim_kategori($metin);
+        if (!in_array($yeni, $hedef, true) || $yeni === $r['kategori']) continue;
+        if ($uygula) $upd->execute([$yeni, (int)$r['id']]);
+        $sonuc['tasinan']++;
+        $sonuc['kirilim'][$yeni] = ($sonuc['kirilim'][$yeni] ?? 0) + 1;
+        if (count($sonuc['ornek']) < 40)
+            $sonuc['ornek'][] = trim(($r['cihaz_kodu'] ?: $r['envanter_no']) . ' ' . $metin)
+                              . ' → ' . (IT_KATEGORI[$yeni][0] ?? $yeni);
+    }
+    return $sonuc;
 }

@@ -1210,6 +1210,54 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   159 güncellenen / 2 atlanan** (1 boş satır + 1 kimlik çakışması), **2. yükleme 0 yeni / 0 güncellenen /
   410 değişmeyen**; `?sablon=mevcut` round-trip 449 satır → **0 yeni / 0 güncellenen / 449 değişmeyen**,
   eşleşmeyen sütun yok.
+  **KÜÇÜK DONANIM: KENDİ KATEGORİLERİ + TOPLU EKLEME (2026-09-17, kullanıcı: "taşınabilir diskler
+  nerede, 50'ye yakın kullanıcıda var: usb bellek, klavye, mouse, kulaklık gibi")** — bu cihazlar
+  envanterde ya hiç yoktu ya da tek bir **`aksesuar`** kovasındaydı; "kimde kaç taşınabilir disk var"
+  sorusu cevapsızdı. İki eksik vardı: kategori ayrımı ve **50 kişiye tek tek kayıt açma zorluğu**.
+  • **`IT_KATEGORI`'ye 5 yeni tip** (grup `sarf`): `harici_disk` (Taşınabilir Disk / SSD) · `usb_bellek` ·
+  `klavye` · `mouse` · `kulaklik` (Kulaklık / Headset). Eski **`aksesuar` anahtarı KORUNDU** ("Aksesuar
+  (diğer)" — dock/adaptör/webcam/çanta/kablo orada kalır; anahtarlar VERİDİR). `kapasite` ek alanı
+  `harici_disk` + `usb_bellek` kategorilerine açıldı (1 TB · 32 GB).
+  • ⚠ **Düzeltilen grup hatası**: `ups` ve `kabinet` kategorilerinin grubu `'ag'` yazılmıştı ama
+  `IT_GRUP` anahtarı **`network`**tür — `it_kategori_agaci()` isimsiz 9. kova açıyor, bu iki varlık
+  merkezi izlemenin grup şeridinde başlıksız kalıyordu. `network` olarak düzeltildi.
+  • ⚠ **`cim_kategori()` sırası**: yeni tipler **`bilesen`den ÖNCE** denenir — 'SSD'/'HARDDISK' bileşen
+  listesinde geçtiğinden "HARİCİ SSD" oraya düşüyordu. Taşınan kelimeler `aksesuar` listesinden ÇIKARILDI.
+  Ayrıca **TAŞIYICI/KILIF ön kontrolü**: "Laptop Çantası" düz sırada 'LAPTOP'ı yakalayıp **dizüstü
+  bilgisayar** sayılıyor, cihaz adedini ve mali değeri şişiriyordu → `CANTA`/`KILIF`/`TASIMA KUTUSU`
+  geçen ad her zaman `aksesuar`.
+  • **`cim_kategori_ayikla($pdo, $uygula=true)`** — eski kayıtları adına göre yeni tiplere taşır.
+  ⚠ YALNIZ `aksesuar`/`diger`den alır ve YALNIZ bu 5 kategoriye koyar (elle düzeltilmiş bir kategori
+  kaymasın); `$uygula=false` kuru çalıştırmadır. `cihazlar.php`'de **mavi bant** ("N kayıt hâlâ tek
+  kovada duruyor") + onay diyaloglu **"Cihaz tipine göre ayır"** düğmesi (`islem=kategori_ayikla`,
+  `yetki_var('duzenle')`, `audit_log`'lu). İdempotent: ikinci çalıştırmada 0 taşır.
+  • **`it/toplu_cihaz.php` — TOPLU CİHAZ EKLEME** (Cihazlar ekranında "Toplu Ekle"; sidebar'a satır
+  eklenmedi — iki içe aktarma gibi kendi liste sayfasından girilir). Ortak künye (tip · ad · marka ·
+  model · kapasite · alış tarihi/tedarikçi/fatura · lokasyon · fiyat-kur) bir kez girilir, sonra iki mod:
+  **① Kişilere dağıt** (aranabilir personel listesinden çoklu seçim → seçilen HER kişiye BİR cihaz,
+  durum `aktif`, zimmet tarihi bugün) · **② Depoya N adet**. İsteğe bağlı **seri no listesi** satır satır
+  sırayla eşleşir. ⚠ **HER CİHAZ AYRI SATIRDIR**, `adet` kolonuna yazılmaz — zimmet kişiye bağlanır,
+  yaşam günlüğü (`giris` + `zimmet`) ve imzalı tutanak cihaz bazında tutulur; "10 mouse" tek satır olsaydı
+  hiçbiri yapılamazdı (§"aynı modelden onlarca adet ayrı demirbaştır" kuralının doğal sonucu).
+  Listede kişi başına **"bu tipten N adet"** rozeti seçilen kategoriye göre canlı güncellenir (aynı kişiye
+  ikinci mouse yanlışlıkla verilmesin). Tek transaction: bir satır patlarsa hiçbiri açılmaz.
+  Doğrulama: tip/ad zorunlu · seri no sayısı kayıt sayısıyla birebir olmalı · tek seferde en fazla
+  **`TC_AZAMI` = 200** kayıt. ⚠ Bu bir KAYIT AÇMA formudur, tekrar göndermek N kayıt DAHA açar —
+  istemcide çift gönderim kilidi var. Yetki: `sayfa_islemi()` regex'ine `toplu_cihaz` → **giris**.
+  Kişi bazlı toplu zimmet tutanağı zaten var: `zimmet_tutanak.php?personel_id=` kişinin TÜM cihazlarını
+  tek belgede basar (mouse + klavye + kulaklık tek imzayla).
+  Test (itsm): `kat_test.php` **36 sağlama** (21 sınıflandırma — "Kablosuz Mouse" · "Harici SSD" ·
+  "Klavye Mouse Set" · birebir etiket/anahtar · "Laptop Çantası"→aksesuar · eskiler bozulmadı;
+  grup bağı; kapasite alanı; ayıklama kuru çalıştırma → DB'ye dokunmuyor → uygulama → idempotent).
+  `tc_dogrula.php` **15 sağlama**: 4 kişiye dağıtımda durum/personel_id/zimmetli/zimmet tarihi,
+  seri no sırayla eşleşti, günlükte `giris`+`zimmet`, TRY'de kur 1 + fiyat_tl, envanter no benzersiz.
+  Sayfadan POST ile: depo modu 6 adet açtı; 5 hata yolunun (seri sayısı uyuşmuyor · 200 sınırı ·
+  ad boş · kişi seçilmedi · geçersiz tip) hepsi mesajla reddedildi ve **hiç kayıt açılmadı**.
+  Bant + ayırma düğmesi gerçek sayfada uçtan uca doğrulandı (4 taşındı, çanta yerinde kaldı);
+  10 IT sayfası uyarısız render, 5 inline script JS ayrıştırmasından hatasız geçti.
+  ⚠ `diger` altındaki "Dizüstü Bilgisayar"/"Monitör" adlı eski kayıtlar BİLEREK taşınmıyor — ayıklama
+  yalnız yeni 5 tipe çalışır; o kayıtlar cihaz kartından elle düzeltilir.
+
   **TANIMLAR EKRANI `it/tanimlar.php` (2026-09-09)** — tek sayfa, sekmeli (Snipe-IT'deki "tanım tablosu seç"
   düzeni): **Lokasyonlar · Kategoriler · Üreticiler · Modeller · Tedarikçiler · Şirketler · Durumlar · Personel**.
   • *Lokasyonlar* = `it_lokasyonlar` (hiyerarşi korunur) + yeni **sehir / adres / renk** kolonları; satırda ad

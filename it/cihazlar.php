@@ -46,6 +46,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['islem'] ?? '') === 'kod_te
     redirect('cihazlar.php?mukerrer=1');
 }
 
+// ── Eski 'aksesuar' kayıtlarını yeni küçük donanım kategorilerine ayıkla ──
+// Klavye/Mouse/Kulaklık/USB Bellek/Taşınabilir Disk tek kovadaydı; kategori eklendikten
+// sonra eski kayıtlar orada kalır ve "kimde kaç taşınabilir disk var" cevapsız olurdu.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['islem'] ?? '') === 'kategori_ayikla') {
+    if (!yetki_var('duzenle')) { flash('error', 'Bu işlem için değiştirme yetkisi gerekir.'); redirect('cihazlar.php'); }
+    try {
+        $son = cim_kategori_ayikla($pdoIt);
+        audit_log($pdoIt, 'it_cihazlar', 0, 'UPDATE', null, ['kategori_ayikla' => $son['kirilim']], current_user_id());
+        if ($son['tasinan']) {
+            $k = [];
+            foreach ($son['kirilim'] as $ka => $n) $k[] = (IT_KATEGORI[$ka][0] ?? $ka) . ': ' . $n;
+            flash('success', $son['tasinan'] . ' kayıt cihaz tipine göre ayrıldı — ' . implode(' · ', $k) . '.');
+        } else {
+            flash('info', 'Ayıklanacak kayıt bulunamadı — "Aksesuar" ve "Diğer" altındaki adlar klavye/mouse/kulaklık/USB bellek/taşınabilir diske benzemiyor.');
+        }
+    } catch (Throwable $e) { flash('error', 'Ayıklanamadı: ' . $e->getMessage()); }
+    redirect('cihazlar.php?kategori=harici_disk');
+}
+
 // ⚠ Çelişkili gruplar (farklı IFS / seri no) MÜKERRER DEĞİLDİR — ayrı cihazlardır.
 // Birleştirme listesinden ayrılır; aşağıda "aynı kodu taşıyan farklı cihazlar" olarak gösterilir.
 $tumGruplar    = cim_cihaz_mukerrer($pdoIt);
@@ -68,6 +87,11 @@ $oz->execute($par);
 $oz = $oz->fetch() ?: ['adet'=>0,'mali'=>0,'aktif'=>0,'kisi'=>0];
 
 $maliGoster = it_mali_goster();      // garanti + fiyat gösterimi (IT_MALI_GOSTER)
+
+// Eski 'aksesuar'/'diger' kayıtları arasında klavye/mouse/kulaklık/USB bellek/taşınabilir
+// diske benzeyenler var mı? (yalnız SAYAR — taşıma kullanıcı onayıyla POST'tan yapılır)
+$ayiklanabilir = 0;
+if (yetki_var('giris')) { try { $ayiklanabilir = cim_kategori_ayikla($pdoIt, false)['tasinan']; } catch (Throwable $e) {} }
 $sirala = ['kod'=>'cihaz_kodu, envanter_no', 'ifs'=>'varlik_kodu, envanter_no', 'no'=>'envanter_no',
            'ad'=>'ad', 'kategori'=>'kategori, ad', 'seri'=>'seri_no, ad', 'durum'=>'durum, ad', 'zimmetli'=>'zimmetli, ad',
            'lokasyon'=>'lokasyon, ad', 'garanti'=>'garanti_bitis', 'fiyat'=>it_mali_tl(), 'alis'=>'alis_tarihi', 'guncel'=>'updated_at'];
@@ -151,9 +175,25 @@ require_once __DIR__ . '/../includes/header.php';
         <a href="cihazlar.php?<?= h(http_build_query(array_merge($_GET, ['export'=>'xlsx']))) ?>" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Excel</a>
         <?php if ($yazabilir): ?><a href="form_import.php" class="btn btn-outline-primary btn-sm" title="Cihaz tahsis formlarından künye güncelle (toplu)"><i class="bi bi-file-earmark-text me-1"></i>Form ile Aktar</a>
         <a href="cihaz_import.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-box-arrow-in-down me-1"></i>İçe Aktar</a>
+        <a href="toplu_cihaz.php" class="btn btn-outline-primary btn-sm" title="Aynı modelden N adet aç ve kişilere dağıt (mouse, klavye, kulaklık, USB bellek, taşınabilir disk…)"><i class="bi bi-boxes me-1"></i>Toplu Ekle</a>
         <a href="cihaz_form.php" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Yeni Cihaz</a><?php endif; ?>
     </div>
 </div>
+
+<?php if (!empty($ayiklanabilir) && !$mukerrerGoster): ?>
+<div class="alert alert-info d-flex align-items-center flex-wrap gap-2 py-2">
+    <i class="bi bi-diagram-2"></i>
+    <div class="small flex-grow-1">
+        <strong><?= (int)$ayiklanabilir ?> kayıt</strong> hâlâ tek bir “Aksesuar/Diğer” kovasında duruyor ama adı
+        <strong>klavye · mouse · kulaklık · USB bellek · taşınabilir disk</strong> diyor. Ayırırsanız
+        “kimde kaç taşınabilir disk var” sorusu cihaz tipi süzgecinden cevaplanır.
+    </div>
+    <form method="post" class="m-0" onsubmit="return confirm('<?= (int)$ayiklanabilir ?> kaydın cihaz tipi adına göre düzeltilecek. Başka hiçbir alan değişmez. Devam edilsin mi?');">
+        <input type="hidden" name="islem" value="kategori_ayikla">
+        <button class="btn btn-info btn-sm text-white"><i class="bi bi-magic me-1"></i>Cihaz tipine göre ayır</button>
+    </form>
+</div>
+<?php endif; ?>
 
 <?php foreach(['success','error','warning'] as $t): if($m=get_flash($t)): ?>
 <div class="alert alert-<?= $t==='error'?'danger':$t ?>"><?= h($m) ?></div>

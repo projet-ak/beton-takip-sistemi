@@ -43,8 +43,8 @@ const IT_KATEGORI = [
     'superbox'     => ['Superbox / Mobil Modem', 'bi-broadcast','network'],
     'ag'           => ['Ağ Cihazı (diğer)',   'bi-router',      'network'],
     // Güç ve kabinet altyapısı (UPS eskiden 'aksesuar'a düşüyordu — altyapı varlığıdır, aksesuar değil)
-    'ups'          => ['UPS / Kesintisiz Güç','bi-battery-charging','ag'],
-    'kabinet'      => ['Kabinet / Rack',      'bi-server',      'ag'],
+    'ups'          => ['UPS / Kesintisiz Güç','bi-battery-charging','network'],
+    'kabinet'      => ['Kabinet / Rack',      'bi-server',      'network'],
     // İletişim
     'ip_telefon'   => ['IP Telefon',          'bi-telephone-inbound', 'iletisim'],
     'santral'      => ['Santral',             'bi-pc-horizontal','iletisim'],
@@ -61,8 +61,15 @@ const IT_KATEGORI = [
     'fotograf'     => ['Fotoğraf / Video Kamerası', 'bi-camera',  'multimedya'],
     // Yazılım
     'yazilim'      => ['Yazılım / Lisans',    'bi-key',         'yazilim'],
-    // Sarf ve aksesuar
-    'aksesuar'     => ['Aksesuar',            'bi-mouse',       'sarf'],
+    // Sarf ve aksesuar — ⚠ kullanıcı başına DAĞITILAN küçük donanım (2026-09-17, kullanıcı:
+    // "taşınabilir diskler nerede, 50'ye yakın kullanıcıda var: usb bellek, klavye, mouse, kulaklık").
+    // Hepsi tek 'aksesuar' kovasındaydı; "kimde kaç taşınabilir disk var" sorusu cevapsız kalıyordu.
+    'harici_disk'  => ['Taşınabilir Disk / SSD', 'bi-device-hdd', 'sarf'],
+    'usb_bellek'   => ['USB Bellek',          'bi-usb-drive',   'sarf'],
+    'klavye'       => ['Klavye',              'bi-keyboard',    'sarf'],
+    'mouse'        => ['Mouse',               'bi-mouse2',      'sarf'],
+    'kulaklik'     => ['Kulaklık / Headset',  'bi-headset',     'sarf'],
+    'aksesuar'     => ['Aksesuar (diğer)',    'bi-mouse',       'sarf'],
     'sarf'         => ['Sarf Malzeme',        'bi-droplet-half','sarf'],
     'bilesen'      => ['Bileşen (RAM/disk/işlemci)', 'bi-cpu',  'sarf'],
     'diger'        => ['Diğer',               'bi-box',         'diger'],
@@ -93,7 +100,7 @@ const IT_EK_ALAN = [
     'yonetim_kullanici' => ['Yönetim Kullanıcısı',  ['firewall','switch','access_point','nvr','kamera','kartli_gecis','turnike','santral'], 'text', ''],
     'yonetim_sifre'     => ['Yönetim Şifresi',      ['firewall','switch','access_point','nvr','kamera','kartli_gecis','turnike','santral'], 'sifre', 'yalnız değiştirme yetkisi olanlara gösterilir'],
     'bagli_id'          => ['Bağlı olduğu cihaz',   ['kamera','turnike','ip_telefon','access_point'], 'cihaz', 'NVR / santral / geçiş kontrol ünitesi'],
-    'kapasite'          => ['Disk Kapasitesi / Port', ['nvr','sunucu','switch'], 'text', 'ör. 4×4 TB · 48 port'],
+    'kapasite'          => ['Disk Kapasitesi / Port', ['nvr','sunucu','switch','harici_disk','usb_bellek'], 'text', 'ör. 4×4 TB · 48 port · 1 TB · 32 GB'],
     'kullanim_amaci'    => ['Kullanım Amacı',       ['tv','projeksiyon','kamera'], 'text', 'ör. toplantı odası · lobi bilgilendirme'],
     'adet'              => ['Adet (stok)',          ['sarf','aksesuar','bilesen'], 'sayi', ''],
 ];
