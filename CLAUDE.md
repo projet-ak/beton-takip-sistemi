@@ -644,6 +644,47 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   (yazdırmada gizli): form önceden yazdırılabilir ama gerekçe/tarih ancak cihaz kartındaki işlem
   uygulanınca dolar. Giriş noktaları: cihaz kartı başlığı + Belgeler kutusu, cihaz listesinde satır
   düğmesi ve Evrak rozeti (sidebar'a satır eklenmedi). Yetki: `sayfa_islemi()` → GET **oku**, POST **yaz**.
+  **HURDA TUTANAĞI ELDEN GEÇİRME (2026-09-17, kullanıcı: "bu hurdaya ayırma formunu düzenliyelim
+  sıkıntılı — bize yakışanı yapalım")** — belge tek cihaz için bile **2 sayfa** sürüyor ve aynı bilgiyi
+  üç kez basıyordu:
+  • ⚠⚠ **Asıl sebep gerekçe metniydi**: kullanıcılar hurda sebebini yazarken cihaz künyesini de metnin
+  içine kopyalıyor ("Cihaz Kodu: B037 / Marka-Model: Casper / Seri No: … / RAM: 4 GB / … arızalı").
+  Bu künye tutanakta ZATEN basıldığından aynı bilgi **gerekçe hücresi + ÖZELLİKLER tablosu + kapanış
+  beyanı** diye üç yerde çıkıyordu (kapanış paragrafı gerekçenin tamamını KALIN tekrarlıyordu).
+  Yeni **`ht_gerekce_coz()`** metni ikiye ayırır: **asıl gerekçe** (serbest cümleler) + **beyan edilen
+  alanlar** ("Etiket: değer" parçaları; satır sonu · " · " · ";" ile bölünür). Etiket 40 karakteri ya da
+  **4 kelimeyi** aşıyorsa cümle sayılır — "Cihaz şu sebeple hurdaya ayrıldı: anakart yanmış" alana
+  dönüşmesin. ⚠ Kelime sayımı `preg_split` ile: `str_word_count` BAYT tabanlıdır, Türkçe harfleri böler.
+  • Beyan edilen alan sistemdeki değerle **AYNIYSA DÜŞER** (tekrar basılmaz; `ht_norm()` = it_norm +
+  noktalama→boşluk ile karşılaştırılır, "RAM" ↔ "RAM TİPİ" gibi kısmi eşleşme de sayılır),
+  **FARKLIYSA** yeni **"BEYAN ↔ SİSTEM KAYDI FARKI"** tablosunda listelenir (beyan · sistem kaydı /
+  *kayıtta boş*) + ekranda sarı uyarı bandı. Ekrandaki "gerekçede Marka **Casper**, kayıtta **OEM**;
+  gerekçede Seri No **4648fsd5456**, kayıtta **—**" çelişkisi böyle gizlenmek yerine GÖRÜNÜR olur.
+  Karşılaştırma tabanı `ht_kayit_alanlari()` = `it_kunye()` + tutanakta zaten basılan alanlar
+  (cihaz tipi/adı/özellikler/alış tarihi/tedarikçi/fatura no/notlar; alış tutarı yalnız `it_mali_goster()`).
+  Gerekçe metni **yalnız künyeden ibaretse** hücre "— (işlem açıklamasına yalnız cihaz künyesi yazılmış,
+  sebep belirtilmemiş)" der — boş "—" sebebin unutulduğunu göstermiyordu.
+  • **Cihaz tablosu sadeleşti**: "Cihaz" sütunundaki teknik blob (işlemci · RAM · ekran kartı · disk…)
+  KALDIRILDI — künye zaten ÖZELLİKLER bloğunda; hücrede ad + kategori + envanter no kaldı (kategori adı
+  cihaz adıyla aynıysa tekrar yazılmaz: "Masaüstü BilgisayarMasaüstü Bilgisayar"). **Boş sütunlar hiç
+  basılmaz**: IFS Nesne No · Seri No · Kayıtlı Değer, listedeki cihazların hepsinde boşsa başlık da çıkmaz
+  (tek cihazlık belgede "—" dolu bir tablo yer israfıydı).
+  • ⚠ **Tek cihazda GÖRSEL künye tablosunun YANINA alınır** (`$fotoYanda`) — ayrı "CİHAZ GÖRSELLERİ"
+  bloğu ~40 mm yer kaplayıp belgeyi 2. sayfaya taşırıyordu; çok cihazlı belgede galeri olarak kalır.
+  • **Sayfa bölünmesi**: `.blok` sarmalayıcılarına + `.note`/`.signs`/`.fotolar`/tablo satırlarına
+  `break-inside:avoid`, bölüm başlıklarına `break-after:avoid` — "CİHAZ GÖRSELLERİ" başlığı 1. sayfanın
+  dibinde kalıp fotoğraf 2. sayfaya düşüyordu. `@page { size:A4; margin:0 }` + baskıda daha sıkı ölçüler.
+  • ⚠ `HT_TUR`'a **5. eleman: kısa ad** ("Hurdaya Ayırma Tutanağı" · "Zayi Tutanağı" · "Hibe / Devir
+  Tutanağı") — `mb_strtolower('HURDAYA AYIRMA (İMHA) TUTANAĞI')` Türkçe bilmediğinden ekranda ve hareket
+  günlüğünde **"hurdaya ayirma (i̇mha) tutanaği"** yazıyordu.
+  • Üst bilgi tutanak no'yu başa alır, kapanış paragrafı "İşbu tutanak taraflarca imza altına alınmıştır"
+  ile biter (gerekçeyi TEKRARLAMAZ), imza bloğunda ad satırı ayrı.
+  Test (itsm): `ht_test.php` **10 sağlama** (serbest cümle · iki nokta içeren cümle alan sayılmasın ·
+  tekrar düşer · çelişki yakalanır · sistemde olmayan alan kalır · boş/"—" atılır · tek satıra sıkışmış
+  "·" ayraçlı · yalnız künye · boş metin · kısmi eşleşme). Chromium ile **gerçek PDF sayfa sayısı**:
+  hurda (fotoğraf + tam künye + 5 satır fark + uzun gerekçe) · zayi · hibe · monitör **hepsi 1 sayfa**
+  (önce 2'ydi); iki cihazlık toplu belge 2 sayfa, bloklar bölünmüyor. İmzalı evrak yükleme çekirdeği
+  (`hurda_belge_test.php`) ve 8 IT sayfası uyarısız çalışıyor, inline JS temiz.
   **CİHAZ İŞLEM PANELİ + EL DEĞİŞTİRME ZİNCİRİ (2026-09-11, kullanıcı isteği)** — iş gerçeği:
   **bir cihaz 5-6 kez el değiştirir ve HER KULLANICININ kendi zimmet + İADE formu olur; yeni gelen
   cihazın da faturası vardır.** Cihaz kartı bunu taşıyacak hâle getirildi.

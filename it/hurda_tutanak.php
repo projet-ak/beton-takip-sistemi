@@ -11,6 +11,16 @@
  *
  * ⚠ Cihazın sistemde kayıtlı GÖRSELİ varsa (`foto_url`) tutanağa basılır — hurda/zayi belgesinde
  * "hangi cihazdı" sorusuna en iyi cevap fotoğraftır.
+ *
+ * ⚠⚠ GEREKÇE METNİ AYRIŞTIRILIR (2026-09-17, kullanıcı: "bu hurda ayırma formunu düzenliyelim
+ * sıkıntılı"). Kullanıcılar hurda sebebini yazarken cihaz künyesini de metnin içine kopyalıyor
+ * ("Cihaz Kodu: B037 / Marka-Model: Casper / Seri No: … / RAM: 4 GB / … arızalı"). Bu künye
+ * tutanakta ZATEN basılıyor; metin olduğu gibi yazılınca aynı bilgi ÜÇ kez (gerekçe hücresi,
+ * ÖZELLİKLER tablosu, kapanış beyanı) çıkıyor ve tek cihazlık belge 2 sayfaya taşıyordu.
+ * `ht_gerekce_coz()` metni ikiye ayırır: **asıl gerekçe** (serbest cümleler) + **beyan edilen
+ * alanlar**. Beyan edilen alan sistemdeki değerle AYNIYSA düşer (tekrar basılmaz), FARKLIYSA
+ * "BEYAN ↔ SİSTEM KAYDI FARKI" tablosunda çelişki olarak gösterilir — ekrandaki "Marka Casper ama
+ * kayıt OEM" çelişkisi böyle gizlenmek yerine görünür olur.
  */
 $rootPath = '../';
 require_once __DIR__ . '/../includes/functions.php';
@@ -21,15 +31,95 @@ require_once __DIR__ . '/../includes/db_it.php';
 require_once __DIR__ . '/_ortak.php';
 it_semasi_kur($pdoIt);
 
-/** İşlem türüne göre belge kimliği: başlık · no öneki · beyan · imza sütunları. */
+/**
+ * İşlem türüne göre belge kimliği: başlık · no öneki · beyan · imza sütunları · **kısa ad**.
+ * ⚠ Kısa ad elle yazılır: `mb_strtolower('HURDAYA AYIRMA (İMHA) TUTANAĞI')` Türkçe bilmediğinden
+ * "hurdaya ayirma (i̇mha) tutanaği" üretiyordu (ekranda ve hareket günlüğünde böyle görünüyordu).
+ */
 const HT_TUR = [
     'hurda' => ['HURDAYA AYIRMA (İMHA) TUTANAĞI', 'HRD', 'hurdaya ayrılmıştır',
-                ['TESLİM EDEN / KULLANAN', 'TESPİT EDEN — BİLGİ İŞLEM', 'ONAY']],
+                ['TESLİM EDEN / KULLANAN', 'TESPİT EDEN — BİLGİ İŞLEM', 'ONAY'], 'Hurdaya Ayırma Tutanağı'],
     'kayip' => ['KAYIP / ÇALINTI (ZAYİ) TUTANAĞI', 'ZAY', 'kayıp / çalıntı olarak kayda alınmıştır',
-                ['BİLDİREN / SORUMLU', 'TESPİT EDEN — BİLGİ İŞLEM', 'ONAY']],
+                ['BİLDİREN / SORUMLU', 'TESPİT EDEN — BİLGİ İŞLEM', 'ONAY'], 'Zayi Tutanağı'],
     'hibe'  => ['HİBE / DEVİR TUTANAĞI', 'HBE', 'hibe edilerek devredilmiştir',
-                ['TESLİM EDEN', 'TESLİM ALAN KURUM / KİŞİ', 'ONAY']],
+                ['TESLİM EDEN', 'TESLİM ALAN KURUM / KİŞİ', 'ONAY'], 'Hibe / Devir Tutanağı'],
 ];
+
+/** Etiket/değer karşılaştırması için: it_norm + noktalama → boşluk + boşluk sadeleştirme. */
+function ht_norm(?string $s): string
+{
+    $s = it_norm((string)$s);
+    $s = preg_replace('/[^A-Z0-9ÇĞİÖŞÜ]+/u', ' ', $s);
+    return trim(preg_replace('/\s+/u', ' ', (string)$s));
+}
+
+/**
+ * Gerekçe metnini ASIL SEBEP + BEYAN EDİLEN ALANLAR diye ayırır.
+ *
+ * "Etiket: değer" kalıbındaki parçalar alan sayılır (satır sonu, " · " ve ";" ile bölünür).
+ * Etiket 40 karakteri ve 4 kelimeyi aşıyorsa cümle kabul edilir — "Cihaz arızalandı: tamiri
+ * ekonomik değil" gibi serbest metinler yanlışlıkla alana dönüşmesin.
+ *
+ * @param array<string,string> $kayit sistemdeki değerler (künye + sanal alanlar), etiket => değer
+ * @return array{ozet:string, farklar:array<int,array{et:string,dg:string,sistem:string}>}
+ */
+function ht_gerekce_coz(string $metin, array $kayit): array
+{
+    $metin = trim($metin);
+    if ($metin === '') return ['ozet' => '', 'farklar' => []];
+
+    $ozet = []; $beyan = [];
+    foreach (preg_split('/\r\n|\r|\n|\s+·\s+|\s*;\s*/u', $metin) ?: [] as $p) {
+        $p = trim($p);
+        if ($p === '') continue;
+        // ⚠ Kelime sayımı preg_split ile — str_word_count BAYT tabanlıdır, Türkçe harfleri böler
+        if (preg_match('/^([^:]{2,40}?)\s*:\s*(.*)$/u', $p, $m)
+            && count(preg_split('/\s+/u', trim($m[1]), -1, PREG_SPLIT_NO_EMPTY) ?: []) <= 4) {
+            $dg = trim($m[2]);
+            if ($dg !== '' && $dg !== '—' && $dg !== '-') $beyan[trim($m[1])] = $dg;
+            continue;                                  // boş/"—" beyan hiç yazılmaz
+        }
+        $ozet[] = $p;
+    }
+
+    // Sistemdeki karşılığıyla aynı olan beyanlar düşer — tutanakta zaten basılıyor
+    $kn = [];
+    foreach ($kayit as $et => $dg) {
+        $n = ht_norm($et);
+        if ($n !== '' && trim((string)$dg) !== '') $kn[$n] = (string)$dg;
+    }
+    $farklar = [];
+    foreach ($beyan as $et => $dg) {
+        $n = ht_norm($et); $sistem = null;
+        foreach ($kn as $k => $v) {
+            if ($k === $n || ($n !== '' && (str_contains($k, $n) || str_contains($n, $k)))) { $sistem = $v; break; }
+        }
+        if ($sistem !== null) {
+            $a = ht_norm($dg); $b = ht_norm($sistem);
+            if ($a === $b || ($a !== '' && $b !== '' && (str_contains($b, $a) || str_contains($a, $b)))) continue;
+        }
+        $farklar[] = ['et' => $et, 'dg' => $dg, 'sistem' => (string)($sistem ?? '')];
+    }
+    return ['ozet' => trim(implode("\n", $ozet)), 'farklar' => $farklar];
+}
+
+/** Karşılaştırma tabanı: künye + tutanakta zaten basılan/kayıtta duran diğer alanlar. */
+function ht_kayit_alanlari(PDO $pdo, array $r, bool $maliGoster): array
+{
+    $a = it_kunye($pdo, $r) + [
+        'CİHAZ TİPİ'   => it_kategoriAd((string)$r['kategori']),
+        'CİHAZ ADI'    => (string)($r['ad'] ?? ''),
+        'ÖZELLİKLER'   => (string)($r['ozellikler'] ?? ''),
+        'ALIŞ TARİHİ'  => !empty($r['alis_tarihi']) ? format_date($r['alis_tarihi']) : '',
+        'TEDARİKÇİ'    => (string)($r['tedarikci'] ?? ''),
+        'FATURA NO'    => (string)($r['fatura_no'] ?? ''),
+        'NOTLAR'       => (string)($r['notlar'] ?? ''),
+    ];
+    if ($maliGoster && $r['fiyat'] !== null && $r['fiyat'] !== '') {
+        $a['ALIŞ TUTARI'] = it_para_yaz($r['fiyat'], $r['para_birimi'] ?? 'TRY');
+    }
+    return array_filter($a, fn($x) => trim((string)$x) !== '');
+}
 
 $id  = isset($_GET['id']) && ctype_digit((string)$_GET['id']) ? (int)$_GET['id'] : 0;
 $gun = trim((string)($_GET['gun'] ?? ''));
@@ -55,13 +145,12 @@ if ($id) {
     $geri  = 'cihazlar.php?durum=' . $tur;
 } else { die('Cihaz ya da işlem günü belirtilmedi.'); }
 
-[$baslik, $onEk, $beyan, $imzalar] = HT_TUR[$tur] ?? HT_TUR['hurda'];
+[$baslik, $onEk, $beyan, $imzalar, $kisaAd] = HT_TUR[$tur] ?? HT_TUR['hurda'];
 
 $ilk     = $liste[0];
 $hareket = it_dusum_son($pdoIt, (int)$ilk['id'], $tur);
 $hTarih  = $hareket['tarih'] ?? date('Y-m-d');
 $kisi    = trim((string)($hareket['kisi'] ?? ''));
-$gerekce = trim((string)($hareket['aciklama'] ?? ''));
 $no      = $id
     ? $onEk . '-' . ($ilk['cihaz_kodu'] ?: $ilk['envanter_no']) . '-' . date('Ymd', strtotime($hTarih))
     : $onEk . '-' . date('Ymd', strtotime($gun)) . '-' . str_pad((string)count($liste), 3, '0', STR_PAD_LEFT);
@@ -69,19 +158,33 @@ $lokasyon = $ilk['lokasyon_id'] ? it_lokasyon_yol($pdoIt, (int)$ilk['lokasyon_id
 $duzenleyen = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ?? '';
 $maliGoster = it_mali_goster();
 
-// Cihaz başına gerekçe + sistemde kayıtlı görsel (varsa tutanağa basılır)
-$satirlar = [];
+// Cihaz başına: künye · ayrıştırılmış gerekçe · sistemde kayıtlı görsel
+$satirlar = []; $farkVar = false;
 foreach ($liste as $r) {
     $h  = count($liste) > 1 ? it_dusum_son($pdoIt, (int)$r['id'], $tur) : $hareket;
     $ft = (string)($r['foto_url'] ?? '');
+    $gz = ht_gerekce_coz((string)($h['aciklama'] ?? ''), ht_kayit_alanlari($pdoIt, $r, $maliGoster));
+    if ($gz['farklar']) $farkVar = true;
     $satirlar[] = [
         'c'       => $r,
-        'gerekce' => trim((string)($h['aciklama'] ?? '')),
+        'kunye'   => it_kunye($pdoIt, $r),
+        'gerekce' => $gz['ozet'],
+        'farklar' => $gz['farklar'],
         'tarih'   => (string)($h['tarih'] ?? $hTarih),
         'foto'    => ($ft !== '' && is_file(__DIR__ . '/../' . $ft)) ? $ft : '',
     ];
 }
+$gerekce    = $satirlar[0]['gerekce'];
+$gerekceHam = trim((string)($hareket['aciklama'] ?? ''));
 $fotoVar = (bool)array_filter(array_column($satirlar, 'foto'));
+$tek     = count($liste) === 1;
+// Tek cihazda görsel künyenin YANINA konur (ayrı galeri bloğu belgeyi 2. sayfaya taşırıyordu)
+$fotoYanda = $tek && $satirlar[0]['foto'] !== '' && $satirlar[0]['kunye'];
+
+// Boş sütunlar basılmaz — tek cihazlık belgede "—" dolu bir tablo yer israfıydı
+$ifsVar  = (bool)array_filter($liste, fn($r) => trim((string)($r['varlik_kodu'] ?? '')) !== '');
+$seriVar = (bool)array_filter($liste, fn($r) => trim((string)($r['seri_no'] ?? '')) !== '');
+$degerVar = $maliGoster && array_filter($liste, fn($r) => $r['fiyat'] !== null && $r['fiyat'] !== '');
 
 // ── İMZALI EVRAK: tutanağı yazdır → imzalat → tara → geri yükle ───────────────
 $evrakMesaj = null; $evrakHata = null;
@@ -103,7 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'imzal
                 $pdoIt->prepare("INSERT INTO it_belgeler (cihaz_id, dosya_url, ad, mime, boyut, tur, kullanici) VALUES (?,?,?,?,?, 'hurda', ?)")
                       ->execute([$cid, $bg['dosya_url'], $bg['ad'], $bg['mime'], $bg['boyut'], $kul]);
             }
-            it_hareket_ekle($pdoIt, $cid, 'not', null, 'İmzalı ' . mb_strtolower($baslik, 'UTF-8') . ' yüklendi (' . $no . ').');
+            it_hareket_ekle($pdoIt, $cid, 'not', null, 'İmzalı ' . $kisaAd . ' yüklendi (' . $no . ').');
         }
     }
     if ($ok) $evrakMesaj = 'İmzalı tutanak yüklendi.';
@@ -128,35 +231,52 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
 <title><?= h($baslik) ?> <?= h($no) ?></title>
 <style>
   * { box-sizing:border-box; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; color:#111; margin:0; background:#f0f0f0; }
-  .sheet { width:210mm; min-height:297mm; margin:10px auto; background:#fff; padding:18mm 16mm; box-shadow:0 0 8px rgba(0,0,0,.15); }
-  .top { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #00584E; padding-bottom:10px; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color:#111; margin:0; background:#eceff0; }
+  .sheet { width:210mm; min-height:297mm; margin:10px auto; background:#fff; padding:14mm 15mm; box-shadow:0 0 8px rgba(0,0,0,.15); }
+  .top { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #00584E; padding-bottom:8px; }
   .top .logo { font-size:22px; font-weight:800; color:#00584E; letter-spacing:-.5px; }
-  .doc-title { text-align:center; margin:18px 0 6px; font-size:18px; font-weight:800; letter-spacing:1px; }
-  .doc-no { text-align:center; font-size:13px; color:#00584E; font-weight:700; margin-bottom:16px; }
-  .info { width:100%; border-collapse:collapse; margin-bottom:14px; font-size:12.5px; }
-  .info td { border:1px solid #cfcfcf; padding:6px 9px; }
-  .info td.k { background:#f5f7f7; font-weight:600; width:22%; }
-  table.items { width:100%; border-collapse:collapse; font-size:12px; margin-top:4px; }
-  table.items th, table.items td { border:1px solid #bbb; padding:6px 8px; vertical-align:top; }
-  table.items th { background:#00584E; color:#fff; font-weight:600; }
-  .mono { font-family: Consolas, monospace; font-size:11.5px; }
-  .blok-basi { margin:16px 0 4px; font-size:12px; font-weight:700; color:#00584E; letter-spacing:.5px;
-               border-bottom:1px solid #cfcfcf; padding-bottom:3px; }
-  table.kunye { width:100%; border-collapse:collapse; font-size:11px; }
-  table.kunye td { border:1px solid #d5d5d5; padding:4px 7px; }
+  .top .meta { text-align:right; font-size:10.5px; color:#555; line-height:1.55; }
+  .doc-title { text-align:center; margin:14px 0 4px; font-size:17px; font-weight:800; letter-spacing:.8px; }
+  .doc-no { text-align:center; font-size:12px; color:#00584E; font-weight:700; margin-bottom:12px; }
+  .info { width:100%; border-collapse:collapse; margin-bottom:10px; font-size:11.5px; }
+  .info td { border:1px solid #cfcfcf; padding:5px 8px; }
+  .info td.k { background:#f5f7f7; font-weight:600; width:19%; color:#444; }
+  .info td.gerekce { white-space:pre-line; line-height:1.5; }
+  .sec { margin:12px 0 4px; font-size:11px; font-weight:700; color:#00584E; letter-spacing:.6px;
+         border-bottom:1px solid #cfcfcf; padding-bottom:3px; break-after:avoid; page-break-after:avoid; }
+  table.items { width:100%; border-collapse:collapse; font-size:11.5px; }
+  table.items th, table.items td { border:1px solid #bbb; padding:5px 7px; vertical-align:top; }
+  table.items th { background:#00584E; color:#fff; font-weight:600; font-size:10.5px; letter-spacing:.3px; }
+  table.items tr { break-inside:avoid; page-break-inside:avoid; }
+  table.items .alt { font-size:10px; color:#666; }
+  .mono { font-family: Consolas, monospace; font-size:11px; }
+  .blok { break-inside:avoid; page-break-inside:avoid; }
+  table.kunye { width:100%; border-collapse:collapse; font-size:10.5px; }
+  table.kunye td { border:1px solid #d5d5d5; padding:3px 7px; }
   table.kunye td.k { background:#f7f9f9; font-weight:600; width:17%; color:#444; }
-  .fotolar { display:flex; flex-wrap:wrap; gap:10px; }
-  .foto { width:48mm; border:1px solid #cfcfcf; border-radius:6px; padding:5px; text-align:center; }
-  .foto img { width:100%; height:34mm; object-fit:contain; }
-  .foto .et { font-size:10px; color:#555; margin-top:3px; word-break:break-word; }
-  .note { font-size:11.5px; color:#333; margin:16px 0; line-height:1.65; text-align:justify; }
-  .note ol { margin:6px 0 0 18px; padding:0; }
-  .signs { display:flex; justify-content:space-between; gap:10px; margin-top:36px; }
+  table.fark { width:100%; border-collapse:collapse; font-size:10.5px; }
+  table.fark th, table.fark td { border:1px solid #e0cfa8; padding:4px 7px; text-align:left; vertical-align:top; }
+  table.fark th { background:#fdf6e3; color:#7a5a00; font-weight:600; }
+  table.fark td.bos { color:#888; font-style:italic; }
+  .fotolar { display:flex; flex-wrap:wrap; gap:8px; }
+  .foto { width:40mm; border:1px solid #cfcfcf; border-radius:6px; padding:4px; text-align:center; break-inside:avoid; }
+  .foto img { width:100%; height:26mm; object-fit:contain; }
+  .foto .et { font-size:9.5px; color:#555; margin-top:3px; word-break:break-word; }
+  .kunye-satir { display:flex; gap:8px; align-items:flex-start; }
+  .kunye-satir table.kunye { flex:1; }
+  .foto.yan { width:42mm; flex:0 0 42mm; }
+  .foto.yan img { height:36mm; }
+  .note { font-size:11px; color:#222; margin:10px 0 0; line-height:1.6; text-align:justify;
+          break-inside:avoid; page-break-inside:avoid; }
+  .note ol { margin:5px 0 0 16px; padding:0; }
+  .note li { margin-bottom:2px; }
+  .signs { display:flex; justify-content:space-between; gap:10px; margin-top:20px;
+           break-inside:avoid; page-break-inside:avoid; }
   .sign { flex:1; text-align:center; }
-  .sign .line { border-top:1px solid #333; margin-top:52px; padding-top:6px; font-size:11.5px; font-weight:600; }
-  .sign .sub { font-size:10.5px; color:#666; }
-  .foot { margin-top:24px; text-align:center; font-size:10px; color:#999; border-top:1px solid #eee; padding-top:8px; }
+  .sign .line { border-top:1px solid #333; margin-top:34px; padding-top:5px; font-size:11px; font-weight:700; }
+  .sign .ad { font-size:10.5px; color:#222; min-height:13px; }
+  .sign .sub { font-size:9.5px; color:#888; }
+  .foot { margin-top:14px; text-align:center; font-size:9.5px; color:#999; border-top:1px solid #eee; padding-top:6px; }
   .toolbar { text-align:center; padding:10px; }
   .toolbar button, .toolbar a { font:inherit; padding:8px 18px; border-radius:8px; border:none; cursor:pointer; text-decoration:none; margin:0 4px; }
   .btn-print { background:#00584E; color:#fff; }
@@ -169,7 +289,12 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
   .evrak input[type=file] { flex:1 1 240px; font:inherit; }
   .evrak button { background:#1b6b3a; color:#fff; border:none; border-radius:8px; padding:8px 16px; font:inherit; cursor:pointer; }
   .evrak .uyari { color:#b00; } .evrak .tamam { color:#1b6b3a; }
-  @media print { body { background:#fff; } .sheet { margin:0; box-shadow:none; width:auto; padding:12mm; } .toolbar, .evrak { display:none; } }
+  @page { size:A4; margin:0; }
+  @media print {
+    body { background:#fff; }
+    .sheet { margin:0; box-shadow:none; width:auto; min-height:0; padding:10mm 13mm; }
+    .toolbar, .evrak { display:none; }
+  }
 </style>
 </head>
 <body>
@@ -195,9 +320,19 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
 </div>
 <?php endif; ?>
 
+<?php if ($farkVar): ?>
+<?php /* Beyan ↔ kayıt çelişkisi ekranda da söylenir: belge basılmadan önce düzeltilebilsin. */ ?>
+<div class="evrak" style="border-left-color:#c47f00">
+  <div class="basi" style="color:#8a5a00">⚠ Tutanak metni ile cihaz kaydı arasında fark var</div>
+  <div style="color:#555">Gerekçe metninde yazılan bazı bilgiler sistemdeki kayıtla uyuşmuyor; tutanağın
+    altında <em>Beyan ↔ Sistem Kaydı Farkı</em> tablosunda listelendi. Doğrusu hangisiyse cihaz kartından
+    düzeltip tutanağı yeniden yazdırın.</div>
+</div>
+<?php endif; ?>
+
 <?php if (yetki_var('giris')): ?>
 <div class="evrak">
-  <div class="basi">İmzalı <?= h(ucfirst(mb_strtolower($baslik, 'UTF-8'))) ?>
+  <div class="basi">İmzalı <?= h($kisaAd) ?>
     <?php if ($imzaliSayi): ?><span class="rozet var">yüklü (<?= (int)$imzaliSayi ?>)</span>
     <?php else: ?><span class="rozet yok">yüklenmedi</span><?php endif; ?></div>
   <div style="color:#555">Tutanağı yazdırıp imzalattıktan sonra taranmış kopyayı buradan yükleyin —
@@ -215,84 +350,119 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
 
 <div class="sheet">
   <div class="top">
-    <div><img src="../uploads/logo/ERN%20Taahhut_Logo_Renkli.png" alt="ERN Taahhüt" style="height:46px" onerror="this.outerHTML='<div class=\'logo\'>ERN TAAHHÜT</div>'"><div style="font-size:10px;font-weight:600;color:#555;letter-spacing:2px;margin-top:3px">IT ENVANTER</div></div>
-    <div style="text-align:right;font-size:11px;color:#555">
-      Düzenleme: <strong><?= date('d.m.Y') ?></strong><br>
-      İşlem Tarihi: <strong><?= format_date($hTarih) ?></strong>
+    <div><img src="../uploads/logo/ERN%20Taahhut_Logo_Renkli.png" alt="ERN Taahhüt" style="height:44px" onerror="this.outerHTML='<div class=\'logo\'>ERN TAAHHÜT</div>'"><div style="font-size:9.5px;font-weight:600;color:#555;letter-spacing:2px;margin-top:3px">BİLGİ İŞLEM — IT ENVANTER</div></div>
+    <div class="meta">
+      Tutanak No: <strong style="color:#00584E"><?= h($no) ?></strong><br>
+      İşlem Tarihi: <strong><?= format_date($hTarih) ?></strong><br>
+      Düzenleme: <strong><?= date('d.m.Y') ?></strong>
     </div>
   </div>
 
   <div class="doc-title"><?= h($baslik) ?></div>
-  <div class="doc-no">Tutanak No: <?= h($no) ?></div>
+  <div class="doc-no"><?= h($no) ?></div>
 
   <table class="info">
     <tr><td class="k">İşlem</td><td><?= h(it_durumAd($tur)) ?></td>
-        <td class="k">İşlem Tarihi</td><td><?= format_date($hTarih) ?></td></tr>
+        <td class="k">Cihaz Adedi</td><td><?= count($liste) ?> adet</td></tr>
     <tr><td class="k"><?= $tur === 'hibe' ? 'Hibe edilen kurum / kişi' : ($tur === 'kayip' ? 'Kaybı bildiren' : 'Teslim eden / kullanan') ?></td>
         <td><?= h($kisi ?: '—') ?></td>
-        <td class="k">Cihaz Adedi</td><td><?= count($liste) ?></td></tr>
-    <tr><td class="k">Lokasyon / Proje</td><td><?= h($lokasyon ?: '—') ?></td>
-        <td class="k">Düzenleyen</td><td><?= h($duzenleyen ?: '—') ?></td></tr>
-    <?php if ($gerekce !== '' && count($liste) === 1): ?>
-    <tr><td class="k">Gerekçe</td><td colspan="3"><?= h($gerekce) ?></td></tr>
+        <td class="k">Lokasyon / Proje</td><td><?= h($lokasyon ?: '—') ?></td></tr>
+    <tr><td class="k">Düzenleyen</td><td><?= h($duzenleyen ?: '—') ?></td>
+        <td class="k">İşlem Tarihi</td><td><?= format_date($hTarih) ?></td></tr>
+    <?php if ($tek): ?>
+    <tr><td class="k">Gerekçe</td><td class="gerekce" colspan="3"><?php if ($gerekce !== ''): ?><?= h($gerekce) ?>
+      <?php elseif ($gerekceHam !== ''): ?>—<span style="color:#8a5a00;font-size:10.5px"> (işlem açıklamasına yalnız cihaz künyesi yazılmış, sebep belirtilmemiş)</span>
+      <?php else: ?>—<?php endif; ?></td></tr>
     <?php endif; ?>
   </table>
 
+  <div class="sec">TUTANAĞA KONU CİHAZ<?= $tek ? '' : 'LAR' ?></div>
   <table class="items">
-    <thead><tr><th style="width:28px">S.No</th><th style="width:72px">Cihaz Kodu</th><th style="width:112px">IFS Nesne No</th>
-      <th>Cihaz</th><th style="width:95px">Marka / Model</th><th style="width:100px">Seri No</th>
-      <?php if ($maliGoster): ?><th style="width:70px" class="mono">Kayıtlı Değer</th><?php endif; ?>
-      <?php if (count($liste) > 1): ?><th style="width:120px">Gerekçe</th><?php endif; ?></tr></thead>
+    <thead><tr><th style="width:26px">#</th><th style="width:76px">Cihaz Kodu</th>
+      <?php if ($ifsVar): ?><th style="width:108px">IFS Nesne No</th><?php endif; ?>
+      <th>Cihaz</th><th style="width:190px">Marka / Model</th>
+      <?php if ($seriVar): ?><th style="width:96px">Seri No</th><?php endif; ?>
+      <?php if ($degerVar): ?><th style="width:90px">Kayıtlı Değer</th><?php endif; ?>
+      <?php if (!$tek): ?><th style="width:130px">Gerekçe</th><?php endif; ?></tr></thead>
     <tbody>
     <?php foreach ($satirlar as $i => $s): $r = $s['c']; ?>
       <tr>
         <td><?= $i + 1 ?></td>
         <td class="mono"><?= h(($r['cihaz_kodu'] ?? '') !== '' ? $r['cihaz_kodu'] : $r['envanter_no']) ?></td>
-        <td class="mono"><?= h($r['varlik_kodu'] ?: '—') ?></td>
-        <td><?= h($r['ad']) ?><div style="font-size:10.5px;color:#666"><?= h(it_kategoriAd($r['kategori'])) ?><?= $r['ozellikler'] ? ' · ' . h($r['ozellikler']) : '' ?></div></td>
+        <?php if ($ifsVar): ?><td class="mono"><?= h($r['varlik_kodu'] ?: '—') ?></td><?php endif; ?>
+        <?php /* Teknik künye ÖZELLİKLER bloğunda basılıyor — burada yalnız ad + tip + envanter no */ ?>
+        <?php $kat = it_kategoriAd((string)$r['kategori']); $katAyri = ht_norm($kat) !== ht_norm((string)$r['ad']); ?>
+        <td><?= h($r['ad']) ?><div class="alt"><?= $katAyri ? h($kat) . ' · ' : '' ?><?= h($r['envanter_no']) ?></div></td>
         <td><?= h(trim(($r['marka'] ?? '') . ' ' . ($r['model'] ?? '')) ?: '—') ?></td>
-        <td class="mono"><?= h($r['seri_no'] ?: '—') ?></td>
-        <?php if ($maliGoster): ?><td class="mono" style="text-align:right"><?= $r['fiyat'] !== null ? h(it_para_yaz($r['fiyat'], $r['para_birimi'] ?? 'TRY')) : '—' ?></td><?php endif; ?>
-        <?php if (count($liste) > 1): ?><td style="font-size:10.5px"><?= h($s['gerekce'] ?: '—') ?></td><?php endif; ?>
+        <?php if ($seriVar): ?><td class="mono"><?= h($r['seri_no'] ?: '—') ?></td><?php endif; ?>
+        <?php if ($degerVar): ?><td class="mono" style="text-align:right"><?= $r['fiyat'] !== null && $r['fiyat'] !== '' ? h(it_para_yaz($r['fiyat'], $r['para_birimi'] ?? 'TRY')) : '—' ?></td><?php endif; ?>
+        <?php if (!$tek): ?><td style="font-size:10px"><?= h($s['gerekce'] ?: '—') ?></td><?php endif; ?>
       </tr>
     <?php endforeach; ?>
     </tbody>
   </table>
 
   <?php /* Cihaz künyesi — kurumsal demirbaş formundaki ÖZELLİKLER bloğuyla aynı (zimmet tutanağıyla ortak) */ ?>
-  <?php foreach ($satirlar as $i => $s): $r = $s['c']; $ky = it_kunye($pdoIt, $r); if (!$ky) continue; ?>
-  <div class="blok-basi"><?= count($liste) > 1 ? ($i + 1) . '. ' : '' ?>ÖZELLİKLER — <?= h($r['ad']) ?>
-    <span style="font-weight:600;color:#555">(<?= h($r['envanter_no']) ?><?= !empty($r['varlik_kodu']) ? ' · IFS: ' . h($r['varlik_kodu']) : '' ?>)</span></div>
-  <table class="kunye">
-    <?php $ck = array_chunk($ky, 2, true); foreach ($ck as $cift): ?>
-    <tr>
-      <?php foreach ($cift as $et => $dg): ?>
-        <td class="k"><?= h($et) ?></td><td class="<?= in_array($et, ['ŞASİ NO / SERİ NO','IMEI','IP / MAC','CİHAZ KODU'], true) ? 'mono' : '' ?>"><?= h($dg) ?></td>
+  <?php foreach ($satirlar as $i => $s): $r = $s['c']; $ky = $s['kunye']; if (!$ky) continue; ?>
+  <div class="blok">
+    <div class="sec"><?= $tek ? '' : ($i + 1) . '. ' ?>ÖZELLİKLER — <?= h($r['ad']) ?>
+      <span style="font-weight:600;color:#666">(<?= h($r['envanter_no']) ?><?= !empty($r['varlik_kodu']) ? ' · IFS: ' . h($r['varlik_kodu']) : '' ?>)</span></div>
+    <div class="kunye-satir">
+    <table class="kunye">
+      <?php foreach (array_chunk($ky, 2, true) as $cift): ?>
+      <tr>
+        <?php foreach ($cift as $et => $dg): ?>
+          <td class="k"><?= h($et) ?></td><td class="<?= in_array($et, ['ŞASİ NO / SERİ NO','IMEI','IP / MAC','CİHAZ KODU','IFS SERİ NESNE NO','ENVANTER NO'], true) ? 'mono' : '' ?>"><?= h($dg) ?></td>
+        <?php endforeach; ?>
+        <?php if (count($cift) === 1): ?><td class="k"></td><td></td><?php endif; ?>
+      </tr>
       <?php endforeach; ?>
-      <?php if (count($cift) === 1): ?><td class="k"></td><td></td><?php endif; ?>
-    </tr>
-    <?php endforeach; ?>
-  </table>
+    </table>
+    <?php if ($fotoYanda): ?>
+      <div class="foto yan"><img src="../<?= h($satirlar[0]['foto']) ?>" alt="">
+        <div class="et">Sistemde kayıtlı fotoğraf</div></div>
+    <?php endif; ?>
+    </div>
+  </div>
   <?php endforeach; ?>
 
-  <?php if ($fotoVar): ?>
+  <?php if ($farkVar): ?>
+  <?php /* Gerekçe metninde yazılıp kayıtla çelişen alanlar — belge iki farklı bilgiyi sessizce taşımasın */ ?>
+  <div class="blok">
+    <div class="sec">BEYAN ↔ SİSTEM KAYDI FARKI</div>
+    <table class="fark">
+      <thead><tr><?php if (!$tek): ?><th style="width:26px">#</th><?php endif; ?>
+        <th style="width:26%">Alan</th><th style="width:37%">Tutanak metninde beyan edilen</th><th>Sistem kaydı</th></tr></thead>
+      <tbody>
+      <?php foreach ($satirlar as $i => $s): foreach ($s['farklar'] as $f): ?>
+        <tr><?php if (!$tek): ?><td><?= $i + 1 ?></td><?php endif; ?>
+          <td><?= h($f['et']) ?></td><td><?= h($f['dg']) ?></td>
+          <td class="<?= $f['sistem'] === '' ? 'bos' : '' ?>"><?= $f['sistem'] === '' ? 'kayıtta boş' : h($f['sistem']) ?></td></tr>
+      <?php endforeach; endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+  <?php endif; ?>
+
+  <?php if ($fotoVar && !$fotoYanda): ?>
   <?php /* Sistemde kayıtlı cihaz görseli — "hangi cihazdı" sorusunun en iyi cevabı */ ?>
-  <div class="blok-basi">CİHAZ GÖRSELLERİ <span style="font-weight:600;color:#555">(sistemde kayıtlı fotoğraf)</span></div>
-  <div class="fotolar">
-    <?php foreach ($satirlar as $i => $s): if (!$s['foto']) continue; $r = $s['c']; ?>
-      <div class="foto">
-        <img src="../<?= h($s['foto']) ?>" alt="">
-        <div class="et"><?= count($liste) > 1 ? ($i + 1) . '. ' : '' ?><?= h(($r['cihaz_kodu'] ?? '') !== '' ? $r['cihaz_kodu'] : $r['envanter_no']) ?> — <?= h($r['ad']) ?></div>
-      </div>
-    <?php endforeach; ?>
+  <div class="blok">
+    <div class="sec">CİHAZ GÖRSELLERİ <span style="font-weight:600;color:#666">(sistemde kayıtlı fotoğraf)</span></div>
+    <div class="fotolar">
+      <?php foreach ($satirlar as $i => $s): if (!$s['foto']) continue; $r = $s['c']; ?>
+        <div class="foto">
+          <img src="../<?= h($s['foto']) ?>" alt="">
+          <div class="et"><?= $tek ? '' : ($i + 1) . '. ' ?><?= h(($r['cihaz_kodu'] ?? '') !== '' ? $r['cihaz_kodu'] : $r['envanter_no']) ?> — <?= h($r['ad']) ?></div>
+        </div>
+      <?php endforeach; ?>
+    </div>
   </div>
   <?php endif; ?>
 
   <div class="note">
-    Yukarıda bilgileri ve künyesi verilen <strong><?= count($liste) ?> adet</strong> bilgi işlem cihazı,
+    Yukarıda künyesi çıkarılan <strong><?= count($liste) ?> adet</strong> bilgi işlem cihazı,
     <strong><?= format_date($hTarih) ?></strong> tarihinde yapılan inceleme sonucunda
-    <strong><?= h($beyan) ?></strong>.
-    <?php if ($gerekce !== '' && count($liste) === 1): ?> Gerekçe: <strong><?= h($gerekce) ?></strong>.<?php endif; ?>
+    <strong><?= h($beyan) ?></strong>. İşbu tutanak taraflarca imza altına alınmıştır.
     <ol>
       <?php if ($tur === 'hurda'): ?>
         <li>Cihaz(lar) ekonomik ömrünü tamamlamış / onarımı ekonomik olmadığından kullanım dışı bırakılmıştır.</li>
@@ -315,7 +485,8 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
   <div class="signs">
     <?php foreach ($imzalar as $iz): ?>
     <div class="sign"><div class="line"><?= h($iz) ?></div>
-      <div class="sub"><?= str_contains($iz, 'BİLGİ İŞLEM') ? h($duzenleyen) : (str_contains($iz, 'ONAY') ? '' : h($kisi)) ?><br>Adı Soyadı / Tarih / İmza</div></div>
+      <div class="ad"><?= str_contains($iz, 'BİLGİ İŞLEM') ? h($duzenleyen) : (str_contains($iz, 'ONAY') ? '' : h($kisi)) ?></div>
+      <div class="sub">Adı Soyadı / Tarih / İmza</div></div>
     <?php endforeach; ?>
   </div>
 
