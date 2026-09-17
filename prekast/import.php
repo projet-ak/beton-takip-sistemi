@@ -123,6 +123,34 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
                 <?php endif; ?>
             </div>
 
+            <?php if (!empty($s['geri'])): $gr = $s['geri']; ?>
+            <div class="alert alert-danger py-2 mb-2">
+                <div class="fw-semibold"><i class="bi bi-exclamation-octagon-fill me-1"></i>
+                    ÇİZELGE GERİYE GİTTİ — bu dosyanın İŞ TAKİP sayfası eski olabilir</div>
+                <div class="small mt-1">
+                    Sistemde <strong><?= $f0($gr['satir'][0]) ?></strong> iş satırı /
+                    <strong><?= $f2($gr['hakkedis'][0]) ?> TL</strong> vardı;
+                    bu dosyada <strong><?= $f0($gr['satir'][1]) ?></strong> satır /
+                    <strong><?= $f2($gr['hakkedis'][1]) ?> TL</strong> var
+                    (metraj <?= $f2($gr['metraj'][0]) ?> → <?= $f2($gr['metraj'][1]) ?> m ·
+                    silikon <?= $f0($gr['silikon'][0]) ?> → <?= $f0($gr['silikon'][1]) ?>).
+                    <?php if ($gr['dusen']): ?><strong><?= $f0($gr['dusen']) ?></strong> satır çizelgeden düştü.<?php endif; ?>
+                </div>
+                <?php if ($gr['ayni']): ?>
+                <div class="small mt-1">
+                    Bu iş sayfası <strong><?= h(format_date((string)$gr["ayni"]["rapor_tarihi"])) ?></strong> tarihinde yüklenen
+                    <strong><?= h($gr['ayni']['dosya'] ?: 'dosya') ?></strong> ile <strong>birebir aynı</strong> —
+                    kitabın İCMAL / HESAPLAMA sayfaları güncellenmiş ama iş sayfası eski kalmış olabilir.
+                </div>
+                <?php endif; ?>
+                <div class="small mt-1">
+                    <i class="bi bi-shield-check me-1"></i>Hiçbir kayıt silinmedi; düşen satırlar
+                    <a href="isler.php?dosyada=0" class="alert-link">“çizelgeden düşenler”</a> olarak duruyor ve
+                    doğru dosya yüklenince hepsi geri döner.
+                </div>
+            </div>
+            <?php endif; ?>
+
             <?php foreach ($s['kontrol'] as $k):
                 $renk = ['ok'=>'success', 'uyari'=>'warning', 'bilgi'=>'info'][$k['tip']] ?? 'secondary'; ?>
                 <div class="mb-1">

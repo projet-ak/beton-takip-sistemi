@@ -265,6 +265,32 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   kopyası 416,34; Excel İCMAL B9/C20/D18/F45/H5 derken güncel iş satırları B8/C17/D8/F26/H1 verir). Bu yüzden
   sistem icmali Excel'in İCMAL hücrelerini KOPYALAMAZ, aynı mantığı güncel satırlara uygular; import raporunda
   fark uyarı olarak listelenir (14 farklılık). Satır 65'te blok "D " sonda boşluklu — pk_al trim eder.
+  **17 EYLÜL "İCMALLİ 2" KİTABI + ÇİZELGE GERİ GİTME KORUMASI (2026-09-17, kullanıcı: "excel yine
+  değişmiş buna göre tekrar kontrol edelim")** — gelen kitap `… İŞ TAKİP ÇİZELGESİ - İCMALLİ 2.xlsx`.
+  • ⚠⚠ **Kitabın İŞ SAYFASI GÜNCELLENMEMİŞ**: gizli `Sayfa1 (2)` sayfası **08.09 dosyasıyla BİREBİR
+  AYNI** (265 satırın tamamı aynı; 64 iş satırı · kesim 64 · silikon 24 · metraj 125,95 · hakkediş
+  238.045,50). Değişen yalnız **HESAPLAMA** (18 satır; A ve E blokları + F eklemeleriyle 113 satıra
+  çıkmış) ve ondan SUMIFS ile beslenen **İCMAL** (A1/B9/C20/D18/F51/H5/E8 = 112 daire · 545,34 mt).
+  Yani saha İCMAL tarafını elle güncellemiş, çizelgeyi güncellememiş. **Modül doğru çalışıyor**:
+  iş sayfasından okunan 64/64/24/125,95/238.045,50 Excel'le birebir tuttu, 51 satır `dosyada=0`
+  oldu (silinmedi) ve 16.09 dosyası tekrar yüklendiğinde **hepsi geri döndü** (115 · 964.939,50).
+  • **Yeni koruma `pk_geri_kontrol()`** (`_import.php`): içe aktarma dosyayı açmadan ÖNCE çizelgenin
+  durumunu fotoğraflar (`$s['onceki']`), sonunda satır/silikon/metraj/hakkedişi karşılaştırır. Çizelge
+  **geriye gitmişse** `$s['geri']` dolar ve import ekranında **kırmızı bant** çıkar: "ÇİZELGE GERİYE
+  GİTTİ — bu dosyanın İŞ TAKİP sayfası eski olabilir · 115 satır/964.939,50 TL → 64 satır/238.045,50 TL ·
+  51 satır düştü". Ayrıca `prekast_gunluk`'ta **aynı satır+metraj+hakkediş** taşıyan eski yükleme
+  aranır ve bulunursa "bu iş sayfası 08.09.2026'da yüklenen <dosya> ile BİREBİR AYNI" denir.
+  Bant "hiçbir kayıt silinmedi, doğru dosya yüklenince geri döner" diyerek `isler.php?dosyada=0`
+  bağlantısını verir. **Yükleme ENGELLENMEZ** (Excel esastır, işlem geri döndürülebilir) — yalnız
+  görünür kılınır; aksi halde hakkediş sessizce düşüp "sistem hakkedişi yedi" sanılıyordu.
+  ⚠ İlk yüklemede ve ilerleme olan yüklemede bant ÇIKMAZ; aynı dosya iki gün üst üste yüklenirse de
+  çıkmaz (geri gidiş yok). Test: `pk_geri.php` altı adımlık zincir (05.09 → 08.09 → 16.09 → 17.09 →
+  16.09 tekrar → 16.09 tekrar) — bant yalnız 08.09 ve 17.09'da çıktı, "aynı dosya" eşleşmesi 17.09'da
+  doğru günü buldu, zincir sonunda sistem 115/964.939,50/düşen 0 ile kapandı.
+  • Duman testi koşucusu `pk_sync.php` artık **`pksm/prekast/` sayfa kopyalarını da repodan tazeler**
+  (elle yamalı kopya bayatlıyordu); `pksm/post.php` ile import ekranı gerçek dosya POST'uyla render
+  edilip bant doğrulandı, 5 prekast sayfası uyarısız çalışıyor.
+
 - **IT Envanter modülü** = `it/` alt klasörü (MODULLER anahtarı `it`, şeritte "IT"). Bilgi işlem varlıkları:
   bilgisayar / laptop / monitör / yazıcı / telefon / tablet / ağ cihazı / sunucu / **yazılım lisansı** / aksesuar.
   **Ayrı veritabanı** (`takbulut_it`, `IT_DB_NAME`; `includes/db_it.php` → `$pdoIt`), tablolar `it_` önekli:

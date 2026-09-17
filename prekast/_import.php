@@ -162,6 +162,53 @@ function pk_dosya_tarihi(string $ad): ?string
 }
 
 /**
+ * ⚠ ÇİZELGE GERİYE Mİ GİTTİ? — sahadan gelen dosyanın İŞ TAKİP sayfası eski kalmış olabilir.
+ *
+ * Gerçek vaka (2026-09-17): kullanıcı "İCMALLİ 2" kitabını gönderdi; İCMAL ve HESAPLAMA
+ * sayfaları güncellenmişti ama gizli iş sayfası (Sayfa1 (2)) 08.09 dosyasıyla BİREBİR AYNIYDI.
+ * Yükleyince 51 satır çizelgeden düştü, hakkediş 964.939,50 → 238.045,50 indi. Bu, modülün
+ * hatası değil dosyanın durumudur — ama sessizce olursa "sistem hakkedişi yedi" sanılır.
+ *
+ * Kayıt SİLİNMEZ (dosyada=0 işaretlenir), doğru dosya yüklenince hepsi geri döner; burada
+ * yalnız durum tespit edilip rapora taşınır. Eşleşen eski yükleme `prekast_gunluk`'tan
+ * bulunur (aynı satır sayısı + aynı metraj + aynı hakkediş = aynı iş sayfası).
+ *
+ * @return array|null ['satir'=>[önce,şimdi], 'silikon'=>…, 'metraj'=>…, 'hakkedis'=>…,
+ *                     'dusen'=>int, 'ayni'=>['rapor_tarihi'=>…,'dosya'=>…]|null]
+ */
+function pk_geri_kontrol(PDO $pdo, array $s, string $cizelge): ?array
+{
+    $o = $s['onceki'] ?? null;
+    if (!$o || (int)($o['satir'] ?? 0) === 0) return null;          // bu çizelgenin ilk yüklemesi
+
+    $geriSatir = (int)$o['satir']    - (int)$s['satir'];
+    $geriHak   = (float)$o['hakkedis'] - (float)$s['toplamHakkedis'];
+    if ($geriSatir <= 0 && $geriHak <= 0.01) return null;           // ilerleme ya da yerinde sayma
+
+    $simdi = $pdo->prepare("SELECT COALESCE(SUM(silikon=1),0) silikon FROM prekast_isler WHERE cizelge=? AND dosyada=1");
+    $simdi->execute([$cizelge]);
+    $silikonSimdi = (int)($simdi->fetchColumn() ?: 0);
+
+    // Aynı iş sayfası daha önce hangi gün yüklenmişti? (bugünün satırı zaten yeni toplamı taşır)
+    $ay = $pdo->prepare("SELECT rapor_tarihi, dosya FROM prekast_gunluk
+                         WHERE cizelge = ? AND rapor_tarihi <> ? AND satir = ?
+                           AND ABS(metraj - ?) < 0.01 AND ABS(hakkedis - ?) < 0.01
+                         ORDER BY rapor_tarihi DESC, id DESC");
+    $ay->execute([$cizelge, (string)$s['rapor_tarihi'], (int)$s['satir'],
+                  (float)$s['toplamMetraj'], (float)$s['toplamHakkedis']]);
+    $ayni = $ay->fetch() ?: null;
+
+    return [
+        'satir'    => [(int)$o['satir'],        (int)$s['satir']],
+        'silikon'  => [(int)($o['silikon'] ?? 0), $silikonSimdi],
+        'metraj'   => [(float)$o['metraj'],     (float)$s['toplamMetraj']],
+        'hakkedis' => [(float)$o['hakkedis'],   (float)$s['toplamHakkedis']],
+        'dusen'    => (int)$s['dusen'],
+        'ayni'     => $ayni ?: null,
+    ];
+}
+
+/**
  * Günlük çizelgeyi içe aktarır (tek transaction).
  *
  * @param array $opt rapor_tarihi (Y-m-d, varsayılan bugün) · dosya · kullanici
@@ -176,7 +223,7 @@ function pk_import(PDO $pdo, SimpleXLSX $x, array $opt = []): array
     $s = ['okunan'=>0, 'satir'=>0, 'yeni'=>0, 'guncellenen'=>0, 'degismeyen'=>0, 'sablon'=>0,
           'yeniKesim'=>0, 'yeniSilikon'=>0, 'dusen'=>0, 'atlanan'=>[], 'degisenler'=>[],
           'uyari'=>[], 'kontrol'=>[], 'toplamMetraj'=>0.0, 'toplamHakkedis'=>0.0,
-          'cizelge'=>'', 'is_tipi'=>'', 'rapor_tarihi'=>$rapor];
+          'cizelge'=>'', 'is_tipi'=>'', 'rapor_tarihi'=>$rapor, 'onceki'=>null, 'geri'=>null];
 
     $si = pk_sayfa($x);
     if ($si === null) throw new RuntimeException('Dosyada çizelge sayfası bulunamadı (BLOK/DAİRE başlıkları yok). Sayfalar: ' . implode(', ', $x->sheetNames()) . '.');
@@ -190,6 +237,14 @@ function pk_import(PDO $pdo, SimpleXLSX $x, array $opt = []): array
     $cizelge = pk_cizelge_adi($rows, $hr, (string)($adlar[$si] ?? 'Çizelge'));
     $isTipi  = pk_is_tipi($cizelge);
     $s['cizelge'] = $cizelge; $s['is_tipi'] = $isTipi;
+
+    // ⚠ Dosya AÇILMADAN ÖNCEKİ durum: çizelge geriye gitmişse (eski dosya yüklenmişse)
+    // kullanıcıya söylenmeli — aksi halde hakkediş sessizce düşüyor (bkz. pk_geri_kontrol).
+    $onc = $pdo->prepare("SELECT COUNT(*) satir, COALESCE(SUM(kesim=1),0) kesim, COALESCE(SUM(silikon=1),0) silikon,
+                                 COALESCE(SUM(metraj),0) metraj, COALESCE(SUM(hakkedis),0) hakkedis
+                          FROM prekast_isler WHERE cizelge=? AND dosyada=1");
+    $onc->execute([$cizelge]);
+    $s['onceki'] = $onc->fetch() ?: null;
 
     $bul = $pdo->prepare("SELECT id, kesim, silikon, kesim_tarih, silikon_tarih, metraj, hakkedis, durum
                           FROM prekast_isler WHERE kayit_anahtari=?");
@@ -353,6 +408,7 @@ function pk_import(PDO $pdo, SimpleXLSX $x, array $opt = []): array
                            : 'Blok bazında daire sayıları ve kesim metrajı Excel ile tutuyor',
             'satirlar'=>$fark];
     }
+    $s['geri'] = pk_geri_kontrol($pdo, $s, $cizelge);
     if ($s['dusen']) $s['uyari'][] = $s['dusen'] . ' kayıt bu çizelgede var ama dosyada yok — silinmedi, "çizelgede yok" olarak işaretlendi.';
     // Hesap tutmalı: okunan = satır + atlanan
     $fark = $s['okunan'] - ($s['satir'] + count($s['atlanan']));
