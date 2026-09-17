@@ -149,7 +149,8 @@ require_once __DIR__ . '/../includes/header.php';
         </a>
         <?php endif; ?>
         <a href="cihazlar.php?<?= h(http_build_query(array_merge($_GET, ['export'=>'xlsx']))) ?>" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Excel</a>
-        <?php if ($yazabilir): ?><a href="cihaz_import.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-box-arrow-in-down me-1"></i>İçe Aktar</a>
+        <?php if ($yazabilir): ?><a href="form_import.php" class="btn btn-outline-primary btn-sm" title="Cihaz tahsis formlarından künye güncelle (toplu)"><i class="bi bi-file-earmark-text me-1"></i>Form ile Aktar</a>
+        <a href="cihaz_import.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-box-arrow-in-down me-1"></i>İçe Aktar</a>
         <a href="cihaz_form.php" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Yeni Cihaz</a><?php endif; ?>
     </div>
 </div>

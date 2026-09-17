@@ -219,6 +219,7 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <h4 class="mb-0"><i class="bi bi-box-arrow-in-down text-primary me-2"></i>Cihaz Listesi İçe Aktar</h4>
     <div class="d-flex gap-2">
+        <a href="form_import.php" class="btn btn-outline-primary btn-sm" title="Cihaz tahsis formundan künye güncelle (toplu)"><i class="bi bi-file-earmark-text me-1"></i>Form ile Aktar</a>
         <a href="snipe_cek.php" class="btn btn-outline-info btn-sm"><i class="bi bi-cloud-arrow-down me-1"></i>Snipe-IT'den Belge Çek</a>
         <a href="cihazlar.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-pc-display me-1"></i>Cihaz Listesi</a>
         <a href="cihaz_import.php?sablon=1" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Örnek Şablon</a>

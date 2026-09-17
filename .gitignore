@@ -372,6 +372,7 @@ uploads/irsaliye_fotolar/
 uploads/scans/
 # PTS geçiş fotoğrafları — kanıt görüntüleri sunucuda kalır, repoya girmez
 uploads/pts/
+uploads/it_form_bekleyen/
 
 # Geçici çalışma dosyaları
 scratch/

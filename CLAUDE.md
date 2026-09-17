@@ -741,6 +741,55 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   seçili geliyor · listede olmayan değer optgroup'ta korunuyor · seçilen marka kayda yazılıyor
   (Dell → ACER); Playwright'ta prompt → fetch gövdesi (csrf dahil) → select'e ekleme + seçme +
   bilgi satırı, boş girişte istek atılmıyor, JS hatası yok; 8 IT sayfası uyarısız render oluyor.
+  **TAHSİS FORMU İLE TOPLU İÇE AKTARMA (2026-09-17, kullanıcı: "böyle cihaz bilgileri olduğu Excel ve
+  PDF formu var, cihaz bilgilerini buradan alalım, dışarıdan form al seçeneği ekleyelim, cihaz bilgileri
+  güncellensin, toplu dosya ekleme özelliği olsun")** — kaynak: kurumsal **CİHAZ TAHSİS FORMU**
+  (`B053 - Sergender Atmaca.xlsx`). ⚠ Bu bir **TABLO DEĞİL FORM**dur: bir dosya = BİR cihaz, alanlar alt alta
+  "etiket | değer" durur. Mevcut `cihaz_import.php` satır-sütun ızgarası beklediğinden bu düzeni okuyamaz.
+  • **Yeni çekirdek `it/_form_import.php` (fim_*)** — dosya okuma/normalize/lokasyon-personel eşleştirme yine
+  ORTAK katmandan gelir (`_import.php` pim_* · `_cihaz_import.php` cim_*), yalnız OKUMA biçimi farklıdır.
+  `FIM_ALAN` etiket→alan haritası (Cihaz Kodu · Marka · Model · Serial · Alış Tarihi · Tedarikçi · Fatura No ·
+  İşletim Sistemi · İşlemci · Ram · Harddisk Markası/Modeli/Kapasitesi/Serial · Anakart · Ekran Kartı ·
+  Ethernet · Kart Okuyucu · Ebat · Ad Soyad · Mail Adresi). `FIM_COKLU` alanlarda değerler
+  "Başlık: değer" olarak BİRLEŞİR (disk = marka + model + kapasite).
+  • ⚠⚠ **DEĞER YALNIZ SONRAKİ 3 SÜTUNDA ARANIR** (`fim_sayfa_ciftleri` `$pencere`): gerçek formun sağında
+  bir de **TİP EFSANESİ** sütunu var ("B - Bilgisayar", "D - Diğer", "M - Monitör"…). Sınırsız sağa bakan
+  bir okuyucu, değeri BOŞ olan "Marka" satırında efsaneyi değer sanıp **marka = "D - Diğer"** yazıyordu.
+  Ayrıca yandaki hücre başka bir ETİKETSE değer sayılmaz (yatay başlık satırı tuzağı).
+  • ⚠ **Doğru sayfa seçilir**: kurumsal form dosyasında asıl formun yanında Excel'in kendi İngilizce şablonu
+  da duruyor ("Home Contents Inventory List" — Insurance policy number…). Sayfalar etiket eşleşmesine göre
+  PUANLANIR, "TAHSİS FORMU" başlığı taşıyan sayfa +100 alır. `FIM_MIN_ESLESME` (3) altındaki dosya
+  "form değil" diye reddedilir — ⚠ ilk sürümde bu eşik yalnız xlsx yolunda vardı, alakasız bir .txt
+  ön izlemeye düşüyordu; metin/PDF yollarına da eklendi.
+  • **Kategori** üç kaynaktan: form kısaltması (`FIM_TIP_KOD` B→bilgisayar · N→laptop · M→monitor ·
+  YF→yazici · D→diger) → metinden `cim_kategori()` → **sayfa adı** ("Bilgisayar").
+  • **`it/form_import.php` — ÇOKLU dosya** (`dosya[]` multiple), 2 adım: yükle → **ön izleme**
+  (her form hangi cihazla eşleşti, hangi alanlar dolacak, kullanıcı kim) → aktar → rapor.
+  Yüklenen dosyalar `uploads/it_form_bekleyen/` altında geçici durur (2 günde temizlenir, `.gitignore`'da).
+  Seçenekler: **yalnız boş alanları doldur** (eski tarihli form yeni veriyi EZMESİN) · eşleşmeyen kişi için
+  personel kartı aç · form dosyasını `belge` mi **imzalı zimmet tutanağı** mı sayacağı.
+  • **Eşleşme** cihaz kodu → IFS nesne no → seri no → envanter no; eşleşende **yalnız formda DOLU gelen
+  alanlar** güncellenir (boş hücre veri silmez), eşleşme yoksa **yeni cihaz** açılır (envanter no otomatik).
+  Form dosyası cihaza **belge olarak bağlanır**; ⚠ aynı form ikinci kez yüklenirse `it_belge_md5ler` ile
+  bayt karşılaştırılıp MÜKERRER eklenmez. Yaşam günlüğüne `guncelleme` / `giris` (+`zimmet`) satırı yazılır.
+  • **PDF**: `fat_dosyadan_metin()` (includes/fatura.php) ile pdftotext → AI belge okuma zinciri kullanılır;
+  ikisi de yoksa "formu .xlsx olarak kaydedin" der. Metin yolu "Etiket: değer" satırlarını ayrıştırır.
+  • ⚠ **`it_import_log` kolonları**: `dosya · bicim · okunan · yeni · guncellenen · degismeyen · atlanan ·
+  ayrilan · kullanici` (ilk sürümde olmayan `satir` kolonuna yazılıyordu → aktarım başarılıyken ekranda
+  "Aktarım hatası" çıkıyor ve geçici dosyalar silinmiyordu). **Günlük yazımı artık İKİNCİL**: kendi
+  try/catch'inde, hata çıksa da aktarım geçerli sayılır ve temizlik yapılır.
+  • Giriş noktaları: **Cihazlar** ekranında "Form ile Aktar" + **Cihaz İçe Aktar** ekranında aynı düğme
+  (sidebar'a satır eklenmedi — iki içe aktarma da kendi liste sayfasından girilir). Yetki:
+  `sayfa_islemi()` regex'ine `form_import` eklendi → **giris**.
+  **Gerçek formla doğrulandı**: B053 formu mevcut cihazla **cihaz kodundan** eşleşti ve 12 alan doldu
+  (alış tarihi · tedarikçi · fatura no · işletim sistemi · işlemci · ram · ekran kartı · anakart · disk ·
+  disk seri · personel · zimmetli); Marka/Model/Serial formda BOŞ olduğu için yazılmadı (efsane tuzağı yok).
+  **2. ve 3. yükleme 0 güncellenen / 0 yeni belge** (idempotent). Toplu yüklemede xlsx + txt form birlikte
+  işlendi (1 güncellenen + 1 yeni cihaz), alakasız dosya "form değil" diye reddedildi, "yalnız boş alanları
+  doldur" seçeneğinde elle girilmiş tedarikçi KORUNDU, aktarım sonrası geçici klasör ve oturum temizlendi.
+  Test koşucusu: `itsm/run_form.php` (⚠ `redirect()` `exit` çağırdığından oturum/çıktı
+  `register_shutdown_function` ile yazılır, yoksa yönlendirme sonrası adım veriyi bulamaz).
+
   **PERSONEL KARTI: SEÇİLEBİLİR UNVAN/BİRİM + AYRIK İLETİŞİM (2026-09-16, kullanıcı: "ünvanlar
   seçilebilir olsun yoksa ekleme özelliği olsun; telefon kısa kodu var, şirket sabit masa telefonu var,
   hepsi dört haneli; şirket hattı ve şahsi numara kısmı olsun, mailde aynı şekilde, birimde aynı açılır
@@ -1599,6 +1648,9 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 - **CRM**: `uploads/crm_ariza/{ariza_id}/` (arıza başına çoklu belge/fotoğraf; kayıtlar `crm_ariza_belgeler`).
 - **Akaryakıt**: `uploads/akaryakit_cikis/{id}/` (imzalı çıkış fişi) · `uploads/akaryakit_giris/{id}/` (mazot giriş irsaliyesi/faturası).
 - **IT Envanter**: `uploads/it_envanter/{cihaz_id}/` (cihaz fotoğrafı, alış faturası, garanti belgesi, imzalı zimmet/iade/transfer/hurda tutanağı; kayıtlar `it_belgeler`, `tur` = IT_BELGE_TUR anahtarı ('zimmet' | 'iade' | 'transfer' | 'hurda' → imzalı tutanak, 'fatura', 'belge'), `hareket_id` = belgenin ait olduğu zimmet/iade dönemi — bir dosya birden çok cihaza bağlı olabilir, diskten yalnız SON bağ koptuğunda silinir).
+- **IT form aktarımı (geçici)**: `uploads/it_form_bekleyen/` — yüklenen tahsis formları ön izleme adımı
+  boyunca burada bekler; aktarımda cihaza belge olarak kopyalanır ve silinir (2 günden eski artıklar
+  bir sonraki yüklemede temizlenir). `.gitignore`'da.
 - **PTS**: `uploads/pts/gecis/{Y-m-d}/{hareket_id}.jpg` (kart okutma anındaki kamera görüntüsü; DB'de yalnız
   göreli yol durur, `uploads/pts/` `.gitignore`'da — yazılamazsa geçiş yine kaydedilir).
 - `uploads/.htaccess` PHP çalıştırmayı engeller (alt klasörlere de uygulanır).
