@@ -27,6 +27,13 @@ const IT_LOK_TUR_AD = ['proje' => 'Proje / Şantiye', 'bina' => 'Bina / Ofis', '
 $sekmeler = ['lokasyon' => ['Lokasyonlar', 'bi-geo-alt'], 'kategori' => ['Kategoriler', 'bi-grid'], 'uretici' => ['Üreticiler', 'bi-tags'],
              'model' => ['Modeller', 'bi-cpu'], 'tedarikci' => ['Tedarikçiler', 'bi-truck'], 'sirket' => ['Şirketler', 'bi-building'],
              'unvan' => ['Unvanlar', 'bi-person-badge'], 'birim' => ['Birimler', 'bi-diagram-3'],
+             // Donanım künyesi listeleri — cihaz formunda artık bunlardan seçiliyor (2026-09-17)
+             'isletim_sistemi' => ['İşletim Sistemleri', 'bi-windows'], 'islemci' => ['İşlemciler', 'bi-cpu-fill'],
+             'ram' => ['RAM Tipleri', 'bi-memory'], 'ekran_karti' => ['Ekran Kartları', 'bi-gpu-card'],
+             'disk' => ['Diskler', 'bi-device-hdd'], 'anakart' => ['Anakartlar', 'bi-motherboard'],
+             'ekran_boyutu' => ['Ekran Boyutları', 'bi-aspect-ratio'],
+             'kiralik_firma' => ['Kiralanan Firmalar', 'bi-building-gear'],
+             'transfer_birim' => ['Transfer Birimleri', 'bi-arrow-left-right'],
              'durum' => ['Durumlar', 'bi-toggles'], 'personel' => ['Personel', 'bi-people']];
 $t = array_key_exists($_GET['t'] ?? '', $sekmeler) ? $_GET['t'] : 'lokasyon';
 // Unvan/birim sekmeleri mevcut personel verisiyle dolu açılsın (idempotent)

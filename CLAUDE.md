@@ -810,6 +810,36 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   seçili geliyor · listede olmayan değer optgroup'ta korunuyor · seçilen marka kayda yazılıyor
   (Dell → ACER); Playwright'ta prompt → fetch gövdesi (csrf dahil) → select'e ekleme + seçme +
   bilgi satırı, boş girişte istek atılmıyor, JS hatası yok; 8 IT sayfası uyarısız render oluyor.
+  **CİHAZ FORMU: 13 ALAN LİSTEDEN SEÇİLİR (2026-09-17, kullanıcı: "bu kısımlar seçilebilir olsun,
+  mükerrer kayıt olmasın, listede yoksa ekleme seçeneği olsun, biraz daha canlı olsun")** —
+  Marka 2026-09-16'da select olmuştu; SATIN ALMA · TEKNİK · DONANIM KÜNYESİ bloklarının geri kalanı
+  hâlâ serbest METİNDİ (datalist yalnız ÖNERİdir). Aynı işlemci **"Intel(R) Core(TM) i5-4570 @ 3.20GHz" /
+  "intel i5 4570" / "İ5 4570"** diye üçe bölünüyor, raporlardaki donanım kırılımı ve arama dağılıyordu.
+  • **`IT_TANIM_TUR`'a 9 yeni tür**: `isletim_sistemi` · `islemci` · `ram` · `ekran_karti` · `disk` ·
+  `anakart` · `ekran_boyutu` · `kiralik_firma` · `transfer_birim` (hepsi kaynak tablo `it_cihazlar`).
+  `it_tanim_uzunluk()` artık **hedef kolonun genişliğini** döndürür (işletim sistemi 80 · ekran boyutu 40 ·
+  işlemci/ekran kartı/disk/anakart 160 · gerisi 120) — aşan ad DB'de sessizce kırpılıp tanım listesiyle
+  cihaz değeri birbirini tutmasın diye. Tanımlar ekranına aynı 9 sekme eklendi (liste temizliği oradan).
+  • **Formda ortak çizici `$tanimSec($alan,$tur,$etiket,$not,$sinif,$attr)`** — Marka'nın deseni tek yere
+  toplandı, 13 alan aynı davranır: `it_tanim_options` (kayıtta duran ama listede olmayan değer
+  *"kayıtta duran (listede yok)"* optgroup'unda KORUNUR) + `can_edit()` ise **"+"** düğmesi.
+  `IT_EK_ALAN` döngüsü `IT_FORM_EK_TANIM` haritasındaki alanlarda bu çiziciye devreder (`data-kat`
+  kategoriye göre gizleme korunur).
+  • **JS tek DELEGE** oldu: dokuz ayrı dinleyici yerine `.tanim-ekle` sınıfı + `data-tur`/`data-hedef`;
+  `prompt` → sayfanın POST ucu (`islem=tanim_ekle`, CSRF gövdede) → dönen ad select'e eklenip **seçilir**
+  ve `change` tetiklenir. **Mükerrer engeli SUNUCUDA** `it_tanim_ekle` + `it_norm` ile: Türkçe harf
+  duyarsız ("INTEL(R) CORE(TM) İ5-4570…" yazılsa da mevcut kayıt `yeni:false` ile döner).
+  Uç **beyaz listelidir** (`IT_FORM_TANIM`, 13 tür) — başka tür `tanim_ekle` ile eklenemez.
+  • ⚠ **Serbest metin kalanlar bilerek**: seri no · IFS nesne no · IMEI · IP/MAC · fatura no · SAS ref ·
+  disk seri no · özellik özeti · notlar — bunlar **CİHAZA ÖZGÜdür**, listelenecek bir şey değil.
+  • **"Daha canlı"**: bölüm başlıkları gri `hr + text-muted` yerine **marka renkli, sol aksanlı şerit**
+  (`.bolum-basi`, renkler `--bs-primary` üzerinden → tema/paletle uyumlu); listeden seçilen alanlarda
+  **dolu olan** yeşil kenarlık + etiket yanında ✓ (`.tanim-alan.dolu`, seçim değişince JS canlı günceller).
+  Test (itsm): 13 alan select olarak render oluyor, 13 "+" düğmesi var, artık datalist yok; uç 8 yeni
+  türü kabul etti, izinsiz tür (`sicil`) reddedildi, farklı yazımla tekrar `yeni:false` döndü, 40 karakteri
+  aşan ekran boyutu kolon genişliğine kırpıldı; formdan POST ile marka/model/işlemci/ram/işletim sistemi/
+  tedarikçi kayda birebir yazıldı; 8 IT sayfası uyarısız render, inline JS temiz.
+  ⚠ Görünüm headless'ta doğrulanamadı — Bootstrap CDN'i duman testi ortamında engelli, sayfa stilsiz render oluyor.
   **TAHSİS FORMU İLE TOPLU İÇE AKTARMA (2026-09-17, kullanıcı: "böyle cihaz bilgileri olduğu Excel ve
   PDF formu var, cihaz bilgilerini buradan alalım, dışarıdan form al seçeneği ekleyelim, cihaz bilgileri
   güncellensin, toplu dosya ekleme özelliği olsun")** — kaynak: kurumsal **CİHAZ TAHSİS FORMU**

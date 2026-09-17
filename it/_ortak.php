@@ -1122,6 +1122,18 @@ const IT_TANIM_TUR = [
     // "SAHA MÜH." diye üçe bölünüyor ve raporlardaki birim kırılımı dağılıyordu.
     'unvan'     => ['Unvanlar',    'unvan',     'bi-person-badge',  'it_personel'],
     'birim'     => ['Birimler',    'birim',     'bi-diagram-3',     'it_personel'],
+    // ── DONANIM KÜNYESİ + SATIN ALMA (2026-09-17) — cihaz formunda serbest METİNDİ:
+    // aynı işlemci "Intel(R) Core(TM) i5-4570" / "intel i5 4570" / "İ5 4570" diye üçe bölünüyor,
+    // raporlardaki donanım kırılımı ve arama dağılıyordu. Artık hepsi LİSTEDEN seçilir.
+    'isletim_sistemi' => ['İşletim Sistemleri', 'isletim_sistemi', 'bi-windows',          'it_cihazlar'],
+    'islemci'         => ['İşlemciler',         'islemci',         'bi-cpu-fill',         'it_cihazlar'],
+    'ram'             => ['RAM Tipleri',        'ram',             'bi-memory',           'it_cihazlar'],
+    'ekran_karti'     => ['Ekran Kartları',     'ekran_karti',     'bi-gpu-card',         'it_cihazlar'],
+    'disk'            => ['Diskler',            'disk',            'bi-device-hdd',       'it_cihazlar'],
+    'anakart'         => ['Anakartlar',         'anakart',         'bi-motherboard',      'it_cihazlar'],
+    'ekran_boyutu'    => ['Ekran Boyutları',    'ekran_boyutu',    'bi-aspect-ratio',     'it_cihazlar'],
+    'kiralik_firma'   => ['Kiralanan Firmalar', 'kiralik_firma',   'bi-building-gear',    'it_cihazlar'],
+    'transfer_birim'  => ['Transfer Birimleri', 'transfer_birim',  'bi-arrow-left-right', 'it_cihazlar'],
 ];
 
 /** Bir tanım türünün beslendiği tablo (varsayılan it_cihazlar). */
@@ -1130,7 +1142,15 @@ function it_tanim_tablosu(string $tur): string { return IT_TANIM_TUR[$tur][3] ??
 /** Tanım adının yazılabileceği en uzun metin (hedef kolonun genişliği). */
 function it_tanim_uzunluk(string $tur): int
 {
-    return match ($tur) { 'uretici' => 80, 'unvan', 'birim' => 100, default => 120 };
+    // ⚠ Hedef kolonun genişliğiyle AYNI olmalı; aşarsa kayıt sırasında sessizce kırpılır
+    // ve tanım listesindeki ad ile cihazdaki değer birbirini tutmaz.
+    return match ($tur) {
+        'uretici', 'isletim_sistemi'                  => 80,
+        'unvan', 'birim'                              => 100,
+        'ekran_boyutu'                                => 40,
+        'islemci', 'ekran_karti', 'disk', 'anakart'   => 160,
+        default                                       => 120,   // model · tedarikçi · şirket · ram · kiralık firma · transfer birimi
+    };
 }
 
 /**

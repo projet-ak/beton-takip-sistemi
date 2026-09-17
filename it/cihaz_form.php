@@ -14,8 +14,22 @@ require_once __DIR__ . '/_ortak.php';
 
 it_semasi_kur($pdoIt);
 
-/* ── "Listede yoksa oluştur" ucu (marka) ──────────────────────────────────────
-   Marka artık serbest METİN değil LİSTEDEN seçilir; sahada olmayan bir marka çıkarsa
+/**
+ * Formda LİSTEDEN seçilen alanlar — hepsi `IT_TANIM_TUR` türüdür ve "+ ekle" ucu yalnız
+ * bunları kabul eder (beyaz liste; başka tür Tanımlar ekranından yönetilir).
+ * ⚠ Serbest metin bırakılan alanlar bilerek dışarıda: seri no · IFS kodu · IMEI · IP/MAC ·
+ * fatura no · SAS ref · disk seri no — bunlar CİHAZA ÖZGÜdür, listelenecek bir şey değil.
+ */
+const IT_FORM_TANIM = ['uretici','model','tedarikci','sirket','isletim_sistemi','islemci','ram',
+                       'ekran_karti','disk','anakart','ekran_boyutu','kiralik_firma','transfer_birim'];
+
+/** `IT_EK_ALAN` içinde listeden seçilenler: alan => tanım türü (gerisi serbest metin kalır). */
+const IT_FORM_EK_TANIM = ['islemci' => 'islemci', 'ram' => 'ram', 'ekran_karti' => 'ekran_karti',
+                          'disk' => 'disk', 'anakart' => 'anakart', 'ekran_boyutu' => 'ekran_boyutu',
+                          'kiralik_firma' => 'kiralik_firma'];
+
+/* ── "Listede yoksa oluştur" ucu ──────────────────────────────────────────────
+   Bu alanlar serbest METİN değil LİSTEDEN seçilir; sahada olmayan bir değer çıkarsa
    kullanıcı formdan ayrılmadan ekleyebilsin diye burada açılır (Tanımlar ekranına gidip
    geri dönmek akışı kesiyordu). Mükerrer engeli `it_tanim_ekle` içinde `it_norm` ile.
    ⚠ POST'tur: `auth.php` CSRF'i merkezî doğrular, istemci token'ı gövdede gönderir. */
@@ -24,7 +38,7 @@ if (($_POST['islem'] ?? '') === 'tanim_ekle') {
     try {
         if (!yetki_var('duzenle') && !yetki_var('giris')) throw new RuntimeException('Tanım ekleme yetkiniz yok.');
         $tur = (string)($_POST['tur'] ?? '');
-        if (!in_array($tur, ['uretici'], true)) throw new RuntimeException('Bu alan için tanım eklenemez.');
+        if (!in_array($tur, IT_FORM_TANIM, true)) throw new RuntimeException('Bu alan için tanım eklenemez.');
         $r = it_tanim_ekle($pdoIt, $tur, (string)($_POST['ad'] ?? ''));
         audit_log($pdoIt, 'it_tanimlar', 0, 'INSERT', null, ['tur' => $tur, 'ad' => $r['ad']], current_user_id());
         echo json_encode(['ok' => true] + $r, JSON_UNESCAPED_UNICODE);
@@ -214,11 +228,10 @@ try {
 } catch (Throwable $e) {}
 
 require_once __DIR__ . '/../includes/header.php';
-// Öneri listeleri: Tanımlar ekranındaki kayıtlar + cihazlarda geçen mevcut değerler (it_tanim_oneri birleştirir)
+// Öneri listeleri (datalist): marka/model/şirket/tedarikçi ve donanım künyesi artık SELECT
+// (it_tanim_options) — burada yalnız serbest metin kalan alanlar var.
 $sec = ['zimmetli' => it_secenekler($pdoIt, 'zimmetli'), 'departman' => it_secenekler($pdoIt, 'departman'),
-        'lokasyon' => it_secenekler($pdoIt, 'lokasyon'),
-        'model' => it_tanim_oneri($pdoIt, 'model'),   // marka artık select (it_tanim_options)
-        'tedarikci' => it_tanim_oneri($pdoIt, 'tedarikci'), 'sirket' => it_tanim_oneri($pdoIt, 'sirket')];
+        'lokasyon' => it_secenekler($pdoIt, 'lokasyon')];
 $dl = function (string $k) use ($sec) {
     if (empty($sec[$k])) return '';
     $o = '<datalist id="dl_' . $k . '">';
@@ -226,6 +239,32 @@ $dl = function (string $k) use ($sec) {
     return $o . '</datalist>';
 };
 $tv = fn($k) => h($v[$k] ?? '');
+
+/**
+ * LİSTEDEN SEÇ + "listede yoksa ekle" alanı — Marka'daki desen tek yere toplandı
+ * (dokuz alanı elle kopyalamak yerine). `it_tanim_options` kayıtta duran ama listede
+ * olmayan değeri "kayıtta duran (listede yok)" optgroup'unda KORUR; "+" düğmesi
+ * sayfanın kendi POST ucuna gider ve dönen adı select'e ekleyip seçer.
+ */
+$tanimSec = function (string $alan, string $tur, string $etiket, string $not = '', string $sinif = '', string $attr = '')
+            use ($pdoIt, $v) {
+    $id = 'ts_' . $alan;
+    ob_start(); ?>
+    <div class="col-md-3 tanim-alan<?= trim((string)($v[$alan] ?? '')) !== '' ? ' dolu' : '' ?> <?= h($sinif) ?>" <?= $attr ?>>
+      <label class="form-label" for="<?= h($id) ?>"><?= h($etiket) ?></label>
+      <div class="input-group">
+        <select name="<?= h($alan) ?>" id="<?= h($id) ?>" class="form-select"><?= it_tanim_options($pdoIt, $tur, (string)($v[$alan] ?? '')) ?></select>
+        <?php if (can_edit()): ?>
+        <button type="button" class="btn btn-outline-secondary tanim-ekle" data-tur="<?= h($tur) ?>" data-hedef="<?= h($id) ?>"
+                title="<?= h($etiket) ?> listesinde yoksa ekle"><i class="bi bi-plus-lg"></i></button>
+        <?php endif; ?>
+      </div>
+      <?php /* "+" ipucu HER alanda görünür — bazı alanlarda örnek metin, bazılarında ipucu
+               yazsaydı kullanıcı ekleyebileceğini fark etmezdi. */ ?>
+      <div class="form-text" id="<?= h($id) ?>_not"><?= $not !== '' ? h($not) . (can_edit() ? ' · yoksa <strong>+</strong> ile ekleyin.' : '') : 'Listeden seçin' . (can_edit() ? '; yoksa <strong>+</strong> ile ekleyin.' : '.') ?></div>
+    </div>
+    <?php return ob_get_clean();
+};
 
 // Zimmet kutusu açılışta DOLU gelsin: seçili kişinin künyesi (düzenleme ya da hatalı POST sonrası)
 $zKisi = null;
@@ -243,6 +282,27 @@ if (!empty($v['personel_id'])) {
     ];
 }
 ?>
+<style>
+  /* Bölüm başlıkları: gri "hr + soluk yazı" yerine marka renkli, sol aksanlı şerit —
+     uzun form hangi bölümde olduğunu bir bakışta göstersin. Renkler tema değişkenlerinden
+     gelir (açık/koyu/yüksek kontrast + renk paleti otomatik izlenir). */
+  .bolum-basi {
+    display:flex; align-items:center; gap:.4rem;
+    margin:1.1rem 0 .15rem; padding:.42rem .7rem;
+    font-size:.78rem; font-weight:700; letter-spacing:.6px; text-transform:uppercase;
+    color:var(--bs-primary);
+    background:rgba(var(--bs-primary-rgb), .07);
+    border-left:3px solid var(--bs-primary); border-radius:.35rem;
+  }
+  .bolum-basi .fw-normal { text-transform:none; letter-spacing:0; opacity:.75; }
+  /* Listeden seçilen alanlar: dolu olan yeşil imli, boş olan nötr — "neyi doldurdum" görünür */
+  .tanim-alan.dolu > .input-group > .form-select { border-color:rgba(var(--bs-success-rgb), .55); }
+  .tanim-alan.dolu > label::after {
+    content:"\F26E"; font-family:"bootstrap-icons"; font-size:.7rem;
+    color:var(--bs-success); margin-left:.3rem; vertical-align:middle;
+  }
+  .tanim-alan .btn { --bs-btn-padding-x:.6rem; }
+</style>
 <div class="d-flex align-items-center gap-2 mb-3">
     <a href="<?= $duzenleme ? 'cihaz_detay.php?id=' . $id : 'cihazlar.php' ?>" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i></a>
     <h4 class="mb-0"><i class="bi bi-pc-display text-primary me-2"></i><?= $duzenleme ? 'Cihaz Düzenle' : 'Yeni Cihaz / Lisans' ?></h4>
@@ -281,23 +341,16 @@ if (!empty($v['personel_id'])) {
         <div class="form-text">Zimmetli kişi girilirse durum otomatik "Kullanımda" olur.</div>
       </div>
 
-      <?php /* Marka LİSTEDEN seçilir (elle yazım "LENOVO"/"Lenovo"/"lenova" gibi üç ayrı marka
-                üretiyordu). Listede olmayan marka, formdan ayrılmadan "+ Yeni" ile eklenir. */ ?>
-      <div class="col-md-3"><label class="form-label">Marka</label>
-        <div class="input-group">
-          <select name="marka" id="marka" class="form-select"><?= it_tanim_options($pdoIt, 'uretici', $v['marka'] ?? '') ?></select>
-          <?php if (can_edit()): ?>
-          <button type="button" class="btn btn-outline-secondary" id="markaEkle" title="Listede olmayan markayı ekle">
-            <i class="bi bi-plus-lg"></i></button>
-          <?php endif; ?>
-        </div>
-        <div class="form-text" id="markaNot">Listeden seçin<?= can_edit() ? '; yoksa <strong>+</strong> ile ekleyin' : '' ?>.</div></div>
-      <div class="col-md-4"><label class="form-label">Model</label><input name="model" list="dl_model" class="form-control" value="<?= $tv('model') ?>" maxlength="120"><?= $dl('model') ?></div>
-      <div class="col-md-2"><label class="form-label">Seri No</label><input name="seri_no" class="form-control font-monospace" value="<?= $tv('seri_no') ?>" maxlength="120"></div>
-      <div class="col-md-3"><label class="form-label">Şirket</label><input name="sirket" list="dl_sirket" class="form-control" value="<?= $tv('sirket') ?>" maxlength="120" placeholder="ERN Holding / ERN Taahhüt…"><?= $dl('sirket') ?></div>
+      <?php /* Marka · Model · Şirket LİSTEDEN seçilir (elle yazım "LENOVO"/"Lenovo"/"lenova" gibi
+                üç ayrı marka üretiyordu). Listede olmayan değer "+" ile formdan ayrılmadan eklenir.
+                ⚠ Seri No serbest metindir — cihaza özgüdür, listelenecek bir şey değil. */ ?>
+      <?= $tanimSec('marka',  'uretici', 'Marka') ?>
+      <?= $tanimSec('model',  'model',   'Model') ?>
+      <div class="col-md-3"><label class="form-label">Seri No</label><input name="seri_no" class="form-control font-monospace" value="<?= $tv('seri_no') ?>" maxlength="120"></div>
+      <?= $tanimSec('sirket', 'sirket',  'Şirket', 'ERN Holding / ERN Taahhüt…') ?>
 
       <?php /* Kimlik alanları: kurumsal envanterin (IFS) nesne kodu, ikinci seri ve IMEI — her kategoride görünür */ ?>
-      <div class="col-12"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-upc-scan me-1"></i>KİMLİK KODLARI
+      <div class="col-12"><div class="bolum-basi"><i class="bi bi-upc-scan me-1"></i>KİMLİK KODLARI
         <span class="fw-normal">— envanter no yanında cihazı bulmayı sağlayan numaralar; hepsi aramada taranır</span></div></div>
       <div class="col-md-3"><label class="form-label">IFS Seri Nesne No</label>
         <input name="varlik_kodu" class="form-control font-monospace" value="<?= $tv('varlik_kodu') ?>" maxlength="60" placeholder="FRM-0002-82026-2552600167">
@@ -310,7 +363,7 @@ if (!empty($v['personel_id'])) {
       <div class="col-md-3"><label class="form-label">IMEI</label>
         <input name="imei" class="form-control font-monospace" value="<?= $tv('imei') ?>" maxlength="32" placeholder="356938035643809"></div>
 
-      <div class="col-12"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-person-check me-1"></i>ZİMMET</div></div>
+      <div class="col-12"><div class="bolum-basi"><i class="bi bi-person-check me-1"></i>ZİMMET</div></div>
       <?php /* ⚠ ARANABİLİR PERSONEL SEÇİCİ — 180 kişilik açılır menüde doğru kişiyi bulmak zordu.
                 Cihaz kartındaki (cihaz_detay.php) seçiciyle AYNI desen: süzme sayfanın kendi JSON ucunda
                 (?personel_ara=) it_norm ile yapılır, SQL LIKE ile DEĞİL — Türkçe 'İ' LIKE'ta 'i' ile
@@ -350,9 +403,9 @@ if (!empty($v['personel_id'])) {
         <input type="hidden" name="lokasyon" value="<?= $tv('lokasyon') ?>"><?php if (!empty($v['lokasyon']) && empty($v['lokasyon_id'])): ?><div class="form-text">Eski kayıt: <?= $tv('lokasyon') ?></div><?php endif; ?></div>
       <div class="col-md-2"><label class="form-label">Zimmet Tarihi</label><input type="date" name="zimmet_tarihi" class="form-control" value="<?= $tv('zimmet_tarihi') ?>"></div>
 
-      <div class="col-12"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-receipt me-1"></i>SATIN ALMA<?= it_mali_goster() ? ' &amp; FİYAT / KUR' : '' ?></div></div>
+      <div class="col-12"><div class="bolum-basi"><i class="bi bi-receipt me-1"></i>SATIN ALMA<?= it_mali_goster() ? ' &amp; FİYAT / KUR' : '' ?></div></div>
       <div class="col-md-2"><label class="form-label">Alış Tarihi</label><input type="date" name="alis_tarihi" class="form-control" value="<?= $tv('alis_tarihi') ?>"></div>
-      <div class="col-md-3"><label class="form-label">Tedarikçi</label><input name="tedarikci" list="dl_tedarikci" class="form-control" value="<?= $tv('tedarikci') ?>" maxlength="120"><?= $dl('tedarikci') ?></div>
+      <?= $tanimSec('tedarikci', 'tedarikci', 'Tedarikçi') ?>
       <div class="col-md-3"><label class="form-label">Fatura No</label><input name="fatura_no" class="form-control" value="<?= $tv('fatura_no') ?>" maxlength="60"></div>
       <div class="col-md-2"><label class="form-label">SAS Ref</label><input name="sas_ref" class="form-control" value="<?= $tv('sas_ref') ?>" maxlength="40" placeholder="satın alma ref.">
         <div class="form-text">Satın alma talep/sipariş referansı.</div></div>
@@ -387,22 +440,28 @@ if (!empty($v['personel_id'])) {
       <?php endif; ?>
       <div class="col-md-3"><label class="form-label">Alınan Şirket</label><input name="sirket_alis" class="form-control" value="<?= $tv('sirket') ?>" maxlength="120" disabled>
         <div class="form-text">Üstteki <strong>Şirket</strong> alanından gelir.</div></div>
-      <div class="col-md-3"><label class="form-label">Transfer Geldiği Birim</label><input name="transfer_birim" class="form-control" value="<?= $tv('transfer_birim') ?>" maxlength="120" placeholder="HALKALI / MERKEZ…">
-        <div class="form-text">Cihaz başka birimden geldiyse kaynağı.</div></div>
+      <?= $tanimSec('transfer_birim', 'transfer_birim', 'Transfer Geldiği Birim', 'Cihaz başka birimden geldiyse kaynağı.') ?>
       <div class="col-md-2"><label class="form-label">Transfer Tarihi</label><input type="date" name="transfer_tarihi" class="form-control" value="<?= $tv('transfer_tarihi') ?>"></div>
 
-      <div class="col-12 teknik"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-cpu me-1"></i>TEKNİK</div></div>
+      <div class="col-12 teknik"><div class="bolum-basi"><i class="bi bi-cpu me-1"></i>TEKNİK</div></div>
       <div class="col-md-3 teknik"><label class="form-label">IP Adresi</label><input name="ip_adresi" class="form-control font-monospace" value="<?= $tv('ip_adresi') ?>" maxlength="45"></div>
       <div class="col-md-3 teknik"><label class="form-label">MAC Adresi</label><input name="mac_adresi" class="form-control font-monospace" value="<?= $tv('mac_adresi') ?>" maxlength="40"></div>
-      <div class="col-md-3 teknik"><label class="form-label">İşletim Sistemi</label><input name="isletim_sistemi" class="form-control" value="<?= $tv('isletim_sistemi') ?>" maxlength="80" placeholder="Windows 11 Pro"></div>
+      <?= $tanimSec('isletim_sistemi', 'isletim_sistemi', 'İşletim Sistemi', 'Windows 11 Pro · Windows 10 Pro…', 'teknik') ?>
       <div class="col-md-3 teknik"><label class="form-label">Özellik özeti</label><input name="ozellikler" class="form-control" value="<?= $tv('ozellikler') ?>" maxlength="255" placeholder="boş bırakılırsa künyeden üretilir">
         <div class="form-text">Listelerde ve Excel'de görünen kısa satır.</div></div>
 
       <?php /* Kategoriye özel alanlar: her biri kendi kategorilerinde görünür (JS ile), diğerlerinde gizlenir */ ?>
-      <div class="col-12 ekalan"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-sliders me-1"></i>CİHAZ TİPİNE ÖZEL / DONANIM KÜNYESİ
+      <div class="col-12 ekalan"><div class="bolum-basi"><i class="bi bi-sliders me-1"></i>CİHAZ TİPİNE ÖZEL / DONANIM KÜNYESİ
         <span class="fw-normal">— zimmet tutanağındaki "Özellikler" bloğu buradan doldurulur</span></div></div>
       <?php foreach (IT_EK_ALAN as $__ea => [$__eEt, $__eKat, $__eTip, $__eIp]):
           if ($__eTip === 'sifre' && !yetki_var('duzenle')) continue;   // şifreyi yalnız yetkili görür/yazar ?>
+      <?php /* Donanım künyesi alanları LİSTEDEN seçilir — serbest metinde aynı işlemci
+                "Intel(R) Core(TM) i5-4570" / "intel i5 4570" diye ikiye bölünüyordu. */
+        if (isset(IT_FORM_EK_TANIM[$__ea])) {
+            echo $tanimSec($__ea, IT_FORM_EK_TANIM[$__ea], $__eEt, $__eIp,
+                           'ekalan ek-' . $__ea, 'data-kat="' . h(implode(',', $__eKat)) . '"');
+            continue;
+        } ?>
       <div class="col-md-3 ekalan ek-<?= h($__ea) ?>" data-kat="<?= h(implode(',', $__eKat)) ?>">
         <label class="form-label"><?= h($__eEt) ?></label>
         <?php if ($__eTip === 'cihaz'): ?>
@@ -424,7 +483,7 @@ if (!empty($v['personel_id'])) {
       </div>
       <?php endforeach; ?>
 
-      <div class="col-12 lisans"><hr class="my-1"><div class="small text-muted fw-semibold"><i class="bi bi-key me-1"></i>LİSANS</div></div>
+      <div class="col-12 lisans"><div class="bolum-basi"><i class="bi bi-key me-1"></i>LİSANS</div></div>
       <div class="col-md-8 lisans"><label class="form-label">Lisans Anahtarı</label><input name="lisans_anahtari" class="form-control font-monospace" value="<?= $tv('lisans_anahtari') ?>" maxlength="160"></div>
       <div class="col-md-4 lisans"><label class="form-label">Lisans Adedi (kullanıcı/cihaz)</label><input type="number" min="0" name="lisans_adet" class="form-control" value="<?= $tv('lisans_adet') ?>"></div>
 
@@ -548,36 +607,51 @@ if (!empty($v['personel_id'])) {
     });
 })();
 
-/* ── Marka: "listede yoksa oluştur" ───────────────────────────────────────────
-   Sayfanın kendi POST ucuna (islem=tanim_ekle) gider; dönen ad select'e eklenip
-   seçilir — kullanıcı formu terk etmeden devam eder. Mükerrer engeli SUNUCUDA
-   (it_norm ile), "LENOVO" yazılsa da mevcut "Lenovo" kaydı döner. */
+/* ── "Listede yoksa oluştur" (marka · model · şirket · tedarikçi · donanım künyesi) ───
+   Her alan için ayrı dinleyici yerine TEK delege: düğmeler `.tanim-ekle` sınıfı +
+   data-tur / data-hedef taşır. Sayfanın kendi POST ucuna (islem=tanim_ekle) gider; dönen ad
+   select'e eklenip seçilir — kullanıcı formu terk etmeden devam eder. Mükerrer engeli
+   SUNUCUDA (it_norm ile): "LENOVO" yazılsa da mevcut "Lenovo" kaydı döner. */
 (function () {
-    var dugme = document.getElementById('markaEkle'), sel = document.getElementById('marka'),
-        not = document.getElementById('markaNot');
-    if (!dugme || !sel) return;
-    dugme.addEventListener('click', function () {
-        var ad = (window.prompt('Eklenecek marka adı:', '') || '').trim();
+    var TOKEN = <?= json_encode(csrf_token()) ?>;
+    function kacir(x) { return String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+
+    /* Dolu/boş imi seçim değişince canlı güncellenir (sunucudaki ilk hâl `dolu` sınıfıyla gelir) */
+    document.addEventListener('change', function (e) {
+        var kutu = e.target.closest ? e.target.closest('.tanim-alan') : null;
+        if (kutu && e.target.tagName === 'SELECT') kutu.classList.toggle('dolu', e.target.value !== '');
+    });
+
+    document.addEventListener('click', function (e) {
+        var d = e.target.closest ? e.target.closest('.tanim-ekle') : null;
+        if (!d) return;
+        var sel = document.getElementById(d.dataset.hedef);
+        if (!sel) return;
+        var not = document.getElementById(d.dataset.hedef + '_not');
+        var etiket = (d.getAttribute('title') || 'değer').replace(' listesinde yoksa ekle', '');
+        var ad = (window.prompt('Eklenecek ' + etiket.toLocaleLowerCase('tr') + ':', '') || '').trim();
         if (!ad) return;
-        dugme.disabled = true;
+
+        d.disabled = true;
         var g = new FormData();
-        g.append('islem', 'tanim_ekle'); g.append('tur', 'uretici'); g.append('ad', ad);
-        g.append('csrf', <?= json_encode(csrf_token()) ?>);
+        g.append('islem', 'tanim_ekle'); g.append('tur', d.dataset.tur); g.append('ad', ad);
+        g.append('csrf', TOKEN);
         fetch('cihaz_form.php', { method: 'POST', body: g, headers: { 'X-Requested-With': 'fetch' } })
             .then(function (r) { return r.json(); })
             .then(function (j) {
-                dugme.disabled = false;
-                if (!j || !j.ok) { alert(j && j.hata ? j.hata : 'Marka eklenemedi.'); return; }
-                var v = null;
+                d.disabled = false;
+                if (!j || !j.ok) { alert(j && j.hata ? j.hata : 'Eklenemedi.'); return; }
+                var o = null;
                 for (var i = 0; i < sel.options.length; i++)
-                    if (sel.options[i].value === j.ad) { v = sel.options[i]; break; }
-                if (!v) { v = new Option(j.ad, j.ad); sel.add(v); }
+                    if (sel.options[i].value === j.ad) { o = sel.options[i]; break; }
+                if (!o) { o = new Option(j.ad, j.ad); sel.add(o); }
                 sel.value = j.ad;
+                sel.dispatchEvent(new Event('change', { bubbles: true }));
                 if (not) not.innerHTML = j.yeni
-                    ? '<span class="text-success"><i class="bi bi-check-lg me-1"></i><strong>' + j.ad.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</strong> markası listeye eklendi.</span>'
-                    : '<span class="text-muted">Bu marka listede zaten vardı, seçildi.</span>';
+                    ? '<span class="text-success"><i class="bi bi-check-lg me-1"></i><strong>' + kacir(j.ad) + '</strong> listeye eklendi.</span>'
+                    : '<span class="text-muted">Listede zaten vardı, seçildi.</span>';
             })
-            .catch(function () { dugme.disabled = false; alert('Marka eklenemedi (bağlantı hatası).'); });
+            .catch(function () { d.disabled = false; alert('Eklenemedi (bağlantı hatası).'); });
     });
 })();
 
