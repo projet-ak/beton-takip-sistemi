@@ -77,6 +77,15 @@ const CIM_ALAN = [
 /** Birden çok sütundan beslenebilen alanlar (değerler " · " ile birleşir). */
 const CIM_COKLU = ['ozellik', 'notlar', 'islemci', 'ram', 'ekran_karti', 'disk'];
 
+/**
+ * ⚠ ZİMMET KÜNYESİ — `zimmet_koru` açıkken, cihazda ZATEN bir zimmet varsa bu alanlara DOKUNULMAZ.
+ * Zimmetlisi BOŞ olan cihazda koruyacak bir kayıt yoktur: dosyadaki kişi yazılır ve yaşam
+ * günlüğüne gerçek `zimmet` satırı düşer ("eksik veriyi tamamla" isteğinin karşılığı).
+ * `durum` ayrı tutulur (bkz. aşağıda): serviste/arızalı/hurda/transfer birer KARARdır,
+ * bir Excel satırı bunları sessizce geri almamalı — koruma açıkken hiç yazılmaz.
+ */
+const CIM_ZIMMET_ALAN = ['zimmetli', 'personel_id', 'zimmet_tarihi', 'departman'];
+
 /** Alanın KENDİSİNİ taşıyan genel başlıklar — bunlarda "Başlık: değer" öneki kullanılmaz. */
 const CIM_GENEL_BASLIK = ['NOT', 'NOTLAR', 'ACIKLAMA', 'ACIKLAMALAR', 'DESCRIPTION', 'REMARKS', 'COMMENT',
                           'TEKNIK OZELLIK', 'TEKNIK OZELLIKLER', 'OZELLIK', 'OZELLIKLER', 'SPECS', 'SPECIFICATION'];
@@ -349,7 +358,16 @@ function cim_personel_sicil(PDO $pdo, string $sicil, bool $yenile = false): ?arr
 function cim_import(PDO $pdo, array $satirlar, array $opt): array
 {
     $harita = $opt['harita']; $bIdx = (int)$opt['baslik_idx']; $baslik = $satirlar[$bIdx] ?? [];
-    $r = ['okunan'=>0, 'yeni'=>[], 'guncellenen'=>[], 'degismeyen'=>0, 'atlanan'=>[], 'kisi_yok'=>[], 'lokasyon_yok'=>[], 'kisi_eklenen'=>[]];
+    // ⚠ KORUMA SEÇENEKLERİ (2026-09-18, kullanıcı: "kayıtlı verilerim üstüne kaydetmesini
+    // istemiyorum, zimmetli kişi kayıtları bozulmasın"):
+    //  sadece_bos   : mevcut kayıtta DOLU olan alan dosyadan EZİLMEZ — yalnız BOŞ alanlar dolar.
+    //  zimmet_koru  : mevcut kaydın zimmet künyesi (kişi/tarih/birim/durum) hiç değişmez ve
+    //                 yaşam günlüğüne sahte iade/zimmet satırı YAZILMAZ. Yeni açılan cihazlar
+    //                 dosyadaki kişiye zimmetlenir (orada bozulacak bir kayıt yoktur).
+    $sadeceBos  = !empty($opt['sadece_bos']);
+    $zimmetKoru = !empty($opt['zimmet_koru']);
+    $r = ['okunan'=>0, 'yeni'=>[], 'guncellenen'=>[], 'degismeyen'=>0, 'atlanan'=>[], 'kisi_yok'=>[], 'lokasyon_yok'=>[], 'kisi_eklenen'=>[],
+          'korunan'=>0, 'zimmet_korunan'=>[], 'sadece_bos'=>$sadeceBos, 'zimmet_koru'=>$zimmetKoru];
     // ⚠ 'envanter_no' BİLEREK YOK: bizim sabit numaramızdır (tutanaklarda geçer), dosya onu ezmez.
     $alanlar = ['varlik_kodu','cihaz_kodu','kategori','ad','marka','model','seri_no','sasi_no','imei','durum','zimmetli','personel_id','departman','lokasyon','lokasyon_id',
                 'zimmet_tarihi','alis_tarihi','garanti_bitis','fiyat','para_birimi','kur','fiyat_tl','sas_ref',
@@ -496,15 +514,31 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
             if ($m) {
                 $eslesen[(int)$m['id']] = $exNo;
                 $set = []; $par = []; $degisen = []; $eskiKisi = trim((string)($m['zimmetli'] ?? ''));
+                $korundu = 0; $zimmetDokunulmadi = false;
+                // Cihazda hâlihazırda bir zimmet var mı? (yoksa korunacak kayıt da yoktur)
+                $zimmetliMi = $eskiKisi !== '' || (int)($m['personel_id'] ?? 0) > 0;
                 foreach ($alanlar as $k) {
                     $y = $yeni[$k] ?? null;
                     if ($y === null || $y === '') continue;                      // dosyada boş → mevcut korunur
                     if ($k === 'ad' && !$adDosyadan) continue;                    // türetilmiş ad mevcut adı ezmez
                     if ((string)($m[$k] ?? '') === (string)$y) continue;
+                    // ⚠ Durum dosyadan DEĞİŞTİRİLMEZ: serviste/arızalı/hurda/kayıp/transfer birer karardır
+                    if ($zimmetKoru && $k === 'durum') continue;
+                    // ⚠ Cihazda ZATEN zimmet varsa kişi/tarih/birim korunur; BOŞSA dosyadan dolar
+                    if ($zimmetKoru && $zimmetliMi && in_array($k, CIM_ZIMMET_ALAN, true)) {
+                        if ($k === 'zimmetli' || $k === 'personel_id') $zimmetDokunulmadi = true;
+                        continue;
+                    }
+                    // ⚠ "Yalnız boş alanları doldur": mevcut kayıtta DOLU olan değer EZİLMEZ
+                    if ($sadeceBos && trim((string)($m[$k] ?? '')) !== '') { $korundu++; continue; }
                     $set[] = "$k=?"; $par[] = $y;
                     if (!in_array($k, ['ozellikler','lokasyon','personel_id','lokasyon_id'], true))
                         $degisen[] = $k . ': ' . (($m[$k] ?? '') === '' || $m[$k] === null ? '—' : $m[$k]) . ' → ' . $y;
                 }
+                $r['korunan'] += $korundu;
+                if ($zimmetDokunulmadi && count($r['zimmet_korunan']) < 200)
+                    $r['zimmet_korunan'][] = ['kim'=>trim(($m['cihaz_kodu'] ?: $m['envanter_no']) . ' ' . ($m['ad'] ?? '')),
+                                              'sistem'=>$eskiKisi ?: '—', 'dosya'=>$kisiAd ?: '—'];
                 if ($notSatiri !== '') {
                     $eskiNot = (string)($m['notlar'] ?? '');
                     $ek = array_filter(explode("\n", $notSatiri), fn($s) => $s !== '' && !str_contains($eskiNot, $s));
@@ -513,8 +547,8 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
                 if ($set) {
                     $par[] = (int)$m['id'];
                     $pdo->prepare("UPDATE it_cihazlar SET " . implode(', ', $set) . " WHERE id=?")->execute($par);
-                    // Zimmet değiştiyse cihazın yaşam günlüğüne yaz
-                    if ($kisiAd !== '' && pim_norm($eskiKisi) !== pim_norm($kisiAd)) {
+                    // Zimmet değiştiyse cihazın yaşam günlüğüne yaz (koruma açıkken zimmet zaten yazılmadı)
+                    if (!($zimmetKoru && $zimmetliMi) && $kisiAd !== '' && pim_norm($eskiKisi) !== pim_norm($kisiAd)) {
                         if ($eskiKisi !== '') it_hareket_ekle($pdo, (int)$m['id'], 'iade', $eskiKisi, 'Excel aktarımı: zimmet devredildi → ' . $kisiAd);
                         it_hareket_ekle($pdo, (int)$m['id'], 'zimmet', $kisiAd, 'Excel aktarımı ile zimmetlendi' . ($lokAd ? ' — ' . $lokAd : ''));
                     }

@@ -163,7 +163,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (count($satirlar) < 2) throw new RuntimeException('Dosyada başlık dışında veri satırı yok.');
                     $bIdx = pim_baslik_satiri($satirlar);
                     $_SESSION['it_cim'] = ['dosya'=>$ad, 'bicim'=>$g['bicim'], 'sayfa'=>$g['sayfa'], 'satirlar'=>$satirlar, 'satir_no'=>$satirNo,
-                                           'baslik_idx'=>$bIdx, 'harita'=>cim_harita($satirlar[$bIdx]), 'opt'=>['kisi_ekle'=>0]];
+                                           'baslik_idx'=>$bIdx, 'harita'=>cim_harita($satirlar[$bIdx]),
+                                           'opt'=>['kisi_ekle'=>0, 'sadece_bos'=>1, 'zimmet_koru'=>1]];
                     unset($_SESSION['it_cim_rapor']);
                     redirect('cihaz_import.php?adim=2');
                 } catch (Throwable $e) { $hata = $e->getMessage(); }
@@ -182,7 +183,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($h as $i => $k) { if ($k === '' || in_array($k, CIM_COKLU, true)) continue; if (isset($kul[$k])) $h[$i] = ''; else $kul[$k] = $i; }
             $s['harita'] = $h;
         }
-        $s['opt'] = ['kisi_ekle' => (!empty($_POST['kisi_ekle']) && yetki_var('duzenle')) ? 1 : 0];
+        $s['opt'] = ['kisi_ekle'  => (!empty($_POST['kisi_ekle']) && yetki_var('duzenle')) ? 1 : 0,
+                     'sadece_bos'  => !empty($_POST['sadece_bos'])  ? 1 : 0,
+                     'zimmet_koru' => !empty($_POST['zimmet_koru']) ? 1 : 0];
         unset($s);
         if ($islem === 'aktar') {
             $s = $_SESSION['it_cim'];
@@ -318,6 +321,18 @@ require_once __DIR__ . '/../includes/header.php';
   <div class="col-lg-7">
     <div class="card border-0 shadow-sm mb-3"><div class="card-body small">
       <div class="fw-semibold mb-2"><i class="bi bi-sliders me-1"></i>Seçenekler</div>
+      <div class="form-check border-start border-3 border-success ps-2 mb-2">
+        <input class="form-check-input" type="checkbox" name="sadece_bos" id="sadece_bos" value="1" <?= !empty($s['opt']['sadece_bos'])?'checked':'' ?>>
+        <label class="form-check-label" for="sadece_bos"><strong>Yalnız BOŞ alanları doldur — kayıtlı verimin üstüne yazma</strong>
+        <span class="text-muted">(sistemde dolu olan bir alan dosyadaki değerle DEĞİŞTİRİLMEZ; yalnız sizde boş olan alanlar dosyadan tamamlanır.
+        Kapatılırsa dosya esas alınır ve dolu alanlar da güncellenir.)</span></label></div>
+      <div class="form-check border-start border-3 border-success ps-2 mb-2">
+        <input class="form-check-input" type="checkbox" name="zimmet_koru" id="zimmet_koru" value="1" <?= !empty($s['opt']['zimmet_koru'])?'checked':'' ?>>
+        <label class="form-check-label" for="zimmet_koru"><strong>Zimmet kayıtlarına dokunma</strong>
+        <span class="text-muted">(cihazda <strong>zaten bir zimmet varsa</strong> kişi · tarih · birim hiç değişmez ve yaşam günlüğüne
+        sahte iade/zimmet satırı yazılmaz. <strong>Zimmetlisi boş</strong> olan cihaz dosyadaki kişiye zimmetlenir — orada bozulacak kayıt
+        yoktur, o da eksik veridir. <strong>Durum</strong> hiçbir mevcut cihazda dosyadan değiştirilmez: serviste / arızalı / hurda / transfer
+        birer karardır.)</span></label></div>
       <?php if (yetki_var('duzenle')): ?>
       <div class="form-check"><input class="form-check-input" type="checkbox" name="kisi_ekle" id="kisi_ekle" value="1" <?= !empty($s['opt']['kisi_ekle'])?'checked':'' ?>>
         <label class="form-check-label" for="kisi_ekle">Dosyadaki <strong>eşleşmeyen kişiler için personel kartı aç</strong> ve cihazları onlara zimmetle
@@ -414,6 +429,41 @@ require_once __DIR__ . '/../includes/header.php';
 <details class="card border-0 shadow-sm mb-3" <?= $nY <= 30 ? 'open' : '' ?>><summary class="card-header bg-white fw-semibold small text-success">Yeni eklenen cihazlar (<?= $nY ?>)</summary>
 <div class="table-responsive"><table class="table table-sm mb-0" style="font-size:.82rem"><thead class="table-light"><tr><th>Envanter no</th><th>Cihaz</th><th>Kategori</th><th>Marka / Model</th><th>Zimmetli</th><th>Lokasyon</th></tr></thead><tbody>
 <?php foreach ($rap['yeni'] as $y): ?><tr><td><a href="cihaz_detay.php?id=<?= (int)$y['id'] ?>"><?= h($y['env']) ?></a></td><td><?= h($y['ad']) ?></td><td><?= h(IT_KATEGORI[$y['kategori']][0] ?? $y['kategori']) ?></td><td><?= h($y['marka']) ?></td><td><?= h((string)$y['kisi']) ?></td><td><?= h((string)$y['lok']) ?></td></tr><?php endforeach; ?></tbody></table></div></details>
+<?php endif; ?>
+
+<?php if (!empty($rap['sadece_bos']) || !empty($rap['zimmet_koru'])): ?>
+<div class="alert alert-success py-2 small">
+  <i class="bi bi-shield-check me-1"></i><strong>Koruma açıktı.</strong>
+  <?php if (!empty($rap['sadece_bos'])): ?>
+    Sistemde <strong>dolu olan <?= $f0($rap['korunan']) ?> alan</strong> dosyadaki değerle DEĞİŞTİRİLMEDİ —
+    yalnız boş alanlar tamamlandı.
+  <?php endif; ?>
+  <?php if (!empty($rap['zimmet_koru'])): ?>
+    Zimmetlisi olan cihazların <strong>zimmet künyesine dokunulmadı</strong>; boş olanlar dosyadaki kişiyle tamamlandı.
+    Hiçbir mevcut cihazın <strong>durumu</strong> dosyadan değiştirilmedi.
+  <?php endif; ?>
+</div>
+<?php endif; ?>
+
+<?php if (!empty($rap['zimmet_korunan'])): ?>
+<details class="mb-3"><summary class="small text-warning-emphasis" style="cursor:pointer">
+  <i class="bi bi-person-lock me-1"></i><strong><?= count($rap['zimmet_korunan']) ?> cihazda dosya BAŞKA bir kişi diyordu</strong>
+  — sistemdeki zimmet korundu, listeyi göster</summary>
+  <div class="table-responsive mt-2">
+  <table class="table table-sm table-bordered mb-0" style="font-size:.8rem">
+    <thead class="table-light"><tr><th>Cihaz</th><th>Sistemdeki zimmet (korundu)</th><th>Dosyada yazan</th></tr></thead>
+    <tbody>
+    <?php foreach (array_slice($rap['zimmet_korunan'], 0, 100) as $zk): ?>
+      <tr><td><?= h($zk['kim']) ?></td>
+          <td class="fw-semibold text-success"><?= h($zk['sistem']) ?></td>
+          <td class="text-muted"><?= h($zk['dosya']) ?></td></tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  </div>
+  <div class="text-muted mt-1">Bu farklar <strong>uygulanmadı</strong>. Dosya doğruysa ilgili cihazı kartından
+    “Zimmet ver / devret” ile elle güncelleyin — böylece iade + zimmet hareketi ve tutanak da doğru oluşur.</div>
+</details>
 <?php endif; ?>
 
 <?php if ($rap['guncellenen']): ?>

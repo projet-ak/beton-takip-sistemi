@@ -1258,6 +1258,42 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   ⚠ `diger` altındaki "Dizüstü Bilgisayar"/"Monitör" adlı eski kayıtlar BİLEREK taşınmıyor — ayıklama
   yalnız yeni 5 tipe çalışır; o kayıtlar cihaz kartından elle düzeltilir.
 
+  **İÇE AKTARMADA VERİ KORUMA — "ÜSTÜNE YAZMA, ZİMMETİ BOZMA" (2026-09-18, kullanıcı: "bu belgeyi incele
+  bizim IT modülünde olmayan ve eksik verileri işlemek istiyorum, kayıtlı verilerimin üstüne kaydetmesini
+  istemiyorum, zimmetli kişi kayıtları bozulmasını istemiyorum")** — kaynak: `envanter.xlsx`
+  (tek sayfa "Envanter", 855 veri satırı × **65 sütun, hepsi eşleşiyor, eşleşmeyen sütun YOK**).
+  Cihaz içe aktarma eskiden "dosya esastır" mantığındaydı: dosyada DOLU gelen her alan sistemdeki değeri
+  EZİYORDU. Bu dosyada bunun bedeli ölçüldü — koruma KAPALIYKEN **771 dolu alan üzerine yazılıyor** ve
+  zimmetler değişiyordu (`id=4 zimmetli: 'YUNUS EMRE YILMAZ' → 'FIRAT BORAT'`,
+  `model: 'E2270SWN Model No: 215LM00041' → 'Monitör'`). Kullanıcının istediği ise tam tersi:
+  **yalnız EKSİĞİ tamamla.**
+  • **İki kutu, ikisi de VARSAYILAN AÇIK** (`cihaz_import.php` ön izleme adımı, `cim_import` `$opt`):
+  ① **`sadece_bos` — "Yalnız BOŞ alanları doldur"**: sistemde DOLU olan alan dosyadaki değerle
+  DEĞİŞTİRİLMEZ, yalnız boş alanlar dosyadan tamamlanır. Kapatılırsa eski davranış (dosya esas) birebir döner.
+  ② **`zimmet_koru` — "Zimmet kayıtlarına dokunma"**: ⚠ koruma **yalnız cihazda ZATEN zimmet varken**
+  işler (`$zimmetliMi` = `zimmetli` metni dolu VEYA `personel_id` > 0) — o zaman `CIM_ZIMMET_ALAN`
+  (`zimmetli · personel_id · zimmet_tarihi · departman`) hiç değişmez ve **yaşam günlüğüne sahte
+  iade/zimmet satırı yazılmaz**. Zimmetlisi BOŞ olan cihaz dosyadaki kişiye zimmetlenir: orada bozulacak
+  kayıt yoktur, o da eksik veridir (ilk sürüm bunu da engelliyordu → kullanıcının istediği "eksik veriyi
+  işle" kısmını kesiyordu, düzeltildi). **`durum` ise KOŞULSUZ korunur**: serviste · arızalı · hurda ·
+  kayıp · transfer birer KARARDIR, envanter dosyası bunları geri alamamalı.
+  • **`notlar` her zaman BİRİKİR** (ezilmez) — bu alan zaten "Başlık: değer" satırları ekleyerek yazılır.
+  • **Rapor bunu görünür kılar**: yeşil "Koruma açıktı" bandı (kaç dolu alan korundu · zimmete
+  dokunulmadı · durum değişmedi) + **"dosya BAŞKA kişi diyordu" tablosu** (`zimmet_korunan`:
+  Cihaz / Sistemdeki zimmet (korundu) / Dosyada yazan). Çelişki gizlenmez, elle karara bırakılır —
+  gerçek veride 26 cihazda çıktı (8 Samsung tablet sistemde tek kişide, dosyada ayrı ayrı kişilerde).
+  **Gerçek dosyayla uçtan uca doğrulandı** (508 cihazlık kayıtlı envanterin üstüne, sayfadan 3 adımlı
+  sihirbazla): okunan 855 = **348 yeni + 209 güncellenen + 274 değişmeyen + 24 atlanan** (sağlama tutuyor;
+  atlananlar 7 × kimlik kodları çakışıyor + 17 × aynı dosyada tekrar). **679 dolu alan korundu · 209 boş
+  alan tamamlandı · 76 boş zimmet alanı doldu · 26 zimmet çelişkisi korunup listelendi.**
+  DB tarafında: **silinen 0 · zimmeti değişen 0 · durumu değişen 0 · ezilen dolu marka/model 0 ·
+  yeni `iade` hareketi 0**; `giris` hareketi = 348 = yeni cihaz sayısı. **2. yükleme 0 yeni / 0 güncellenen /
+  831 değişmeyen** ve cihaz/hareket sayısı DEĞİŞMİYOR (idempotent). 6 IT sayfası uyarısız render,
+  inline JS temiz. Test: `itsm/env_kanit.php` (9 sağlama), `itsm/env_tekrar.php`, `itsm/env_koru.php`
+  (koruma açık/kapalı karşılaştırması) + **`itsm/run4.php`** (tek dosya yükleyen, `redirect()`'e dayanıklı
+  sayfa koşucusu — ⚠ `redirect()` `exit` çağırdığından oturum/çıktı `register_shutdown_function` ile yazılır,
+  yoksa ön izleme adımı veriyi bulamaz; `run_form.php` deseninin tek dosyalık hâli).
+
   **TANIMLAR EKRANI `it/tanimlar.php` (2026-09-09)** — tek sayfa, sekmeli (Snipe-IT'deki "tanım tablosu seç"
   düzeni): **Lokasyonlar · Kategoriler · Üreticiler · Modeller · Tedarikçiler · Şirketler · Durumlar · Personel**.
   • *Lokasyonlar* = `it_lokasyonlar` (hiyerarşi korunur) + yeni **sehir / adres / renk** kolonları; satırda ad
