@@ -313,6 +313,61 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   • Duman testi koşucusu `pk_sync.php` artık **`pksm/prekast/` sayfa kopyalarını da repodan tazeler**
   (elle yamalı kopya bayatlıyordu); `pksm/post.php` ile import ekranı gerçek dosya POST'uyla render
   edilip bant doğrulandı, 5 prekast sayfası uyarısız çalışıyor.
+  **21 EYLÜL "İCMALLİ" KİTABI — İCMAL EKRANI EXCEL'İ BİREBİR GÖSTERİR + TÜM VERİ ALINIR**
+  (2026-09-21, kullanıcı: *"prekast modülü yeniden yap son veriler olsun, icmal sayfası detaylı
+  yazıyor"* + kitabın İCMAL tablosunu yapıştırdı) — gelen kitap 3 sayfa: gizli **Sayfa1 (2)** (iş
+  sayfası) · **İCMAL** · **HESAPLAMA**.
+  • ⚠⚠ **İŞ SAYFASI YİNE GÜNCELLENMEMİŞ — üst üste ÜÇÜNCÜ dosya**: 64 iş satırı · kesim 64 ·
+  silikon 24 · metraj **125,95** · hakkediş **238.045,50** (08.09 ve 17.09 kitaplarıyla birebir aynı).
+  Saha yalnız **HESAPLAMA**'yı (118 satır) ve ondan SUMIFS ile beslenen **İCMAL**'i güncelliyor.
+  • ⭐ **"Son veriler olsun" → HESAPLAMA'nın TAMAMI alınır.** Eski kural "yalnız çizelgede ZATEN
+  geçen bloklar" idi ve **11 daireyi (A/34 + 10 adet E) sessizce düşürüyordu** — oysa kullanıcının
+  yapıştırdığı İCMAL tablosunda A ve E blokları var. Kural kaldırıldı: bloklar da alınır, yalnız
+  raporda **"çizelgede olmayan blok(lar) HESAPLAMA'dan geldi: A — 1 daire · E — 10 daire"** diye
+  mavi bantla işaretlenir (hakkedişe girmeleri için çizelgeye de işlenmeleri gerektiği yazılır).
+  ⚠ Bu, 2026-09-17'deki "a blok yok" kararını **kullanıcının yeni tablosu gereği** tersine çevirir.
+  • **Mevcut daire → İKİNCİ KAYIT AÇILMAZ, İLERLEME İŞLENİR**: HESAPLAMA'da aynı blok|daire tekrar
+  ediyorsa (17 çift var) eskiden satır tamamen ATLANIYOR ve o satırdaki **silikon=Yapıldı / ölçülmüş
+  metraj kayboluyordu**. Artık çizelgedeki kayda *yalnız boş alanlar* yazılır (dolu değer asla
+  ezilmez, ikinci satır açılmaz) ve raporda "N dairenin durumu HESAPLAMA'dan tamamlandı" tablosunda
+  listelenir — gerçek veride **13 daire** (F bloğunda silikon 23 → 31, F|59 metrajı 4,90).
+  • **Yeni kolon `prekast_isler.kaynak`** (`cizelge` | `hesaplama`, runtime ALTER): satırın hangi
+  sayfadan geldiğini tutar. `isler.php`'de **HESAPLAMA rozeti**. ⚠⚠ Asıl gerekçe: `pk_geri_kontrol`
+  sistemin toplamını dosyanın toplamıyla karşılaştırıyordu; sistem artık HESAPLAMA satırlarını da
+  içerdiğinden **her yüklemede yanlış "ÇİZELGE GERİYE GİTTİ" alarmı** veriyordu. Karşılaştırma
+  **DOSYA ↔ DOSYA** yapılır: `prekast_gunluk`'a **`cz_satir` · `cz_silikon` · `cz_metraj` ·
+  `cz_hakkedis`** eklendi (o gün yüklenen dosyanın KENDİ iş sayfası toplamı) ve geri kontrolü bir
+  önceki günün `cz_*` satırıyla kıyaslar. "Aynı dosya daha önce şu gün yüklenmişti" araması da
+  artık bu sütunları kullanır.
+  • ⭐⭐ **`icmal.php` ARTIK ÜÇ GÖRÜNÜM** (`?g=`), şerit düğmeleriyle seçilir:
+  ① **Excel (dosyadan)** — kitabın İCMAL sayfasının **BİREBİR fotoğrafı**; hesaplanmaz, yeni tablo
+  **`prekast_icmal`**'den okunur (her içe aktarımda `pk_excel_icmal_kaydet()` ile saklanır; rapor
+  tarihi + çizelge + blok UNIQUE, TOPLAM satırı da saklanır, blok SIRASI korunur). **Snapshot varsa
+  VARSAYILAN görünüm budur** — kullanıcının ekranda gördüğü tablo. Oran, sayfadaki gibi
+  **ondalıksız** yazılır (kitapta biçim `0%`), 6. KPI "Ort. metraj" yerine "Blok" olur.
+  ② **Sistem — ölçülen metraj** (eski varsayılan) · ③ **Sistem — tahmin dahil** (Excel mantığı).
+  Yardımcılar `_ortak.php`: `pk_excel_icmal_kaydet` · `pk_excel_icmal_son`.
+  • **FARK GİZLENMEZ**: Excel görünümünün altında **"Excel İCMAL ↔ sistem sayımı farkı"** tablosu
+  (blok × kesim daire / silikon daire / kesim mt, Excel · Sistem · Fark). Gerçek veride:
+  **Excel 117 kesim dairesi diyor, HESAPLAMA'da 101 BENZERSİZ daire var.** Sebep: İCMAL,
+  HESAPLAMA'nın **elle yazılmış** "Kesim/Silikon Sayacı" sütunlarını SUMIFS'liyor; aynı daire iki
+  satırda geçtiğinde sayaç **ikisinde de 1 kalmış** (17 çiftten 16'sı; yalnız B|61'in ikinci satırı
+  doğru şekilde 0). Ayrıca **A'nın 2,00 ve E'nin 127,00 metrajı İCMAL hücresine DOĞRUDAN ELLE
+  YAZILMIŞ** (HESAPLAMA'da o satırların metrajı 0) — hiçbir satır kümesinden doğmuyor.
+  Sistem satır sayar, uydurmaz; iki sayma biçimi ekranda yan yana durur.
+  • Gerçek dosyayla doğrulandı (`pk_dogrula.php`, **34 sağlama**): 64 iş satırı okundu = 64 yeni +
+  0 atlanan · 41 daire HESAPLAMA'dan eklendi · 13 daire tamamlandı · **0 atlanan** ·
+  DB 105 satır / **101 benzersiz daire** / 7 blok (A ve E dahil) · `kaynak` 64 çizelge + 41 hesaplama ·
+  Excel İCMAL fotoğrafı kullanıcının tablosuyla **BİREBİR** (A 1/2,00/1/2,00 · B 9/47,31/6/47,31 ·
+  C 21/94,86/2/94,86 · D 20/75,12/9/75,12 · F 51/189,68/33/189,68 · H 5/9,37/2/9,37 ·
+  E 10/127,00/10/127,00 · TOPLAM 117/545,34/63/545,34 · %54, blok sırası dahil) ·
+  **aynı dosya 2. ve 3. kez yüklendiğinde 0 yeni / 0 güncellenen / 0 eklenen daire** ve yanlış geri
+  alarmı yok. `pk_geri.php`: gerçekten eski (115 satır → 64) dosyada bant **çıkıyor**, aynı dosya
+  tekrarında **çıkmıyor**. 6 prekast sayfası uyarısız render, inline JS temiz.
+  • Duman testi ortamı `pk_sync.php` ile **repodan üretilir** (MySQL DDL/upsert → SQLite; iş
+  mantığına dokunmaz) → `pksmoke/` (çekirdek) + `pksm/` (sayfa render, `run.php`; `db_prekast.php`
+  stub'ı NOW/CURDATE/DATEDIFF/DATE_FORMAT taklitlerini kurar) + `pk_post.php` (import ekranına
+  gerçek dosya POST'u) + `pk_dogrula.php` / `pk_geri.php` / `pk_zincir.php`.
 
 - **IT Envanter modülü** = `it/` alt klasörü (MODULLER anahtarı `it`, şeritte "IT"). Bilgi işlem varlıkları:
   bilgisayar / laptop / monitör / yazıcı / telefon / tablet / ağ cihazı / sunucu / **yazılım lisansı** / aksesuar.
@@ -1804,6 +1859,8 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · **Sipariş Talepleri** · **
 > tablolar). Bu §0 kuralına AYKIRIDIR ve bilinerek bırakılmıştır: ayırmak **canlı veri taşımak** demektir
 > (`PREKAST_DB_NAME` sabiti zaten hazır; yeni DB açılıp `prekast_*` tabloları taşınmalı). Prekast tabloları
 > CRM tablolarına JOIN atmadığı için ayırma teknik olarak risksizdir — **yalnız veri göçü kararı bekliyor.**
+> Prekast tabloları: `prekast_isler` · `prekast_gunluk` · **`prekast_icmal`** (kitabın İCMAL sayfasının
+> birebir fotoğrafı; icmal ekranındaki "Excel (dosyadan)" görünümü bunu okur).
 
 ### Beton (`kurulum.php`)
 Tanım tabloları (id/ad/aktif): beton_siniflari, katki_listesi, pompa_turleri, firmalar,

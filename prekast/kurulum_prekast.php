@@ -17,10 +17,11 @@ try {
     pk_semasi_kur($pdoPrekast);
     $log[] = 'prekast_isler';
     $log[] = 'prekast_gunluk';
+    $log[] = 'prekast_icmal';
 } catch (Throwable $e) { $hata = $e->getMessage(); }
 
 $durum = [];
-foreach (['prekast_isler','prekast_gunluk'] as $t) {
+foreach (['prekast_isler','prekast_gunluk','prekast_icmal'] as $t) {
     try { $durum[$t] = (int)$pdoPrekast->query("SELECT COUNT(*) FROM {$t}")->fetchColumn(); }
     catch (Throwable $e) { $durum[$t] = '—'; }
 }
@@ -63,7 +64,11 @@ $__pkAyri  = $__pkDb !== DB_NAME;
             aynı çizelge her gün yüklense de mükerrer kayıt oluşmaz; bir satır ilk kez "Yapıldı" olduğunda
             o günün tarihi damgalanır.<br>
             <strong>prekast_gunluk</strong> — her yüklemenin anlık toplamı (satır / kesim / silikon / metraj / hakkediş).
-            Günlük ilerleme grafiği bundan çizilir.
+            Günlük ilerleme grafiği bundan çizilir; <code>cz_*</code> sütunları o gün yüklenen
+            <em>dosyanın kendi</em> iş sayfası toplamıdır (çizelge geriye gitti uyarısı buna bakar).<br>
+            <strong>prekast_icmal</strong> — kitabın <em>İCMAL</em> sayfasının birebir fotoğrafı (her yüklemede
+            saklanır). İcmal ekranındaki <strong>"Excel (dosyadan)"</strong> görünümü bunu gösterir; sistemin
+            kendi sayımının yerine geçmez, yanında durur ve farkı listelenir.
         </div>
         <a href="import.php" class="btn btn-primary btn-sm mt-3"><i class="bi bi-cloud-arrow-up me-1"></i>Günlük Çizelgeyi Yükle</a>
         <a href="index.php" class="btn btn-outline-secondary btn-sm mt-3">Dashboard</a>

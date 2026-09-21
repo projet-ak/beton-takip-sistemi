@@ -225,21 +225,31 @@ function pk_dosya_tarihi(string $ad): ?string
  */
 function pk_geri_kontrol(PDO $pdo, array $s, string $cizelge): ?array
 {
-    $o = $s['onceki'] ?? null;
+    // ⚠ KARŞILAŞTIRMA DOSYA ↔ DOSYA yapılır: sistemdeki satırlar HESAPLAMA sayfasından da
+    // beslendiği için sistem toplamı hiçbir dosyaya eşit olmaz ve her yüklemede yanlış alarm verirdi.
+    // Bir önceki günün `cz_*` sütunları o gün yüklenen dosyanın KENDİ iş sayfası toplamıdır.
+    $ong = $pdo->prepare("SELECT rapor_tarihi, cz_satir, cz_silikon, cz_metraj, cz_hakkedis FROM prekast_gunluk
+                          WHERE cizelge=? AND rapor_tarihi<>? AND cz_satir>0
+                          ORDER BY rapor_tarihi DESC, id DESC LIMIT 1");
+    $ong->execute([$cizelge, (string)$s['rapor_tarihi']]);
+    $g = $ong->fetch() ?: null;
+    $o = $g ? ['satir'=>(int)$g['cz_satir'], 'silikon'=>(int)$g['cz_silikon'],
+               'metraj'=>(float)$g['cz_metraj'], 'hakkedis'=>(float)$g['cz_hakkedis']]
+            : ($s['onceki'] ?? null);
     if (!$o || (int)($o['satir'] ?? 0) === 0) return null;          // bu çizelgenin ilk yüklemesi
 
     $geriSatir = (int)$o['satir']    - (int)$s['satir'];
     $geriHak   = (float)$o['hakkedis'] - (float)$s['toplamHakkedis'];
     if ($geriSatir <= 0 && $geriHak <= 0.01) return null;           // ilerleme ya da yerinde sayma
 
-    $simdi = $pdo->prepare("SELECT COALESCE(SUM(silikon=1),0) silikon FROM prekast_isler WHERE cizelge=? AND dosyada=1");
-    $simdi->execute([$cizelge]);
-    $silikonSimdi = (int)($simdi->fetchColumn() ?: 0);
+    $silikonSimdi = (int)$s['dosyaSilikon'];
 
     // Aynı iş sayfası daha önce hangi gün yüklenmişti? (bugünün satırı zaten yeni toplamı taşır)
+    // ⚠ Karşılaştırma DOSYANIN kendi iş sayfası toplamlarıyla yapılır (cz_*), sistem toplamıyla
+    // değil — sistem toplamı HESAPLAMA'dan eklenen satırları da içerir ve hiçbir dosyaya eşit olmaz.
     $ay = $pdo->prepare("SELECT rapor_tarihi, dosya FROM prekast_gunluk
-                         WHERE cizelge = ? AND rapor_tarihi <> ? AND satir = ?
-                           AND ABS(metraj - ?) < 0.01 AND ABS(hakkedis - ?) < 0.01
+                         WHERE cizelge = ? AND rapor_tarihi <> ? AND cz_satir = ?
+                           AND ABS(cz_metraj - ?) < 0.01 AND ABS(cz_hakkedis - ?) < 0.01
                          ORDER BY rapor_tarihi DESC, id DESC");
     $ay->execute([$cizelge, (string)$s['rapor_tarihi'], (int)$s['satir'],
                   (float)$s['toplamMetraj'], (float)$s['toplamHakkedis']]);
@@ -270,8 +280,8 @@ function pk_import(PDO $pdo, SimpleXLSX $x, array $opt = []): array
     $s = ['okunan'=>0, 'satir'=>0, 'yeni'=>0, 'guncellenen'=>0, 'degismeyen'=>0, 'sablon'=>0,
           'yeniKesim'=>0, 'yeniSilikon'=>0, 'dusen'=>0, 'atlanan'=>[], 'degisenler'=>[],
           'uyari'=>[], 'kontrol'=>[], 'toplamMetraj'=>0.0, 'toplamHakkedis'=>0.0,
-          'cizelge'=>'', 'is_tipi'=>'', 'rapor_tarihi'=>$rapor, 'onceki'=>null, 'geri'=>null,
-          'hesapEklenen'=>[], 'hesapAtlanan'=>[], 'dusenKoru'=>false, 'korunan'=>[], 'degistirilen'=>[]];
+          'cizelge'=>'', 'is_tipi'=>'', 'rapor_tarihi'=>$rapor, 'onceki'=>null, 'geri'=>null, 'dosyaSilikon'=>0,
+          'hesapEklenen'=>[], 'hesapAtlanan'=>[], 'hesapGuncellenen'=>[], 'hesapYeniBlok'=>[], 'dusenKoru'=>false, 'korunan'=>[], 'degistirilen'=>[]];
 
     // Seçenekler — ikisi de VARSAYILAN AÇIK: "burdaki tüm veriler olsun" (2026-09-17, kullanıcı).
     //  dusen_koru : dosyada olmayan satır çizelgede KALIR (dosyada=0 yapılmaz) — eski/kısa dosya
@@ -301,7 +311,7 @@ function pk_import(PDO $pdo, SimpleXLSX $x, array $opt = []): array
     // kullanıcıya söylenmeli — aksi halde hakkediş sessizce düşüyor (bkz. pk_geri_kontrol).
     $onc = $pdo->prepare("SELECT COUNT(*) satir, COALESCE(SUM(kesim=1),0) kesim, COALESCE(SUM(silikon=1),0) silikon,
                                  COALESCE(SUM(metraj),0) metraj, COALESCE(SUM(hakkedis),0) hakkedis
-                          FROM prekast_isler WHERE cizelge=? AND dosyada=1");
+                          FROM prekast_isler WHERE cizelge=? AND dosyada=1 AND kaynak='cizelge'");
     $onc->execute([$cizelge]);
     $s['onceki'] = $onc->fetch() ?: null;
 
@@ -311,12 +321,13 @@ function pk_import(PDO $pdo, SimpleXLSX $x, array $opt = []): array
     $ins = $pdo->prepare("INSERT INTO prekast_isler
             (kayit_anahtari, cizelge, is_tipi, sira, blok, daire, daire_sira, tekrar,
              kesim, kesim_metin, kesim_tarih, silikon, silikon_metin, silikon_tarih,
-             metraj, birim_fiyat, hakkedis, durum, dosyada, ilk_gorulme, son_gorulme)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)");
+             metraj, birim_fiyat, hakkedis, durum, dosyada, ilk_gorulme, son_gorulme, kaynak)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)");
     $upd = $pdo->prepare("UPDATE prekast_isler SET cizelge=?, is_tipi=?, sira=?, daire_sira=?,
              kesim=?, kesim_metin=?, kesim_tarih=?, silikon=?, silikon_metin=?, silikon_tarih=?,
-             metraj=?, birim_fiyat=?, hakkedis=?, durum=?, dosyada=1, son_gorulme=? WHERE id=?");
+             metraj=?, birim_fiyat=?, hakkedis=?, durum=?, dosyada=1, kaynak='cizelge', son_gorulme=? WHERE id=?");
 
+    $xicmal = pk_excel_icmal($x);   // ⚠ transaction DIŞINDA okunur (şema/dosya işi)
     $pdo->beginTransaction();
     try {
         // Bu çizelgenin tüm satırları önce "dosyada değil" işaretlenir; aktarılanlar geri açılır.
@@ -365,6 +376,7 @@ function pk_import(PDO $pdo, SimpleXLSX $x, array $opt = []): array
             $durum    = pk_durum($kesim, $silikon);
 
             $s['satir']++;
+            if ($silikon) $s['dosyaSilikon']++;
             $s['toplamMetraj']   += $metraj;
             $s['toplamHakkedis'] += $hak;
             $capraz[] = ['satir'=>$i+1, 'blok'=>$blok, 'daire'=>$daire,
@@ -412,7 +424,7 @@ function pk_import(PDO $pdo, SimpleXLSX $x, array $opt = []): array
                 $ins->execute([$anahtar, $cizelge, $isTipi, $sira ?: null, $blok, $daire, $daireSira, $tekrar,
                                (int)$kesim, $kesimM ?: null, $kesim ? $rapor : null,
                                (int)$silikon, $silikonM ?: null, $silikon ? $rapor : null,
-                               $metraj, $bf, $hak, $durum, $rapor, $rapor]);
+                               $metraj, $bf, $hak, $durum, $rapor, $rapor, 'cizelge']);
                 $s['yeni']++;
                 if ($kesim)   $s['yeniKesim']++;
                 if ($silikon) $s['yeniSilikon']++;
@@ -429,33 +441,69 @@ function pk_import(PDO $pdo, SimpleXLSX $x, array $opt = []): array
             $bfSon = 0.0;
             foreach ($capraz as $cr) if ($cr['bf'] > 0) { $bfSon = (float)$cr['bf']; break; }
 
-            $mv = $pdo->prepare("SELECT blok, daire FROM prekast_isler WHERE cizelge=?");
+            $mv = $pdo->prepare("SELECT id, blok, daire, kesim, silikon, metraj, hakkedis, birim_fiyat
+                                 FROM prekast_isler WHERE cizelge=? ORDER BY tekrar");
             $mv->execute([$cizelge]);
             $varDaire = []; $varBlok = [];
             foreach ($mv->fetchAll() as $r) {
                 $b = pk_norm((string)$r['blok']);
                 $varBlok[$b] = true;
-                $varDaire[$b . '|' . pk_norm((string)$r['daire'])] = true;
+                $varDaire[$b . '|' . pk_norm((string)$r['daire'])] ??= $r;   // ilk (tekrar=1) satır
             }
+            $cizelgeBlok = $varBlok;     // iş sayfasında GERÇEKTEN geçen bloklar (rapor için)
+            $ilerlet = $pdo->prepare("UPDATE prekast_isler SET kesim=?, kesim_metin=COALESCE(kesim_metin,?), kesim_tarih=COALESCE(kesim_tarih,?),
+                                      silikon=?, silikon_metin=COALESCE(silikon_metin,?), silikon_tarih=COALESCE(silikon_tarih,?),
+                                      metraj=?, hakkedis=?, durum=?, son_gorulme=? WHERE id=?");
             foreach ($hesap['satirlar'] as $hs) {
                 $b  = pk_norm($hs['blok']);
                 $ka = $b . '|' . pk_norm($hs['daire']);
-                if (isset($varDaire[$ka])) continue;                 // zaten çizelgede
-                if (!isset($varBlok[$b])) {
-                    $s['hesapAtlanan'][] = $hs['blok'] . '/' . $hs['daire'] . ' — çizelgede böyle bir blok yok';
+                if (isset($varDaire[$ka])) {
+                    // ⚠ Daire çizelgede ZATEN var — ikinci kayıt AÇILMAZ (aynı dairedeki ikinci satır
+                    // ayrı daire değildir), ama HESAPLAMA'daki ilerleme kaybolmasın: çizelgede boş
+                    // olan kesim/silikon/metraj buradan DOLAR (asla boşalmaz, dolu değer ezilmez).
+                    $m = $varDaire[$ka];
+                    $kesim   = (bool)(int)$m['kesim']   || $hs['kesim'];
+                    $silikon = (bool)(int)$m['silikon'] || $hs['silikon'];
+                    $metraj  = (float)$m['metraj'] > 0 ? (float)$m['metraj'] : (float)$hs['metraj'];
+                    $bf      = (float)$m['birim_fiyat'] > 0 ? (float)$m['birim_fiyat'] : $bfSon;
+                    $hak     = (float)$m['hakkedis'] > 0 ? (float)$m['hakkedis'] : ($bf > 0 ? round($metraj * $bf, 2) : 0.0);
+                    if ($kesim === (bool)(int)$m['kesim'] && $silikon === (bool)(int)$m['silikon']
+                        && abs($metraj - (float)$m['metraj']) < 0.001) continue;   // değişen bir şey yok
+                    $ilerlet->execute([(int)$kesim, 'Yapıldı', $kesim ? $rapor : null,
+                                       (int)$silikon, 'Yapıldı', $silikon ? $rapor : null,
+                                       $metraj, $hak, pk_durum($kesim, $silikon), $rapor, (int)$m['id']]);
+                    if ($silikon && !(int)$m['silikon']) $s['yeniSilikon']++;
+                    if ($kesim   && !(int)$m['kesim'])   $s['yeniKesim']++;
+                    $s['hesapGuncellenen'][] = ['blok'=>$hs['blok'], 'daire'=>$hs['daire'],
+                                                'kesim'=>$kesim, 'silikon'=>$silikon, 'metraj'=>$metraj];
+                    $varDaire[$ka]['kesim'] = (int)$kesim; $varDaire[$ka]['silikon'] = (int)$silikon;
+                    $varDaire[$ka]['metraj'] = $metraj;
                     continue;
                 }
+                // ⚠ ÇİZELGEDE OLMAYAN BLOK DA ALINIR (2026-09-21): kitabın İCMAL sayfası A ve E
+                // bloklarını açıkça listeliyor; eskiden "çizelgede böyle blok yok" diye DÜŞÜYORDU ve
+                // 11 daire sisteme hiç girmiyordu. Artık girer, yalnız raporda ayrıca işaretlenir.
+                if (!isset($cizelgeBlok[$b])) $s['hesapYeniBlok'][$hs['blok']] = ($s['hesapYeniBlok'][$hs['blok']] ?? 0) + 1;
                 $metraj = (float)$hs['metraj'];
                 $hak    = $bfSon > 0 ? round($metraj * $bfSon, 2) : 0.0;
                 $ins->execute([pk_anahtar($cizelge, $hs['blok'], $hs['daire'], 1), $cizelge, $isTipi, null,
                                $hs['blok'], $hs['daire'], (int)preg_replace('/\D+/', '', $hs['daire']), 1,
                                (int)$hs['kesim'], $hs['kesim'] ? 'Yapıldı' : null, $hs['kesim'] ? $rapor : null,
                                (int)$hs['silikon'], $hs['silikon'] ? 'Yapıldı' : null, $hs['silikon'] ? $rapor : null,
-                               $metraj, $bfSon ?: null, $hak, pk_durum($hs['kesim'], $hs['silikon']), $rapor, $rapor]);
-                $varDaire[$ka] = true;
+                               $metraj, $bfSon ?: null, $hak, pk_durum($hs['kesim'], $hs['silikon']), $rapor, $rapor, 'hesaplama']);
+                $varBlok[$b] = true;
+                $varDaire[$ka] = ['id'=>(int)$pdo->lastInsertId(), 'blok'=>$hs['blok'], 'daire'=>$hs['daire'],
+                                  'kesim'=>(int)$hs['kesim'], 'silikon'=>(int)$hs['silikon'],
+                                  'metraj'=>$metraj, 'hakkedis'=>$hak, 'birim_fiyat'=>$bfSon];
                 $s['hesapEklenen'][] = ['blok'=>$hs['blok'], 'daire'=>$hs['daire'], 'kesim'=>$hs['kesim'],
                                         'silikon'=>$hs['silikon'], 'metraj'=>$metraj, 'hakkedis'=>$hak];
             }
+        }
+
+        // Kitabın İCMAL sayfası varsa BİREBİR saklanır — icmal.php "Excel (dosyadan)" görünümü
+        // bu fotoğrafı gösterir. ⚠ Sistem icmalinin yerine GEÇMEZ, yanında durur.
+        if ($xicmal) {
+            $s['excelIcmalKayit'] = pk_excel_icmal_kaydet($pdo, $cizelge, $rapor, $xicmal, (string)($opt['dosya'] ?? ''));
         }
 
         $ds = $pdo->prepare("SELECT COUNT(*) FROM prekast_isler WHERE cizelge=? AND dosyada=0");
@@ -469,14 +517,17 @@ function pk_import(PDO $pdo, SimpleXLSX $x, array $opt = []): array
         $ozet->execute([$cizelge]);
         $o = $ozet->fetch() ?: [];
         $pdo->prepare("INSERT INTO prekast_gunluk
-                (rapor_tarihi, cizelge, satir, kesim, silikon, metraj, hakkedis, yeni_satir, yeni_kesim, yeni_silikon, dosya, kullanici)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                (rapor_tarihi, cizelge, satir, kesim, silikon, metraj, hakkedis,
+                 cz_satir, cz_silikon, cz_metraj, cz_hakkedis, yeni_satir, yeni_kesim, yeni_silikon, dosya, kullanici)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON DUPLICATE KEY UPDATE satir=VALUES(satir), kesim=VALUES(kesim), silikon=VALUES(silikon),
                     metraj=VALUES(metraj), hakkedis=VALUES(hakkedis),
+                    cz_satir=VALUES(cz_satir), cz_silikon=VALUES(cz_silikon), cz_metraj=VALUES(cz_metraj), cz_hakkedis=VALUES(cz_hakkedis),
                     yeni_satir=yeni_satir+VALUES(yeni_satir), yeni_kesim=yeni_kesim+VALUES(yeni_kesim),
                     yeni_silikon=yeni_silikon+VALUES(yeni_silikon), dosya=VALUES(dosya), kullanici=VALUES(kullanici)")
             ->execute([$rapor, $cizelge, (int)($o['satir'] ?? 0), (int)($o['kesim'] ?? 0), (int)($o['silikon'] ?? 0),
                        (float)($o['metraj'] ?? 0), (float)($o['hakkedis'] ?? 0),
+                       (int)$s['satir'], (int)$s['dosyaSilikon'], (float)$s['toplamMetraj'], (float)$s['toplamHakkedis'],
                        $s['yeni'], $s['yeniKesim'], $s['yeniSilikon'],
                        (string)($opt['dosya'] ?? ''), $opt['kullanici'] ?? null]);
         $pdo->commit();
@@ -509,7 +560,7 @@ function pk_import(PDO $pdo, SimpleXLSX $x, array $opt = []): array
     if ($silikonsuzMetraj) $s['kontrol'][] = ['tip'=>'bilgi', 'baslik'=>'Metraj var ama silikon işaretli değil',
                                               'mesaj'=>count($silikonsuzMetraj) . ' satır', 'satirlar'=>$silikonsuzMetraj];
     // ——— Excel İCMAL sayfası ↔ sistem icmali (aynı mantık: benzersiz daire + ortalama metraj) ———
-    $xi = pk_excel_icmal($x);
+    $xi = $xicmal;
     if ($xi) {
         $si2 = pk_icmal($pdo, $cizelge);
         $fark = []; $f2 = fn($n) => number_format((float)$n, 2, ',', '.');

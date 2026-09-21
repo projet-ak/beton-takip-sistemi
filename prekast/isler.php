@@ -214,7 +214,9 @@ foreach ($kpi as [$ad, $deger, $renk]): ?>
                 <td class="text-end text-muted"><?= $f0($r['birim_fiyat']) ?></td>
                 <td class="text-end fw-semibold"><?= (float)$r['hakkedis'] > 0 ? $f0($r['hakkedis']) : '<span class="text-muted fw-normal">—</span>' ?></td>
                 <td><span class="badge bg-<?= h(pk_durumRenk($r['durum'])) ?>"><?= h(pk_durumAd($r['durum'])) ?></span>
-                    <?php if (!$r['dosyada']): ?><span class="badge bg-dark ms-1" title="Son çizelgede yok">çizelgede yok</span><?php endif; ?></td>
+                    <?php if (!$r['dosyada']): ?><span class="badge bg-dark ms-1" title="Son çizelgede yok">çizelgede yok</span><?php endif; ?>
+                    <?php if (($r['kaynak'] ?? 'cizelge') === 'hesaplama'): ?><span class="badge bg-info text-dark ms-1"
+                        title="Bu daire hakkediş çizelgesinde (iş sayfasında) yok; kitabın HESAPLAMA sayfasından alındı — hakkedişe girmesi için çizelgeye de işlenmeli">HESAPLAMA</span><?php endif; ?></td>
                 <td class="text-end"><a href="is_detay.php?id=<?= (int)$r['id'] ?>" class="btn btn-outline-secondary btn-sm py-0"><i class="bi bi-eye"></i></a></td>
             </tr>
         <?php endforeach; ?>

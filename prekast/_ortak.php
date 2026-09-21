@@ -94,6 +94,7 @@ function pk_semasi_kur(PDO $pdo): void
         hakkedis       DECIMAL(14,2) NOT NULL DEFAULT 0,
         durum          ENUM('bekliyor','kesim','tamam') NOT NULL DEFAULT 'bekliyor',
         dosyada        TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'son raporda satır var mıydı',
+        kaynak         VARCHAR(12) NOT NULL DEFAULT 'cizelge' COMMENT 'cizelge | hesaplama — satir hangi sayfadan geldi',
         ilk_gorulme    DATE NULL,
         son_gorulme    DATE NULL,
         ic_not         TEXT NULL           COMMENT 'sistem içi not (Excel dışı, aktarımda korunur)',
@@ -116,6 +117,10 @@ function pk_semasi_kur(PDO $pdo): void
         silikon       INT NOT NULL DEFAULT 0,
         metraj        DECIMAL(14,2) NOT NULL DEFAULT 0,
         hakkedis      DECIMAL(16,2) NOT NULL DEFAULT 0,
+        cz_satir      INT NOT NULL DEFAULT 0            COMMENT 'o gun yuklenen DOSYANIN is sayfasi toplami',
+        cz_silikon    INT NOT NULL DEFAULT 0,
+        cz_metraj     DECIMAL(14,2) NOT NULL DEFAULT 0,
+        cz_hakkedis   DECIMAL(16,2) NOT NULL DEFAULT 0,
         yeni_satir    INT NOT NULL DEFAULT 0,
         yeni_kesim    INT NOT NULL DEFAULT 0,
         yeni_silikon  INT NOT NULL DEFAULT 0,
@@ -125,6 +130,92 @@ function pk_semasi_kur(PDO $pdo): void
         UNIQUE KEY uq_gun (rapor_tarihi, cizelge),
         KEY idx_tarih (rapor_tarihi)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Eski kurulumlar için çalışma anı sütunları (yeni kurulumda CREATE zaten içeriyor)
+    foreach (["ALTER TABLE prekast_isler ADD COLUMN kaynak VARCHAR(12) NOT NULL DEFAULT 'cizelge'",
+              "ALTER TABLE prekast_gunluk ADD COLUMN cz_satir INT NOT NULL DEFAULT 0",
+              "ALTER TABLE prekast_gunluk ADD COLUMN cz_silikon INT NOT NULL DEFAULT 0",
+              "ALTER TABLE prekast_gunluk ADD COLUMN cz_metraj DECIMAL(14,2) NOT NULL DEFAULT 0",
+              "ALTER TABLE prekast_gunluk ADD COLUMN cz_hakkedis DECIMAL(16,2) NOT NULL DEFAULT 0"] as $sql) {
+        try { $pdo->exec($sql); } catch (Throwable $e) { /* sütun zaten var */ }
+    }
+
+    // Kitabın İCMAL sayfasının BİREBİR fotoğrafı — sahanın ekranda gördüğü tablo budur.
+    // ⚠ Sistem icmali (pk_icmal) bu satırları KULLANMAZ; ikisi ayrı ayrı durur ve
+    // icmal.php'de yan yana karşılaştırılır (bkz. pk_excel_icmal_kaydet).
+    $pdo->exec("CREATE TABLE IF NOT EXISTS prekast_icmal (
+        id            INT AUTO_INCREMENT PRIMARY KEY,
+        cizelge       VARCHAR(200) NOT NULL DEFAULT '',
+        rapor_tarihi  DATE NOT NULL,
+        blok          VARCHAR(20) NOT NULL   COMMENT 'normalize blok; TOPLAM satiri da saklanir',
+        sira          INT NOT NULL DEFAULT 0 COMMENT 'sayfadaki satır sırası',
+        kesim_daire   INT NOT NULL DEFAULT 0,
+        kesim_mt      DECIMAL(14,2) NOT NULL DEFAULT 0,
+        silikon_daire INT NOT NULL DEFAULT 0,
+        silikon_mt    DECIMAL(14,2) NOT NULL DEFAULT 0,
+        oran          DECIMAL(8,4) NOT NULL DEFAULT 0,
+        dosya         VARCHAR(255) NULL,
+        created       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_icmal (rapor_tarihi, cizelge, blok),
+        KEY idx_ic_cizelge (cizelge)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+/**
+ * Kitabın İCMAL sayfasını olduğu gibi saklar (pk_excel_icmal çıktısı).
+ * Aynı gün + çizelge tekrar yüklenirse üzerine yazar; blok listesi değişmişse eski
+ * satırlar temizlenir (dosyadan çıkan blok ekranda hayalet olarak kalmasın).
+ */
+function pk_excel_icmal_kaydet(PDO $pdo, string $cizelge, string $rapor, array $xi, string $dosya = ''): int
+{
+    pk_semasi_kur($pdo);
+    $pdo->prepare("DELETE FROM prekast_icmal WHERE rapor_tarihi=? AND cizelge=?")->execute([$rapor, $cizelge]);
+    $ins = $pdo->prepare("INSERT INTO prekast_icmal
+            (cizelge, rapor_tarihi, blok, sira, kesim_daire, kesim_mt, silikon_daire, silikon_mt, oran, dosya)
+            VALUES (?,?,?,?,?,?,?,?,?,?)");
+    $n = 0; $sira = 0;
+    foreach (($xi['blok'] ?? []) as $b => $v) {
+        $ins->execute([$cizelge, $rapor, (string)$b, ++$sira,
+                       (int)($v['kesimDaire'] ?? 0), (float)($v['kesimMt'] ?? 0),
+                       (int)($v['silikonDaire'] ?? 0), (float)($v['silikonMt'] ?? 0),
+                       (float)($v['oran'] ?? 0), $dosya]);
+        $n++;
+    }
+    if (!empty($xi['toplam'])) {
+        $v = $xi['toplam'];
+        $ins->execute([$cizelge, $rapor, 'TOPLAM', 999,
+                       (int)($v['kesimDaire'] ?? 0), (float)($v['kesimMt'] ?? 0),
+                       (int)($v['silikonDaire'] ?? 0), (float)($v['silikonMt'] ?? 0),
+                       (float)($v['oran'] ?? 0), $dosya]);
+        $n++;
+    }
+    return $n;
+}
+
+/**
+ * Saklanan EN SON Excel İCMAL fotoğrafı.
+ * @return array|null ['rapor_tarihi','dosya','blok'=>[blok=>satır], 'toplam'=>satır|null]
+ */
+function pk_excel_icmal_son(PDO $pdo, string $cizelge = ''): ?array
+{
+    pk_semasi_kur($pdo);
+    $w = $cizelge !== '' ? ' WHERE cizelge=?' : '';
+    $p = $cizelge !== '' ? [$cizelge] : [];
+    $st = $pdo->prepare("SELECT rapor_tarihi, cizelge FROM prekast_icmal$w ORDER BY rapor_tarihi DESC, id DESC LIMIT 1");
+    $st->execute($p);
+    $son = $st->fetch();
+    if (!$son) return null;
+    $st = $pdo->prepare("SELECT * FROM prekast_icmal WHERE rapor_tarihi=? AND cizelge=? ORDER BY sira, id");
+    $st->execute([$son['rapor_tarihi'], $son['cizelge']]);
+    $out = ['rapor_tarihi'=>$son['rapor_tarihi'], 'cizelge'=>$son['cizelge'], 'dosya'=>'', 'blok'=>[], 'toplam'=>null];
+    foreach ($st->fetchAll() as $r) {
+        $out['dosya'] = (string)($r['dosya'] ?? '');
+        $sat = ['kesimDaire'=>(int)$r['kesim_daire'], 'kesimMt'=>(float)$r['kesim_mt'],
+                'silikonDaire'=>(int)$r['silikon_daire'], 'silikonMt'=>(float)$r['silikon_mt'],
+                'oran'=>(float)$r['oran']];
+        if ($r['blok'] === 'TOPLAM') $out['toplam'] = $sat; else $out['blok'][(string)$r['blok']] = $sat;
+    }
+    return $out['blok'] ? $out : null;
 }
 
 /** Dashboard/rapor KPI'ları (opsiyonel çizelge filtresi). */

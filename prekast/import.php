@@ -233,15 +233,61 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
             </details>
             <?php endif; ?>
 
-            <?php if ($s['hesapEklenen'] || $s['hesapAtlanan']): ?>
+            <?php if ($s['hesapEklenen'] || $s['hesapGuncellenen'] || $s['hesapAtlanan']): ?>
             <div class="mb-1">
                 <span class="badge bg-info text-dark">HESAPLAMA sayfası</span>
                 <span class="text-muted">
-                    <?= count($s['hesapEklenen']) ?> daire çizelgeye eklendi<?php if ($s['hesapAtlanan']): ?>,
+                    <?= count($s['hesapEklenen']) ?> daire çizelgeye eklendi<?php if ($s['hesapGuncellenen']): ?>,
+                    <?= count($s['hesapGuncellenen']) ?> dairenin durumu buradan tamamlandı<?php endif; ?><?php if ($s['hesapAtlanan']): ?>,
                     <?= count($s['hesapAtlanan']) ?> satır alınmadı<?php endif; ?>
                     — kitabın İCMAL'i bu sayfadan hesaplanıyor; iş sayfasında olmayan daireler buradan tamamlandı.
                 </span>
             </div>
+            <?php endif; ?>
+
+            <?php if ($s['hesapYeniBlok']): ?>
+            <div class="alert alert-info py-2 small mt-2 mb-1">
+                <i class="bi bi-diagram-3 me-1"></i>
+                <strong>Çizelgede olmayan blok(lar) HESAPLAMA sayfasından geldi:</strong>
+                <?php foreach ($s['hesapYeniBlok'] as $b => $n): ?>
+                    <span class="badge bg-info text-dark"><?= h($b) ?> — <?= (int)$n ?> daire</span>
+                <?php endforeach; ?>
+                <div class="text-muted mt-1">Bu daireler iş sayfasında (hakkediş çizelgesinde) yok, yalnız
+                    HESAPLAMA/İCMAL tarafında var. Sisteme alındılar — çizelge tarafına da işlenmeleri gerekir,
+                    yoksa hakkedişe girmezler.</div>
+            </div>
+            <?php endif; ?>
+
+            <?php if (!empty($s['excelIcmalKayit'])): ?>
+            <div class="text-success-emphasis small mb-1">
+                <i class="bi bi-file-earmark-excel me-1"></i>Kitabın <strong>İCMAL sayfası birebir saklandı</strong>
+                (<?= (int)$s['excelIcmalKayit'] ?> satır) — <a href="icmal.php?g=excel">İcmal ekranında "Excel (dosyadan)"</a>
+                görünümünde aynen görürsünüz, sistemin kendi sayımıyla farkı da orada listelenir.
+            </div>
+            <?php endif; ?>
+
+            <?php if ($s['hesapGuncellenen']): ?>
+            <details class="mt-2"><summary style="cursor:pointer" class="text-info-emphasis">
+                <i class="bi bi-arrow-up-square me-1"></i><strong><?= count($s['hesapGuncellenen']) ?> dairenin durumu HESAPLAMA'dan tamamlandı</strong> — listeyi göster</summary>
+                <div class="table-responsive mt-2">
+                <table class="table table-sm table-bordered mb-0" style="font-size:.8rem">
+                    <thead class="table-light"><tr><th>Blok</th><th>Daire</th><th>Kesim</th><th>Silikon</th><th class="text-end">Metraj</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($s['hesapGuncellenen'] as $he): ?>
+                        <tr>
+                            <td><?= h($he['blok']) ?></td><td><?= h($he['daire']) ?></td>
+                            <td><?= $he['kesim'] ? '<span class="badge bg-warning text-dark">Yapıldı</span>' : '—' ?></td>
+                            <td><?= $he['silikon'] ? '<span class="badge bg-success">Yapıldı</span>' : '—' ?></td>
+                            <td class="text-end"><?= $he['metraj'] > 0 ? $f2($he['metraj']) : '<span class="text-muted">ölçülmemiş</span>' ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+                </div>
+                <div class="text-muted mt-1">Bu daireler çizelgede zaten vardı; HESAPLAMA'da ilerlemiş görünen
+                    kesim/silikon/metraj bilgisi üzerlerine <strong>eklendi</strong> (dolu değer ezilmedi,
+                    ikinci kayıt açılmadı).</div>
+            </details>
             <?php endif; ?>
 
             <?php if ($s['hesapEklenen']): ?>
