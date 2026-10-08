@@ -140,8 +140,9 @@ $liste = $st->fetchAll();
 $belgeSay = it_belge_sayilari($pdoIt, array_column($liste, 'id'));
 // Transferdeki cihazlar için "kaç gündür yolda" (teslim alınmayan sevkiyat gözden kaçmasın)
 $trGun = it_transfer_gunleri($pdoIt, array_column(array_filter($liste, fn($r) => $r['durum'] === 'transfer'), 'id'));
-// Tamamlanmış sevkler: durum 'depoda'ya döndüğü için ekranda "Depoda / Boşta" yazıyordu ve
-// başka projeye gönderilmiş cihaz BİZDE BOŞTA sanılıyordu → "Transfer edilmiştir" rozeti.
+// Sevki TAMAMLANMIŞ cihazlar artık kendi durumundadır (`transfer_edildi` → rozet
+// "Transfer Edilmiştir"); eskiden `depoda` yazılıyor ve gönderilmiş cihaz BİZDE BOŞTA
+// sanılıyordu. Buradaki ek rozet yalnız HEDEFİ yazar (durum rozeti cümleyi zaten kuruyor).
 $trBitti = it_transfer_edilenler($pdoIt, array_column(array_filter($liste, fn($r) => $r['durum'] !== 'transfer'), 'id'));
 $sec = ['zimmetli'=>it_secenekler($pdoIt,'zimmetli'), 'departman'=>it_secenekler($pdoIt,'departman'),
         'lokasyon'=>it_secenekler($pdoIt,'lokasyon'), 'marka'=>it_secenekler($pdoIt,'marka')];
@@ -466,8 +467,8 @@ require_once __DIR__ . '/../includes/header.php';
           <td><?= it_durumBadge($r['durum']) ?>
             <?php if ($r['durum'] === 'transfer' && isset($trGun[(int)$r['id']])): ?>
               <div class="small <?= $trGun[(int)$r['id']] > 14 ? 'text-danger fw-semibold' : 'text-muted' ?>"><?= (int)$trGun[(int)$r['id']] ?> gündür yolda</div>
-            <?php elseif (isset($trBitti[(int)$r['id']])): ?>
-              <div class="mt-1"><?= it_transfer_rozet($trBitti[(int)$r['id']]) ?></div>
+            <?php elseif (($__rz = it_transfer_rozet($trBitti[(int)$r['id']] ?? null)) !== ''): ?>
+              <div class="mt-1"><?= $__rz ?></div>
             <?php endif; ?></td>
           <td><?= $r['zimmetli'] ? '<i class="bi bi-person me-1 text-muted"></i>' . ($r['personel_id'] ? '<a href="personel_detay.php?id=' . (int)$r['personel_id'] . '" class="text-decoration-none">' . h($r['zimmetli']) . '</a>' : h($r['zimmetli'])) . ($r['departman'] ? '<div class="small text-muted">' . h($r['departman']) . '</div>' : '') : '<span class="text-muted">—</span>' ?></td>
           <td class="small"><?= h($r['lokasyon_id'] ? it_lokasyon_etiket($pdoIt, (int)$r['lokasyon_id']) : ($r['lokasyon'] ?: '—')) ?></td>

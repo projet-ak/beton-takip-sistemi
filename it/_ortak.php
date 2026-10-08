@@ -155,6 +155,12 @@ const IT_DURUM = [
     // Başka projeye/lokasyona gönderildi, teslim alındığı teyit edilmedi — HÂLÂ ENVANTERDE
     // (bu yüzden IT_DURUM_DUSEN'e girmez), ama depodaki kullanılabilir stok da sayılmaz.
     'transfer' => ['Transfer (yolda)',      'info text-dark',   'bi-arrow-left-right'],
+    // ⚠ Sevk TAMAMLANDI: cihaz karşı tarafa teslim edildi ve ARTIK BİZDE DEĞİL (2026-10-08,
+    // kullanıcı: "gönderdiysem o cihaz benden çıkmıştır, gönderdiğim kişinin sorumluluğu").
+    // Eskiden `depoda` yazılıyordu ve ekranda "Depoda / Boşta" görünüyordu — sevk edilmiş cihaz
+    // bizim boştaki stoğumuz sanılıyordu. Kendi durumu var; **envanterden DÜŞMEZ** (kayıt ve mali
+    // değer şirkette kalır), ama depodaki kullanılabilir stoğa da girmez.
+    'transfer_edildi' => ['Transfer Edilmiştir', 'info text-dark', 'bi-box-arrow-up-right'],
     'serviste' => ['Serviste',              'info',             'bi-wrench'],
     'arizali'  => ['Arızalı',               'danger',           'bi-exclamation-triangle'],
     'kayip'    => ['Kayıp / Çalıntı',       'warning text-dark','bi-question-octagon'],
@@ -438,11 +444,11 @@ function it_secenekler(PDO $pdo, string $sutun): array
 /** Dashboard / rapor özeti. */
 function it_ozet(PDO $pdo): array
 {
-    $o = ['toplam'=>0,'aktif'=>0,'depoda'=>0,'transfer'=>0,'serviste'=>0,'arizali'=>0,'kayip'=>0,'hibe'=>0,'hurda'=>0,'dusen'=>0,
+    $o = ['toplam'=>0,'aktif'=>0,'depoda'=>0,'transfer'=>0,'transfer_edildi'=>0,'serviste'=>0,'arizali'=>0,'kayip'=>0,'hibe'=>0,'hurda'=>0,'dusen'=>0,
           'mali'=>0.0,'garantiBitiyor'=>0,'garantiBitti'=>0,'zimmetliKisi'=>0,'lisans'=>0];
     try {
         $r = $pdo->query("SELECT COUNT(*) toplam,
-                SUM(durum='aktif') aktif, SUM(durum='depoda') depoda, SUM(durum='transfer') transfer, SUM(durum='serviste') serviste,
+                SUM(durum='aktif') aktif, SUM(durum='depoda') depoda, SUM(durum='transfer') transfer, SUM(durum='transfer_edildi') transfer_edildi, SUM(durum='serviste') serviste,
                 SUM(durum='arizali') arizali, SUM(durum='hurda') hurda,
                 SUM(durum='kayip') kayip, SUM(durum='hibe') hibe,
                 COALESCE(SUM(CASE WHEN " . it_envanterde() . " THEN " . it_mali_tl() . " END),0) mali,
@@ -747,13 +753,45 @@ function it_transfer_edilenler(PDO $pdo, array $cihazIdler): array
 /** Tamamlanmış sevk rozeti — liste ve kartlarda aynı görünsün diye tek yerde üretilir. */
 function it_transfer_rozet(?array $tr): string
 {
-    if (!$tr) return '';
-    $ip = 'Transfer edilmiştir';
-    if (($tr['hedef'] ?? '') !== '') $ip .= ' → ' . $tr['hedef'];
+    // ⚠ Metin "Transfer edilmiştir" DEĞİL, yalnız HEDEFtir: durum rozeti (IT_DURUM['transfer_edildi'])
+    // zaten bunu yazıyor, ikisi yan yana aynı cümleyi iki kez göstermesin. Hedef bilinmiyorsa
+    // eklenecek bir bilgi yok → rozet hiç basılmaz.
+    if (!$tr || ($tr['hedef'] ?? '') === '') return '';
     $alt = ($tr['tarih'] ?? '') !== '' ? ' · ' . it_tarih($tr['tarih']) : '';
-    return '<span class="badge bg-info text-dark" title="Başka projeye sevk edildi ve teslim alındı'
-         . htmlspecialchars($alt) . '"><i class="bi bi-arrow-left-right me-1"></i>'
-         . htmlspecialchars($ip) . '</span>';
+    return '<span class="badge bg-light text-dark border" title="Sevk edildiği yer — teslim alındı'
+         . htmlspecialchars($alt) . '"><i class="bi bi-arrow-right-short"></i>'
+         . htmlspecialchars((string)$tr['hedef']) . '</span>';
+}
+
+/**
+ * Sevki TAMAMLANMIŞ ama hâlâ `depoda` görünen eski kayıtları `transfer_edildi`ye taşır.
+ *
+ * ⚠ 2026-10-08 öncesinde `transfer_bitti` işlemi durumu `depoda` yapıyordu; ekranda
+ * "Depoda / Boşta" yazıyor ve sevk edilmiş cihaz kendi boş stoğumuz sanılıyordu.
+ * Ölçüt EKRANDA GÖSTERİLENLE AYNIDIR (it_transfer_edilenler): cihazın EN SON transfer
+ * hareketi 'Sevk:' ile başlamıyorsa (yani teslim alma satırıysa) sevk tamamlanmıştır.
+ * Yalnız `depoda` satırlara dokunur — sonradan zimmetlenmiş/serviste/hurda olan kayıt korunur.
+ * İdempotenttir: ikinci çalıştırmada 0 satır etkiler.
+ *
+ * @return int taşınan kayıt sayısı
+ */
+function it_transfer_durum_gocu(PDO $pdo): int
+{
+    try {
+        // ⚠ Alt sorgu BAŞKA tabloya (it_hareketler) baktığı için MySQL'in "aynı tabloyu alt
+        // sorguda kullanma" kısıtı geçerli değil — türetilmiş tablo sarmalayıcısına gerek yok
+        // (SQLite'lı duman testi de `UPDATE tablo alias` sözdizimini kabul etmiyor).
+        // `NOT LIKE` NULL açıklamada NULL döner → o satır kapsam DIŞI kalır; bilinmeyen
+        // hareketi "teslim alındı" saymak yanlış olurdu.
+        $st = $pdo->prepare("UPDATE it_cihazlar SET durum='transfer_edildi'
+                 WHERE durum='depoda' AND id IN (
+                     SELECT h.cihaz_id FROM it_hareketler h
+                      WHERE h.tur='transfer' AND h.aciklama NOT LIKE 'Sevk:%'
+                        AND h.id = (SELECT MAX(h2.id) FROM it_hareketler h2
+                                     WHERE h2.cihaz_id=h.cihaz_id AND h2.tur='transfer'))");
+        $st->execute();
+        return $st->rowCount();
+    } catch (Throwable $e) { return 0; }   // tablo yok / eski MySQL — sessiz geç
 }
 
 function it_transfer_gunleri(PDO $pdo, array $cihazIdler): array
@@ -1249,6 +1287,11 @@ function it_ek_alan_semasi_kur(PDO $pdo): void
         try { $pdo->query("SELECT $kol FROM it_cihazlar LIMIT 1"); }
         catch (Throwable $e) { try { $pdo->exec("ALTER TABLE it_cihazlar ADD COLUMN $kol $tip"); } catch (Throwable $e2) {} }
     }
+    // Sevki tamamlanmış eski kayıtlar `depoda` yerine `transfer_edildi` olsun (idempotent;
+    // yapacak iş yoksa 0 satır günceller). Burada çağrılır çünkü bu fonksiyon istek başına
+    // bir kez koşar (static guard) ve her IT sayfası zaten çağırıyor — kullanıcının ayrıca
+    // bir düğmeye basması gerekmesin, "Depoda / Boşta" ibaresi ilk açılışta kaybolsun.
+    it_transfer_durum_gocu($pdo);
 }
 
 /** Bir türün tanım listesi (aktifler önce ada göre). */

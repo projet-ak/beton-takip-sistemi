@@ -1226,6 +1226,43 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   sanılmasın diye… yalnız envanterdekiler için durum süzgecini kullanın"). Test: hurda cihaz seri nosuyla
   1 sonuç (düşen dahil EVET) · aramasız liste 425 (düşen gizli) · `durum=aktif`+hurda seri = 0 sonuç;
   8 IT sayfası fatal/warning vermeden render oluyor, inline JS temiz.
+  **"TRANSFER EDİLMİŞTİR" KENDİ DURUMU OLDU — ARTIK "DEPODA / BOŞTA" YAZMIYOR (2026-10-08,
+  kullanıcı: "transfer ettiğim cihazlar DEPODA/BOŞTA ibaresini kaldır; gönderdiysem o cihaz
+  gönderilmiş ve benden çıkmıştır, gönderdiğim ne yaparsa yapsın gönderdiğim kişinin sorumluluğu")** —
+  `transfer_bitti` işlemi durumu `depoda` yapıyordu (cihaz hedef projenin deposunda, mantıken doğru)
+  ama ekranda **"Depoda / Boşta"** okunuyordu: sevk edilmiş cihaz BİZİM boştaki stoğumuz sanılıyor,
+  `?durum=depoda` listesinde çıkıyor ve dashboard'daki "kullanıma hazır stok" sayısını şişiriyordu.
+  • **`IT_DURUM`'a `transfer_edildi`** ("Transfer Edilmiştir") eklendi; `transfer_bitti` artık bunu
+  yazıyor ve zimmet alanlarını da temizliyor. ⚠ **`IT_DURUM_DUSEN`'E GİRMEZ** — cihaz şirketin malı
+  olmaya devam eder, kayıt/mali değer/envanter sayımı korunur; yalnız **depodaki kullanılabilir
+  stoktan çıkar**. (Envanterden tamamen düşmesi istenirse yapılacak tek şey `IT_DURUM_DUSEN`'e bu
+  anahtarı eklemektir — sorgular `it_envanterde()`'den türediği için başka hiçbir yere dokunulmaz.)
+  • **Eski kayıtlar için otomatik göç `it_transfer_durum_gocu()`**: ölçüt EKRANDA GÖSTERİLENLE
+  AYNIDIR (`it_transfer_edilenler`) — cihazın EN SON `transfer` hareketi `Sevk:` ile başlamıyorsa
+  (teslim alma satırıysa) sevk tamamlanmıştır. **Yalnız `durum='depoda'` satırlara dokunur**:
+  yoldaki (transfer), hedefte yeniden zimmetlenmiş (aktif), serviste ya da hurda kayıtlar korunur.
+  İdempotenttir ve `it_ek_alan_semasi_kur()` sonunda çağrılır (istek başına bir kez, static guard) —
+  kullanıcının düğmeye basması gerekmez, ibare ilk açılışta kaybolur. ⚠ SQL **taşınabilir yazıldı**:
+  alt sorgu başka tabloya baktığından MySQL'in "aynı tabloyu alt sorguda kullanma" kısıtı geçerli
+  değil, türetilmiş tablo sarmalayıcısı YOK ve `UPDATE tablo alias` sözdizimi kullanılmadı
+  (SQLite'lı duman testi onu kabul etmiyor). `NOT LIKE` NULL açıklamada NULL döner → bilinmeyen
+  hareket "teslim alındı" sayılmaz, kayıt kapsam dışı kalır.
+  • **`it_transfer_rozet()` artık yalnız HEDEFİ yazar** ("→ Res Projeleri › Karaman Res"), çünkü
+  durum rozeti cümleyi zaten kuruyor — ikisi yan yana "Transfer edilmiştir"i iki kez yazıyordu.
+  Hedef bilinmiyorsa rozet HİÇ basılmaz; üç çağrı yeri de (`cihazlar` · `varliklar` · `cihaz_detay`)
+  artık `isset()` yerine **üretilen metne** bakar, yoksa boş `<div>` kalıyordu.
+  • Dashboard'a **"Transfer edilmiş"** KPI'ı (`?durum=transfer_edildi`, alt satır "karşı taraf teslim
+  aldı — bizde değil"); `it_ozet()` `transfer_edildi` sayacını döndürür. Durum menüleri, Tanımlar ›
+  Durumlar sekmesi ve cihaz formu `IT_DURUM`'dan türediği için kendiliğinden güncellendi.
+  Test: scratchpad `it_sync.php` (repodaki `it/*.php`'yi SQLite'a çevirerek `itsm/`'e kopyalar —
+  ⚠ yalnız `INTERVAL n DAY/YEAR` sözdizimi çevrilir, `CURDATE/NOW/DATE_ADD/DATE_FORMAT/DATEDIFF/IF`
+  `includes/db_it.php` stub'ında SQLite fonksiyonu olarak tanımlıdır; tırnaklı metin üreten bir
+  dönüşüm PHP dizesini bozar) + **`tr_test.php` 21 sağlama**: beş kurgu (yolda · sevki tamamlanmış ·
+  hedefte zimmetlenmiş · gerçek depo stoğu · hurda) → göç yalnız 1 kaydı taşıdı, diğer dördü
+  dokunulmadı, ikinci çalıştırmada 0; rozet "Depoda" demiyor, "Transfer Edilmiştir" diyor ve ek
+  rozet yalnız hedefi yazıyor; `?durum=depoda` listesi sevk edileni GÖSTERMİYOR. 6 IT sayfası
+  uyarısız render, inline JS temiz; cihaz kartı başlığı gerçekten
+  "UAP-AC-PRO · Transfer Edilmiştir · → Res Projeleri › Karaman Res" basıyor.
   **DASHBOARD ELDEN GEÇİRME (2026-09-10, kullanıcı isteği)** — üç somut şikâyet + genel geliştirme:
   • ⚠⚠ **KPI kartı ile açtığı liste TUTMUYORDU**: "Serviste + Arızalı 1" kartı `?durum=arizali`ye
   gidiyordu, cihaz *serviste* olduğu için liste BOŞ açılıyor ve "serviste arızalı yok" görünüyordu.

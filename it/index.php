@@ -141,6 +141,10 @@ require_once __DIR__ . '/../includes/header.php';
      'kullanıma hazır stok'],
     ['Transfer (yolda)', $f0($o['transfer']), 'bi-arrow-left-right', 'info', 'cihazlar.php?durum=transfer',
      $o['transfer'] ? ('en uzun ' . $f0($yoldaEnUzun) . ' gündür yolda') : 'yolda cihaz yok'],
+    // Sevki tamamlanmış cihazlar: BİZDE DEĞİL. Depoda/Boşta sayılmazlar (kullanıma hazır stok
+    // değiller), envanterden de düşmezler — kayıt ve mali değer şirkette kalır.
+    ['Transfer edilmiş', $f0($o['transfer_edildi']), 'bi-box-arrow-up-right', 'info', 'cihazlar.php?durum=transfer_edildi',
+     'karşı taraf teslim aldı — bizde değil'],
     ['Serviste + Arızalı', $f0($o['serviste'] + $o['arizali']), 'bi-wrench', 'danger', 'cihazlar.php?durum=sorunlu',
      $f0($o['serviste']) . ' serviste · ' . $f0($o['arizali']) . ' arızalı'],
     ['Envanterden düşen', $f0($o['dusen']), 'bi-trash', 'dark', 'cihazlar.php?durum=dusen',

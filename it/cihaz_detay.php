@@ -126,12 +126,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'transfer_bitti':
                 $hedef2  = (int)($_POST['hedef_lokasyon_id'] ?? 0) ?: null;
                 $hedefAd2 = $hedef2 ? it_lokasyon_yol($pdoIt, $hedef2) : '';
-                $pdoIt->prepare("UPDATE it_cihazlar SET durum='depoda'" . ($hedef2 ? ", lokasyon_id=?, lokasyon=?" : "") . " WHERE id=?")
+                // ⚠ Durum `depoda` DEĞİL `transfer_edildi` (2026-10-08, kullanıcı: "gönderdiysem
+                // o cihaz benden çıkmıştır"). Sevk edilmiş cihaz bizim boştaki stoğumuz değildir;
+                // eskiden ekranda "Depoda / Boşta" yazıyordu. Zimmet alanları da temizlenir
+                // (sevke çıkarken zaten düşmüştü — geriye dönük kayıtlarda kalmış olabilir).
+                $pdoIt->prepare("UPDATE it_cihazlar SET durum='transfer_edildi',
+                                 personel_id=NULL, zimmetli=NULL, zimmet_tarihi=NULL"
+                                 . ($hedef2 ? ", lokasyon_id=?, lokasyon=?" : "") . " WHERE id=?")
                       ->execute($hedef2 ? [$hedef2, $hedefAd2, $id] : [$id]);
                 it_hareket_ekle($pdoIt, $id, 'transfer', $kisi ?: null,
                     'Transfer teslim alındı — ' . ($hedefAd2 ?: ($c['lokasyon'] ?: 'hedef proje')) . ' deposuna girdi'
                     . ($kisi ? ' · teslim alan: ' . $kisi : '') . ($acik ? ' · ' . $acik : ''), $tarih);
-                flash('success', 'Transfer tamamlandı; cihaz hedef projenin deposunda.');
+                flash('success', 'Transfer tamamlandı — cihaz ' . ($hedefAd2 ?: 'hedef projeye')
+                                 . ' teslim edildi ve artık sizin sorumluluğunuzda değil. '
+                                 . 'Durumu "Transfer Edilmiştir" olarak işaretlendi; depodaki boş stoğa girmez.');
                 break;
             // Envanterden düşüren üç işlem aynı kalıptadır: zimmet düşer, kayıt SİLİNMEZ,
             // varsayılan listelerde ve mali değerde görünmez (durum filtresiyle geri gelir).
@@ -222,8 +230,9 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
     <?= it_durumBadge($c['durum']) ?>
     <?php if ($c['durum'] === 'transfer' && ($__trg = it_transfer_gunleri($pdoIt, [$id])[$id] ?? null) !== null): ?>
       <span class="badge bg-<?= $__trg > 14 ? 'danger' : 'light text-dark border' ?>" title="son transfer hareketinden bu yana"><?= (int)$__trg ?> gündür yolda</span>
-    <?php elseif ($c['durum'] !== 'transfer' && ($__trb = it_transfer_edilenler($pdoIt, [$id])[$id] ?? null)): ?>
-      <?= it_transfer_rozet($__trb) ?>
+    <?php elseif ($c['durum'] !== 'transfer'
+                  && ($__rz = it_transfer_rozet(it_transfer_edilenler($pdoIt, [$id])[$id] ?? null)) !== ''): ?>
+      <?= $__rz ?>
     <?php endif; ?>
     <?php if ($maliGoster && $gk !== null && $gk < 0): ?><span class="badge bg-light text-danger border">garanti bitti</span>
     <?php elseif ($maliGoster && $gk !== null && $gk <= 60): ?><span class="badge bg-warning text-dark">garanti <?= $gk ?> gün</span><?php endif; ?>
@@ -430,7 +439,7 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
                 <option value="ariza">⚠ Arıza bildir</option>
               </optgroup>
               <optgroup label="Sevk (projeler arası)">
-                <?php if ($c['durum'] === 'transfer'): ?><option value="transfer_bitti">✓ Transfer YAPILDI (karşı taraf teslim aldı → depoda)</option>
+                <?php if ($c['durum'] === 'transfer'): ?><option value="transfer_bitti">✓ Transfer YAPILDI (karşı taraf teslim aldı — bizden çıktı)</option>
                 <?php else: ?><option value="transfer">➜ Transfere çıkar (başka projeye gönder)</option><?php endif; ?>
               </optgroup>
               <optgroup label="Envanterden düş">

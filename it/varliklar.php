@@ -88,8 +88,9 @@ if ($sayfa > $sonSayfa) $sayfa = $sonSayfa;
 $st = $pdoIt->prepare("SELECT * FROM it_cihazlar $wsql ORDER BY kategori, envanter_no LIMIT $adet OFFSET " . (($sayfa - 1) * $adet));
 $st->execute($par);
 $liste = $st->fetchAll();
-// Tamamlanmış sevkler: durum 'depoda'ya döner ve "Depoda / Boşta" yazar — başka projeye gönderilmiş
-// cihaz bizde boşta sanılmasın diye "Transfer edilmiştir" rozeti konur (it/_ortak.php).
+// Sevki TAMAMLANMIŞ cihazlar artık kendi durumundadır (`transfer_edildi` → rozet
+// "Transfer Edilmiştir"); eskiden `depoda` yazılıyor ve gönderilmiş cihaz BİZDE BOŞTA
+// sanılıyordu. Buradaki ek rozet yalnız HEDEFİ yazar (durum rozeti cümleyi zaten kuruyor).
 $trBitti = it_transfer_edilenler($pdoIt, array_column(array_filter($liste, fn($r) => $r['durum'] !== 'transfer'), 'id'));
 $maliGoster = it_mali_goster();                                  // garanti + fiyat gösterimi (IT_MALI_GOSTER)
 $belgeSay   = it_belge_sayilari($pdoIt, array_column($liste, 'id'));
@@ -271,7 +272,7 @@ require_once __DIR__ . '/../includes/header.php';
                 ? (!empty($r['personel_id']) ? '<a href="personel_detay.php?id=' . (int)$r['personel_id'] . '" class="text-decoration-none">' . h($r['zimmetli']) . '</a>' : h($r['zimmetli']))
                 : '<span class="text-muted">—</span>' ?></td>
             <td><span class="badge bg-<?= h(IT_DURUM[$r['durum']][1] ?? 'secondary') ?>"><?= h(it_durumAd($r['durum'])) ?></span>
-                <?php if (isset($trBitti[(int)$r['id']])): ?><div class="mt-1"><?= it_transfer_rozet($trBitti[(int)$r['id']]) ?></div><?php endif; ?></td>
+                <?php if (($__rz = it_transfer_rozet($trBitti[(int)$r['id']] ?? null)) !== ''): ?><div class="mt-1"><?= $__rz ?></div><?php endif; ?></td>
             <?php if ($maliGoster): ?>
             <td class="text-end small text-nowrap">
                 <?php if ($kalan === null): ?><span class="text-muted">—</span>
