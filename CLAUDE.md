@@ -817,6 +817,49 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   (pypdf ile sayfa sayfa metin çıkarılıp doğrulandı; ⚠ antetteki `letter-spacing` yüzünden çıkarılan
   metin "B İ L G İ İ Ş L E M" gelir — kelime bazlı arayan test yanlış negatif verir). İmzalı evrak yükleme çekirdeği
   (`hurda_belge_test.php`) ve 8 IT sayfası uyarısız çalışıyor, inline JS temiz.
+  **DÖRT TUTANAK ORTAK YAZDIRMA KATMANINA ALINDI — "BİR SAYFAYA SIĞSIN" (2026-10-08, kullanıcı:
+  "zimmet formu bu şekilde çıkıyor, bu kısmı da düzenleyelim, diğer formlarda böyleyse düzenleyelim,
+  bir sayfaya sığsın ikinci sayfaya kaymasın")** — tek cihazlık zimmet tutanağı (ZMT-IT-00739) yazdırma
+  ön izlemesinde **"Toplam: 2 sayfa"** çıkıyor, tepesinde "İmzalı Evrak — yüklenmedi" paneli ve
+  tarayıcının kendi üstbilgisi (URL · saat · sayfa no) basılıyordu. hurda tutanağında 2026-09-17'de
+  çözülen sorunlar **zimmet · iade · transfer**'de aynen duruyordu, çünkü yazdırma CSS'i her dosyada
+  ELLE KOPYALANMIŞTI.
+  • ⚠⚠ **Asıl sebep `.sheet { min-height:297mm }`'nin yazdırmada SIFIRLANMAMASI**: `@page` kenar
+  boşluklarıyla basılabilir alan ~277mm olduğundan 297mm'lik kâğıt **tek satır içerikle bile** taşıyor
+  ve belge HER ZAMAN 2 sayfa çıkıyordu (hurda'da `min-height:0` vardı, diğer üçünde yoktu).
+  • ⚠ Zimmet tutanağında yazdırma bloğu yalnız `.toolbar`ı gizliyordu — `.evrak` (imzalı evrak yükleme
+  paneli) **kâğıda basılıyordu**; iade ve transfer onu zaten gizliyordu. Ters kuralla kanıtlandı:
+  panel baskıda görünür yapıldığında tek cihazlık belge yine 2 sayfaya çıkıyor.
+  • ⭐ **Yeni ortak katman `it/_tutanak.php`** (`tut_*`): `tut_stil($ek)` (ortak A4 CSS + sayfaya özel
+  kurallar) · `tut_antet(['meta'=>…, 'alt'=>…])` (her sayfada tekrar eden antet + alt bilgi + gövde
+  hücresi) · `tut_kapat()` · `tut_sayfa_js()` ("N sayfa" sayacı). **Dört tutanak da bunu kullanır**
+  (hurda'nın doğrulanmış ölçüleri birebir taşındı), sayfaya özel sınıflar `tut_stil()` parametresinde
+  kalır: zimmet `.kunye td.k` · iade `.durum/.kutu` · transfer `.yon/.ok` · hurda `table.fark/.fotolar/
+  .foto/.kunye-satir`. **Yazdırma kuralı artık TEK yerde** — `@page { size:A4; margin:0 }` (tarayıcı
+  üstbilgisine çizecek yer bırakmaz; kenar boşluğu `thead td` 12mm üst / `tbody td` 14mm yan /
+  `tfoot td` 10mm alt olarak HÜCRELERE taşındı), `.sheet { min-height:0 }`, `.toolbar, .evrak
+  { display:none }`, `thead/tfoot` → `table-header-group/footer-group`.
+  • Üç sayfada içerik de sıkıştırıldı: `.doc-title` 18→17px, `.signs` 40→20mm üst boşluk, imza çizgisi
+  56→34px, bölüm başlıkları ortak `.sec` (eski `.kunye-basi`/`.blok-basi` kaldırıldı), künye ve
+  **KULLANICI BİLGİLERİ** blokları `.blok` ile sayfa ortasından bölünmez, kapanış beyanı + imzalar
+  `.kapanis` ile birlikte kalır. **Tek cihazda "TOPLAM (1 kalem)" satırı basılmaz** (yer israfıydı) ve
+  cihaz hücresinde **kategori adı cihaz adıyla aynıysa tekrar yazılmaz** ("Dizüstü BilgisayarDizüstü
+  Bilgisayar" — hurda'daki `$katAyri` deseni zimmet/iade/transfer'e de geldi).
+  • ⚠ `transfer_tutanak.php`'deki 3. madde **yanlıştı**: sevk tamamlanınca durum artık `Depoda` değil
+  **`Transfer Edilmiştir`** (bkz. bir üstteki bölüm) — belge metni düzeltildi.
+  **Gerçek PDF sayfa sayısıyla doğrulandı** (Chromium `--print-to-pdf`, PDF `/Count` + sayfa başına
+  içerik akışı çözülerek): zimmet tek cihaz (tam künye + 20 satır özellik + notlar + mali değer)
+  **1 sayfa** (önce 2) · zimmet geçmiş dönem 1 · **zimmet kişi bazlı 4 cihaz 2 sayfa ve 2. sayfa
+  antetle başlıyor** (logo XObject her sayfada bir kez çiziliyor) · iade 1 · transfer tek 1 ·
+  transfer lokasyon bazlı 1 · hurda tek 1 (REGRESYON YOK) · hurda toplu 1. **Ekrandaki "N sayfa"
+  etiketi sekiz belgenin hepsinde gerçek PDF sayfa sayısıyla birebir.** ⚠ Tarayıcının kendi
+  üstbilgisinin kalkması headless'ta doğrulanamaz (`--no-pdf-header-footer` gerçek yazdırma kutusunu
+  temsil etmez); kesin kapatma yine **yazdırma kutusundaki "Üstbilgi ve altbilgi" kutucuğudur**,
+  CSS yalnız Chrome/Edge'de yeri kaldırır. Test: scratchpad `tut_fix.php` (gerçekçi kurgu: tam künyeli
+  zimmetli laptop + aynı kişide 4 cihaz + sevk + hurda) · `tut_kos.php` (sayfa render) ·
+  **`tut_test.php` 53 sağlama** · `sayfa_say.py` / `pdf_sayfa_icerik.py` (PDF sayfa sayısı ve
+  antetin her sayfada tekrarı; ⚠ pypdf bu ortamda `cryptography` yüzünden açılmıyor, PDF nesneleri
+  elle ayrıştırılır). 10 IT sayfası uyarısız render, inline JS + `onerror` öznitelikleri temiz.
   **CİHAZ İŞLEM PANELİ + EL DEĞİŞTİRME ZİNCİRİ (2026-09-11, kullanıcı isteği)** — iş gerçeği:
   **bir cihaz 5-6 kez el değiştirir ve HER KULLANICININ kendi zimmet + İADE formu olur; yeni gelen
   cihazın da faturası vardır.** Cihaz kartı bunu taşıyacak hâle getirildi.

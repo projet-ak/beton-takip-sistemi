@@ -12,6 +12,7 @@ if (!file_exists(__DIR__ . '/../config.php')) { redirect('../install.php'); }
 require_auth(['admin','teknik_ofis_admin','teknik_ofis','depo','it_sorumlusu']);
 require_once __DIR__ . '/../includes/db_it.php';
 require_once __DIR__ . '/_ortak.php';
+require_once __DIR__ . '/_tutanak.php';   // ortak A4 yazdırma katmanı (antet/sayfa/ölçüler)
 it_semasi_kur($pdoIt);
 
 $id   = isset($_GET['id']) && ctype_digit($_GET['id']) ? (int)$_GET['id'] : 0;
@@ -99,54 +100,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'imzal
 }
 $imzaliSayi = 0;
 foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (int)$__c['id']), fn($b) => ($b['tur'] ?? '') === 'zimmet'));
-
+$tek = count($liste) === 1;
 ?>
 <!DOCTYPE html>
 <html lang="tr"><head>
 <meta charset="UTF-8">
 <title>Zimmet Tutanağı <?= h($no) ?></title>
-<style>
-  * { box-sizing:border-box; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; color:#111; margin:0; background:#f0f0f0; }
-  .sheet { width:210mm; min-height:297mm; margin:10px auto; background:#fff; padding:18mm 16mm; box-shadow:0 0 8px rgba(0,0,0,.15); }
-  .top { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #00584E; padding-bottom:10px; }
-  .top .logo { font-size:22px; font-weight:800; color:#00584E; letter-spacing:-.5px; }
-  .doc-title { text-align:center; margin:18px 0 6px; font-size:18px; font-weight:800; letter-spacing:1px; }
-  .doc-no { text-align:center; font-size:13px; color:#00584E; font-weight:700; margin-bottom:16px; }
-  .info { width:100%; border-collapse:collapse; margin-bottom:14px; font-size:12.5px; }
-  .info td { border:1px solid #cfcfcf; padding:6px 9px; }
-  .info td.k { background:#f5f7f7; font-weight:600; width:22%; }
-  table.items { width:100%; border-collapse:collapse; font-size:12px; margin-top:4px; }
-  table.items th, table.items td { border:1px solid #bbb; padding:6px 8px; vertical-align:top; }
-  table.items th { background:#00584E; color:#fff; font-weight:600; }
-  table.items td.r, table.items th.r { text-align:right; }
-  table.items tfoot td { background:#f5f7f7; font-weight:700; }
-  .mono { font-family: Consolas, monospace; font-size:11.5px; }
-  table.kunye { width:100%; border-collapse:collapse; font-size:11.5px; margin:0 0 10px; }
-  table.kunye td { border:1px solid #cfcfcf; padding:4px 8px; }
-  table.kunye td.k { background:#f5f7f7; font-weight:600; width:23%; white-space:nowrap; }
-  .kunye-basi { font-size:12px; font-weight:700; color:#00584E; margin:14px 0 5px; letter-spacing:.5px; }
-  .note { font-size:11.5px; color:#333; margin:16px 0; line-height:1.65; text-align:justify; }
-  .note ol { margin:6px 0 0 18px; padding:0; }
-  .signs { display:flex; justify-content:space-between; margin-top:40px; }
-  .sign { width:45%; text-align:center; }
-  .sign .line { border-top:1px solid #333; margin-top:56px; padding-top:6px; font-size:12px; font-weight:600; }
-  .sign .sub { font-size:11px; color:#666; }
-  .foot { margin-top:24px; text-align:center; font-size:10px; color:#999; border-top:1px solid #eee; padding-top:8px; }
-  .toolbar { text-align:center; padding:10px; }
-  .toolbar button, .toolbar a { font:inherit; padding:8px 18px; border-radius:8px; border:none; cursor:pointer; text-decoration:none; margin:0 4px; }
-  .btn-print { background:#00584E; color:#fff; }
-  .btn-back { background:#e0e0e0; color:#333; }
-  .evrak { max-width:210mm; margin:0 auto 10px; background:#fff; border:1px solid #d5d5d5; border-left:5px solid #00584E; border-radius:8px; padding:12px 16px; font-size:13px; }
-  .evrak .basi { font-weight:700; color:#00584E; margin-bottom:4px; }
-  .evrak .rozet { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; }
-  .evrak .var { background:#e6f4ea; color:#1b6b3a; } .evrak .yok { background:#fff4e0; color:#8a5a00; }
-  .evrak form { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }
-  .evrak input[type=file] { flex:1 1 240px; font:inherit; }
-  .evrak button { background:#1b6b3a; color:#fff; border:none; border-radius:8px; padding:8px 16px; font:inherit; cursor:pointer; }
-  .evrak .uyari { color:#b00; } .evrak .tamam { color:#1b6b3a; }
-  @media print { body { background:#fff; } .sheet { margin:0; box-shadow:none; width:auto; padding:12mm; } .toolbar { display:none; } }
-</style>
+<?php /* Ortak A4 katmanı (_tutanak.php): antet her sayfada tekrar eder, @page margin:0 tarayıcının
+         kendi üstbilgisini keser, yazdırmada .sheet min-height sıfırlanır (yoksa tek cihazlık belge
+         bile 2 sayfa çıkıyordu) ve .evrak paneli basılmaz. Aşağısı yalnız bu sayfaya özel. */ ?>
+<?php tut_stil('
+  .kunye td.k { width:23%; white-space:nowrap; }
+'); ?>
 </head>
 <body>
 <div class="toolbar">
@@ -181,17 +146,20 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
 </div>
 <?php endif; ?>
 
-<div class="sheet">
-  <div class="top">
-    <div><img src="../uploads/logo/ERN%20Taahhut_Logo_Renkli.png" alt="ERN Taahhüt" style="height:46px" onerror="this.outerHTML='<div class=\\'logo\\'>ERN TAAHHÜT</div>'"><div style="font-size:10px;font-weight:600;color:#555;letter-spacing:2px;margin-top:3px">IT ENVANTER</div></div>
-    <div style="text-align:right;font-size:11px;color:#555">
-      Tarih: <strong><?= date('d.m.Y') ?></strong><br>
-      Proje: <strong>Batı Yakası</strong>
-    </div>
-  </div>
+<?php
+$__zTarih = $hrk ? format_date($hrk['tarih']) : ($ilk['zimmet_tarihi'] ? format_date($ilk['zimmet_tarihi']) : date('d.m.Y'));
+tut_antet([
+    'meta' => [
+        'Tutanak No'    => '<span style="color:#00584E">' . h($no) . '</span>',
+        'Zimmet Tarihi' => h($__zTarih),
+        'Düzenleme'     => date('d.m.Y'),
+    ],
+    'alt' => 'ERN Taahhüt — Bilgi İşlem Envanter Sistemi · ' . $no . ' · ' . date('d.m.Y H:i'),
+]);
+?>
 
   <div class="doc-title">BİLGİ İŞLEM DEMİRBAŞ ZİMMET TUTANAĞI</div>
-  <div class="doc-no">Tutanak No: <?= h($no) ?></div>
+  <div class="doc-no"><?= h($no) ?></div>
 
   <table class="info">
     <tr><td class="k">Zimmet Alan</td><td><strong><?= h($kisi ?: '—') ?></strong><?= $per && $per['unvan'] ? ' — ' . h($per['unvan']) : '' ?></td>
@@ -199,58 +167,72 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
     <tr><td class="k">Birim / Departman</td><td><?= h($departman ?: '—') ?></td>
         <td class="k">Telefon</td><td><?= h($per['telefon'] ?? '') ?: '—' ?></td></tr>
     <tr><td class="k">Lokasyon / Proje</td><td><?= h($lokasyon ?: '—') ?></td>
-        <td class="k">Zimmet Tarihi</td><td><?= $hrk ? format_date($hrk['tarih']) : ($ilk['zimmet_tarihi'] ? format_date($ilk['zimmet_tarihi']) : date('d.m.Y')) ?></td></tr>
+        <td class="k">Zimmet Tarihi</td><td><?= h($__zTarih) ?></td></tr>
     <?php if ($per && $per['ise_giris']): ?><tr><td class="k">İşe Giriş</td><td><?= format_date($per['ise_giris']) ?></td><td class="k">Cihaz adedi</td><td><?= count($liste) ?></td></tr><?php endif; ?>
   </table>
 
+  <div class="sec">ZİMMETLE TESLİM EDİLEN CİHAZ<?= $tek ? '' : 'LAR' ?></div>
   <table class="items">
-    <thead><tr><th style="width:30px">S.No</th><th style="width:78px">Envanter No</th><th>Cihaz</th><th>Marka / Model</th><th>Seri No</th><?php if ($maliGoster): ?><th class="r" style="width:88px">Değer (TL)</th><?php endif; ?></tr></thead>
+    <thead><tr><th style="width:26px">S.No</th><th style="width:78px">Envanter No</th><th>Cihaz</th><th>Marka / Model</th><th style="width:100px">Seri No</th><?php if ($maliGoster): ?><th class="r" style="width:88px">Değer (TL)</th><?php endif; ?></tr></thead>
     <tbody>
     <?php foreach ($liste as $i => $r): ?>
       <tr>
         <td><?= $i + 1 ?></td>
-        <td class="mono"><?= h($r['envanter_no']) ?><?php if (!empty($r['cihaz_kodu'])): ?><div style="font-size:10px;color:#666"><?= h($r['cihaz_kodu']) ?></div><?php endif; ?></td>
-        <td><?= h($r['ad']) ?><div style="font-size:10.5px;color:#666"><?= h(it_kategoriAd($r['kategori'])) ?><?= $r['ozellikler'] ? ' · ' . h($r['ozellikler']) : '' ?></div></td>
+        <td class="mono"><?= h($r['envanter_no']) ?><?php if (!empty($r['cihaz_kodu'])): ?><div class="alt"><?= h($r['cihaz_kodu']) ?></div><?php endif; ?></td>
+        <?php /* Kategori adı cihaz adıyla aynıysa tekrar yazılmaz ("Dizüstü BilgisayarDizüstü Bilgisayar") */ ?>
+        <?php $__kat = it_kategoriAd((string)$r['kategori']); $__katAyri = it_norm($__kat) !== it_norm((string)$r['ad']); ?>
+        <td><?= h($r['ad']) ?><div class="alt"><?= $__katAyri ? h($__kat) : '' ?><?= $r['ozellikler'] ? ($__katAyri ? ' · ' : '') . h($r['ozellikler']) : '' ?></div></td>
         <td><?= h(trim(($r['marka'] ?? '') . ' ' . ($r['model'] ?? '')) ?: '—') ?></td>
         <td class="mono"><?= h($r['seri_no'] ?: '—') ?></td>
         <?php if ($maliGoster): ?><td class="r"><?= $r['fiyat'] !== null ? h(it_para_yaz($r['fiyat'], $r['para_birimi'] ?? 'TRY')) : '—' ?></td><?php endif; ?>
       </tr>
     <?php endforeach; ?>
     </tbody>
+    <?php /* Tek cihazda "TOPLAM (1 kalem)" satırı yer israfı — yalnız çok kalemde ya da mali
+             sütun açıkken basılır. */ ?>
+    <?php if (!$tek || $maliGoster): ?>
     <tfoot><tr><td colspan="5" class="r">TOPLAM (<?= count($liste) ?> kalem)</td><?php if ($maliGoster): ?><td class="r"><?= $f2($toplam) ?></td><?php endif; ?></tr></tfoot>
+    <?php endif; ?>
   </table>
 
   <?php /* Kurumsal formdaki "Özellikler" bloğu — her cihaz için nesne kimliği + donanım künyesi */ ?>
   <?php foreach ($liste as $i => $r): $ky = it_kunye($pdoIt, $r); if (!$ky) continue; ?>
-  <div class="kunye-basi"><?= count($liste) > 1 ? ($i + 1) . '. ' : '' ?>ÖZELLİKLER — <?= h($r['ad']) ?>
-    <span style="font-weight:600;color:#555">(<?= h($r['envanter_no']) ?><?= !empty($r['varlik_kodu']) ? ' · IFS: ' . h($r['varlik_kodu']) : '' ?>)</span></div>
-  <table class="kunye">
-    <tr><td class="k">NESNE AÇIKLAMA</td><td><?= h($r['ad']) ?></td>
-        <td class="k">NESNE TÜRÜ / KATEGORİ</td><td><?= h(IT_GRUP[it_grup((string)$r['kategori'])][0] ?? '') ?> / <?= h(it_kategoriAd((string)$r['kategori'])) ?></td></tr>
-    <?php $ck = array_chunk($ky, 2, true); foreach ($ck as $cift): ?>
-    <tr>
-      <?php foreach ($cift as $et => $dg): ?>
-        <td class="k"><?= h($et) ?></td><td class="<?= in_array($et, ['ŞASİ NO / SERİ NO','IMEI','IP / MAC','CİHAZ KODU'], true) ? 'mono' : '' ?>"><?= h($dg) ?></td>
+  <div class="blok">
+    <div class="sec"><?= $tek ? '' : ($i + 1) . '. ' ?>ÖZELLİKLER — <?= h($r['ad']) ?>
+      <span style="font-weight:600;color:#666">(<?= h($r['envanter_no']) ?><?= !empty($r['varlik_kodu']) ? ' · IFS: ' . h($r['varlik_kodu']) : '' ?>)</span></div>
+    <table class="kunye">
+      <tr><td class="k">NESNE AÇIKLAMA</td><td><?= h($r['ad']) ?></td>
+          <td class="k">NESNE TÜRÜ / KATEGORİ</td><td><?= h(IT_GRUP[it_grup((string)$r['kategori'])][0] ?? '') ?> / <?= h(it_kategoriAd((string)$r['kategori'])) ?></td></tr>
+      <?php foreach (array_chunk($ky, 2, true) as $cift): ?>
+      <tr>
+        <?php foreach ($cift as $et => $dg): ?>
+          <td class="k"><?= h($et) ?></td><td class="<?= in_array($et, ['ŞASİ NO / SERİ NO','IMEI','IP / MAC','CİHAZ KODU','IFS SERİ NESNE NO','ENVANTER NO'], true) ? 'mono' : '' ?>"><?= h($dg) ?></td>
+        <?php endforeach; ?>
+        <?php if (count($cift) === 1): ?><td class="k"></td><td></td><?php endif; ?>
+      </tr>
       <?php endforeach; ?>
-      <?php if (count($cift) === 1): ?><td class="k"></td><td></td><?php endif; ?>
-    </tr>
-    <?php endforeach; ?>
-    <?php if (!empty($r['notlar'])): ?><tr><td class="k">NOTLAR</td><td colspan="3" style="white-space:pre-wrap"><?= h(mb_substr((string)$r['notlar'], 0, 400)) ?></td></tr><?php endif; ?>
-  </table>
+      <?php if (!empty($r['notlar'])): ?><tr><td class="k">NOTLAR</td><td colspan="3" style="white-space:pre-wrap"><?= h(mb_substr((string)$r['notlar'], 0, 400)) ?></td></tr><?php endif; ?>
+    </table>
+  </div>
   <?php endforeach; ?>
 
-  <div class="kunye-basi">KULLANICI BİLGİLERİ</div>
-  <table class="kunye">
-    <tr><td class="k">AD SOYAD</td><td><strong><?= h($kisi ?: '—') ?></strong></td>
-        <td class="k">SİCİL NO</td><td class="mono"><?= h($per['sicil_no'] ?? '') ?: '—' ?></td></tr>
-    <tr><td class="k">MAİL ADRESİ</td><td><?= h($per['eposta'] ?? '') ?: '—' ?></td>
-        <?php /* Şirket hattı + masa telefonunun kısa kodu: tutanaktan kişiye ulaşılabilsin */ ?>
-        <td class="k">TELEFON</td><td><?= h($per['telefon'] ?? '') ?: '—' ?><?php
-            $__dh = trim((string)($per['dahili'] ?? '')); echo $__dh !== '' ? ' · dahili ' . h($__dh) : ''; ?></td></tr>
-    <tr><td class="k">BİRİM / UNVAN</td><td><?= h(trim(($departman ?: '') . ($per && $per['unvan'] ? ' — ' . $per['unvan'] : ''), ' —')) ?: '—' ?></td>
-        <td class="k">LOKASYON</td><td><?= h($lokasyon ?: '—') ?></td></tr>
-  </table>
+  <div class="blok">
+    <div class="sec">KULLANICI BİLGİLERİ</div>
+    <table class="kunye">
+      <tr><td class="k">AD SOYAD</td><td><strong><?= h($kisi ?: '—') ?></strong></td>
+          <td class="k">SİCİL NO</td><td class="mono"><?= h($per['sicil_no'] ?? '') ?: '—' ?></td></tr>
+      <tr><td class="k">MAİL ADRESİ</td><td><?= h($per['eposta'] ?? '') ?: '—' ?></td>
+          <?php /* Şirket hattı + masa telefonunun kısa kodu: tutanaktan kişiye ulaşılabilsin */ ?>
+          <td class="k">TELEFON</td><td><?= h($per['telefon'] ?? '') ?: '—' ?><?php
+              $__dh = trim((string)($per['dahili'] ?? '')); echo $__dh !== '' ? ' · dahili ' . h($__dh) : ''; ?></td></tr>
+      <tr><td class="k">BİRİM / UNVAN</td><td><?= h(trim(($departman ?: '') . ($per && $per['unvan'] ? ' — ' . $per['unvan'] : ''), ' —')) ?: '—' ?></td>
+          <td class="k">LOKASYON</td><td><?= h($lokasyon ?: '—') ?></td></tr>
+    </table>
+  </div>
 
+  <?php /* Kapanış beyanı ve imzalar BİRLİKTE kalır — imza bloğu tek başına son sayfaya düşerse
+           belge yarıda kesilmiş gibi görünür. */ ?>
+  <div class="kapanis">
   <div class="note">
     Yukarıda envanter numarası, tanımı ve seri numarası belirtilen bilgi işlem demirbaş(lar)ı, çalışır ve eksiksiz
     durumda <strong><?= h($kisi ?: '—') ?></strong> adlı personele iş amaçlı kullanılmak üzere zimmetle teslim edilmiştir.
@@ -265,10 +247,12 @@ foreach ($liste as $__c) $imzaliSayi += count(array_filter(it_belgeler($pdoIt, (
   </div>
 
   <div class="signs">
-    <div class="sign"><div class="line">Teslim Eden — ERN Taahhüt Bilgi İşlem</div><div class="sub"><?= h($teslimEden) ?> · İmza</div></div>
-    <div class="sign"><div class="line">Teslim Alan — <?= h($kisi ?: 'Personel') ?></div><div class="sub">Ad Soyad / İmza</div></div>
+    <div class="sign"><div class="line">TESLİM EDEN — ERN TAAHHÜT BİLGİ İŞLEM</div>
+      <div class="ad"><?= h($teslimEden) ?></div><div class="sub">Adı Soyadı / Tarih / İmza</div></div>
+    <div class="sign"><div class="line">TESLİM ALAN</div>
+      <div class="ad"><?= h($kisi ?: '') ?></div><div class="sub">Adı Soyadı / Tarih / İmza</div></div>
   </div>
-
-  <div class="foot">ERN Taahhüt IT Envanter — <?= date('d.m.Y H:i') ?></div>
-</div>
+  </div><?php /* .kapanis */ ?>
+<?php tut_kapat(); ?>
+<?php tut_sayfa_js(); ?>
 </body></html>

@@ -17,6 +17,7 @@ if (!file_exists(__DIR__ . '/../config.php')) { redirect('../install.php'); }
 require_auth(['admin','teknik_ofis_admin','teknik_ofis','depo','it_sorumlusu']);
 require_once __DIR__ . '/../includes/db_it.php';
 require_once __DIR__ . '/_ortak.php';
+require_once __DIR__ . '/_tutanak.php';   // ortak A4 yazdırma katmanı (antet/sayfa/ölçüler)
 it_semasi_kur($pdoIt);
 
 $id  = isset($_GET['id']) && ctype_digit((string)$_GET['id']) ? (int)$_GET['id'] : 0;
@@ -82,50 +83,14 @@ $kunye = it_kunye($pdoIt, $c);
 <html lang="tr"><head>
 <meta charset="UTF-8">
 <title>İade Tutanağı <?= h($no) ?></title>
-<style>
-  * { box-sizing:border-box; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; color:#111; margin:0; background:#f0f0f0; }
-  .sheet { width:210mm; min-height:297mm; margin:10px auto; background:#fff; padding:18mm 16mm; box-shadow:0 0 8px rgba(0,0,0,.15); }
-  .top { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #00584E; padding-bottom:10px; }
-  .top .logo { font-size:22px; font-weight:800; color:#00584E; letter-spacing:-.5px; }
-  .doc-title { text-align:center; margin:18px 0 6px; font-size:18px; font-weight:800; letter-spacing:1px; }
-  .doc-no { text-align:center; font-size:13px; color:#00584E; font-weight:700; margin-bottom:16px; }
-  .info { width:100%; border-collapse:collapse; margin-bottom:14px; font-size:12.5px; }
-  .info td { border:1px solid #cfcfcf; padding:6px 9px; }
-  .info td.k { background:#f5f7f7; font-weight:600; width:22%; }
-  table.items { width:100%; border-collapse:collapse; font-size:12px; margin-top:4px; }
-  table.items th, table.items td { border:1px solid #bbb; padding:6px 8px; vertical-align:top; }
-  table.items th { background:#00584E; color:#fff; font-weight:600; }
-  .mono { font-family: Consolas, monospace; font-size:11.5px; }
-  .blok-basi { margin:16px 0 4px; font-size:12px; font-weight:700; color:#00584E; letter-spacing:.5px;
-               border-bottom:1px solid #cfcfcf; padding-bottom:3px; }
-  table.kunye { width:100%; border-collapse:collapse; font-size:11px; }
-  table.kunye td { border:1px solid #d5d5d5; padding:4px 7px; }
-  table.kunye td.k { background:#f7f9f9; font-weight:600; width:17%; color:#444; }
-  .durum { display:flex; gap:18px; font-size:12px; margin:10px 0 4px; flex-wrap:wrap; }
-  .durum span { border:1px solid #999; border-radius:3px; padding:3px 10px; }
+<?php /* Ortak A4 katmanı (_tutanak.php): her sayfada tekrar eden antet, @page margin:0 ile
+         tarayıcı üstbilgisinin kesilmesi, yazdırmada .sheet min-height sıfırlaması (yoksa tek
+         cihazlık belge bile 2 sayfa çıkıyordu) ve .evrak panelinin basılmaması. */ ?>
+<?php tut_stil('
+  .durum { display:flex; gap:14px; font-size:11px; margin:8px 0 4px; flex-wrap:wrap; }
+  .durum span { border:1px solid #999; border-radius:3px; padding:3px 9px; }
   .kutu { display:inline-block; width:11px; height:11px; border:1px solid #333; margin-right:5px; vertical-align:-1px; }
-  .note { font-size:11.5px; color:#333; margin:14px 0; line-height:1.65; text-align:justify; }
-  .note ol { margin:6px 0 0 18px; padding:0; }
-  .signs { display:flex; justify-content:space-between; gap:12px; margin-top:38px; }
-  .sign { flex:1; text-align:center; }
-  .sign .line { border-top:1px solid #333; margin-top:54px; padding-top:6px; font-size:11.5px; font-weight:600; }
-  .sign .sub { font-size:10.5px; color:#666; }
-  .foot { margin-top:22px; text-align:center; font-size:10px; color:#999; border-top:1px solid #eee; padding-top:8px; }
-  .toolbar { text-align:center; padding:10px; }
-  .toolbar button, .toolbar a { font:inherit; padding:8px 18px; border-radius:8px; border:none; cursor:pointer; text-decoration:none; margin:0 4px; }
-  .btn-print { background:#00584E; color:#fff; }
-  .btn-back { background:#e0e0e0; color:#333; }
-  .evrak { max-width:210mm; margin:0 auto 10px; background:#fff; border:1px solid #d5d5d5; border-left:5px solid #00584E; border-radius:8px; padding:12px 16px; font-size:13px; }
-  .evrak .basi { font-weight:700; color:#00584E; margin-bottom:4px; }
-  .evrak .rozet { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; }
-  .evrak .var { background:#e6f4ea; color:#1b6b3a; } .evrak .yok { background:#fff4e0; color:#8a5a00; }
-  .evrak form { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }
-  .evrak input[type=file] { flex:1 1 240px; font:inherit; }
-  .evrak button { background:#1b6b3a; color:#fff; border:none; border-radius:8px; padding:8px 16px; font:inherit; cursor:pointer; }
-  .evrak .uyari { color:#b00; } .evrak .tamam { color:#1b6b3a; }
-  @media print { body { background:#fff; } .sheet { margin:0; box-shadow:none; width:auto; padding:12mm; } .toolbar, .evrak { display:none; } }
-</style>
+'); ?>
 </head>
 <body>
 <div class="toolbar">
@@ -161,14 +126,14 @@ $kunye = it_kunye($pdoIt, $c);
 </div>
 <?php endif; ?>
 
-<div class="sheet">
-  <div class="top">
-    <div><img src="../uploads/logo/ERN%20Taahhut_Logo_Renkli.png" alt="ERN Taahhüt" style="height:46px" onerror="this.outerHTML='<div class=\'logo\'>ERN TAAHHÜT</div>'"><div style="font-size:10px;font-weight:600;color:#555;letter-spacing:2px;margin-top:3px">IT ENVANTER</div></div>
-    <div style="text-align:right;font-size:11px;color:#555">
-      Düzenleme: <strong><?= date('d.m.Y') ?></strong><br>
-      İade Tarihi: <strong><?= format_date($tarih) ?></strong>
-    </div>
-  </div>
+<?php tut_antet([
+    'meta' => [
+        'Tutanak No'  => '<span style="color:#00584E">' . h($no) . '</span>',
+        'İade Tarihi' => format_date($tarih),
+        'Düzenleme'   => date('d.m.Y'),
+    ],
+    'alt' => 'ERN Taahhüt — Bilgi İşlem Envanter Sistemi · ' . $no . ' · ' . date('d.m.Y H:i'),
+]); ?>
 
   <div class="doc-title">BİLGİ İŞLEM DEMİRBAŞ İADE TUTANAĞI</div>
   <div class="doc-no">Tutanak No: <?= h($no) ?></div>
@@ -187,6 +152,7 @@ $kunye = it_kunye($pdoIt, $c);
     <?php endif; ?>
   </table>
 
+  <div class="sec">İADE EDİLEN CİHAZ</div>
   <table class="items">
     <thead><tr><th style="width:28px">S.No</th><th style="width:80px">Cihaz Kodu</th><th style="width:120px">IFS Nesne No</th>
       <th>Cihaz</th><th style="width:100px">Marka / Model</th><th style="width:110px">Seri No</th></tr></thead>
@@ -195,7 +161,8 @@ $kunye = it_kunye($pdoIt, $c);
         <td>1</td>
         <td class="mono"><?= h(($c['cihaz_kodu'] ?? '') !== '' ? $c['cihaz_kodu'] : $c['envanter_no']) ?></td>
         <td class="mono"><?= h($c['varlik_kodu'] ?: '—') ?></td>
-        <td><?= h($c['ad']) ?><div style="font-size:10.5px;color:#666"><?= h(it_kategoriAd($c['kategori'])) ?></div></td>
+        <?php $__kat = it_kategoriAd((string)$c['kategori']); ?>
+        <td><?= h($c['ad']) ?><?= it_norm($__kat) !== it_norm((string)$c['ad']) ? '<div class="alt">' . h($__kat) . '</div>' : '' ?></td>
         <td><?= h(trim(($c['marka'] ?? '') . ' ' . ($c['model'] ?? '')) ?: '—') ?></td>
         <td class="mono"><?= h($c['seri_no'] ?: '—') ?></td>
       </tr>
@@ -203,8 +170,9 @@ $kunye = it_kunye($pdoIt, $c);
   </table>
 
   <?php if ($kunye): ?>
-  <div class="blok-basi">ÖZELLİKLER — <?= h($c['ad']) ?></div>
-  <table class="kunye">
+  <div class="blok">
+    <div class="sec">ÖZELLİKLER — <?= h($c['ad']) ?></div>
+    <table class="kunye">
     <?php foreach (array_chunk($kunye, 2, true) as $cift): ?>
     <tr>
       <?php foreach ($cift as $et => $dg): ?>
@@ -213,11 +181,13 @@ $kunye = it_kunye($pdoIt, $c);
       <?php if (count($cift) === 1): ?><td class="k"></td><td></td><?php endif; ?>
     </tr>
     <?php endforeach; ?>
-  </table>
+    </table>
+  </div>
   <?php endif; ?>
 
   <?php /* Teslim alınırken cihazın fiziksel durumu sahada elle işaretlenir */ ?>
-  <div class="blok-basi">TESLİM ALMA KONTROLÜ (Bilgi İşlem doldurur)</div>
+  <div class="blok">
+  <div class="sec">TESLİM ALMA KONTROLÜ (Bilgi İşlem doldurur)</div>
   <div class="durum">
     <span><i class="kutu"></i>Çalışır durumda</span>
     <span><i class="kutu"></i>Arızalı</span>
@@ -227,9 +197,13 @@ $kunye = it_kunye($pdoIt, $c);
     <span><i class="kutu"></i>Veriler silindi / temizlendi</span>
   </div>
   <table class="info" style="margin-top:6px">
-    <tr><td class="k" style="width:22%">Eksik / hasar notu</td><td style="height:34px"></td></tr>
+    <tr><td class="k" style="width:22%">Eksik / hasar notu</td><td style="height:30px"></td></tr>
   </table>
+  </div>
 
+  <?php /* Kapanış beyanı ve imzalar BİRLİKTE kalır — imza bloğu tek başına son sayfaya
+         düşerse belge yarıda kesilmiş gibi görünür. */ ?>
+  <div class="kapanis">
   <div class="note">
     Yukarıda bilgileri verilen bilgi işlem cihazı, <strong><?= h($iadeEden ?: '—') ?></strong> tarafından
     <strong><?= format_date($tarih) ?></strong> tarihinde Bilgi İşlem birimine iade edilmiş ve teslim alınmıştır.
@@ -247,7 +221,8 @@ $kunye = it_kunye($pdoIt, $c);
     <div class="sign"><div class="line">TESLİM ALAN — BİLGİ İŞLEM</div>
       <div class="sub"><?= h($teslimAlan ?: '') ?><br>Ad Soyad / Tarih / İmza</div></div>
   </div>
+  </div><?php /* .kapanis */ ?>
 
-  <div class="foot">ERN Taahhüt — Bilgi İşlem Envanter Sistemi · <?= h($no) ?> · <?= date('d.m.Y H:i') ?></div>
-</div>
+<?php tut_kapat(); ?>
+<?php tut_sayfa_js(); ?>
 </body></html>
