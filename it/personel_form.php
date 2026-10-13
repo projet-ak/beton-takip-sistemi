@@ -153,17 +153,17 @@ $tv = fn($k) => h($v[$k] ?? '');
     <div class="col-md-3"><label class="form-label">Soyad <span class="text-danger">*</span></label><input name="soyad" class="form-control" value="<?= $tv('soyad') ?>" required maxlength="80"></div>
     <div class="col-md-4"><label class="form-label">Unvan</label>
       <div class="input-group">
-        <select name="unvan" id="unvan" class="form-select"><?= it_tanim_options($pdoIt, 'unvan', $v['unvan'] ?? '') ?></select>
+        <select name="unvan" id="unvan" class="form-select" data-ara><?= it_tanim_options($pdoIt, 'unvan', $v['unvan'] ?? '') ?></select>
         <?php if (can_edit()): ?><button type="button" class="btn btn-outline-secondary" id="unvanEkle" title="Listede yoksa ekle"><i class="bi bi-plus-lg"></i></button><?php endif; ?>
       </div>
       <div class="form-text" id="unvanNot">Listeden seçin; yoksa <strong>+</strong> ile ekleyin.</div></div>
 
     <div class="col-md-6"><label class="form-label">Lokasyon / Proje</label>
-      <select name="lokasyon_id" class="form-select"><?= it_lokasyon_options($pdoIt, (int)($v['lokasyon_id'] ?? 0)) ?></select>
+      <select name="lokasyon_id" class="form-select" data-ara><?= it_lokasyon_options($pdoIt, (int)($v['lokasyon_id'] ?? 0)) ?></select>
       <div class="form-text">Kartal projesi etapları (U030 / U031 / U039) ya da Merkez binadaki direktörlük. Ağacı <a href="tanimlar.php?t=lokasyon">Lokasyonlar</a> ekranından düzenleyin.</div></div>
     <div class="col-md-6"><label class="form-label">Birim / Departman</label>
       <div class="input-group">
-        <select name="birim" id="birim" class="form-select"><?= it_tanim_options($pdoIt, 'birim', $v['birim'] ?? '') ?></select>
+        <select name="birim" id="birim" class="form-select" data-ara><?= it_tanim_options($pdoIt, 'birim', $v['birim'] ?? '') ?></select>
         <?php if (can_edit()): ?><button type="button" class="btn btn-outline-secondary" id="birimEkle" title="Listede yoksa ekle"><i class="bi bi-plus-lg"></i></button><?php endif; ?>
       </div>
       <div class="form-text" id="birimNot">Boş bırakılırsa lokasyon bir birimse (direktörlük vb.) onun adı yazılır.</div></div>
@@ -193,6 +193,8 @@ $tv = fn($k) => h($v[$k] ?? '');
     <a href="<?= $duzenleme ? 'personel_detay.php?id=' . $id : 'personel.php' ?>" class="btn btn-outline-secondary">İptal</a>
   </div>
 </form>
+<?php /* Unvan · Birim · Lokasyon listeleri uzun — cihaz formundaki aranabilir menünün aynısı. */ ?>
+<script src="<?= $rootPath ?>assets/js/secici.js"></script>
 <script>
 /* ── "Listede yoksa ekle" (Unvan / Birim) ─────────────────────────────────────
    Cihaz formundaki Marka ekleyicisiyle aynı akış: prompt → sayfanın kendi POST ucu →
@@ -220,6 +222,8 @@ $tv = fn($k) => h($v[$k] ?? '');
                         if (sec.options[i].value === j.ad) { v = sec.options[i]; break; }
                     if (!v) { v = new Option(j.ad, j.ad); sec.add(v); }
                     sec.value = j.ad;
+                    // Aranabilir menünün düğme etiketi `change` ile yenilenir (assets/js/secici.js)
+                    sec.dispatchEvent(new Event('change', { bubbles: true }));
                     if (not) not.innerHTML = j.yeni
                         ? '<span class="text-success"><i class="bi bi-check-lg me-1"></i><strong>'
                           + j.ad.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</strong> listeye eklendi.</span>'

@@ -253,7 +253,7 @@ $tanimSec = function (string $alan, string $tur, string $etiket, string $not = '
     <div class="col-md-3 tanim-alan<?= trim((string)($v[$alan] ?? '')) !== '' ? ' dolu' : '' ?> <?= h($sinif) ?>" <?= $attr ?>>
       <label class="form-label" for="<?= h($id) ?>"><?= h($etiket) ?></label>
       <div class="input-group">
-        <select name="<?= h($alan) ?>" id="<?= h($id) ?>" class="form-select"><?= it_tanim_options($pdoIt, $tur, (string)($v[$alan] ?? '')) ?></select>
+        <select name="<?= h($alan) ?>" id="<?= h($id) ?>" class="form-select" data-ara><?= it_tanim_options($pdoIt, $tur, (string)($v[$alan] ?? '')) ?></select>
         <?php if (can_edit()): ?>
         <button type="button" class="btn btn-outline-secondary tanim-ekle" data-tur="<?= h($tur) ?>" data-hedef="<?= h($id) ?>"
                 title="<?= h($etiket) ?> listesinde yoksa ekle"><i class="bi bi-plus-lg"></i></button>
@@ -317,7 +317,7 @@ if (!empty($v['personel_id'])) {
     <div class="row g-3">
       <div class="col-md-3">
         <label class="form-label">Kategori <span class="text-danger">*</span></label>
-        <select name="kategori" id="kategori" class="form-select" required>
+        <select name="kategori" id="kategori" class="form-select" required data-ara>
           <?php foreach (it_kategori_agaci() as $__g => $__kats): ?>
           <optgroup label="<?= h(IT_GRUP[$__g][0] ?? $__g) ?>">
             <?php foreach ($__kats as $k => $ad): ?>
@@ -333,7 +333,7 @@ if (!empty($v['personel_id'])) {
       </div>
       <div class="col-md-4">
         <label class="form-label">Durum</label>
-        <select name="durum" id="durum" class="form-select">
+        <select name="durum" id="durum" class="form-select" data-ara>
           <?php foreach (IT_DURUM as $k => [$ad, $r, $ik]): ?>
           <option value="<?= $k ?>" <?= ($v['durum'] ?? '') === $k ? 'selected' : '' ?>><?= h($ad) ?></option>
           <?php endforeach; ?>
@@ -399,7 +399,7 @@ if (!empty($v['personel_id'])) {
         <input type="hidden" name="zimmetli" value="<?= $tv('zimmetli') ?>"></div>
       <div class="col-md-3"><label class="form-label">Departman</label><input name="departman" id="departman" list="dl_departman" class="form-control" value="<?= $tv('departman') ?>" maxlength="80"><?= $dl('departman') ?></div>
       <div class="col-md-3"><label class="form-label">Lokasyon / Proje</label>
-        <select name="lokasyon_id" id="lokasyon_id" class="form-select"><?= it_lokasyon_options($pdoIt, (int)($v['lokasyon_id'] ?? 0)) ?></select>
+        <select name="lokasyon_id" id="lokasyon_id" class="form-select" data-ara><?= it_lokasyon_options($pdoIt, (int)($v['lokasyon_id'] ?? 0)) ?></select>
         <input type="hidden" name="lokasyon" value="<?= $tv('lokasyon') ?>"><?php if (!empty($v['lokasyon']) && empty($v['lokasyon_id'])): ?><div class="form-text">Eski kayıt: <?= $tv('lokasyon') ?></div><?php endif; ?></div>
       <div class="col-md-2"><label class="form-label">Zimmet Tarihi</label><input type="date" name="zimmet_tarihi" class="form-control" value="<?= $tv('zimmet_tarihi') ?>"></div>
 
@@ -465,7 +465,7 @@ if (!empty($v['personel_id'])) {
       <div class="col-md-3 ekalan ek-<?= h($__ea) ?>" data-kat="<?= h(implode(',', $__eKat)) ?>">
         <label class="form-label"><?= h($__eEt) ?></label>
         <?php if ($__eTip === 'cihaz'): ?>
-          <select name="<?= h($__ea) ?>" class="form-select">
+          <select name="<?= h($__ea) ?>" class="form-select" data-ara>
             <option value="">— seçilmedi —</option>
             <?php foreach ($bagliAdaylar as $__b): ?>
               <option value="<?= (int)$__b['id'] ?>" <?= (int)($v[$__ea] ?? 0) === (int)$__b['id'] ? 'selected' : '' ?>>
@@ -501,6 +501,9 @@ if (!empty($v['personel_id'])) {
   </div>
 </form>
 
+<?php /* Uzun açılır menülere arama kutusu: select KALIR (form gönderimi, required ve
+         `sel.value` okuyan mevcut JS bozulmaz), üstüne aranabilir panel çizilir. */ ?>
+<script src="<?= $rootPath ?>assets/js/secici.js"></script>
 <script>
 // Kategoriye göre alan grupları: lisans alanları yalnız yazılımda, teknik alanlar lisansta gizli
 (function () {
@@ -557,10 +560,13 @@ if (!empty($v['personel_id'])) {
         secili.innerHTML = '<span class="badge bg-success"><i class="bi bi-person-check me-1"></i>' + kacir(p.ad) + '</span> '
             + '<span class="text-muted">' + [p.sicil, p.birim, p.lok].filter(Boolean).map(kacir).join(' · ') + '</span>';
         secili.classList.remove('d-none');
+        // ⚠ Değeri JS ile değiştiren her yer `change` YAYMALI: aranabilir açılır menü
+        //    (assets/js/secici.js) düğmedeki etiketi bu olaydan öğrenir, yoksa eski değer kalır.
+        var degis = function (e) { if (e) e.dispatchEvent(new Event('change', { bubbles: true })); };
         if (dep && !dep.value && p.birim) dep.value = p.birim;
-        if (lok && !lok.value && p.lok_id) lok.value = p.lok_id;
+        if (lok && !lok.value && p.lok_id) { lok.value = p.lok_id; degis(lok); }
         // Kişi seçildiyse cihaz kullanımdadır — durum "depoda" kalmasın (kaydetmede de aynı kural var)
-        if (durum && (durum.value === 'depoda' || durum.value === '')) durum.value = 'aktif';
+        if (durum && (durum.value === 'depoda' || durum.value === '')) { durum.value = 'aktif'; degis(durum); }
         kapat();
     }
     ara.addEventListener('input', function () { gizli.value = ''; secili.classList.add('d-none'); clearTimeout(zaman); zaman = setTimeout(getir, 180); });

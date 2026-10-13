@@ -987,6 +987,34 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   aşan ekran boyutu kolon genişliğine kırpıldı; formdan POST ile marka/model/işlemci/ram/işletim sistemi/
   tedarikçi kayda birebir yazıldı; 8 IT sayfası uyarısız render, inline JS temiz.
   ⚠ Görünüm headless'ta doğrulanamadı — Bootstrap CDN'i duman testi ortamında engelli, sayfa stilsiz render oluyor.
+  **AÇILIR MENÜLERE ARAMA KUTUSU (2026-10-13, kullanıcı: "yeni cihaz eklerken açılır menülere arama
+  kutusu ekleyerek arama özelliği olsun, hızlıca arar ve ekleriz, yoksa artı butonuna basarız — sadece
+  değişiklik olarak arama kutusu olsun")** — 13 tanım alanı listeden seçiliyordu ama uzun listede doğru
+  kaydı bulmak için menüyü elle kaydırmak gerekiyordu.
+  • ⭐ **Yeni ortak bileşen `assets/js/secici.js`** (`ERN_SECICI`): `<select data-ara>` işaretli her menü
+  sayfa yüklenince **aranabilir panele** dönüşür (sonradan eklenen için `ERN_SECICI.kur(sel)`). Build adımı
+  yok, CSS'i kendisi bir kez enjekte eder, renkler Bootstrap değişkenlerinden (tema/koyu/yüksek kontrast izlenir).
+  • ⚠⚠ **Native `<select>` KALIR ve tek doğru kaynaktır** — form gönderimi, `sel.value` okuyan mevcut JS
+  (kategoriye göre alan gizleme, `.dolu` imi, "+" ile tanım ekleme) ve `required` doğrulaması aynen çalışır;
+  panelden seçim `sel.value`yu yazıp `change` yayar. Select **`display:none` YAPILMAZ** (`opacity:0` +
+  `pointer-events:none`): `required` alanda tarayıcı "odaklanamıyorum" deyip formu kilitlerdi
+  (cihaz_detay'daki `personel_id` tuzağının aynısı). **JS kapalıysa** select olduğu gibi görünür.
+  • Seçenekler panel **her açılışta select'ten yeniden okunur** → "+" ile eklenen tanım listede anında görünür.
+  • Süzme **Türkçe harf duyarsız** ("ismail" → İSMAİL, "ampul" → Ampül; `'İ'.toLowerCase()` JS'te `i̇`
+  verdiği için harfler ÖNCE elle eşlenir), **kelime sırası serbest** ("i7 intel" → Intel Core i7),
+  ad başı > kelime başı > ad içi sıralı, optgroup adı ("kayıtta duran (listede yok)", kategori grubu) satırda
+  rozet ve aranabilir. "— seçilmedi —" yalnız arama boşken durur. Ok tuşları / Enter / Esc / Home / End,
+  düğmede harfe basınca panel açılıp harf aramaya düşer, `label[for]` tıklaması da açar, aynı anda tek panel açık,
+  alta sığmazsa yukarı açılır. **8'den az seçenekte arama kutusu çizilmez** (`data-ara-esik` ile değişir).
+  • ⚠ **Değeri JS ile değiştiren her yer `change` YAYMALI** — düğme etiketi bu olaydan yenilenir. İki yer
+  yaymıyordu ve düzeltildi: `cihaz_form` kişi seçilince lokasyon/durumu otomatik dolduran `secKisi()` ·
+  `personel_form` "+" ile unvan/birim ekleyen işleyici.
+  • Uygulanan alanlar: **cihaz_form** 13 tanım alanı + Kategori + Durum + Lokasyon + Bağlı Cihaz (17 menü),
+  **personel_form** Unvan · Birim · Lokasyon. "+" düğmeleri yerinde, input-group köşeleri korunur.
+  Test (Chromium `--dump-dom`, kendini doğrulayan sayfalar): bileşen **31 sağlama** (scratchpad
+  `secici_test.html`) · gerçek cihaz formu **18** (17 menü dönüştü, `required` korunuyor, marka araması +
+  `.dolu` imi, kategori seçimi alan gizleme JS'ini tetikliyor, `FormData` seçilen değerleri taşıyor) ·
+  personel formu **6**; iki form uyarısız render, inline JS temiz.
   **TAHSİS FORMU İLE TOPLU İÇE AKTARMA (2026-09-17, kullanıcı: "böyle cihaz bilgileri olduğu Excel ve
   PDF formu var, cihaz bilgilerini buradan alalım, dışarıdan form al seçeneği ekleyelim, cihaz bilgileri
   güncellensin, toplu dosya ekleme özelliği olsun")** — kaynak: kurumsal **CİHAZ TAHSİS FORMU**
@@ -1586,7 +1614,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 ### Teknoloji
 - Backend: PHP (framework yok), PDO/MySQL 8, prepared statements her yerde.
 - Frontend: Bootstrap 5.3.3 + Bootstrap Icons, Chart.js 4.4.4, Google Fonts (Outfit), sunucu-tarafı render + PWA (`manifest.json`, `sw.js`).
-- Excel: `Shuchkin\SimpleXLSX` (composer, okuma) + `includes/XlsxWriter.php` (yazma; **varsayılan ERN Taahhüt logolu** — kurucu 2. parametre false ile kapatılır, başlık 4. satıra kayar) + client-side **ExcelJS** (formatlı rapor). **Rapor dışa aktarma ortak katmanı `assets/js/ern_rapor.js`**: ERN_RAPOR.wb/title/hdr/save (logolu çok sayfalı ExcelJS) + ERN_RAPOR.popup({mode:'pdf'|'print'}) (logolu A4 penceresi, jsPDF doğrudan kaydet + yazdır). TÜM modül raporları (beton hariç kendi eski deseninde) bu katmanı kullanır: Excel'e Aktar + PDF İndir + Yazdır üçlüsü. Sayfa script'ten önce `window.ERN_ROOT` tanımlar ('' veya '../'). **Tablo sütunu gizle/göster ortak katmanı `assets/js/kolon_sec.js`** (`ERN_KOLON.kur`, IT listelerinde kullanılıyor — ayrıntı IT Envanter bölümünde).
+- Excel: `Shuchkin\SimpleXLSX` (composer, okuma) + `includes/XlsxWriter.php` (yazma; **varsayılan ERN Taahhüt logolu** — kurucu 2. parametre false ile kapatılır, başlık 4. satıra kayar) + client-side **ExcelJS** (formatlı rapor). **Rapor dışa aktarma ortak katmanı `assets/js/ern_rapor.js`**: ERN_RAPOR.wb/title/hdr/save (logolu çok sayfalı ExcelJS) + ERN_RAPOR.popup({mode:'pdf'|'print'}) (logolu A4 penceresi, jsPDF doğrudan kaydet + yazdır). TÜM modül raporları (beton hariç kendi eski deseninde) bu katmanı kullanır: Excel'e Aktar + PDF İndir + Yazdır üçlüsü. Sayfa script'ten önce `window.ERN_ROOT` tanımlar ('' veya '../'). **Tablo sütunu gizle/göster ortak katmanı `assets/js/kolon_sec.js`** (`ERN_KOLON.kur`, IT listelerinde kullanılıyor — ayrıntı IT Envanter bölümünde). **Aranabilir açılır menü ortak katmanı `assets/js/secici.js`** (`<select data-ara>` → `ERN_SECICI`; native select kalır, Türkçe harf duyarsız arama — ayrıntı IT Envanter bölümünde).
 - **ArUco okuma/üretme: `assets/vendor/cv.js` + `aruco.js`** (js-aruco2 v2.0.0, MIT) — düz `<script>`,
   global `CV`/`AR`, **build adımı yok**; PTS modülünde kiosk okuma ve kart basımı bunu kullanır.
   ⚠ `assets/vendor/` DIŞARIDAN alınan, DEĞİŞTİRİLMEYEN kütüphaneler içindir (bkz. oradaki README).
