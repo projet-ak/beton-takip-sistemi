@@ -1015,6 +1015,32 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   `secici_test.html`) · gerçek cihaz formu **18** (17 menü dönüştü, `required` korunuyor, marka araması +
   `.dolu` imi, kategori seçimi alan gizleme JS'ini tetikliyor, `FormData` seçilen değerleri taşıyor) ·
   personel formu **6**; iki form uyarısız render, inline JS temiz.
+  **SAHİPSİZ DOSYA TEMİZLİĞİ (2026-10-15, kullanıcı: "eski sürümleri silince bağlantı mı siliniyor yoksa
+  dosya sunucuda mı kalıyor — yer kaplamasın")** — cevap: cihaz kartından belge silmek (`it_belge_sil`) dosyayı
+  da diskten siler; **ortak dosya** (toplu tutanak, N cihaza bağlı) yalnız SON bağ koptuğunda gider; yeni sürüm
+  yüklemek eskisini SİLMEZ. Ama `it_belge_sil` `@unlink` kullandığından **sunucu izni yoksa kayıt kalkar, dosya
+  sessizce diskte kalır** — bunu görünür kılmak için:
+  • **`it/dosya_temizlik.php`** (sidebar "Dosya Temizliği", `yetki_var('duzenle')`) + çekirdek **`it/_temizlik.php`**
+  (`itt_*`). Yalnız IT'nin KENDİ klasörleri taranır (`IT_TEMIZLIK_KOK`: `uploads/it_envanter` · `uploads/it_form_bekleyen`;
+  §0 — PTS vb. başka modülün uploads'una dokunulmaz). **Sahipsiz** = hiçbir `it_belgeler.dosya_url` ve hiçbir
+  `it_cihazlar.foto_url` işaret etmiyor (`itt_yol()` "./" ve "/" öneklerini eşitler). KPI: toplam · kayda bağlı ·
+  sahipsiz (silinebilir, boyutla) · korunan · **kırık bağlantı** (kaydı var dosyası yok — kartta görünür ama açılmaz;
+  yer kaplamadığı için yalnız listelenir, cihaz kartından silinir). Tablo büyükten küçüğe, satırda "aç" bağlantısı.
+  • ⚠ **Yeni dosyalar KORUNUR** (`IT_TEMIZLIK_YENI_SN` = 2 saat): `it_belge_kaydet` dosyayı ÖNCE diske yazıp kaydı
+  SONRA ekler — tarama tam o anda çalışırsa yükleme sürmekte olan dosya sahipsiz görünürdü. Form aktarımının geçici
+  klasöründe (DB'ye yazılmaz, oturumda tutulur) sınır `IT_TEMIZLIK_BEKLEYEN_SN` = 2 gün.
+  • ⚠ **`itt_sil()` her dosyayı SİLME ANINDA yeniden doğrular**: IT kök klasörü içinde mi (`realpath` + "..",
+  mutlak yol, NUL reddi) · symlink değil mi · hâlâ sahipsiz mi (ekran açıkken kayda bağlanan dosya silinmez) ·
+  yeterince eski mi. **"Tümünü sil" listeyi formdan TAŞIMAZ**, sunucuda yeniden tarar (binlerce dosyada
+  `max_input_vars` sınırına takılmasın). Silinemeyen dosya **sebebiyle raporlanır** — "klasöre yazma izni yok"
+  çıkarsa aaPanel'den `uploads/it_envanter` sahibi/izni web kullanıcısına verilmeli (ekranda bu yazar).
+  Boşalan cihaz klasörleri kaldırılır, kök klasörlere dokunulmaz; işlem `audit_log`'a yazılır, sonuç PRG ile gösterilir.
+  Test (scratchpad): `itt_test.php` **32 sağlama** (bağlı/ortak/foto_url/"./" önekli dosya korunur · yeni yükleme ve
+  yeni geçici form korunur · `.htaccess`, symlink, `uploads/pts` atlanır · `../`, mutlak yol, başka modül, symlink
+  silme isteği reddedilir · tarama sonrası kayda bağlanan dosya silinmez · tümünü sil + boş klasör kaldırma) ·
+  **gerçek izin hatası** `setpriv --reuid=65534` ile: dosya kaldı, ekran "silinemedi (klasöre yazma izni yok) —
+  Permission denied" dedi · `dt_kos.php` ile sayfa: GET uyarısız, seçili sil → 1 dosya, yetkisiz "tümünü sil"
+  reddedildi (onay kutuları çizilmiyor), yetkili "tümünü sil" → 6 dosya + boş klasör, ikinci tarama "sahipsiz yok".
   **TAHSİS FORMU İLE TOPLU İÇE AKTARMA (2026-09-17, kullanıcı: "böyle cihaz bilgileri olduğu Excel ve
   PDF formu var, cihaz bilgilerini buradan alalım, dışarıdan form al seçeneği ekleyelim, cihaz bilgileri
   güncellensin, toplu dosya ekleme özelliği olsun")** — kaynak: kurumsal **CİHAZ TAHSİS FORMU**
@@ -2045,6 +2071,7 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 - **CRM**: `uploads/crm_ariza/{ariza_id}/` (arıza başına çoklu belge/fotoğraf; kayıtlar `crm_ariza_belgeler`).
 - **Akaryakıt**: `uploads/akaryakit_cikis/{id}/` (imzalı çıkış fişi) · `uploads/akaryakit_giris/{id}/` (mazot giriş irsaliyesi/faturası).
 - **IT Envanter**: `uploads/it_envanter/{cihaz_id}/` (cihaz fotoğrafı, alış faturası, garanti belgesi, imzalı zimmet/iade/transfer/hurda tutanağı; kayıtlar `it_belgeler`, `tur` = IT_BELGE_TUR anahtarı ('zimmet' | 'iade' | 'transfer' | 'hurda' → imzalı tutanak, 'fatura', 'belge'), `hareket_id` = belgenin ait olduğu zimmet/iade dönemi — bir dosya birden çok cihaza bağlı olabilir, diskten yalnız SON bağ koptuğunda silinir).
+- **IT sahipsiz dosya temizliği**: `it/dosya_temizlik.php` yalnız `uploads/it_envanter/` + `uploads/it_form_bekleyen/` tarar; kayda bağlı hiçbir dosyayı silmez.
 - **IT form aktarımı (geçici)**: `uploads/it_form_bekleyen/` — yüklenen tahsis formları ön izleme adımı
   boyunca burada bekler; aktarımda cihaza belge olarak kopyalanır ve silinir (2 günden eski artıklar
   bir sonraki yüklemede temizlenir). `.gitignore`'da.

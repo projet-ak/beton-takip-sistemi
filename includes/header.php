@@ -561,6 +561,11 @@ if ($__user) {
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link" href="<?= $__rootPath ?>it/cihazlar.php?durum=arizali" data-label="Arızalı"><i class="bi bi-wrench"></i><span>Serviste / Arızalı</span></a>
       </li>
+      <?php if(yetki_var('duzenle')): /* sunucudaki sahipsiz IT dosyaları — silme yetkisi gerektirir */ ?>
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('dosya_temizlik.php') ?>" href="<?= $__rootPath ?>it/dosya_temizlik.php" data-label="Dosya Temizliği"><i class="bi bi-trash3"></i><span>Dosya Temizliği</span></a>
+      </li>
+      <?php endif; ?>
       <?php if(can_view_reports()): ?>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('raporlar.php') ?>" href="<?= $__rootPath ?>it/raporlar.php" data-label="Raporlar"><i class="bi bi-bar-chart-line"></i><span>Raporlar</span></a>
