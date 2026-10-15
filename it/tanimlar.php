@@ -7,7 +7,9 @@
  *  • Üretici/Model/Tedarikçi/Şirket → `it_tanimlar` (tur bazlı). Cihaz kartındaki alanlar serbest METİN
  *    kalır; bu liste formdaki öneri (datalist) kaynağıdır — eski kayıtlar bozulmaz, "kullanım" sütunu
  *    tanımın kaç cihazda geçtiğini gösterir.
- *  • Kategoriler / Durumlar → sistem sabiti (IT_KATEGORI / IT_DURUM): eklenmez, sayımıyla listelenir.
+ *  • Kategoriler → sistem sabiti (IT_KATEGORI) + kullanıcının ekledikleri (it_tanimlar tur='kategori'):
+ *    sistem kategorileri yalnız sayımıyla listelenir; eklenenler yeniden adlandırılır, grubu değişir,
+ *    kullanılmıyorsa silinir. Durumlar → sistem sabiti (IT_DURUM).
  *  • Personel → kişi tanımları; tam ekran personel.php (buradan özet + hızlı erişim).
  * Yazma işlemleri `yetki_var('duzenle')` ister; silme, bağlı kayıt varsa engellenir (pasife alınır).
  */
@@ -111,6 +113,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdoIt->prepare("INSERT INTO it_tanimlar (" . implode(',', array_keys($v)) . ") VALUES (" . implode(',', array_fill(0, count($v), '?')) . ")")->execute(array_values($v));
                 flash('success', 'Tanım eklendi.');
             }
+        } elseif ($islem === 'kategori_kaydet') {
+            $anahtar = (string)($_POST['anahtar'] ?? '');
+            $ad = (string)($_POST['ad'] ?? ''); $grup = (string)($_POST['grup'] ?? 'diger');
+            if ($anahtar !== '') {
+                it_kategori_guncelle($pdoIt, $anahtar, $ad, $grup);
+                audit_log($pdoIt, 'it_tanimlar', 0, 'UPDATE', null, ['tur' => 'kategori', 'kod' => $anahtar, 'ad' => $ad, 'grup' => $grup], current_user_id());
+                flash('success', 'Kategori güncellendi.');
+            } else {
+                $r = it_kategori_ekle($pdoIt, $ad, $grup);
+                if (!$r['yeni']) throw new RuntimeException('Bu kategori zaten var: ' . $r['ad']);
+                audit_log($pdoIt, 'it_tanimlar', 0, 'INSERT', null, ['tur' => 'kategori', 'kod' => $r['anahtar'], 'ad' => $r['ad'], 'grup' => $r['grup']], current_user_id());
+                flash('success', 'Kategori eklendi: ' . $r['ad']);
+            }
+        } elseif ($islem === 'kategori_sil') {
+            $anahtar = (string)($_POST['anahtar'] ?? '');
+            $ad = it_kategoriAd($anahtar);
+            it_kategori_sil($pdoIt, $anahtar);
+            audit_log($pdoIt, 'it_tanimlar', 0, 'DELETE', ['tur' => 'kategori', 'kod' => $anahtar, 'ad' => $ad], null, current_user_id());
+            flash('success', 'Kategori silindi: ' . $ad);
         } elseif ($islem === 'tanim_sil') {
             $pdoIt->prepare("DELETE FROM it_tanimlar WHERE id=?")->execute([(int)($_POST['id'] ?? 0)]);
             flash('success', 'Tanım silindi. (Cihaz kayıtlarındaki metin değişmez.)');
@@ -286,14 +307,37 @@ require_once __DIR__ . '/../includes/header.php';
   <?php endif; ?>
 </div>
 
-<?php elseif ($t === 'kategori' || $t === 'durum'): $sistem = $t === 'kategori' ? IT_KATEGORI : IT_DURUM; $kolon = $t === 'kategori' ? 'kategori' : 'durum';
-      $say = []; try { foreach ($pdoIt->query("SELECT `$kolon` d, COUNT(*) n FROM it_cihazlar GROUP BY `$kolon`") as $r) $say[(string)$r['d']] = (int)$r['n']; } catch (Throwable $e) {} ?>
-<div class="alert alert-secondary py-2 small"><i class="bi bi-lock me-1"></i><strong>Sistem tanımı:</strong> <?= $t === 'kategori' ? 'Kategoriler' : 'Durumlar' ?> uygulamanın çekirdeğine gömülüdür (ikon, renk ve iş kuralları buna bağlı) — eklenip silinmez, aşağıda kullanım sayılarıyla listelenir.</div>
+<?php elseif ($t === 'kategori' || $t === 'durum'): $sistem = $t === 'kategori' ? it_kategoriler() : IT_DURUM; $kolon = $t === 'kategori' ? 'kategori' : 'durum';
+      $say = []; try { foreach ($pdoIt->query("SELECT `$kolon` d, COUNT(*) n FROM it_cihazlar GROUP BY `$kolon`") as $r) $say[(string)$r['d']] = (int)$r['n']; } catch (Throwable $e) {}
+      $ozel = $t === 'kategori' ? it_kategori_ozel($pdoIt) : [];
+      $kd = $t === 'kategori' && isset($_GET['kat']) && isset($ozel[(string)$_GET['kat']]) ? (string)$_GET['kat'] : '';
+      // Kategoriler grup sırasıyla listelensin (eklenenler kendi grubunun altında çıksın)
+      if ($t === 'kategori') { $__s = []; foreach (it_kategori_agaci() as $__kats) foreach ($__kats as $__k => $_) $__s[$__k] = $sistem[$__k]; $sistem = $__s; } ?>
+<?php if ($t === 'kategori'): ?>
+<div class="alert alert-secondary py-2 small"><i class="bi bi-lock me-1"></i><strong>Sistem kategorileri</strong> uygulamanın çekirdeğine gömülüdür (ikon, tipe özel alanlar ve içe aktarma kuralları onlara bağlı) — değiştirilmez.
+  Listede olmayan bir cihaz tipi aşağıdan ya da cihaz formundaki <i class="bi bi-plus-lg"></i> düğmesinden eklenir; <span class="badge bg-info-subtle text-info-emphasis">eklenen</span> kategoriler yeniden adlandırılır, grubu değişir, cihazda kullanılmıyorsa silinir.</div>
+<?php if ($yazabilir): ?>
+<form method="post" class="card border-0 shadow-sm mb-3">
+  <input type="hidden" name="islem" value="kategori_kaydet"><input type="hidden" name="t" value="kategori"><input type="hidden" name="anahtar" value="<?= h($kd) ?>">
+  <div class="card-body py-3">
+    <div class="text-uppercase text-muted small fw-semibold mb-2" style="letter-spacing:.06em">Kategoriler — <?= $kd ? 'DÜZENLE' : 'EKLE' ?></div>
+    <div class="row g-2 align-items-end">
+      <div class="col-md-5"><input name="ad" class="form-control" placeholder="Kategori adı (ör. Akıllı Saat)" required maxlength="60" value="<?= h($kd ? $ozel[$kd][0] : '') ?>"></div>
+      <div class="col-md-4"><select name="grup" class="form-select"><?php foreach (IT_GRUP as $g => [$gAd]): ?><option value="<?= h($g) ?>" <?= ($kd ? $ozel[$kd][2] : 'diger') === $g ? 'selected' : '' ?>><?= h($gAd) ?></option><?php endforeach; ?></select></div>
+      <div class="col-md-2 d-grid"><button class="btn btn-primary"><?= $kd ? 'Kaydet' : 'Ekle' ?></button></div>
+      <?php if ($kd): ?><div class="col-md-1"><a href="tanimlar.php?t=kategori" class="small">Vazgeç</a></div><?php endif; ?>
+    </div>
+  </div>
+</form>
+<?php endif; ?>
+<?php else: ?>
+<div class="alert alert-secondary py-2 small"><i class="bi bi-lock me-1"></i><strong>Sistem tanımı:</strong> Durumlar uygulamanın çekirdeğine gömülüdür (ikon, renk ve iş kuralları buna bağlı) — eklenip silinmez, aşağıda kullanım sayılarıyla listelenir.</div>
+<?php endif; ?>
 <div class="card border-0 shadow-sm"><div class="table-responsive"><table class="table table-hover align-middle mb-0" style="font-size:.88rem">
   <thead class="table-light"><tr><th>Ad</th><th>Anahtar</th><th class="text-end">Cihaz</th><th></th></tr></thead>
   <tbody>
   <?php $sonGrup = null;
-        foreach ($sistem as $k => $bilgi): $ad = $bilgi[0]; $n = $say[$k] ?? 0;
+        foreach ($sistem as $k => $bilgi): $ad = $bilgi[0]; $n = $say[$k] ?? 0; $eklenen = isset($ozel[$k]);
         // Kategoriler grup başlıkları altında listelenir (BT / Ağ / İletişim / Güvenlik…)
         if ($t === 'kategori' && ($g = it_grup($k)) !== $sonGrup): $sonGrup = $g; ?>
     <tr class="table-light"><td colspan="4" class="fw-semibold small py-1">
@@ -301,10 +345,21 @@ require_once __DIR__ . '/../includes/header.php';
         <a href="varliklar.php?grup=<?= h($g) ?>" class="ms-2 small text-decoration-none">merkezi izlemede aç →</a></td></tr>
   <?php endif; ?>
     <tr>
-      <td><i class="bi <?= h($t === 'kategori' ? ($bilgi[1] ?? 'bi-box') : ($bilgi[2] ?? 'bi-circle')) ?> me-2 text-<?= $t === 'durum' ? h($bilgi[1] ?? 'secondary') : 'primary' ?>"></i><strong><?= h($ad) ?></strong></td>
+      <td><i class="bi <?= h($t === 'kategori' ? ($bilgi[1] ?? 'bi-box') : ($bilgi[2] ?? 'bi-circle')) ?> me-2 text-<?= $t === 'durum' ? h($bilgi[1] ?? 'secondary') : 'primary' ?>"></i><strong><?= h($ad) ?></strong><?= $eklenen ? ' <span class="badge bg-info-subtle text-info-emphasis">eklenen</span>' : '' ?></td>
       <td class="font-monospace text-muted"><?= h($k) ?></td>
       <td class="text-end"><?= $n ? $f0($n) : '<span class="text-muted">—</span>' ?></td>
-      <td class="text-end"><a href="cihazlar.php?<?= $kolon ?>=<?= urlencode($k) ?>" class="btn btn-link btn-sm p-0">Cihazları gör</a></td>
+      <td class="text-end text-nowrap">
+        <a href="cihazlar.php?<?= $kolon ?>=<?= urlencode($k) ?>" class="btn btn-link btn-sm p-0">Cihazları gör</a>
+        <?php if ($eklenen && $yazabilir): ?>
+          <a href="tanimlar.php?t=kategori&kat=<?= urlencode($k) ?>" class="btn btn-link btn-sm p-0 ms-2" title="Düzenle"><i class="bi bi-pencil"></i></a>
+          <?php if (!$n): ?>
+          <form method="post" class="d-inline" onsubmit="return confirm('<?= h(addslashes($ad)) ?> kategorisi silinsin mi?')">
+            <input type="hidden" name="islem" value="kategori_sil"><input type="hidden" name="t" value="kategori"><input type="hidden" name="anahtar" value="<?= h($k) ?>">
+            <button class="btn btn-link btn-sm p-0 ms-2 text-danger" title="Sil"><i class="bi bi-trash"></i></button>
+          </form>
+          <?php else: ?><span class="ms-2 text-muted" title="Cihazda kullanılıyor — silinemez"><i class="bi bi-trash"></i></span><?php endif; ?>
+        <?php endif; ?>
+      </td>
     </tr>
   <?php endforeach; ?>
   </tbody>

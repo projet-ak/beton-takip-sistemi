@@ -1015,6 +1015,38 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   `secici_test.html`) · gerçek cihaz formu **18** (17 menü dönüştü, `required` korunuyor, marka araması +
   `.dolu` imi, kategori seçimi alan gizleme JS'ini tetikliyor, `FormData` seçilen değerleri taşıyor) ·
   personel formu **6**; iki form uyarısız render, inline JS temiz.
+  **KATEGORİ "+" — KULLANICI KATEGORİLERİ (2026-10-15, kullanıcı: "yeni cihaz kısmında kategori ekleme
+  kısmına + butonu ekleyelim, marka ve modelde olduğu gibi")** — kategoriler o güne dek yalnız koda gömülü
+  `IT_KATEGORI` sabitiydi; listede olmayan bir cihaz tipi (akıllı saat, telsiz, jeneratör…) "Diğer"e düşüyordu.
+  • **Sistem kategorileri sabitte KALIR** (ikon · `IT_EK_ALAN` tipe özel alanlar · `cim_kategori` kelime
+  haritası onlara bağlı); kullanıcının ekledikleri **`it_tanimlar`**'da tutulur: `tur='kategori'` ·
+  `kod` = anahtar · `ad` · **`aciklama` = grup anahtarı** (IT_GRUP). İkon = grubun ikonu.
+  • ⚠⚠ **Kategori okuyan HER YER `it_kategoriler()` kullanır** (= `IT_KATEGORI + it_kategori_ozel()`), doğrudan
+  `IT_KATEGORI[...]` OKUNMAZ — aksi halde eklenen kategori o ekranda anahtarıyla (`x_el_telsizi`) görünür ya da
+  doğrulamadan geçmez. Yardımcılar: `it_kategori_ozel($pdo=null,$tazele)` (istek başına bir okuma; PDO verilmezse
+  sayfanın `$GLOBALS['pdoIt']`'i — `it_kategoriAd` gibi PDO almayanlar da tanısın) · `it_kategori_var()` (form/süzgeç
+  doğrulaması) · `it_kategori_ekle($pdo,$ad,$grup)` · `it_kategori_guncelle` · `it_kategori_sil`. `it_grup`,
+  `it_grup_kategorileri`, `it_kategori_agaci`, `it_kategoriAd/Ikon`, `it_filtre`, `cim_kategori` (birebir ad
+  eşleşmesi), cihaz formu/toplu ekleme doğrulaması, cihaz listesi süzgeci ve içe aktarma raporları buna çevrildi.
+  • ⚠ **Anahtar `x_` önekli** üretilir (`it_kategori_anahtar`: Türkçe → ASCII, `kategori VARCHAR(20)`'ye sığar,
+  çakışırsa `_2`): sistem anahtarları bu önekle başlamaz, sabite ileride eklenen kategori kullanıcınınkiyle
+  ÇAKIŞAMAZ. Çakışırsa sistem kazanır (`IT_KATEGORI + …`). **Anahtar ad değişse de sabit kalır** — cihazlar anahtarı taşır.
+  • **Mükerrer engeli SİSTEM kategorileri dahil `it_norm` ile**: "monitör" ya da "mouse" yazılırsa yeni kategori
+  AÇILMAZ, mevcut seçilir (`yeni:false`).
+  • **Cihaz formu**: Kategori select'i input-group + **"+" düğmesi** (`can_edit()`) → küçük pencere: **ad + varlık
+  grubu** (grup varsayılanı o an seçili kategorinin grubu; merkezi izleme/raporlar gruba göre toplar) → uç
+  `islem=kategori_ekle` (marka "+"ından AYRI uç — kategoride ad yetmez, grup da gerekir) → seçenek grubunun
+  `optgroup[data-grup]`'una eklenir, SEÇİLİR, `change` yayılır (tipe özel alan gizleme + aranabilir menü etiketi).
+  Bootstrap yüklenemezse `prompt` yedeği (grup Diğer). ⚠ Eklenen kategoride `IT_EK_ALAN` tipe özel alanları AÇILMAZ.
+  • **Tanımlar › Kategoriler**: ekle formu (ad + grup) + eklenenlerde "eklenen" rozeti, yeniden adlandır / grup
+  değiştir (`?kat=`), **cihazda kullanılmıyorsa sil** (kullanılıyorsa çöp kutusu kapalı); sistem kategorileri
+  yalnız sayımla listelenir. Hepsi `audit_log`'lu.
+  Test (scratchpad): `kat_test.php` **36 sağlama** (anahtar üretimi · 20 karakter · sembollü ad · mükerrer/sistem adı ·
+  geçersiz grup · silme engeli · yeniden adlandırma çakışması · sistem anahtarına yazılmış satır sistemi ezmiyor ·
+  it_filtre · cim_kategori) · `kat_kos.php` ile uç (yeni/tekrar/boş/yetkisiz), cihaz kaydı (geçersiz anahtar → diger),
+  Tanımlar CRUD ve 11 IT sayfası uyarısız · Chromium'da kendini doğrulayan sayfa **21 sağlama** (pencere, grup
+  varsayılanı, Enter, istek gövdesi+csrf, doğru optgroup, change, menü etiketi, ek alanlar gizli, hata gösterimi,
+  eksik optgroup oluşturma, prompt yedeği, FormData).
   **SAHİPSİZ DOSYA TEMİZLİĞİ (2026-10-15, kullanıcı: "eski sürümleri silince bağlantı mı siliniyor yoksa
   dosya sunucuda mı kalıyor — yer kaplamasın")** — cevap: cihaz kartından belge silmek (`it_belge_sil`) dosyayı
   da diskten siler; **ortak dosya** (toplu tutanak, N cihaza bağlı) yalnız SON bağ koptuğunda gider; yeni sürüm
@@ -1495,7 +1527,8 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   liste formdaki **datalist önerisinin kaynağıdır** (`it_tanim_oneri` = tanımlar + cihazlarda geçen değerler birleşik)
   ve "Kullanım" sütunu tanımın kaç cihazda geçtiğini gösterir (`it_tanim_kullanim`, it_norm ile eşleşir).
   Cihaz formuna **Şirket** alanı eklendi (`it_cihazlar.sirket`, runtime ALTER) + Model alanına datalist.
-  • *Kategoriler / Durumlar* = sistem sabiti (IT_KATEGORI / IT_DURUM: ikon, renk ve iş kuralları koda bağlı) —
+  • *Kategoriler / Durumlar* = sistem sabiti (IT_KATEGORI / IT_DURUM: ikon, renk ve iş kuralları koda bağlı)
+  [⚠ 2026-10-15'ten beri Kategoriler'e kullanıcı kategorisi EKLENEBİLİR — bkz. "KATEGORİ +" bölümü] —
   eklenmez/silinmez, yalnız cihaz sayımlarıyla listelenir.
   • *Personel* sekmesi = KPI (çalışan/ayrılan/zimmeti olan) + son 10 kişi + tam listeye / yeni personele /
   Excel içe aktarmaya kısayol. ⚠ `mb_strtoupper` Türkçe 'i'yi 'I' yapar ("ÜRETICILER") — başlıklar PHP'de

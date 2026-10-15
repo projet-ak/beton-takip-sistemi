@@ -90,7 +90,7 @@ const CIM_ZIMMET_ALAN = ['zimmetli', 'personel_id', 'zimmet_tarihi', 'departman'
 const CIM_GENEL_BASLIK = ['NOT', 'NOTLAR', 'ACIKLAMA', 'ACIKLAMALAR', 'DESCRIPTION', 'REMARKS', 'COMMENT',
                           'TEKNIK OZELLIK', 'TEKNIK OZELLIKLER', 'OZELLIK', 'OZELLIKLER', 'SPECS', 'SPECIFICATION'];
 
-/** "Serı Nesne Adı" / kategori metni → IT_KATEGORI anahtarı (bulunamazsa 'diger'). */
+/** "Serı Nesne Adı" / kategori metni → kategori anahtarı (sistem + kullanıcı kategorileri; bulunamazsa 'diger'). */
 function cim_kategori(string $s): string
 {
     $n = pim_norm($s);
@@ -98,7 +98,7 @@ function cim_kategori(string $s): string
     // ⚠ ÖNCE BİREBİR: metin bir kategori ANAHTARI ya da ETİKETİ ise doğrudan o kategoridir.
     // Şablon "Kategori" sütununa etiketi yazdığından (`?sablon=mevcut`), bu olmadan geri yüklemede
     // kategori kayıyordu ("Aksesuar" hiçbir kelimeyle eşleşmeyip 'diger'e düşüyordu).
-    foreach (IT_KATEGORI as $anahtar => $t)
+    foreach (it_kategoriler() as $anahtar => $t)
         if ($n === pim_norm($anahtar) || $n === pim_norm($t[0])) return $anahtar;
     // ⚠ TAŞIYICI/KILIF sözcüğü cihazın KENDİSİ değildir: "Laptop Çantası" laptop DEĞİL aksesuardır
     // (düz sıra 'LAPTOP'ı önce yakalayıp çantayı dizüstü sayıyor, cihaz sayısını ve mali değeri şişiriyordu).
@@ -965,7 +965,7 @@ function cim_kategori_ayikla(PDO $pdo, bool $uygula = true): array
         $sonuc['kirilim'][$yeni] = ($sonuc['kirilim'][$yeni] ?? 0) + 1;
         if (count($sonuc['ornek']) < 40)
             $sonuc['ornek'][] = trim(($r['cihaz_kodu'] ?: $r['envanter_no']) . ' ' . $metin)
-                              . ' → ' . (IT_KATEGORI[$yeni][0] ?? $yeni);
+                              . ' → ' . it_kategoriAd($yeni);
     }
     return $sonuc;
 }

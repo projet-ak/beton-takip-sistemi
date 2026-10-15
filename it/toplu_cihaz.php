@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && yetki_var('giris')) {
     $kisiler = array_values(array_filter($kisiler));
     $adet = $mod === 'depo' ? max(1, (int)($_POST['adet'] ?? 1)) : count($kisiler);
 
-    if (!isset(IT_KATEGORI[$kategori]))        $hata = 'Cihaz tipi seçilmedi.';
+    if (!it_kategori_var((string)$kategori))        $hata = 'Cihaz tipi seçilmedi.';
     elseif ($ortak['ad'] === '')               $hata = 'Cihaz adı zorunlu (ör. "Kablosuz Mouse").';
     elseif ($adet < 1)                         $hata = $mod === 'depo' ? 'Adet en az 1 olmalı.' : 'En az bir personel seçin.';
     elseif ($adet > TC_AZAMI)                  $hata = 'Tek seferde en fazla ' . TC_AZAMI . ' kayıt açılabilir (' . $adet . ' istendi).';
@@ -138,7 +138,7 @@ $f0 = fn($n) => number_format((float)$n, 0, ',', '.');
 <div class="alert alert-danger py-2"><i class="bi bi-x-circle me-1"></i><?= h($hata) ?></div>
 <?php endif; ?>
 
-<?php if ($rapor): $k = IT_KATEGORI[$rapor['kategori']] ?? ['Cihaz']; ?>
+<?php if ($rapor): $k = it_kategoriler()[$rapor['kategori']] ?? ['Cihaz']; ?>
 <div class="alert alert-success">
     <div class="fw-semibold"><i class="bi bi-check-circle me-1"></i>
         <?= $f0(count($rapor['acilan'])) ?> adet <?= h($k[0]) ?> envantere eklendi

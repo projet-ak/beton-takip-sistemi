@@ -48,6 +48,24 @@ if (($_POST['islem'] ?? '') === 'tanim_ekle') {
     exit;
 }
 
+/* ── "Kategori listede yoksa oluştur" ucu (2026-10-15) ───────────────────────
+   Marka/model "+" düğmesinin kategori karşılığı. Kategoride ad YETMEZ, bir de GRUP gerekir
+   (BT · Ağ · Güvenlik… — merkezi izleme ve raporlar gruba göre toplar), bu yüzden ayrı uç.
+   Mükerrer engeli `it_kategori_ekle` içinde SİSTEM kategorileri dahil `it_norm` ile:
+   "monitör" yazılırsa yeni kategori açılmaz, mevcut "Monitör" seçilir. */
+if (($_POST['islem'] ?? '') === 'kategori_ekle') {
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        if (!yetki_var('duzenle') && !yetki_var('giris')) throw new RuntimeException('Kategori ekleme yetkiniz yok.');
+        $r = it_kategori_ekle($pdoIt, (string)($_POST['ad'] ?? ''), (string)($_POST['grup'] ?? 'diger'));
+        if ($r['yeni']) audit_log($pdoIt, 'it_tanimlar', 0, 'INSERT', null, ['tur' => 'kategori', 'kod' => $r['anahtar'], 'ad' => $r['ad'], 'grup' => $r['grup']], current_user_id());
+        echo json_encode(['ok' => true, 'grupAd' => IT_GRUP[$r['grup']][0] ?? $r['grup']] + $r, JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        echo json_encode(['ok' => false, 'hata' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
 /* ── Personel arama ucu (zimmet kutusundaki yazarak seçme) ────────────────────
    Süzme it_personel_ara() ile PHP'de yapılır — SQL LIKE'ta Türkçe 'İ' ile 'i' eşleşmediğinden
    "ismail" yazınca "İSMAİL" sessizce düşüyordu; kelime sırası da serbest ("ince fatih").
@@ -103,7 +121,7 @@ $v = $c ?: ['envanter_no'=>'', 'kategori'=>'laptop', 'ad'=>'', 'marka'=>'', 'mod
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $al = fn($k, $max = 255) => mb_substr(trim((string)($_POST[$k] ?? '')), 0, $max) ?: null;
     $y = [
-        'kategori'        => isset(IT_KATEGORI[$_POST['kategori'] ?? '']) ? $_POST['kategori'] : 'diger',
+        'kategori'        => it_kategori_var((string)($_POST['kategori'] ?? '')) ? $_POST['kategori'] : 'diger',
         'ad'              => $al('ad', 150),
         'marka'           => $al('marka', 80),
         'sirket'          => $al('sirket', 120),
@@ -316,16 +334,22 @@ if (!empty($v['personel_id'])) {
   <div class="card-body">
     <div class="row g-3">
       <div class="col-md-3">
-        <label class="form-label">Kategori <span class="text-danger">*</span></label>
+        <label class="form-label" for="kategori">Kategori <span class="text-danger">*</span></label>
+        <div class="input-group">
         <select name="kategori" id="kategori" class="form-select" required data-ara>
           <?php foreach (it_kategori_agaci() as $__g => $__kats): ?>
-          <optgroup label="<?= h(IT_GRUP[$__g][0] ?? $__g) ?>">
+          <optgroup label="<?= h(IT_GRUP[$__g][0] ?? $__g) ?>" data-grup="<?= h($__g) ?>">
             <?php foreach ($__kats as $k => $ad): ?>
-            <option value="<?= $k ?>" <?= ($v['kategori'] ?? '') === $k ? 'selected' : '' ?>><?= h($ad) ?></option>
+            <option value="<?= h($k) ?>" <?= ($v['kategori'] ?? '') === $k ? 'selected' : '' ?>><?= h($ad) ?></option>
             <?php endforeach; ?>
           </optgroup>
           <?php endforeach; ?>
         </select>
+        <?php if (can_edit()): ?>
+        <button type="button" class="btn btn-outline-secondary" id="kategoriEkle" title="Kategori listesinde yoksa ekle"><i class="bi bi-plus-lg"></i></button>
+        <?php endif; ?>
+        </div>
+        <div class="form-text small" id="kategori_not"></div>
       </div>
       <div class="col-md-5">
         <label class="form-label">Cihaz Adı / Tanım <span class="text-danger">*</span></label>
@@ -501,6 +525,38 @@ if (!empty($v['personel_id'])) {
   </div>
 </form>
 
+<?php if (can_edit()): ?>
+<?php /* Yeni kategori penceresi — ana formun DIŞINDA (iç içe form olmaz); fetch ile gönderilir. */ ?>
+<div class="modal fade" id="kategoriModal" tabindex="-1" aria-labelledby="kategoriModalBaslik" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="kategoriModalBaslik"><i class="bi bi-grid me-2 text-primary"></i>Yeni Kategori</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Kapat"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label" for="ykAd">Kategori adı <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="ykAd" maxlength="60" placeholder="ör. Akıllı Saat, Barkod Okuyucu, Jeneratör" autocomplete="off">
+        </div>
+        <div>
+          <label class="form-label" for="ykGrup">Varlık grubu</label>
+          <select class="form-select" id="ykGrup">
+            <?php foreach (IT_GRUP as $__g => [$__gAd]): ?><option value="<?= h($__g) ?>"><?= h($__gAd) ?></option><?php endforeach; ?>
+          </select>
+          <div class="form-text">Merkezi izleme ve raporlar kategorileri bu gruba göre toplar.</div>
+        </div>
+        <div class="alert alert-danger py-2 small mt-3 mb-0 d-none" id="ykHata"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Vazgeç</button>
+        <button type="button" class="btn btn-primary" id="ykKaydet"><i class="bi bi-plus-lg me-1"></i>Ekle ve seç</button>
+      </div>
+    </div>
+  </div>
+</div>
+<?php endif; ?>
+
 <?php /* Uzun açılır menülere arama kutusu: select KALIR (form gönderimi, required ve
          `sel.value` okuyan mevcut JS bozulmaz), üstüne aranabilir panel çizilir. */ ?>
 <script src="<?= $rootPath ?>assets/js/secici.js"></script>
@@ -658,6 +714,73 @@ if (!empty($v['personel_id'])) {
                     : '<span class="text-muted">Listede zaten vardı, seçildi.</span>';
             })
             .catch(function () { d.disabled = false; alert('Eklenemedi (bağlantı hatası).'); });
+    });
+})();
+
+/* ── Kategori "+" — listede yoksa oluştur (ad + varlık grubu) ─────────────────
+   Uç `islem=kategori_ekle`. Dönen anahtar, grubunun optgroup'una eklenip SEÇİLİR ve `change`
+   yayılır: kategoriye bağlı alan gösterme/gizleme ve aranabilir menünün etiketi bu olaydan
+   yenilenir. Grup varsayılanı o an seçili kategorinin grubudur (çoğu ekleme aynı aileden). */
+(function () {
+    var btn = document.getElementById('kategoriEkle'), sel = document.getElementById('kategori');
+    if (!btn || !sel) return;
+    var TOKEN = <?= json_encode(csrf_token()) ?>;
+    var kutu = document.getElementById('kategoriModal'), ad = document.getElementById('ykAd'),
+        grup = document.getElementById('ykGrup'), hata = document.getElementById('ykHata'),
+        kaydet = document.getElementById('ykKaydet'), not = document.getElementById('kategori_not');
+    var modal = null;
+    function kacir(x) { return String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+    function seciliGrup() {
+        var o = sel.options[sel.selectedIndex];
+        var og = o && o.parentNode && o.parentNode.tagName === 'OPTGROUP' ? o.parentNode : null;
+        return og ? og.getAttribute('data-grup') : 'diger';
+    }
+    function gonder(adMetni, grupKodu) {
+        var g = new FormData();
+        g.append('islem', 'kategori_ekle'); g.append('ad', adMetni); g.append('grup', grupKodu); g.append('csrf', TOKEN);
+        return fetch('cihaz_form.php', { method: 'POST', body: g, headers: { 'X-Requested-With': 'fetch' } })
+            .then(function (r) { return r.json(); });
+    }
+    function uygula(j) {
+        var o = null;
+        for (var i = 0; i < sel.options.length; i++) if (sel.options[i].value === j.anahtar) { o = sel.options[i]; break; }
+        if (!o) {
+            var og = sel.querySelector('optgroup[data-grup="' + j.grup + '"]');
+            if (!og) { og = document.createElement('optgroup'); og.label = j.grupAd; og.setAttribute('data-grup', j.grup); sel.appendChild(og); }
+            o = new Option(j.ad, j.anahtar);
+            og.appendChild(o);
+        }
+        sel.value = j.anahtar;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        if (not) not.innerHTML = j.yeni
+            ? '<span class="text-success"><i class="bi bi-check-lg me-1"></i><strong>' + kacir(j.ad) + '</strong> kategorisi eklendi (' + kacir(j.grupAd) + ').</span>'
+            : '<span class="text-muted">"' + kacir(j.ad) + '" listede zaten vardı, seçildi.</span>';
+    }
+    btn.addEventListener('click', function () {
+        // Bootstrap yüklenemediyse (CDN kapalı) düz soru kutusuyla devam: grup "Diğer" olur
+        if (!kutu || !window.bootstrap || !window.bootstrap.Modal) {
+            var a = (window.prompt('Eklenecek kategori adı:', '') || '').trim();
+            if (!a) return;
+            gonder(a, 'diger').then(function (j) { if (!j || !j.ok) { alert(j && j.hata ? j.hata : 'Eklenemedi.'); return; } uygula(j); })
+                .catch(function () { alert('Eklenemedi (bağlantı hatası).'); });
+            return;
+        }
+        modal = modal || new window.bootstrap.Modal(kutu);
+        ad.value = ''; hata.classList.add('d-none'); grup.value = seciliGrup() || 'diger';
+        modal.show();
+    });
+    if (kutu) kutu.addEventListener('shown.bs.modal', function () { ad.focus(); });
+    if (ad) ad.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); kaydet.click(); } });
+    if (kaydet) kaydet.addEventListener('click', function () {
+        var a = ad.value.trim();
+        if (!a) { hata.textContent = 'Kategori adı yazın.'; hata.classList.remove('d-none'); ad.focus(); return; }
+        kaydet.disabled = true;
+        gonder(a, grup.value).then(function (j) {
+            kaydet.disabled = false;
+            if (!j || !j.ok) { hata.textContent = j && j.hata ? j.hata : 'Eklenemedi.'; hata.classList.remove('d-none'); return; }
+            uygula(j);
+            if (modal) modal.hide();
+        }).catch(function () { kaydet.disabled = false; hata.textContent = 'Eklenemedi (bağlantı hatası).'; hata.classList.remove('d-none'); });
     });
 })();
 

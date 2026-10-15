@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['islem'] ?? '') === 'katego
         audit_log($pdoIt, 'it_cihazlar', 0, 'UPDATE', null, ['kategori_ayikla' => $son['kirilim']], current_user_id());
         if ($son['tasinan']) {
             $k = [];
-            foreach ($son['kirilim'] as $ka => $n) $k[] = (IT_KATEGORI[$ka][0] ?? $ka) . ': ' . $n;
+            foreach ($son['kirilim'] as $ka => $n) $k[] = it_kategoriAd((string)$ka) . ': ' . $n;
             flash('success', $son['tasinan'] . ' kayıt cihaz tipine göre ayrıldı — ' . implode(' · ', $k) . '.');
         } else {
             flash('info', 'Ayıklanacak kayıt bulunamadı — "Aksesuar" ve "Diğer" altındaki adlar klavye/mouse/kulaklık/USB bellek/taşınabilir diske benzemiyor.');
@@ -365,7 +365,7 @@ require_once __DIR__ . '/../includes/header.php';
         <input name="q" class="form-control form-control-sm" value="<?= h($etkin['q'] ?? '') ?>" placeholder="envanter no, ad, seri, kişi, IP…"></div>
       <div class="col-md-2"><label class="form-label small mb-0">Kategori</label>
         <select name="kategori" class="form-select form-select-sm"><option value="">Tümü</option>
-          <?php foreach (IT_KATEGORI as $k => [$ad]): ?><option value="<?= $k ?>" <?= ($etkin['kategori'] ?? '') === $k ? 'selected' : '' ?>><?= h($ad) ?></option><?php endforeach; ?></select></div>
+          <?php foreach (it_kategoriler() as $k => [$ad]): ?><option value="<?= $k ?>" <?= ($etkin['kategori'] ?? '') === $k ? 'selected' : '' ?>><?= h($ad) ?></option><?php endforeach; ?></select></div>
       <div class="col-md-2"><label class="form-label small mb-0">Durum</label>
         <select name="durum" class="form-select form-select-sm"><option value="">Hurda hariç tümü</option>
           <?php foreach (IT_DURUM as $k => [$ad]): ?><option value="<?= $k ?>" <?= ($etkin['durum'] ?? '') === $k ? 'selected' : '' ?>><?= h($ad) ?></option><?php endforeach; ?>

@@ -33,7 +33,7 @@ function cim_sablon_satiri(PDO $pdo, array $r): array
     return [
         ['v'=>(string)($r['envanter_no'] ?? '')], ['v'=>(string)($r['cihaz_kodu'] ?? '')],
         ['v'=>(string)($r['varlik_kodu'] ?? '')], ['v'=>(string)($r['ad'] ?? '')],
-        ['v'=>IT_KATEGORI[$r['kategori'] ?? 'diger'][0] ?? ''],
+        ['v'=>it_kategoriAd((string)($r['kategori'] ?? 'diger'))],
         ['v'=>(string)($r['marka'] ?? '')], ['v'=>(string)($r['model'] ?? '')], ['v'=>(string)($r['seri_no'] ?? '')],
         ['v'=>(string)($r['sasi_no'] ?? '')], ['v'=>(string)($r['imei'] ?? '')],
         ['v'=>IT_DURUM[$r['durum'] ?? 'depoda'][0] ?? ''],
@@ -353,7 +353,7 @@ require_once __DIR__ . '/../includes/header.php';
       <tr class="<?= ($v['varlik_kodu']==='' && $v['envanter_no']==='' && $v['seri_no']==='' && $v['ad']==='') ? 'table-danger' : '' ?>">
         <td><?= h($v['envanter_no']) ?></td><td class="text-truncate" style="max-width:130px" title="<?= h($v['varlik_kodu']) ?>"><?= h($v['varlik_kodu']) ?></td>
         <td><?= h($v['ad']) ?></td>
-        <td><span class="badge bg-light text-dark border"><i class="bi <?= h(IT_KATEGORI[$kat][1] ?? 'bi-box') ?> me-1"></i><?= h(IT_KATEGORI[$kat][0] ?? $kat) ?></span></td>
+        <td><span class="badge bg-light text-dark border"><i class="bi <?= h(it_kategoriIkon((string)$kat)) ?> me-1"></i><?= h(it_kategoriAd((string)$kat)) ?></span></td>
         <td><?= h(trim($v['marka'] . ' ' . $v['model'])) ?></td><td><?= h($v['seri_no']) ?></td>
         <td><?php if ($v['kisi'] !== ''): ?><?= $pp ? '<span class="text-success">' . h(it_personel_ad($pp)) . '</span>' : '<span class="text-warning" title="' . ($pnasil === 'coklu' ? 'aynı adlı birden çok personel' : 'personel kartı yok') . '">' . h($v['kisi']) . ' <i class="bi bi-question-circle"></i></span>' ?><?php endif; ?></td>
         <td><?php if ($v['lokasyon'] !== ''): ?><?= $lokId ? '<span class="text-success">' . h(it_lokasyon_yol($pdoIt, $lokId)) . '</span>' : '<span class="text-warning">' . h($v['lokasyon']) . ' <i class="bi bi-question-circle"></i></span>' ?><?php endif; ?></td>
@@ -428,7 +428,7 @@ require_once __DIR__ . '/../includes/header.php';
 <?php if ($rap['yeni']): ?>
 <details class="card border-0 shadow-sm mb-3" <?= $nY <= 30 ? 'open' : '' ?>><summary class="card-header bg-white fw-semibold small text-success">Yeni eklenen cihazlar (<?= $nY ?>)</summary>
 <div class="table-responsive"><table class="table table-sm mb-0" style="font-size:.82rem"><thead class="table-light"><tr><th>Envanter no</th><th>Cihaz</th><th>Kategori</th><th>Marka / Model</th><th>Zimmetli</th><th>Lokasyon</th></tr></thead><tbody>
-<?php foreach ($rap['yeni'] as $y): ?><tr><td><a href="cihaz_detay.php?id=<?= (int)$y['id'] ?>"><?= h($y['env']) ?></a></td><td><?= h($y['ad']) ?></td><td><?= h(IT_KATEGORI[$y['kategori']][0] ?? $y['kategori']) ?></td><td><?= h($y['marka']) ?></td><td><?= h((string)$y['kisi']) ?></td><td><?= h((string)$y['lok']) ?></td></tr><?php endforeach; ?></tbody></table></div></details>
+<?php foreach ($rap['yeni'] as $y): ?><tr><td><a href="cihaz_detay.php?id=<?= (int)$y['id'] ?>"><?= h($y['env']) ?></a></td><td><?= h($y['ad']) ?></td><td><?= h(it_kategoriAd((string)$y['kategori'])) ?></td><td><?= h($y['marka']) ?></td><td><?= h((string)$y['kisi']) ?></td><td><?= h((string)$y['lok']) ?></td></tr><?php endforeach; ?></tbody></table></div></details>
 <?php endif; ?>
 
 <?php if (!empty($rap['sadece_bos']) || !empty($rap['zimmet_koru'])): ?>

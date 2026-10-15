@@ -105,14 +105,113 @@ const IT_EK_ALAN = [
     'adet'              => ['Adet (stok)',          ['sarf','aksesuar','bilesen'], 'sayi', ''],
 ];
 
+/**
+ * **KULLANICI KATEGORİLERİ** (2026-10-15, kullanıcı: "yeni cihaz kısmında kategori ekleme kısmına
+ * + butonu ekleyelim, marka ve modelde olduğu gibi"). Sistem kategorileri `IT_KATEGORI` sabitinde
+ * kalır (ikon/ek alan/içe aktarma kuralları onlara bağlı); listede olmayan bir cihaz tipi cihaz
+ * formundaki "+" ile ya da Tanımlar › Kategoriler'den eklenir ve `it_tanimlar`'da tutulur:
+ * `tur='kategori'` · `kod` = anahtar · `ad` = görünen ad · `aciklama` = **grup anahtarı** (IT_GRUP).
+ *
+ * ⚠ Anahtarlar **`x_` önekli** üretilir: sistem anahtarları bu önekle başlamaz, ileride sabite yeni
+ * bir kategori eklense de kullanıcınınkiyle ÇAKIŞAMAZ (çakışsaydı o cihazlar sessizce sistem
+ * kategorisine geçerdi). Anahtar, ad değişse de SABİT kalır — cihazlar anahtarı taşır.
+ * ⚠ Bu kategorilere `IT_EK_ALAN`'daki tipe özel alanlar (işlemci, dahili no…) AÇILMAZ; künye yine
+ * marka/model/seri no/özellikler alanlarıyla tutulur.
+ *
+ * Liste istek başına bir kez okunur; PDO verilmezse sayfanın `$pdoIt` bağlantısı kullanılır
+ * (it_kategoriAd gibi PDO almayan yardımcılar da kullanıcı kategorilerini tanısın diye).
+ */
+function it_kategori_ozel(?PDO $pdo = null, bool $tazele = false): array
+{
+    static $liste = null;
+    if ($liste !== null && !$tazele) return $liste;
+    $pdo ??= ($GLOBALS['pdoIt'] ?? null);
+    if (!$pdo instanceof PDO) return $liste ?? [];
+    $liste = [];
+    try {
+        foreach ($pdo->query("SELECT kod, ad, aciklama FROM it_tanimlar WHERE tur='kategori' AND kod IS NOT NULL AND kod<>'' ORDER BY sira, ad") as $r) {
+            $k = (string)$r['kod'];
+            if (isset(IT_KATEGORI[$k])) continue;               // sistem anahtarı her zaman önceliklidir
+            $g = isset(IT_GRUP[(string)$r['aciklama']]) ? (string)$r['aciklama'] : 'diger';
+            $liste[$k] = [(string)$r['ad'], IT_GRUP[$g][1], $g, true];   // 4. eleman: kullanıcı tanımı
+        }
+    } catch (Throwable $e) {}   // tablo henüz kurulmamış → yalnız sistem kategorileri
+    return $liste;
+}
+
+/** Bütün kategoriler: sistem (IT_KATEGORI) + kullanıcının ekledikleri. anahtar => [ad, ikon, grup(, true)]. */
+function it_kategoriler(): array { return IT_KATEGORI + it_kategori_ozel(); }
+
+/** Anahtar geçerli bir kategori mi? (form/süzgeç doğrulaması) */
+function it_kategori_var(string $k): bool { return $k !== '' && isset(it_kategoriler()[$k]); }
+
+/** Ada bakarak yeni bir `x_` önekli, VARCHAR(20)'ye sığan, benzersiz anahtar üretir. */
+function it_kategori_anahtar(string $ad): string
+{
+    $s = strtolower(str_replace(['Ş','Ğ','Ü','Ö','Ç'], ['S','G','U','O','C'], it_norm($ad)));
+    $s = trim(preg_replace('/[^a-z0-9]+/', '_', $s), '_');
+    $kok = 'x_' . rtrim(substr($s !== '' ? $s : 'kategori', 0, 15), '_');
+    $var = it_kategoriler();
+    $k = $kok; $i = 2;
+    while (isset($var[$k])) { $ek = '_' . $i++; $k = substr($kok, 0, 20 - strlen($ek)) . $ek; }
+    return $k;
+}
+
+/**
+ * Yeni kategori ekler — "listede yoksa oluştur". ⚠ Mükerrer engeli `it_norm` ile ve SİSTEM
+ * kategorileri dahil yapılır: "monitör" yazılırsa yeni kategori AÇILMAZ, mevcut 'monitor' döner.
+ *
+ * @return array{anahtar:string, ad:string, grup:string, yeni:bool}
+ */
+function it_kategori_ekle(PDO $pdo, string $ad, string $grup = 'diger'): array
+{
+    $ad = mb_substr(trim(preg_replace('/\s+/u', ' ', $ad)), 0, 60);
+    if ($ad === '') throw new RuntimeException('Kategori adı boş olamaz.');
+    $grup = isset(IT_GRUP[$grup]) ? $grup : 'diger';
+    it_tanim_semasi_kur($pdo);
+    it_kategori_ozel($pdo, true);
+    $n = it_norm($ad);
+    foreach (it_kategoriler() as $k => $t)
+        if (it_norm((string)$t[0]) === $n || it_norm((string)$k) === $n)
+            return ['anahtar' => (string)$k, 'ad' => (string)$t[0], 'grup' => (string)($t[2] ?? 'diger'), 'yeni' => false];
+    $k = it_kategori_anahtar($ad);
+    $pdo->prepare("INSERT INTO it_tanimlar (tur, ad, kod, aciklama, sira, aktif) VALUES ('kategori',?,?,?,0,1)")->execute([$ad, $k, $grup]);
+    it_kategori_ozel($pdo, true);
+    return ['anahtar' => $k, 'ad' => $ad, 'grup' => $grup, 'yeni' => true];
+}
+
+/** Kullanıcı kategorisinin adını / grubunu değiştirir (anahtar değişmez). Sistem kategorisi değiştirilemez. */
+function it_kategori_guncelle(PDO $pdo, string $anahtar, string $ad, string $grup): void
+{
+    if (!isset(it_kategori_ozel($pdo)[$anahtar])) throw new RuntimeException('Yalnız sonradan eklenen kategoriler düzenlenebilir.');
+    $ad = mb_substr(trim(preg_replace('/\s+/u', ' ', $ad)), 0, 60);
+    if ($ad === '') throw new RuntimeException('Kategori adı boş olamaz.');
+    $grup = isset(IT_GRUP[$grup]) ? $grup : 'diger';
+    foreach (it_kategoriler() as $k => $t)
+        if ($k !== $anahtar && it_norm((string)$t[0]) === it_norm($ad)) throw new RuntimeException('Bu adda bir kategori zaten var: ' . $t[0]);
+    $pdo->prepare("UPDATE it_tanimlar SET ad=?, aciklama=? WHERE tur='kategori' AND kod=?")->execute([$ad, $grup, $anahtar]);
+    it_kategori_ozel($pdo, true);
+}
+
+/** Kullanıcı kategorisini siler — ⚠ cihazda kullanılıyorsa SİLİNMEZ (kayıtlar adsız anahtarla kalırdı). */
+function it_kategori_sil(PDO $pdo, string $anahtar): void
+{
+    if (!isset(it_kategori_ozel($pdo)[$anahtar])) throw new RuntimeException('Sistem kategorileri silinemez.');
+    $st = $pdo->prepare("SELECT COUNT(*) FROM it_cihazlar WHERE kategori=?");
+    $st->execute([$anahtar]);
+    if (($n = (int)$st->fetchColumn()) > 0) throw new RuntimeException("Bu kategoride $n cihaz kayıtlı — önce cihazları başka kategoriye taşıyın.");
+    $pdo->prepare("DELETE FROM it_tanimlar WHERE tur='kategori' AND kod=?")->execute([$anahtar]);
+    it_kategori_ozel($pdo, true);
+}
+
 /** Bir kategorinin grubu. */
-function it_grup(string $kat): string { return IT_KATEGORI[$kat][2] ?? 'diger'; }
+function it_grup(string $kat): string { return it_kategoriler()[$kat][2] ?? 'diger'; }
 
 /** Bir gruptaki kategori anahtarları. */
 function it_grup_kategorileri(string $grup): array
 {
     $k = [];
-    foreach (IT_KATEGORI as $anahtar => $t) if (($t[2] ?? 'diger') === $grup) $k[] = $anahtar;
+    foreach (it_kategoriler() as $anahtar => $t) if (($t[2] ?? 'diger') === $grup) $k[] = $anahtar;
     return $k;
 }
 
@@ -121,7 +220,7 @@ function it_kategori_agaci(): array
 {
     $a = [];
     foreach (IT_GRUP as $g => $_) $a[$g] = [];
-    foreach (IT_KATEGORI as $anahtar => $t) $a[$t[2] ?? 'diger'][$anahtar] = $t[0];
+    foreach (it_kategoriler() as $anahtar => $t) $a[$t[2] ?? 'diger'][$anahtar] = $t[0];
     return array_filter($a);
 }
 
@@ -296,8 +395,8 @@ function it_envanter_no(PDO $pdo): string
     return 'IT-' . str_pad((string)($max + 1), 5, '0', STR_PAD_LEFT);
 }
 
-function it_kategoriAd(string $k): string { return IT_KATEGORI[$k][0] ?? $k; }
-function it_kategoriIkon(string $k): string { return IT_KATEGORI[$k][1] ?? 'bi-box'; }
+function it_kategoriAd(string $k): string { return it_kategoriler()[$k][0] ?? $k; }
+function it_kategoriIkon(string $k): string { return it_kategoriler()[$k][1] ?? 'bi-box'; }
 function it_durumAd(string $d): string { return IT_DURUM[$d][0] ?? $d; }
 function it_durumRenk(string $d): string { return IT_DURUM[$d][1] ?? 'secondary'; }
 function it_durumBadge(string $d): string
@@ -360,7 +459,7 @@ function it_filtre(array $g, ?PDO $pdo = null): array
         if ($katlar) { $w[] = 'kategori IN (' . implode(',', array_fill(0, count($katlar), '?')) . ')'; foreach ($katlar as $kk) $p[] = $kk; }
         $etkin['grup'] = $g['grup'];
     }
-    if (!empty($g['kategori']) && isset(IT_KATEGORI[$g['kategori']])) { $w[] = 'kategori=?'; $p[] = $g['kategori']; $etkin['kategori'] = $g['kategori']; }
+    if (!empty($g['kategori']) && it_kategori_var((string)$g['kategori'])) { $w[] = 'kategori=?'; $p[] = $g['kategori']; $etkin['kategori'] = $g['kategori']; }
     $__d = (string)($g['durum'] ?? '');
     if ($__d !== '' && isset(IT_DURUM[$__d]))        { $w[] = 'durum=?'; $p[] = $__d; $etkin['durum'] = $__d; }
     elseif ($__d === 'hepsi')                        { $etkin['durum'] = 'hepsi'; }          // süzgeç yok: düşenler de listelenir
