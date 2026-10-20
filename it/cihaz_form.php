@@ -181,6 +181,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!yetki_var('duzenle') || (trim((string)($_POST['yonetim_sifre'] ?? '')) === '' && $duzenleme && isset($gorunen['yonetim_sifre'])))
             $y['yonetim_sifre'] = $c['yonetim_sifre'] ?? null;
     }
+    // Çok hesaplı cihazlar (NVR): 5'e kadar kullanıcı adı · parola · açıklama (IT_HESAP_KAT).
+    // Parolalar yönetim şifresiyle aynı kurala tabidir: yalnız "değiştirme" yetkisi yazar; yetkisiz
+    // kullanıcının kaydı mevcut hesapları DEĞİŞTİRMEZ. 1. satır eski tekli alanlara da yazılır
+    // (yonetim_kullanici / yonetim_sifre) — liste, arama ve eski ekranlar oradan okumaya devam eder.
+    if ($__hAz = IT_HESAP_KAT[$y['kategori']] ?? 0) {
+        if (yetki_var('duzenle')) [$y['hesaplar'], $y['yonetim_kullanici'], $y['yonetim_sifre']] = it_hesap_coz($_POST, $__hAz);
+        else foreach (['hesaplar', 'yonetim_kullanici', 'yonetim_sifre'] as $__hk) $y[$__hk] = $c[$__hk] ?? null;
+    } else {
+        $y['hesaplar'] = null;   // kategori değiştiyse hesap tablosu hayalet veri olarak kalmasın
+    }
     // Serbest "Özellikler" metni boşsa donanım künyesinden özet üretilir (liste/Excel/tutanak için)
     if (!$y['ozellikler']) { $ozet = it_ozellik_ozet($y); if ($ozet !== '') $y['ozellikler'] = $ozet; }
     it_cihaz_bag_esitle($pdoIt, $y);   // personel seçildiyse zimmetli/departman, lokasyon seçildiyse yol metni dolar
@@ -501,11 +511,40 @@ if (!empty($v['personel_id'])) {
         <?php elseif ($__eTip === 'sayi'): ?>
           <input type="number" min="0" name="<?= h($__ea) ?>" class="form-control" value="<?= $tv($__ea) ?>">
         <?php else: ?>
-          <input name="<?= h($__ea) ?>" class="form-control<?= in_array($__ea, ['imei','dahili_no','telefon_no'], true) ? ' font-monospace' : '' ?>" value="<?= $tv($__ea) ?>" maxlength="250" placeholder="<?= h($__eIp) ?>">
+          <input name="<?= h($__ea) ?>" class="form-control<?= in_array($__ea, ['imei','dahili_no','telefon_no','dis_ip','yonetim_kullanici'], true) ? ' font-monospace' : '' ?>" value="<?= $tv($__ea) ?>" maxlength="250" placeholder="<?= h($__eIp) ?>">
         <?php endif; ?>
         <?php if ($__eIp && $__eTip !== 'text'): ?><div class="form-text"><?= h($__eIp) ?></div><?php endif; ?>
       </div>
       <?php endforeach; ?>
+
+      <?php /* NVR KULLANICI HESAPLARI — 5 satır; kullanıcı adı boş bırakılan satır silinir.
+                Yalnız "değiştirme" yetkisi olan görür (parola içerir); diğerlerinde blok hiç çizilmez
+                ve kayıt mevcut hesaplara dokunmaz. */
+      if (yetki_var('duzenle')): $__hl = it_hesaplar($v); ?>
+      <div class="col-12 ekalan ek-hesaplar" data-kat="<?= h(implode(',', array_keys(IT_HESAP_KAT))) ?>">
+        <label class="form-label mb-1"><i class="bi bi-person-lock me-1"></i>Cihaz Kullanıcı Hesapları
+          <span class="text-muted small fw-normal">— en fazla <?= (int)max(IT_HESAP_KAT) ?> hesap · kullanıcı adı boş bırakılan satır silinir · parolalar yalnız değiştirme yetkisi olanlara görünür</span></label>
+        <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+          <thead class="table-light"><tr><th style="width:36px">#</th><th>Kullanıcı Adı</th><th>Parola</th><th>Açıklama / Yetki</th></tr></thead>
+          <tbody>
+          <?php for ($__i = 0; $__i < max(IT_HESAP_KAT); $__i++): $__h = $__hl[$__i] ?? []; ?>
+            <tr>
+              <td class="text-muted small"><?= $__i + 1 ?></td>
+              <td><input name="hesap_k[]" class="form-control form-control-sm font-monospace" maxlength="60" autocomplete="off"
+                         value="<?= h((string)($__h['k'] ?? '')) ?>" placeholder="<?= $__i === 0 ? 'admin' : '' ?>"></td>
+              <td><div class="input-group input-group-sm">
+                    <input type="password" name="hesap_s[]" class="form-control font-monospace" maxlength="120" autocomplete="new-password"
+                           value="<?= h((string)($__h['s'] ?? '')) ?>">
+                    <button type="button" class="btn btn-outline-secondary hesap-goz" title="Parolayı göster / gizle" tabindex="-1"><i class="bi bi-eye"></i></button>
+                  </div></td>
+              <td><input name="hesap_n[]" class="form-control form-control-sm" maxlength="80"
+                         value="<?= h((string)($__h['n'] ?? '')) ?>" placeholder="<?= $__i === 0 ? 'yönetici · izleme · uzaktan erişim' : '' ?>"></td>
+            </tr>
+          <?php endfor; ?>
+          </tbody>
+        </table></div>
+      </div>
+      <?php endif; ?>
 
       <div class="col-12 lisans"><div class="bolum-basi"><i class="bi bi-key me-1"></i>LİSANS</div></div>
       <div class="col-md-8 lisans"><label class="form-label">Lisans Anahtarı</label><input name="lisans_anahtari" class="form-control font-monospace" value="<?= $tv('lisans_anahtari') ?>" maxlength="160"></div>
@@ -783,6 +822,17 @@ if (!empty($v['personel_id'])) {
         }).catch(function () { kaydet.disabled = false; hata.textContent = 'Eklenemedi (bağlantı hatası).'; hata.classList.remove('d-none'); });
     });
 })();
+
+/* ── Hesap tablosunda parolayı göster / gizle ─────────────────────────────── */
+document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('.hesap-goz') : null;
+    if (!b) return;
+    var inp = b.parentNode.querySelector('input');
+    if (!inp) return;
+    var ac = inp.type === 'password';
+    inp.type = ac ? 'text' : 'password';
+    b.innerHTML = ac ? '<i class="bi bi-eye-slash"></i>' : '<i class="bi bi-eye"></i>';
+});
 
 /* ── Alış tutarı × kur = TL karşılığı (canlı) ─────────────────────────────────
    Sunucuda `it_fiyat_coz()` aynı hesabı yapar; buradaki yalnız ÖN İZLEMEdir.

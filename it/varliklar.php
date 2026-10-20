@@ -239,6 +239,7 @@ require_once __DIR__ . '/../includes/header.php';
         if (!empty($r['dahili_no']))  $ag[] = '<span class="badge bg-light text-dark border">Dahili ' . h($r['dahili_no']) . '</span>';
         if (!empty($r['telefon_no'])) $ag[] = '<span class="vg-kod">' . h($r['telefon_no']) . '</span>';
         if (!empty($r['imei']))       $ag[] = '<span class="vg-kod text-muted">IMEI ' . h($r['imei']) . '</span>';
+        if (!empty($r['dis_ip']))     $ag[] = '<span class="vg-kod">Dış ' . h($r['dis_ip']) . '</span>';
         // Teknik sütunu
         $tek = [];
         foreach (['islemci','ram','ekran_karti','disk','anakart','ekran_boyutu'] as $__hk)

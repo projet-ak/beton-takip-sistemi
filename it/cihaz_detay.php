@@ -332,11 +332,37 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
                        . '</div></div>';
                     continue;
                 }
-                echo $bilgi($__eEt, $__ev, in_array($__ea, ['imei','dahili_no','telefon_no'], true));
+                if ($__ea === 'dis_ip' && ($__lk = it_ip_link((string)$__ev))) {
+                    // Dış IP tıklanınca cihazın web arayüzü yeni sekmede açılır
+                    echo '<div class="col-sm-6 col-lg-4"><div class="small text-muted">' . h($__eEt) . '</div>'
+                       . '<div class="fw-semibold font-monospace"><a href="' . h($__lk) . '" target="_blank" rel="noopener noreferrer">'
+                       . h((string)$__ev) . ' <i class="bi bi-box-arrow-up-right small"></i></a></div></div>';
+                    continue;
+                }
+                echo $bilgi($__eEt, $__ev, in_array($__ea, ['imei','dahili_no','telefon_no','yonetim_kullanici'], true));
             endforeach; ?>
             <?= $bilgi('Kaydeden', $c['olusturan']) ?>
             <?= $bilgi('Kayıt', $c['created_at'] ? date('d.m.Y H:i', strtotime($c['created_at'])) : null) ?>
         </div>
+        <?php // NVR kullanıcı hesapları — parola yalnız "değiştirme" yetkisi olana, "göster" ile açılır
+        if (isset(IT_HESAP_KAT[(string)$c['kategori']]) && ($__hl = it_hesaplar($c))): ?>
+        <div class="mt-3">
+          <div class="small text-muted fw-semibold mb-1"><i class="bi bi-person-lock me-1"></i>Cihaz Kullanıcı Hesapları (<?= count($__hl) ?>)</div>
+          <div class="table-responsive"><table class="table table-sm table-bordered align-middle mb-0" style="font-size:.86rem">
+            <thead class="table-light"><tr><th style="width:36px">#</th><th>Kullanıcı Adı</th><th>Parola</th><th>Açıklama / Yetki</th></tr></thead>
+            <tbody>
+            <?php foreach ($__hl as $__i => $__h): ?>
+              <tr><td class="text-muted"><?= $__i + 1 ?></td>
+                <td class="font-monospace"><?= h((string)$__h['k']) ?></td>
+                <td class="font-monospace"><?php if (($__h['s'] ?? '') === ''): ?><span class="text-muted">—</span>
+                  <?php elseif (yetki_var('duzenle')): ?><span class="it-sifre" data-s="<?= h((string)$__h['s']) ?>"><a href="#" class="text-decoration-none small" onclick="this.parentNode.textContent=this.parentNode.dataset.s;return false"><i class="bi bi-eye me-1"></i>göster</a></span>
+                  <?php else: ?><span class="text-muted">••••••</span><?php endif; ?></td>
+                <td><?= ($__h['n'] ?? '') !== '' ? h((string)$__h['n']) : '<span class="text-muted">—</span>' ?></td></tr>
+            <?php endforeach; ?>
+            </tbody>
+          </table></div>
+        </div>
+        <?php endif; ?>
         <?php if ($c['notlar']): ?>
         <div class="alert alert-light border mt-3 mb-0" style="white-space:pre-wrap"><?= h($c['notlar']) ?></div>
         <?php endif; ?>

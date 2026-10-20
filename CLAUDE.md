@@ -1015,6 +1015,28 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   `secici_test.html`) · gerçek cihaz formu **18** (17 menü dönüştü, `required` korunuyor, marka araması +
   `.dolu` imi, kategori seçimi alan gizleme JS'ini tetikliyor, `FormData` seçilen değerleri taşıyor) ·
   personel formu **6**; iki form uyarısız render, inline JS temiz.
+  **NVR KULLANICI HESAPLARI + DIŞ IP (2026-10-20, kullanıcı: "nvr cihazlarında cihaz kullanıcı bilgileri kısmı
+  ekleyelim, beş kullanıcı hesabı olsun: kullanıcı adı - parola - seri no - dış IP; ip kameralar için de ip adresi,
+  kullanıcı adı, parola, dış ip olsun")**
+  • **`IT_HESAP_KAT = ['nvr' => 5]`** — çok hesaplı cihaz tipleri; yeni tip = sabite satır. Yeni kolon
+  **`it_cihazlar.hesaplar`** (TEXT JSON `[{k:kullanıcı, s:parola, n:açıklama}]`, runtime ALTER). Cihaz formunda
+  NVR'de 5 satırlık **"Cihaz Kullanıcı Hesapları"** tablosu (kullanıcı adı · parola [göz düğmesiyle göster/gizle] ·
+  açıklama/yetki); **kullanıcı adı boş satır silinir**. Çekirdek `it_hesaplar($c)` (okuma) · `it_hesap_coz($post,$azami)`.
+  ⚠ NVR `yonetim_kullanici`/`yonetim_sifre` ek alan listesinden ÇIKARILDI (tablo onların yerini aldı) ama **1. satır
+  o iki kolona da yazılır** (geriye uyum); hesap tablosu boşsa eski tekli değerler 1. satır olarak okunur → mevcut
+  NVR'lerin şifresi kaybolmaz. Kategori NVR'den başka tipe dönerse `hesaplar` temizlenir.
+  • ⚠ **Parolalar yönetim şifresi kuralıyla aynı**: tablo formda yalnız `yetki_var('duzenle')` olana çizilir,
+  yetkisiz kaydı mevcut hesaplara DOKUNMAZ; cihaz kartında kullanıcı adları herkese, parola yalnız duzenle'ye
+  ("göster"), diğerlerine ••••••. Excel çıktısı / tutanak / aramaya GİRMEZ.
+  • **`dis_ip`** (IT_EK_ALAN, VARCHAR(80); `nvr` + `kamera`): WAN/statik IP, port dahil. Cihaz kartında
+  **tıklanabilir** (`it_ip_link()` yalnız `[A-Za-z0-9.-:[]]` kabul eder → `javascript:` gibi değerler düz metin
+  kalır), merkezi izlemenin Ağ sütununda "Dış …" rozeti, `it_filtre` aramasında. Kamera zaten IP adresi
+  (teknik bölüm) + kullanıcı adı + parola alanlarına sahipti; ek alan etiketleri "Yönetim Kullanıcısı/Şifresi" →
+  **"Kullanıcı Adı" / "Parola"** oldu. NVR seri no'su mevcut Seri No alanıdır. ⚠ Excel içe aktarma `dis_ip`'i okumaz.
+  Test (scratchpad): eski tekli şifre 1. satıra geliyor · 5 satırlık POST'ta boş satır atıldı, 1. satır tekli
+  kolonlara yazıldı · yetkisiz kartta parola maskeli · `javascript:` dış IP link olmadı · kategori değişince temizlendi ·
+  Chromium'da 11 sağlama (NVR'de tablo + dış IP açık / tekli alan kapalı, kamerada tersi, monitörde ikisi kapalı,
+  göz düğmesi, FormData 5 satır); 6 IT sayfası uyarısız, inline JS temiz.
   **"YERİ BELİRSİZ" DURUMU (2026-10-20, kullanıcı: "durumlar kısmına nerde olduğu belli değil seçeneğini
   ekleyelim")** — `IT_DURUM`'a **`belirsiz`** ("Yeri Belirsiz", sarı, `bi-geo-alt`): sayımda bulunamayan /
   kimde olduğu bilinmeyen cihaz. ⚠ **Kayıp DEĞİLDİR — aranıyor**: `IT_DURUM_DUSEN`'e GİRMEZ (envanterde ve mali

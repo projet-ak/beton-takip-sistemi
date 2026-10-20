@@ -97,8 +97,12 @@ const IT_EK_ALAN = [
     'kiralik_firma'     => ['Kiralanan Firma',         ['bilgisayar','laptop','monitor','yazici','sunucu','telefon','tablet','tv','ag','switch','firewall','superbox','diger'], 'text', 'cihaz kiralıksa kiralandığı firma'],
     'firmware'          => ['Firmware Sürümü',      ['firewall','switch','access_point','nvr','kamera','kartli_gecis','turnike','santral'], 'text', ''],
     'lisans_durumu'     => ['Lisans Durumu',        ['firewall','yazilim','santral','nvr'], 'text', 'ör. UTM lisansı 2027-05-01\'e kadar'],
-    'yonetim_kullanici' => ['Yönetim Kullanıcısı',  ['firewall','switch','access_point','nvr','kamera','kartli_gecis','turnike','santral'], 'text', ''],
-    'yonetim_sifre'     => ['Yönetim Şifresi',      ['firewall','switch','access_point','nvr','kamera','kartli_gecis','turnike','santral'], 'sifre', 'yalnız değiştirme yetkisi olanlara gösterilir'],
+    // ⚠ NVR bu iki alanda YOK: NVR'nin birden çok kullanıcı hesabı vardır, `hesaplar` tablosunda tutulur
+    // (IT_HESAP_KAT). Geriye uyum için hesap tablosunun 1. satırı bu iki kolona da yazılır.
+    'yonetim_kullanici' => ['Kullanıcı Adı',        ['firewall','switch','access_point','kamera','kartli_gecis','turnike','santral'], 'text', ''],
+    'yonetim_sifre'     => ['Parola',               ['firewall','switch','access_point','kamera','kartli_gecis','turnike','santral'], 'sifre', 'yalnız değiştirme yetkisi olanlara gösterilir'],
+    // Dış (WAN / statik) IP — kamera ve kayıt cihazına internetten erişilen adres (2026-10-20)
+    'dis_ip'            => ['Dış IP Adresi',        ['nvr','kamera'], 'text', 'internetten erişim · WAN / statik IP (port dahil yazılabilir)'],
     'bagli_id'          => ['Bağlı olduğu cihaz',   ['kamera','turnike','ip_telefon','access_point'], 'cihaz', 'NVR / santral / geçiş kontrol ünitesi'],
     'kapasite'          => ['Disk Kapasitesi / Port', ['nvr','sunucu','switch','harici_disk','usb_bellek'], 'text', 'ör. 4×4 TB · 48 port · 1 TB · 32 GB'],
     'kullanim_amaci'    => ['Kullanım Amacı',       ['tv','projeksiyon','kamera'], 'text', 'ör. toplantı odası · lobi bilgilendirme'],
@@ -202,6 +206,49 @@ function it_kategori_sil(PDO $pdo, string $anahtar): void
     if (($n = (int)$st->fetchColumn()) > 0) throw new RuntimeException("Bu kategoride $n cihaz kayıtlı — önce cihazları başka kategoriye taşıyın.");
     $pdo->prepare("DELETE FROM it_tanimlar WHERE tur='kategori' AND kod=?")->execute([$anahtar]);
     it_kategori_ozel($pdo, true);
+}
+
+/**
+ * **CİHAZ KULLANICI HESAPLARI** (2026-10-20, kullanıcı: "nvr cihazlarında cihaz kullanıcı bilgileri kısmı
+ * ekleyelim, beş kullanıcı hesabı olsun"). kategori => azami hesap sayısı. Bir NVR'de yönetici, izleme,
+ * uzaktan erişim… gibi birden çok hesap olur; tek "yönetim kullanıcısı" alanı yetmiyordu.
+ * ⚠ Parolalar `yonetim_sifre` ile AYNI kurala tabidir: yalnız `yetki_var('duzenle')` olan görür/yazar;
+ * Excel çıktılarına, tutanaklara ve aramaya GİRMEZ. Yeni tip için bu sabite satır eklemek yeter.
+ */
+const IT_HESAP_KAT = ['nvr' => 5];
+
+/** Cihazın hesap listesi. Hesap tablosu boşsa eski tekli `yonetim_*` alanları 1. satır sayılır. */
+function it_hesaplar(array $c): array
+{
+    $l = json_decode((string)($c['hesaplar'] ?? ''), true);
+    $l = is_array($l) ? array_values(array_filter($l, fn($h) => is_array($h) && trim((string)($h['k'] ?? '')) !== '')) : [];
+    if (!$l && trim((string)($c['yonetim_kullanici'] ?? '')) !== '')
+        $l[] = ['k' => (string)$c['yonetim_kullanici'], 's' => (string)($c['yonetim_sifre'] ?? ''), 'n' => ''];
+    return $l;
+}
+
+/**
+ * Formdan gelen hesap satırlarını çözer (hesap_k[] · hesap_s[] · hesap_n[]). Kullanıcı adı boş satır
+ * ATILIR (satırı silmenin yolu budur). Dönüş: [json|null, ilk kullanıcı, ilk parola].
+ */
+function it_hesap_coz(array $post, int $azami): array
+{
+    $k = (array)($post['hesap_k'] ?? []); $s = (array)($post['hesap_s'] ?? []); $n = (array)($post['hesap_n'] ?? []);
+    $l = [];
+    for ($i = 0; $i < $azami; $i++) {
+        $ad = mb_substr(trim((string)($k[$i] ?? '')), 0, 60);
+        if ($ad === '') continue;
+        $l[] = ['k' => $ad, 's' => mb_substr((string)($s[$i] ?? ''), 0, 120), 'n' => mb_substr(trim((string)($n[$i] ?? '')), 0, 80)];
+    }
+    return [$l ? json_encode($l, JSON_UNESCAPED_UNICODE) : null, $l[0]['k'] ?? null, ($l[0]['s'] ?? '') !== '' ? $l[0]['s'] : null];
+}
+
+/** IP/host metni tarayıcıda açılabilir mi? (yalnız harf/rakam . - : [ ] — `javascript:` vb. reddedilir) */
+function it_ip_link(?string $ip): ?string
+{
+    $ip = trim((string)$ip);
+    if ($ip === '' || !preg_match('~^[A-Za-z0-9.\-:\[\]]+$~', $ip)) return null;
+    return 'http://' . $ip;
 }
 
 /** Bir kategorinin grubu. */
@@ -499,7 +546,7 @@ function it_filtre(array $g, ?PDO $pdo = null): array
         $q = '%' . trim($g['q']) . '%';
         // Kolonların hepsi it_semasi_kur() tarafından garanti edilir (yoksa runtime ALTER ile eklenir)
         $alan = ['envanter_no','ad','marka','model','seri_no','sasi_no','zimmetli','departman','lokasyon','notlar',
-                 'ip_adresi','mac_adresi','varlik_kodu','cihaz_kodu','dahili_no','telefon_no','imei'];
+                 'ip_adresi','mac_adresi','varlik_kodu','cihaz_kodu','dahili_no','telefon_no','imei','dis_ip'];
         $sart = '(' . implode(' LIKE ? OR ', $alan) . ' LIKE ?)';
         foreach ($alan as $_) $p[] = $q;
         // KİŞİ ADIYLA ARAMA: `zimmetli` metni LIKE ile aranıyor ama (1) Türkçe 'İ' ile 'i' LIKE'ta
@@ -1376,6 +1423,9 @@ function it_ek_alan_semasi_kur(PDO $pdo): void
         'lisans_durumu'     => 'VARCHAR(120) NULL',
         'yonetim_kullanici' => 'VARCHAR(60) NULL',
         'yonetim_sifre'     => 'VARCHAR(255) NULL',
+        'dis_ip'            => 'VARCHAR(80) NULL',
+        // Çok hesaplı cihazlar (NVR): [{"k":kullanıcı,"s":parola,"n":açıklama}, …] — IT_HESAP_KAT
+        'hesaplar'          => 'TEXT NULL',
         'bagli_id'          => 'INT NULL',
         'kapasite'          => 'VARCHAR(80) NULL',
         'kullanim_amaci'    => 'VARCHAR(150) NULL',
