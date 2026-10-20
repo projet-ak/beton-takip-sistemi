@@ -141,6 +141,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                  . ' teslim edildi ve artık sizin sorumluluğunuzda değil. '
                                  . 'Durumu "Transfer Edilmiştir" olarak işaretlendi; depodaki boş stoğa girmez.');
                 break;
+            // YERİ BELİRSİZ — sayımda bulunamayan cihaz. Kayıp değil (aranıyor): envanterden düşmez,
+            // zimmet DÜŞÜRÜLMEZ (sorumluluk son zimmetlide kalır). Bulununca önceki hâline döner.
+            case 'belirsiz':
+                $pdoIt->prepare("UPDATE it_cihazlar SET durum='belirsiz' WHERE id=?")->execute([$id]);
+                it_hareket_ekle($pdoIt, $id, 'belirsiz', $kisi ?: ($c['zimmetli'] ?: null),
+                    $acik ?: ('Yeri belirsiz — son bilinen: ' . ($c['lokasyon'] ?: '—') . ($c['zimmetli'] ? ' · zimmetli: ' . $c['zimmetli'] : '')), $tarih);
+                flash('success', 'Cihaz "Yeri Belirsiz" olarak işaretlendi. Envanterde kalır, zimmeti korunur; '
+                                 . 'bulunursa aynı menüden "Cihaz bulundu" seçin, bulunamazsa "Kayıp / çalıntı bildir".');
+                break;
+            case 'bulundu':
+                $bl = (int)($_POST['bulundu_lokasyon_id'] ?? 0) ?: null;
+                $blAd = $bl ? it_lokasyon_yol($pdoIt, $bl) : '';
+                $pdoIt->prepare("UPDATE it_cihazlar SET durum=IF(zimmetli IS NULL OR zimmetli='','depoda','aktif')"
+                                . ($bl ? ", lokasyon_id=?, lokasyon=?" : "") . " WHERE id=?")
+                      ->execute($bl ? [$bl, $blAd, $id] : [$id]);
+                it_hareket_ekle($pdoIt, $id, 'bulundu', $kisi ?: null,
+                    'Cihaz bulundu' . ($blAd ? ' — ' . $blAd : '') . ($acik ? ' · ' . $acik : ''), $tarih);
+                flash('success', 'Cihaz bulundu olarak işaretlendi' . ($blAd ? ' (' . $blAd . ')' : '')
+                                 . '; durumu ' . ($c['zimmetli'] ? '"Kullanımda"' : '"Depoda"') . ' oldu.');
+                break;
             // Envanterden düşüren üç işlem aynı kalıptadır: zimmet düşer, kayıt SİLİNMEZ,
             // varsayılan listelerde ve mali değerde görünmez (durum filtresiyle geri gelir).
             case 'hurda':
@@ -442,6 +462,10 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
                 <?php if ($c['durum'] === 'transfer'): ?><option value="transfer_bitti">✓ Transfer YAPILDI (karşı taraf teslim aldı — bizden çıktı)</option>
                 <?php else: ?><option value="transfer">➜ Transfere çıkar (başka projeye gönder)</option><?php endif; ?>
               </optgroup>
+              <optgroup label="Konum">
+                <?php if ($c['durum'] === 'belirsiz'): ?><option value="bulundu">📍 Cihaz bulundu</option>
+                <?php else: ?><option value="belirsiz">📍 Yeri belirsiz (nerede olduğu belli değil)</option><?php endif; ?>
+              </optgroup>
               <optgroup label="Envanterden düş">
                 <option value="kayip">❓ Kayıp / çalıntı bildir</option>
                 <option value="hibe">🎁 Hibe et / devret</option>
@@ -478,6 +502,9 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
             <div class="form-text">Cihaz <strong><?= h($c['lokasyon_id'] ? it_lokasyon_yol($pdoIt, (int)$c['lokasyon_id']) : ($c['lokasyon'] ?: '—')) ?></strong>
               projesinden çıkar, "yolda" sayılır. Karşı taraf teslim alınca aynı menüden <em>Transfer YAPILDI</em> seçilir
               (dashboard'daki "Yolda olan cihazlar" listesinden tek tıkla da açılır).</div></div>
+          <div class="mb-2 bulundu-ek d-none">
+            <select name="bulundu_lokasyon_id" class="form-select form-select-sm">
+              <option value="">Bulunduğu lokasyon (değişmediyse boş bırakın)</option><?= it_lokasyon_options($pdoIt, 0, false) ?></select></div>
           <div class="mb-2 kisi"><input name="kisi" class="form-control form-control-sm" placeholder="Servis firması / kişi" value=""></div>
           <div class="row g-2 mb-2 zimmet-ek">
             <div class="col-6"><input name="departman" id="departman" class="form-control form-control-sm" placeholder="Departman (boş = kişinin birimi)" value=""></div>
@@ -596,16 +623,21 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
         // Hedef lokasyon seçimi hem transfere çıkarmada hem teslim almada gerekebilir (yanlış hedef düzeltilir)
         document.querySelectorAll('.transfer-ek').forEach(function (e) { e.classList.toggle('d-none', !(tr || trBit)); });
         document.querySelectorAll('.transfer-yeni').forEach(function (e) { e.classList.toggle('d-none', !tr); });
+        document.querySelectorAll('.bulundu-ek').forEach(function (e) { e.classList.toggle('d-none', t.value !== 'bulundu'); });
         document.querySelector('.kisi').classList.toggle('d-none', z);
         var k = document.querySelector('.kisi input');
         k.placeholder = { servis: 'Servis firması',
                           hibe:   'Hibe edilen kurum / kişi',
                           kayip:  'Kaybı bildiren kişi',
+                          belirsiz: 'Bildiren kişi (sayım yapan vb.)',
+                          bulundu: 'Bulan kişi',
                           transfer: 'Gönderen / teslim eden',
                           transfer_bitti: 'Teslim alan kişi' }[t.value] || 'Kişi / firma (isteğe bağlı)';
         // Envanterden düşüren işlemlerde sebep yazılması beklenir
         var a = document.querySelector('textarea[name="aciklama"]');
         if (a) a.placeholder = { kayip: 'Nerede/ne zaman kaybolduğu, tutanak no…',
+                                 belirsiz: 'Son nerede/kimde görüldü, sayım tarihi…',
+                                 bulundu: 'Nerede / kimde bulundu',
                                  hibe:  'Hibe/devir gerekçesi, protokol no…',
                                  hurda: 'Hurdaya ayırma sebebi',
                                  transfer: 'Sevk irsaliyesi / araç / teslim eden…' }[t.value] || 'Açıklama (isteğe bağlı)';

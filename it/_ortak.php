@@ -262,6 +262,13 @@ const IT_DURUM = [
     'transfer_edildi' => ['Transfer Edilmiştir', 'info text-dark', 'bi-box-arrow-up-right'],
     'serviste' => ['Serviste',              'info',             'bi-wrench'],
     'arizali'  => ['Arızalı',               'danger',           'bi-exclamation-triangle'],
+    // ⚠ YERİ BELİRSİZ (2026-10-20, kullanıcı: "nerde olduğu belli değil seçeneği ekleyelim"):
+    // sayımda bulunamayan / kimde olduğu bilinmeyen cihaz. Kayıp DEĞİLDİR — aranıyor; bu yüzden
+    // **envanterden DÜŞMEZ** (IT_DURUM_DUSEN'e girmez: kayıt ve mali değer sayılır), zimmet de
+    // DÜŞÜRÜLMEZ (sorumluluk son zimmetlide kalır). Bulunursa cihaz kartından "Cihaz bulundu"
+    // ile önceki hâline (zimmetliyse kullanımda, değilse depoda) döner; bulunamazsa
+    // "Kayıp / çalıntı bildir" ile envanterden düşürülür.
+    'belirsiz' => ['Yeri Belirsiz',         'warning text-dark','bi-geo-alt'],
     'kayip'    => ['Kayıp / Çalıntı',       'warning text-dark','bi-question-octagon'],
     'hibe'     => ['Hibe / Devredildi',     'primary',          'bi-gift'],
     'hurda'    => ['Hurda / Kullanım dışı', 'dark',             'bi-trash'],
@@ -299,6 +306,8 @@ const IT_HAREKET = [
     'donus'   => ['Servisten döndü',   'success',   'bi-check2-circle'],
     'transfer'=> ['Transfer edildi',   'info',      'bi-arrow-left-right'],
     'kayip'   => ['Kayıp / çalıntı bildirildi', 'warning text-dark', 'bi-question-octagon'],
+    'belirsiz'=> ['Yeri belirsiz bildirildi', 'warning text-dark', 'bi-geo-alt'],
+    'bulundu' => ['Cihaz bulundu',     'success',   'bi-geo-alt-fill'],
     'hibe'    => ['Hibe / devir edildi', 'primary',  'bi-gift'],
     'hurda'   => ['Hurdaya ayrıldı',   'dark',      'bi-trash'],
     'not'     => ['Not',               'warning',   'bi-chat-left-text'],
@@ -543,12 +552,12 @@ function it_secenekler(PDO $pdo, string $sutun): array
 /** Dashboard / rapor özeti. */
 function it_ozet(PDO $pdo): array
 {
-    $o = ['toplam'=>0,'aktif'=>0,'depoda'=>0,'transfer'=>0,'transfer_edildi'=>0,'serviste'=>0,'arizali'=>0,'kayip'=>0,'hibe'=>0,'hurda'=>0,'dusen'=>0,
+    $o = ['toplam'=>0,'aktif'=>0,'depoda'=>0,'transfer'=>0,'transfer_edildi'=>0,'serviste'=>0,'arizali'=>0,'belirsiz'=>0,'kayip'=>0,'hibe'=>0,'hurda'=>0,'dusen'=>0,
           'mali'=>0.0,'garantiBitiyor'=>0,'garantiBitti'=>0,'zimmetliKisi'=>0,'lisans'=>0];
     try {
         $r = $pdo->query("SELECT COUNT(*) toplam,
                 SUM(durum='aktif') aktif, SUM(durum='depoda') depoda, SUM(durum='transfer') transfer, SUM(durum='transfer_edildi') transfer_edildi, SUM(durum='serviste') serviste,
-                SUM(durum='arizali') arizali, SUM(durum='hurda') hurda,
+                SUM(durum='arizali') arizali, SUM(durum='belirsiz') belirsiz, SUM(durum='hurda') hurda,
                 SUM(durum='kayip') kayip, SUM(durum='hibe') hibe,
                 COALESCE(SUM(CASE WHEN " . it_envanterde() . " THEN " . it_mali_tl() . " END),0) mali,
                 SUM(" . it_envanterde() . " AND garanti_bitis BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 60 DAY)) garantiBitiyor,

@@ -596,6 +596,9 @@ function cim_durum(string $s): ?string
     if (str_contains($n, 'HURDA') || str_contains($n, 'IMHA')) return 'hurda';
     if (str_contains($n, 'KAYIP') || str_contains($n, 'CALINTI') || str_contains($n, 'ZAYI')) return 'kayip';
     if (str_contains($n, 'HIBE') || str_contains($n, 'DEVIR') || str_contains($n, 'DEVRED')) return 'hibe';
+    // "Yeri belirsiz / bulunamadı / nerede olduğu belli değil" — kayıp değil, aranıyor
+    if (str_contains($n, 'BELIRSIZ') || str_contains($n, 'BULUNAMADI') || str_contains($n, 'BILINMIYOR')
+        || str_contains($n, 'NEREDE') || str_contains($n, 'NERDE') || str_contains($n, 'BELLI DEGIL')) return 'belirsiz';
     if (str_contains($n, 'ARIZA')) return 'arizali';
     if (str_contains($n, 'SERVIS') || str_contains($n, 'TAMIR')) return 'serviste';
     // ⚠ Snipe-IT sözlüğü: "… Atanmış" = bir kişide (kullanımda); atanmamış tüm hâller depodadır.

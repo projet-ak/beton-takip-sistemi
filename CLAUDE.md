@@ -1015,6 +1015,20 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   `secici_test.html`) · gerçek cihaz formu **18** (17 menü dönüştü, `required` korunuyor, marka araması +
   `.dolu` imi, kategori seçimi alan gizleme JS'ini tetikliyor, `FormData` seçilen değerleri taşıyor) ·
   personel formu **6**; iki form uyarısız render, inline JS temiz.
+  **"YERİ BELİRSİZ" DURUMU (2026-10-20, kullanıcı: "durumlar kısmına nerde olduğu belli değil seçeneğini
+  ekleyelim")** — `IT_DURUM`'a **`belirsiz`** ("Yeri Belirsiz", sarı, `bi-geo-alt`): sayımda bulunamayan /
+  kimde olduğu bilinmeyen cihaz. ⚠ **Kayıp DEĞİLDİR — aranıyor**: `IT_DURUM_DUSEN`'e GİRMEZ (envanterde ve mali
+  değerde sayılır, varsayılan listede görünür) ve **zimmet DÜŞÜRÜLMEZ** (sorumluluk son zimmetlide kalır).
+  • Cihaz kartı işlem menüsünde yeni **"Konum"** grubu: *Yeri belirsiz (nerede olduğu belli değil)* ↔ durum
+  belirsizken *Cihaz bulundu* (isteğe bağlı "bulunduğu lokasyon" seçimi lokasyonu günceller; durum zimmetliyse
+  `aktif`, değilse `depoda` olur). Bulunamazsa mevcut *Kayıp / çalıntı bildir* ile envanterden düşürülür.
+  `IT_HAREKET`'e `belirsiz` + `bulundu`; günlük satırı son bilinen lokasyonu ve zimmetliyi yazar.
+  • `it_ozet()` `belirsiz` sayacı → dashboard'a **"Yeri belirsiz"** KPI'ı (`cihazlar.php?durum=belirsiz`).
+  `cim_durum()` Excel'den BELİRSİZ · BULUNAMADI · BİLİNMİYOR · NEREDE/NERDE · "BELLİ DEĞİL" → `belirsiz` okur
+  (ARIZA'dan önce denenir). Personel zimmet geçmişi bu iki hareketi listeler, raporlardaki aylık trendde
+  "sorun" serisine girer. Durum menüleri / Tanımlar › Durumlar `IT_DURUM`'dan türediği için kendiliğinden geldi.
+  Test: `bel_test.php` 15 sağlama + sayfadan belirsiz → bulundu (lokasyonlu/lokasyonsuz), düşmüş cihazda menü
+  çıkmıyor, 7 IT sayfası uyarısız, inline JS temiz.
   **KATEGORİ "+" — KULLANICI KATEGORİLERİ (2026-10-15, kullanıcı: "yeni cihaz kısmında kategori ekleme
   kısmına + butonu ekleyelim, marka ve modelde olduğu gibi")** — kategoriler o güne dek yalnız koda gömülü
   `IT_KATEGORI` sabitiydi; listede olmayan bir cihaz tipi (akıllı saat, telsiz, jeneratör…) "Diğer"e düşüyordu.

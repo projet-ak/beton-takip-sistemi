@@ -147,6 +147,9 @@ require_once __DIR__ . '/../includes/header.php';
      'karşı taraf teslim aldı — bizde değil'],
     ['Serviste + Arızalı', $f0($o['serviste'] + $o['arizali']), 'bi-wrench', 'danger', 'cihazlar.php?durum=sorunlu',
      $f0($o['serviste']) . ' serviste · ' . $f0($o['arizali']) . ' arızalı'],
+    // Yeri belirsiz: envanterde sayılır (kayıp DEĞİL, aranıyor) — sayımda bulunamayanlar burada birikir
+    ['Yeri belirsiz', $f0($o['belirsiz']), 'bi-geo-alt', $o['belirsiz'] ? 'warning' : 'secondary', 'cihazlar.php?durum=belirsiz',
+     $o['belirsiz'] ? 'aranıyor — bulunursa kartından "Cihaz bulundu"' : 'yeri bilinmeyen cihaz yok'],
     ['Envanterden düşen', $f0($o['dusen']), 'bi-trash', 'dark', 'cihazlar.php?durum=dusen',
      'hurda ' . $f0($o['hurda']) . ' · kayıp ' . $f0($o['kayip']) . ' · hibe ' . $f0($o['hibe'])],
   ];

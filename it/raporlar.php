@@ -83,7 +83,7 @@ $garanti = $pdoIt->query("SELECT
 // Aylık hareket trendi (son 12 ay)
 $aylik = [];
 foreach ($pdoIt->query("SELECT DATE_FORMAT(tarih,'%Y-%m') ay, SUM(tur='giris') giris, SUM(tur='zimmet') zimmet, SUM(tur='iade') iade,
-                               SUM(tur IN ('servis','ariza')) sorun, SUM(tur IN ('hurda','kayip','hibe')) hurda
+                               SUM(tur IN ('servis','ariza','belirsiz')) sorun, SUM(tur IN ('hurda','kayip','hibe')) hurda
                         FROM it_hareketler WHERE tarih >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) GROUP BY ay ORDER BY ay") as $r) $aylik[$r['ay']] = $r;
 $seri = [];
 for ($i = 11; $i >= 0; $i--) { $ay = date('Y-m', strtotime("-$i month")); $seri[] = ['ay'=>$ay] + array_map('intval', ($aylik[$ay] ?? []) + ['giris'=>0,'zimmet'=>0,'iade'=>0,'sorun'=>0,'hurda'=>0]); }
