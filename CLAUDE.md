@@ -1015,6 +1015,28 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   `secici_test.html`) · gerçek cihaz formu **18** (17 menü dönüştü, `required` korunuyor, marka araması +
   `.dolu` imi, kategori seçimi alan gizleme JS'ini tetikliyor, `FormData` seçilen değerleri taşıyor) ·
   personel formu **6**; iki form uyarısız render, inline JS temiz.
+  **TRANSFERLE GELEN CİHAZIN GEÇMİŞİ İÇE AKTARMADA KURULUR (2026-10-21, kullanıcı: "bu cihazlar u051
+  projesinden bilgi işlem sorumlusu osman uğur M023 merkez depoya gönderilmiştir, 19.10.2026'da gönderilmiş
+  21.10.2026'da merkez depo teslim almıştır, polat elitaş'a zimmetleyelim")** — kaynak 50 IP kameralık
+  liste (ad · seri no · adet · bozuk tarih sütunu [2048–2106 yılları, atlandı] · kontrol "SAĞLAM").
+  • `CIM_ALAN`'a iki alan: **`transfer_gonderen`** ("Transfer Gönderen" · GÖNDEREN · SEVK EDEN) ve
+  **`transfer_teslim`** ("Transfer Teslim Tarihi" · TESLİM ALMA TARİHİ). Kolon DEĞİLLER: ikisi de nota
+  düşer ve **YENİ kayıtta** `cim_transfer_gecmisi()` yaşam günlüğüne transfer zinciri yazar —
+  `Sevk: <Transfer Geldiği Birim> → <lokasyon> · gönderen: … · isteyen/teslim alacak: <kişi>` (sevk
+  günü) + `Transfer teslim alındı — <lokasyon> deposuna girdi` (teslim günü; yoksa sevk günü; durum
+  `transfer` ise yazılmaz, cihaz hâlâ yolda). Metin biçimi cihaz kartındaki sevk işlemleriyle AYNI —
+  `it_transfer_son` / `it_transfer_edilenler` önekleri okur. ⚠ Çıplak 'TESLİM TARİHİ' eş anlamlısı bilerek
+  yok: Snipe-IT'nin "Son zimmet teslim tarihi" sütununu kapardı.
+  • **Hareket tarihleri artık dosyadan**: transferle gelen yeni kayıtta `giris` sevk gününe yazılır
+  ("… — <birim> (transferle geldi)"), `zimmet` hareketi her yeni kayıtta **Zimmet Tarihi** sütunuyla
+  (eskiden hepsi aktarım günüydü). Mevcut (eşleşen) kayıtta zincir YAZILMAZ — koruma kutuları zimmet ve
+  lokasyonu kilitlediği için; o kayıtlar cihaz kartındaki sevk işlemiyle taşınır.
+  Test (scratchpad `u051_test.php`, gerçek `cim_import` + MySQL DDL'yi SQLite'a çeviren `sqlite_pdo.php`):
+  14 sütunun hepsi eşleşti · 50 yeni · kişi ve M023 lokasyonu bulundu · günlük giris→sevk→teslim→zimmet,
+  tarihler 19/19/21/21 · `it_transfer_edilenler` hedefi "M023 Merkez Depo" okuyor · zimmet dönemi açık ·
+  `it_transfer_durum_gocu` 0 · **2. yükleme 0 yeni / 0 güncellenen / 50 değişmeyen, hareket sayısı aynı**
+  (23 sağlama). ⚠ Kaynak listede 2 seri no eksik yazılmış ("J764…", "7A0A08PAG8ED…") ve 1'i 16 hane —
+  dosyada olduğu gibi aktarılır, nota uyarı düşer, cihaz etiketinden düzeltilmeli.
   **NVR KULLANICI HESAPLARI + DIŞ IP (2026-10-20, kullanıcı: "nvr cihazlarında cihaz kullanıcı bilgileri kısmı
   ekleyelim, beş kullanıcı hesabı olsun: kullanıcı adı - parola - seri no - dış IP; ip kameralar için de ip adresi,
   kullanıcı adı, parola, dış ip olsun")**

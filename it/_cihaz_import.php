@@ -48,7 +48,12 @@ const CIM_ALAN = [
     'para_birimi'  => ['etiket' => 'Para Birimi',              'es' => ['PARA BIRIMI','DOVIZ','DOVIZ CINSI','CURRENCY']],
     'sas_ref'      => ['etiket' => 'SAS Ref (satın alma)',     'es' => ['SAS REF','SAS REFERANS','SAS','SATIN ALMA REF','TALEP NO','PURCHASE REF']],
     'transfer_birim'  => ['etiket' => 'Transfer Geldiği Birim','es' => ['TRANSFER GELDIGI BIRIM','GELDIGI BIRIM','TRANSFER BIRIM','TRANSFER GELDIGI YER']],
-    'transfer_tarihi' => ['etiket' => 'Transfer Tarihi',       'es' => ['TRANSFER TARIHI','TRANSFER TARIH']],
+    'transfer_tarihi' => ['etiket' => 'Transfer Tarihi',       'es' => ['TRANSFER TARIHI','TRANSFER TARIH','SEVK TARIHI']],
+    // Sevkin kimden çıktığı ve ne zaman teslim alındığı kolon DEĞİLDİR — yeni kayıtta yaşam
+    // günlüğüne transfer zinciri (sevk → teslim alma) olarak yazılır, ayrıca nota düşülür.
+    // ⚠ Çıplak 'TESLIM TARIHI' bilerek yok: Snipe-IT'nin "Son zimmet teslim tarihi" sütununu kapardı.
+    'transfer_gonderen' => ['etiket' => 'Transfer Gönderen',   'es' => ['TRANSFER GONDEREN','GONDEREN','GONDEREN KISI','SEVK EDEN']],
+    'transfer_teslim'   => ['etiket' => 'Transfer Teslim Tarihi', 'es' => ['TRANSFER TESLIM TARIHI','TRANSFER TESLIM','TESLIM ALMA TARIHI','TESLIM ALINDI']],
     'cozunurluk'   => ['etiket' => 'Ekran Çözünürlüğü',        'es' => ['COZUNURLUK','EKRAN COZUNURLUK','EKRAN COZUNURLUGU','1 EKRAN COZUNURLUGU','DIZUSTU EKRAN COZUNURLUK','RESOLUTION']],
     'disk_seri'    => ['etiket' => 'Disk Seri No',             'es' => ['HARDDISK SERIAL','DISK SERI NO','HDD SERIAL','HDD SERI NO']],
     'tedarikci'    => ['etiket' => 'Tedarikçi',                'es' => ['TEDARIKCI','SATICI','FIRMA','VENDOR','SUPPLIER']],
@@ -204,6 +209,26 @@ function cim_harita(array $baslik): array
     return $h;
 }
 
+/**
+ * Transferle gelen YENİ cihazın yaşam günlüğüne sevk + teslim alma satırlarını yazar.
+ * ⚠ Biçim cihaz_detay.php ile SABİT: "Sevk: <kaynak> → <hedef> · gönderen: …" ve
+ * "Transfer teslim alındı — <hedef> deposuna girdi". Teslim satırı yalnız teslim tarihi
+ * verilmişse ya da cihaz yolda (durum=transfer) DEĞİLSE yazılır; tarih yoksa sevk günü alınır.
+ */
+function cim_transfer_gecmisi(PDO $pdo, int $id, array $yeni, array $v, string $lokAd): void
+{
+    $hedef    = $lokAd !== '' ? $lokAd : '—';
+    $gonderen = trim((string)($v['transfer_gonderen'] ?? ''));
+    $met = 'Sevk: ' . $yeni['transfer_birim'] . ' → ' . $hedef
+         . ($gonderen !== '' ? ' · gönderen: ' . $gonderen : '')
+         . ($yeni['zimmetli'] ? ' · isteyen/teslim alacak: ' . $yeni['zimmetli'] : '')
+         . ' · Excel aktarımı';
+    it_hareket_ekle($pdo, $id, 'transfer', $gonderen ?: null, $met, $yeni['transfer_tarihi']);
+    if (($yeni['durum'] ?? '') === 'transfer') return;           // hâlâ yolda
+    $teslim = pim_tarih((string)($v['transfer_teslim'] ?? '')) ?: $yeni['transfer_tarihi'];
+    it_hareket_ekle($pdo, $id, 'transfer', null, 'Transfer teslim alındı — ' . ($lokAd !== '' ? $lokAd : 'hedef proje') . ' deposuna girdi', $teslim);
+}
+
 /** IFS / ERP nesne kodu mu? — "FRM-0002-82026-2552600167", "ORT-U021-14063-2552000181", "ZFRM-999-…". */
 function cim_ifs_kodu(string $s): bool
 {
@@ -318,6 +343,11 @@ function cim_satir_cozumle(array $satir, array $harita, array $baslik): array
     // Seri no boşken şasi varsa seri olarak da kullanılır — cihaz seri numarasıyla aranabilsin.
     if ($v['seri_no'] === '' && $v['sasi_no'] !== '') $v['seri_no'] = $v['sasi_no'];
     if ($v['ilk_lokasyon'] !== '') $v['notlar'][] = 'İlk proje: ' . $v['ilk_lokasyon'];
+    if ($v['transfer_gonderen'] !== '') $v['notlar'][] = 'Transfer gönderen: ' . $v['transfer_gonderen'];
+    if ($v['transfer_teslim'] !== '') {
+        $__t = pim_tarih($v['transfer_teslim']);
+        $v['notlar'][] = 'Transfer teslim alındı: ' . ($__t ? date('d.m.Y', strtotime($__t)) : $v['transfer_teslim']);
+    }
     return $v;
 }
 
@@ -565,8 +595,14 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
                 $pdo->prepare($sql)->execute([...array_values($yeni), $notSatiri ?: null, $opt['kullanici'] ?? null]);
                 $id = (int)$pdo->lastInsertId();
                 $eslesen[$id] = $exNo;
-                it_hareket_ekle($pdo, $id, 'giris', $yeni['zimmetli'], 'Excel aktarımı ile envantere eklendi' . ($lokAd ? ' — ' . $lokAd : ''));
-                if ($yeni['zimmetli']) it_hareket_ekle($pdo, $id, 'zimmet', $yeni['zimmetli'], 'Excel aktarımı ile zimmetlendi');
+                // Başka projeden transferle gelen cihaz: giriş SEVK günüyle yazılır ve ardından transfer
+                // zinciri kurulur (cihaz kartındaki "Transfere çıkar" / "Transfer yapıldı" işlemleriyle
+                // AYNI metin biçimi — it_transfer_son / it_transfer_edilenler bu önekleri okur).
+                $trTarih = ($yeni['transfer_birim'] && $yeni['transfer_tarihi']) ? $yeni['transfer_tarihi'] : null;
+                it_hareket_ekle($pdo, $id, 'giris', $yeni['zimmetli'], 'Excel aktarımı ile envantere eklendi'
+                    . ($trTarih ? ' — ' . $yeni['transfer_birim'] . ' (transferle geldi)' : ($lokAd ? ' — ' . $lokAd : '')), $trTarih);
+                if ($trTarih) cim_transfer_gecmisi($pdo, $id, $yeni, $v, $lokAd);
+                if ($yeni['zimmetli']) it_hareket_ekle($pdo, $id, 'zimmet', $yeni['zimmetli'], 'Excel aktarımı ile zimmetlendi', $yeni['zimmet_tarihi']);
                 $kayit = $yeni + ['id'=>$id];
                 if ($yeni['varlik_kodu']) $byVarlik[pim_norm($yeni['varlik_kodu'])] = $kayit;
                 if ($yeni['cihaz_kodu'])  $byKod[pim_norm($yeni['cihaz_kodu'])] = $kayit;
