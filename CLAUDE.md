@@ -1015,6 +1015,31 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   `secici_test.html`) · gerçek cihaz formu **18** (17 menü dönüştü, `required` korunuyor, marka araması +
   `.dolu` imi, kategori seçimi alan gizleme JS'ini tetikliyor, `FormData` seçilen değerleri taşıyor) ·
   personel formu **6**; iki form uyarısız render, inline JS temiz.
+  **TELEFON REHBERİ: DAHİLİ NO + KISALTILMIŞ AD + MAC EŞLEŞMESİ (2026-10-22, kullanıcı: "bu telefon listesini
+  nasıl ekleyeceğiz — ERN Holding İstanbul Merkez Binası lokasyonu ve alt birimleri")** — kaynak `Kartal Telefon
+  rehberi` (36 satır: TEL. NO · KAT [BK/ZK/MK] · İSİM · SOYİSİM · MAC · IP · TEL. MODEL [212G/213G/138G/TELSİZ]).
+  Rehber İKİ veri taşır ve iki ayrı aktarımla girer: kişinin **dahilisi** (personel içe aktarma) ve **telefon
+  cihazı** (cihaz içe aktarma; kategori `ip_telefon`, 9'u oda/ortak telefon → zimmetsiz).
+  • **`pim_kisi_uyumlu()` / `pim_kisi_kisaltma_bul()`** (`_import.php`): "M.Efe SAYICI" ↔ MEHMET EFE SAYICI,
+  "Y.Emre YILMAZ" ↔ YUNUS EMRE YILMAZ, "Tuğba AKYAZI" ↔ TUĞBA AKYAZI KUBLAY. Dosyadaki kelimeler karttakilerle
+  SIRAYLA eşleşir (tam kelime ya da tek harf = baş harf, kartta fazladan kelime olabilir); **en az 2 tam kelime +
+  soyad tam yazılmış + TEK aday** şart (AHMET EMRE YILMAZ da varsa "Y.Emre" ona düşmez). Tam ad eşleşmesi her zaman
+  önce denenir. `pim_import`'ta yedek eşleşme olarak (`nasil='kısaltılmış ad'`; ⚠ ad/soyad dosyadan
+  GÜNCELLENMEZ, kartın tam adı bozulmasın) ve `cim_personel_bul`'da (`'kisaltma'`) — personel, cihaz ve form
+  aktarımı aynı kuralı paylaşır.
+  • **Personel içe aktarmaya `yeni_acma` kutusu** — "Yalnız mevcut personeli güncelle": eşleşmeyen satır için
+  kart AÇILMAZ, sebebiyle atlanır (kısmi listede yazım farkı mükerrer kişi açmasın). Tam yenilemede yok sayılır.
+  • **Cihaz içe aktarma**: `CIM_ALAN`'a **`dahili_no`** (DAHİLİ · DAHİLİ NO · KISA KOD · EXTENSION; ⚠ çıplak
+  'TEL NO' bilerek yok) → `it_dahili()` ile; şablona "Dahili No" sütunu. **Eşleşme zincirine MAC** eklendi
+  (seri no'dan sonra; 12 hex hane, ayraç farkı yok sayılır) ve **kimliksiz telefon satırı** (seri/kod/MAC yok —
+  DECT el cihazı) aynı dahiliyi taşıyan TEK `ip_telefon`/`santral` kaydıyla eşleşir — yoksa her yüklemede
+  yeni kayıt açılıyordu.
+  Lokasyon metni `ERN Holding İstanbul Merkez Binası › Zemin Kat`: kat düğümü ağaçta varsa ona, yoksa binaya
+  bağlanır (pim_lokasyon_bul "ad içerir" + en derin düğüm). Test (scratchpad `rehber_test.php`, 20 sağlama):
+  24 kişiye dahili yazıldı, 3 olmayan kişi atlandı, **0 yeni kart**, kısaltmalar doğru kişiye gitti, tuzak kişiye
+  dokunulmadı, kişinin lokasyonu korundu · 36 telefon katlara dağıldı (BK 14 / ZK 16 / MK 6), 24'ü kişiye
+  bağlı · **2. yükleme 0 yeni / 0 güncellenen**, cihaz/hareket sayısı aynı. U051/U052/U056/devir testleri
+  yeniden koştu, hepsi geçti.
   **TRANSFERLE GELEN CİHAZIN GEÇMİŞİ İÇE AKTARMADA KURULUR (2026-10-21, kullanıcı: "bu cihazlar u051
   projesinden bilgi işlem sorumlusu osman uğur M023 merkez depoya gönderilmiştir, 19.10.2026'da gönderilmiş
   21.10.2026'da merkez depo teslim almıştır, polat elitaş'a zimmetleyelim")** — kaynak 50 IP kameralık

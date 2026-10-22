@@ -52,6 +52,9 @@ const CIM_ALAN = [
     // Sevkin kimden çıktığı ve ne zaman teslim alındığı kolon DEĞİLDİR — yeni kayıtta yaşam
     // günlüğüne transfer zinciri (sevk → teslim alma) olarak yazılır, ayrıca nota düşülür.
     // ⚠ Çıplak 'TESLIM TARIHI' bilerek yok: Snipe-IT'nin "Son zimmet teslim tarihi" sütununu kapardı.
+    // IP telefon / santral dahilisi (IT_EK_ALAN dahili_no). ⚠ Çıplak 'TEL NO' bilerek yok — personel
+    // cep numarası sütunlarını kapardı.
+    'dahili_no'    => ['etiket' => 'Dahili No',                'es' => ['DAHILI','DAHILI NO','DAHILI NUMARA','DAHILI TEL','KISA KOD','EXTENSION','EXT']],
     'transfer_gonderen' => ['etiket' => 'Transfer Gönderen',   'es' => ['TRANSFER GONDEREN','GONDEREN','GONDEREN KISI','SEVK EDEN']],
     'transfer_teslim'   => ['etiket' => 'Transfer Teslim Tarihi', 'es' => ['TRANSFER TESLIM TARIHI','TRANSFER TESLIM','TESLIM ALMA TARIHI','TESLIM ALINDI']],
     'cozunurluk'   => ['etiket' => 'Ekran Çözünürlüğü',        'es' => ['COZUNURLUK','EKRAN COZUNURLUK','EKRAN COZUNURLUGU','1 EKRAN COZUNURLUGU','DIZUSTU EKRAN COZUNURLUK','RESOLUTION']],
@@ -354,14 +357,19 @@ function cim_satir_cozumle(array $satir, array $harita, array $baslik): array
 /** Kişi adını `it_personel` kaydına bağlar (normalize ad+soyad). Dönüş: [personel|null, 'benzersiz|coklu|yok']. */
 function cim_personel_bul(PDO $pdo, string $adSoyad, bool $yenile = false): array
 {
-    static $harita = null;
+    static $harita = null, $hepsi = [];
     if ($yenile) $harita = null;
     if ($harita === null) {
-        $harita = [];
-        foreach (it_personel_liste($pdo, false) as $p) $harita[pim_norm($p['ad'] . ' ' . $p['soyad'])][] = $p;
+        $harita = []; $hepsi = it_personel_liste($pdo, false);
+        foreach ($hepsi as $p) $harita[pim_norm($p['ad'] . ' ' . $p['soyad'])][] = $p;
     }
     $n = pim_norm($adSoyad);
-    if ($n === '' || !isset($harita[$n])) return [null, 'yok'];
+    if ($n === '') return [null, 'yok'];
+    if (!isset($harita[$n])) {
+        // Kısaltılmış ad ("M.Efe SAYICI" → MEHMET EFE SAYICI) — personel aktarımıyla AYNI kural, tek aday şart
+        $k = pim_kisi_kisaltma_bul($hepsi, $adSoyad);
+        return $k ? [$k, 'kisaltma'] : [null, 'yok'];
+    }
     return count($harita[$n]) === 1 ? [$harita[$n][0], 'benzersiz'] : [null, 'coklu'];
 }
 
@@ -401,13 +409,17 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
     // ⚠ 'envanter_no' BİLEREK YOK: bizim sabit numaramızdır (tutanaklarda geçer), dosya onu ezmez.
     $alanlar = ['varlik_kodu','cihaz_kodu','kategori','ad','marka','model','seri_no','sasi_no','imei','durum','zimmetli','personel_id','departman','lokasyon','lokasyon_id',
                 'zimmet_tarihi','alis_tarihi','garanti_bitis','fiyat','para_birimi','kur','fiyat_tl','sas_ref',
-                'transfer_birim','transfer_tarihi','tedarikci','fatura_no','sirket','snipe_id','ip_adresi','mac_adresi','isletim_sistemi',
+                'transfer_birim','transfer_tarihi','dahili_no','tedarikci','fatura_no','sirket','snipe_id','ip_adresi','mac_adresi','isletim_sistemi',
                 'islemci','ram','ekran_karti','disk','disk_seri','anakart','ekran_boyutu','cozunurluk','kapasite','kiralik_firma','ozellikler'];
 
     cim_semasi_kur($pdo);                       // ⚠ DDL transaction'ı örtük commit eder → ÖNCE
     $mevcut = $pdo->query("SELECT * FROM it_cihazlar")->fetchAll();
-    $byVarlik = []; $byKod = []; $byEnv = []; $bySeri = [];
+    $byVarlik = []; $byKod = []; $byEnv = []; $bySeri = []; $byMac = []; $byDahili = [];
+    $macN = fn($s) => strtoupper(preg_replace('/[^0-9A-Fa-f]/', '', (string)$s));
     foreach ($mevcut as $m) {
+        if (strlen($macN($m['mac_adresi'] ?? '')) === 12) $byMac[$macN($m['mac_adresi'])] = $m;
+        if (trim((string)($m['dahili_no'] ?? '')) !== '' && in_array($m['kategori'], ['ip_telefon', 'santral'], true) && !it_durum_dustu((string)$m['durum']))
+            $byDahili[trim((string)$m['dahili_no'])][] = $m;
         if (trim((string)($m['varlik_kodu'] ?? '')) !== '') $byVarlik[pim_norm($m['varlik_kodu'])] = $m;
         if (trim((string)($m['cihaz_kodu'] ?? '')) !== '')  $byKod[pim_norm($m['cihaz_kodu'])] = $m;
         if (trim((string)$m['envanter_no']) !== '')         $byEnv[pim_norm($m['envanter_no'])] = $m;
@@ -508,6 +520,7 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
                 'transfer_birim'  => $v['transfer_birim'] ?: null,
                 'transfer_tarihi' => pim_tarih($v['transfer_tarihi']),
                 'cozunurluk'  => $v['cozunurluk'] ?: null, 'disk_seri' => $v['disk_seri'] ?: null,
+                'dahili_no'   => $v['dahili_no'] !== '' ? (string)(it_dahili($v['dahili_no']) ?? $v['dahili_no']) : null,
                 'sirket'      => $v['sirket'] ?: null,
                 'snipe_id'    => ctype_digit($v['snipe_id']) ? (int)$v['snipe_id'] : null,
                 'ip_adresi'   => $v['ip_adresi'] ?: null, 'mac_adresi' => $v['mac_adresi'] ?: null,
@@ -525,13 +538,20 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
                 : (it_ozellik_ozet($yeni) ?: null);
             $notSatiri = $v['notlar'] ? implode("\n", array_unique($v['notlar'])) : '';
 
-            // Eşleşme: IFS nesne no → cihaz kodu → envanter no → seri no
+            // Eşleşme: IFS nesne no → cihaz kodu → envanter no → seri no → MAC → (kimliksiz telefonda) dahili no
             $m = null; $nasil = '';
             if ($v['varlik_kodu'] !== '' && isset($byVarlik[pim_norm($v['varlik_kodu'])])) { $m = $byVarlik[pim_norm($v['varlik_kodu'])]; $nasil = 'IFS nesne no'; }
             elseif ($v['cihaz_kodu'] !== '' && isset($byKod[pim_norm($v['cihaz_kodu'])]))  { $m = $byKod[pim_norm($v['cihaz_kodu'])]; $nasil = 'cihaz kodu'; }
             elseif ($v['cihaz_kodu'] !== '' && isset($byEnv[pim_norm($v['cihaz_kodu'])]))  { $m = $byEnv[pim_norm($v['cihaz_kodu'])]; $nasil = 'envanter no'; }
             elseif ($v['envanter_no'] !== '' && isset($byEnv[pim_norm($v['envanter_no'])])) { $m = $byEnv[pim_norm($v['envanter_no'])]; $nasil = 'envanter no'; }
             elseif ($v['seri_no'] !== '' && isset($bySeri[pim_norm($v['seri_no'])])) { $m = $bySeri[pim_norm($v['seri_no'])]; $nasil = 'seri no'; }
+            elseif (strlen($macN($v['mac_adresi'])) === 12 && isset($byMac[$macN($v['mac_adresi'])])) { $m = $byMac[$macN($v['mac_adresi'])]; $nasil = 'MAC adresi'; }
+            // Hiç kimlik kodu taşımayan telefon satırı (DECT el cihazı, MAC'i yazılmamış masa telefonu):
+            // aynı dahiliyi taşıyan TEK telefon kaydı varsa o kabul edilir — yoksa her yüklemede yeni kayıt açılırdı.
+            elseif ($v['varlik_kodu'] === '' && $v['cihaz_kodu'] === '' && $v['envanter_no'] === '' && $v['seri_no'] === '' && $macN($v['mac_adresi']) === ''
+                    && ($dh = (string)($yeni['dahili_no'] ?? '')) !== '' && in_array($yeni['kategori'], ['ip_telefon', 'santral'], true) && count($byDahili[$dh] ?? []) === 1) {
+                $m = $byDahili[$dh][0]; $nasil = 'dahili no';
+            }
 
             // ⚠ Aynı cihaz kaydına iki dosya satırı denk gelirse (ör. bizdeki IFS kodu dosyada başka
             // cihaz koduyla eşleşiyorsa) satırlar birbirini ezip her aktarımda gidip gelirdi — ikincisi
@@ -608,6 +628,8 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
                 if ($yeni['cihaz_kodu'])  $byKod[pim_norm($yeni['cihaz_kodu'])] = $kayit;
                 $byEnv[pim_norm($yeni['envanter_no'])] = $kayit;
                 if ($yeni['seri_no']) $bySeri[pim_norm($yeni['seri_no'])] = $kayit;
+                if (strlen($macN($yeni['mac_adresi'] ?? '')) === 12) $byMac[$macN($yeni['mac_adresi'])] = $kayit;
+                if ($yeni['dahili_no'] && in_array($yeni['kategori'], ['ip_telefon', 'santral'], true)) $byDahili[$yeni['dahili_no']][] = $kayit;
                 $r['yeni'][] = ['id'=>$id, 'env'=>trim($yeni['envanter_no'] . ' ' . ($yeni['cihaz_kodu'] ?? '')), 'ad'=>$yeni['ad'], 'kategori'=>$yeni['kategori'],
                                 'marka'=>trim(($yeni['marka'] ?? '') . ' ' . ($yeni['model'] ?? '')), 'kisi'=>$yeni['zimmetli'], 'lok'=>$lokAd];
             }

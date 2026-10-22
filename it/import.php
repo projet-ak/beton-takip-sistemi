@@ -142,7 +142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $bIdx = pim_baslik_satiri($satirlar);
                     $ornek = array_slice($satirlar, $bIdx + 1, 20);
                     $_SESSION['it_pim'] = ['dosya'=>$ad, 'bicim'=>$g['bicim'], 'sayfa'=>$g['sayfa'], 'satirlar'=>$satirlar, 'satir_no'=>$satirNo, 'baslik_idx'=>$bIdx,
-                                           'harita'=>pim_harita($satirlar[$bIdx], $ornek), 'opt'=>['yazim'=>'buyuk', 'pasif_ayrilmis'=>1, 'dosyada_olmayan_ayrilmis'=>0, 'tam_yenileme'=>0]];
+                                           'harita'=>pim_harita($satirlar[$bIdx], $ornek), 'opt'=>['yazim'=>'buyuk', 'pasif_ayrilmis'=>1, 'dosyada_olmayan_ayrilmis'=>0, 'tam_yenileme'=>0, 'yeni_acma'=>0]];
                     unset($_SESSION['it_pim_rapor']);
                     redirect('import.php?adim=2');
                 } catch (Throwable $e) { $hata = $e->getMessage(); }
@@ -167,7 +167,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $__yz = (string)($_POST['yazim'] ?? 'buyuk');
         $s['opt'] = ['yazim'=>in_array($__yz, ['buyuk','bas_harf',''], true) ? $__yz : 'buyuk',
                      'pasif_ayrilmis'=>!empty($_POST['pasif_ayrilmis']) ? 1 : 0,
-                     'dosyada_olmayan_ayrilmis'=>(!empty($_POST['dosyada_olmayan_ayrilmis']) && !$tamYenileme) ? 1 : 0, 'tam_yenileme'=>$tamYenileme];
+                     'dosyada_olmayan_ayrilmis'=>(!empty($_POST['dosyada_olmayan_ayrilmis']) && !$tamYenileme) ? 1 : 0, 'tam_yenileme'=>$tamYenileme,
+                     // Tam yenilemede anlamsız (silinen kişi geri açılmazdı) — orada yok sayılır
+                     'yeni_acma'=>(!empty($_POST['yeni_acma']) && !$tamYenileme) ? 1 : 0];
         unset($s);
         if ($islem === 'aktar') {
             $s = $_SESSION['it_pim'];
@@ -314,6 +316,7 @@ require_once __DIR__ . '/../includes/header.php';
         </select></div>
       <div class="form-check"><input class="form-check-input" type="checkbox" name="pasif_ayrilmis" id="pasif_ayrilmis" value="1" <?= !empty($s['opt']['pasif_ayrilmis'])?'checked':'' ?>><label class="form-check-label" for="pasif_ayrilmis">Durum sütunu <em>pasif / disabled</em> olan kişileri işten ayrılmış say (çıkış tarihi bugün; çıkış tarihi sütunu doluysa o esas)</label></div>
       <div class="form-check"><input class="form-check-input" type="checkbox" name="dosyada_olmayan_ayrilmis" id="dosyada_olmayan_ayrilmis" value="1" <?= !empty($s['opt']['dosyada_olmayan_ayrilmis'])?'checked':'' ?>><label class="form-check-label" for="dosyada_olmayan_ayrilmis"><strong>Dosyada olmayan</strong> çalışanları işten ayrılmış say <span class="text-danger">(yalnız dosya TÜM personeli içeriyorsa işaretleyin; üzerinde zimmet olanlar atlanır)</span></label></div>
+      <div class="form-check"><input class="form-check-input" type="checkbox" name="yeni_acma" id="yeni_acma" value="1" <?= !empty($s['opt']['yeni_acma'])?'checked':'' ?>><label class="form-check-label" for="yeni_acma"><strong>Yalnız mevcut personeli güncelle</strong> — sistemde bulunamayan kişi için yeni kart açma <span class="text-muted">(telefon rehberi gibi kısmi listelerde: yazım farkı mükerrer kişi açmasın; bulunamayanlar raporda listelenir)</span></label></div>
       <?php if (yetki_var('duzenle')): ?>
       <hr class="my-2">
       <div class="form-check"><input class="form-check-input" type="checkbox" name="tam_yenileme" id="tam_yenileme" value="1" <?= !empty($s['opt']['tam_yenileme'])?'checked':'' ?>>

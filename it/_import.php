@@ -269,6 +269,40 @@ function pim_ad_ayir(string $s): array
     return [implode(' ', $p), $soy];
 }
 
+/**
+ * Kısaltılmış / eksik yazılmış adı personel kartıyla karşılaştırır: "M.Efe SAYICI" ↔ "MEHMET EFE SAYICI",
+ * "Y.Emre YILMAZ" ↔ "YUNUS EMRE YILMAZ", "Tuğba AKYAZI" ↔ "TUĞBA AKYAZI KUBLAY".
+ * Dosyadaki her kelime karttaki kelimelerle SIRAYLA eşleşmeli: tam kelime ya da tek harf = baş harf.
+ * Kartta fazladan kelime olabilir (ikinci ad / ikinci soyad). ⚠ En az İKİ tam kelime eşleşmeli —
+ * yalnız "A. YILMAZ" gibi tek tam kelimeyle eşleştirilmez (onlarca aday olur).
+ */
+function pim_kisi_uyumlu(string $dosya, string $kart): bool
+{
+    $d = array_values(array_filter(explode(' ', pim_norm($dosya)), 'strlen'));
+    $k = array_values(array_filter(explode(' ', pim_norm($kart)), 'strlen'));
+    if (count($d) < 2 || count($k) < count($d)) return false;
+    $j = 0; $tam = 0;
+    foreach ($d as $w) {
+        $bul = false;
+        for (; $j < count($k); $j++) {
+            if ($w === $k[$j]) { $tam++; $bul = true; $j++; break; }
+            if (strlen($w) === 1 && $k[$j][0] === $w) { $bul = true; $j++; break; }
+        }
+        if (!$bul) return false;
+    }
+    // Soyad (dosyadaki son kelime) tam yazılmış olmalı — "Emre D." ile kimse eşleşmesin
+    return $tam >= 2 && strlen(end($d)) > 1;
+}
+
+/** Kartlar içinde dosyadaki ada uyan TEK kişiyi döndürür (birden çok uyan varsa null — tahmin edilmez). */
+function pim_kisi_kisaltma_bul(array $kartlar, string $dosya): ?array
+{
+    $aday = [];
+    foreach ($kartlar as $k) if (pim_kisi_uyumlu($dosya, trim(($k['ad'] ?? '') . ' ' . ($k['soyad'] ?? '')))) $aday[] = $k;
+    return count($aday) === 1 ? $aday[0] : null;
+}
+
+
 /** Lokasyon metni → it_lokasyonlar id (kod eşleşmesi → ad eşit → ad içerir). */
 function pim_lokasyon_bul(PDO $pdo, string $s): ?int
 {
@@ -440,7 +474,7 @@ function pim_log_kur(PDO $pdo): void
 
 /**
  * Birleştirme. $opt: harita (sütun→alan), baslik_idx, yazim (buyuk|bas_harf|''), pasif_ayrilmis (durum=pasif → çıkış tarihi bugün),
- * dosyada_olmayan_ayrilmis, dosya, bicim, kullanici, rapor_tarihi (Y-m-d).
+ * dosyada_olmayan_ayrilmis, yeni_acma (eşleşmeyene kart açma), dosya, bicim, kullanici, rapor_tarihi (Y-m-d).
  * Dönüş: sayaçlar + listeler (yeni/guncellenen/degismeyen/atlanan/ayrilan/lokasyon_yok).
  */
 function pim_import(PDO $pdo, array $satirlar, array $opt): array
@@ -527,6 +561,15 @@ function pim_import(PDO $pdo, array $satirlar, array $opt): array
                 if (count($adaylar) === 1) { $m = $adaylar[0]; $nasil = 'ad soyad'; }
                 else { foreach ($adaylar as $a) $dosyadaGorulen[(int)$a['id']] = true; $r['atlanan'][] = ['satir'=>$exNo, 'kim'=>$etiket, 'neden'=>'aynı ad soyadlı ' . count($adaylar) . ' kayıt var, sicil/e-posta yok — elle eşleyin']; continue; }
             }
+            // Kısaltılmış ad ("M.Efe SAYICI" → MEHMET EFE SAYICI): yalnız TEK uyan kart varsa. ⚠ Ad/soyad bu
+            // durumda dosyadan GÜNCELLENMEZ — kısaltma kartın tam adını bozmasın.
+            if (!$m && ($k = pim_kisi_kisaltma_bul($mevcut, $v['ad'] . ' ' . $v['soyad']))) {
+                $m = $k; $nasil = 'kısaltılmış ad';
+                $yeni['ad'] = $m['ad']; $yeni['soyad'] = $m['soyad'];
+            }
+            // "Yalnız mevcut personeli güncelle": eşleşmeyen satır için yeni kart AÇILMAZ (telefon rehberi gibi
+            // kısmi listelerde yazım farkı yüzünden mükerrer kişi oluşmasın)
+            if (!$m && !empty($opt['yeni_acma'])) { $r['atlanan'][] = ['satir'=>$exNo, 'kim'=>$etiket, 'neden'=>'sistemde bu adla personel yok — yeni kart açılmadı (personel kartından elle eşleyin)']; continue; }
 
             // Çakışma denetimi: sicil aynı ama ad VE soyad bambaşkaysa, ya da e-posta/ad ile bulunup sicil farklıysa
             // kayıt EZİLMEZ — satır atlanır, kullanıcı elle karar verir (sicil yeniden kullanılmış / yanlış e-posta olabilir)

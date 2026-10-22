@@ -21,7 +21,7 @@ $kisi = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ?? null;
 /** Şablonun sütun düzeni = içe aktarmanın tanıdığı başlıklar (cim_harita bu adlarla eşleştirir). */
 const CIM_SABLON_BASLIK = ['Envanter No','Cihaz Kodu','IFS Seri Nesne No','Seri Nesne Adı','Kategori','Marka','Model','Seri No','Şasi No','IMEI',
                            'Durum','Kişi','Departman','Mevcut Proje','Kiralanan Firma','Alış Tarihi','Garanti Bitiş','Fiyat (TL)','Fiyat (USD)','Kur',
-                           'Tedarikçi','Fatura No','SAS Ref','Şirket','Transfer Geldiği Birim','Transfer Tarihi','IP Adresi','MAC Adresi','İşletim Sistemi',
+                           'Tedarikçi','Fatura No','SAS Ref','Şirket','Transfer Geldiği Birim','Transfer Tarihi','IP Adresi','MAC Adresi','Dahili No','İşletim Sistemi',
                            'İşlemci','Ram','Ekran Kartı','Hdd','Anakart','Ekran Boyutu','Kapasite','Teknik Özellik','Not'];
 
 /** Bir cihaz kaydını şablon düzenine çevirir. */
@@ -48,7 +48,7 @@ function cim_sablon_satiri(PDO $pdo, array $r): array
         ['v'=>(string)($r['tedarikci'] ?? '')], ['v'=>(string)($r['fatura_no'] ?? '')],
         ['v'=>(string)($r['sas_ref'] ?? '')], ['v'=>(string)($r['sirket'] ?? '')],
         ['v'=>(string)($r['transfer_birim'] ?? '')], ['v'=>(string)($r['transfer_tarihi'] ?? ''), 't'=>'date'],
-        ['v'=>(string)($r['ip_adresi'] ?? '')], ['v'=>(string)($r['mac_adresi'] ?? '')], ['v'=>(string)($r['isletim_sistemi'] ?? '')],
+        ['v'=>(string)($r['ip_adresi'] ?? '')], ['v'=>(string)($r['mac_adresi'] ?? '')], ['v'=>(string)($r['dahili_no'] ?? '')], ['v'=>(string)($r['isletim_sistemi'] ?? '')],
         ['v'=>(string)($r['islemci'] ?? '')], ['v'=>(string)($r['ram'] ?? '')], ['v'=>(string)($r['ekran_karti'] ?? '')],
         ['v'=>(string)($r['disk'] ?? '')], ['v'=>(string)($r['anakart'] ?? '')], ['v'=>(string)($r['ekran_boyutu'] ?? '')],
         ['v'=>(string)($r['kapasite'] ?? '')],
@@ -102,7 +102,7 @@ if (isset($_GET['sablon'])) {
             ['v'=>$o[30] !== '' ? (float)$o[30] : '', 't'=>'number'], ['v'=>$o[31] !== '' ? (float)$o[31] : '', 't'=>'number'],
             ['v'=>$o[16]], ['v'=>$o[17]],
             ['v'=>$o[32]], ['v'=>$o[33]], ['v'=>$o[34]], ['v'=>$o[35], 't'=>'date'],
-            ['v'=>$o[18]], ['v'=>$o[19]], ['v'=>$o[20]],
+            ['v'=>$o[18]], ['v'=>$o[19]], ['v'=>''], ['v'=>$o[20]],
             ['v'=>$o[21]], ['v'=>$o[22]], ['v'=>$o[23]], ['v'=>$o[24]], ['v'=>$o[25]], ['v'=>$o[26]], ['v'=>$o[27]],
             ['v'=>$o[28]], ['v'=>$o[29]],
         ]);
