@@ -1034,6 +1034,11 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   (seri no'dan sonra; 12 hex hane, ayraç farkı yok sayılır) ve **kimliksiz telefon satırı** (seri/kod/MAC yok —
   DECT el cihazı) aynı dahiliyi taşıyan TEK `ip_telefon`/`santral` kaydıyla eşleşir — yoksa her yüklemede
   yeni kayıt açılıyordu.
+  • ⚠⚠ **Kısa koda benzeyen GERÇEK model siliniyordu** (2026-10-23): `cim_satir_cozumle` Model değeri
+  `cim_kod_mu()`'ya uyuyorsa ("A170" Gigaset DECT, "A2604") onu kurum kodu sayıp **boşaltıyordu** — yorum bunu
+  yalnız Snipe-IT düzeni için söylüyordu ama koşul eksikti. Artık yalnız `$kodTasindi` iken (etiket IFS kodu →
+  Model sütunu kurum kodu taşır) silinir; Snipe testi (FRM-… + N288 → kod N288, model = Model No) aynı kaldı.
+  Telefon markaları: masa telefonları **KAREL** (212G/213G/138G), DECT el cihazları **SIEMENS GIGASET A170**.
   Lokasyon metni `ERN Holding İstanbul Merkez Binası › Zemin Kat`: kat düğümü ağaçta varsa ona, yoksa binaya
   bağlanır (pim_lokasyon_bul "ad içerir" + en derin düğüm). Test (scratchpad `rehber_test.php`, 20 sağlama):
   24 kişiye dahili yazıldı, 3 olmayan kişi atlandı, **0 yeni kart**, kısaltmalar doğru kişiye gitti, tuzak kişiye

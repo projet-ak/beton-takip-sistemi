@@ -333,7 +333,9 @@ function cim_satir_cozumle(array $satir, array $harita, array $baslik): array
     // ── Model: "Model" sütunu kurum içi kodu (N221) taşıyorsa gerçek model "Model No"dadır ──
     $modelKod = $v['model'];
     if ($v['model_no'] !== '')            $v['model'] = $v['model_no'];
-    elseif (cim_kod_mu($modelKod))        $v['model'] = '';
+    // ⚠ Yalnız Snipe-IT düzeninde (etiket IFS kodu → Model sütunu kurum kodu taşır) silinir; aksi halde
+    // "A170" (Gigaset) / "A2604" gibi GERÇEK model numaraları kısa koda benzediği için kayboluyordu.
+    elseif ($kodTasindi && cim_kod_mu($modelKod)) $v['model'] = '';
     // ⚠ Model'i cihaz kodu saymak YALNIZ etiket sütunu IFS kodu taşıdığında doğrudur (Snipe-IT düzeni).
     // Aksi halde "A2604" gibi gerçek model numaraları demirbaş etiketi sanılıp koda yazılıyordu.
     if ($kodTasindi && $modelKod !== '' && cim_kod_mu($modelKod) && $v['cihaz_kodu'] === '') $v['cihaz_kodu'] = $modelKod;
