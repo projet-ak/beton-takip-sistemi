@@ -1045,6 +1045,15 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   dokunulmadı, kişinin lokasyonu korundu · 36 telefon katlara dağıldı (BK 14 / ZK 16 / MK 6), 24'ü kişiye
   bağlı · **2. yükleme 0 yeni / 0 güncellenen**, cihaz/hareket sayısı aynı. U051/U052/U056/devir testleri
   yeniden koştu, hepsi geçti.
+  **"TRANSFER EDİLMİŞTİR" EXCEL'DEN OKUNUR (2026-10-24, kullanıcı: Batıyakası U030-U031-U039 → Kulp I-IV HES
+  İşletmesi I001'e giden 7 PoE switch + 3 PTZ kamera)** — ⚠ `cim_durum()` "Transfer Edilmiştir" metnini 'TRANSFER'
+  kelimesinden ötürü **`transfer` (yolda)** okuyordu; `?sablon=mevcut` round-trip'inde de yeni kayıt yolda açılırdı.
+  Artık `(TRANSFER|SEVK)… (EDILMIS|EDILDI|TAMAMLAN|TESLIM ALIN)` → **`transfer_edildi`** (yolda kontrolünden ÖNCE);
+  düz "Transfer" / "Transfer / yolda" yine `transfer`. Yeni kayıtta `cim_transfer_gecmisi` giris → Sevk → teslim
+  zincirini yazar, `it_transfer_edilenler` hedefi okur. Test (scratchpad `kulp_test.php`, 10 sağlama): 10 yeni ·
+  kategori 7 switch + 3 kamera · lokasyon I001 · durum `transfer_edildi` · envanterde sayılıyor · göç 0 ·
+  2. yüklemede seri nolu 8 kayıt değişmeyen. ⚠ **Etiketsiz (seri nosuz) 2 cihaz tekrar yüklemede YENİDEN açılır** —
+  kimliği olmayan satır eşleşemez; tek sefer yüklenmeli, sonra etiket yapıştırılıp kartına yazılmalı.
   **TRANSFERLE GELEN CİHAZIN GEÇMİŞİ İÇE AKTARMADA KURULUR (2026-10-21, kullanıcı: "bu cihazlar u051
   projesinden bilgi işlem sorumlusu osman uğur M023 merkez depoya gönderilmiştir, 19.10.2026'da gönderilmiş
   21.10.2026'da merkez depo teslim almıştır, polat elitaş'a zimmetleyelim")** — kaynak 50 IP kameralık
