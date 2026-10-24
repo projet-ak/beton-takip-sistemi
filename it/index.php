@@ -76,8 +76,23 @@ try {
     foreach ($yolda as &$__y) { $__y['gun'] = $__tg[(int)$__y['id']] ?? null; $yoldaEnUzun = max($yoldaEnUzun, (int)($__y['gun'] ?? 0)); }
     unset($__y);
 } catch (Throwable $e) {}
-$son = $pdoIt->query("SELECT h.*, c.envanter_no, c.ad FROM it_hareketler h JOIN it_cihazlar c ON c.id=h.cihaz_id
-                      ORDER BY h.id DESC LIMIT 12")->fetchAll();
+// Son hareketler: yalnız SON 7 GÜN (bugün dahil), sayfa başına 25 satır, ‹ önceki / sonraki › ile gezilir.
+// Eşik PHP'de hesaplanıp BAĞLANIR (DATE_SUB/INTERVAL SQLite'lı duman testinde ayrıştırılamıyor).
+const IT_SON_HAREKET_GUN = 7;
+const IT_SON_HAREKET_SAYFA = 25;
+$shBas = date('Y-m-d', strtotime('-' . (IT_SON_HAREKET_GUN - 1) . ' days'));
+$st = $pdoIt->prepare("SELECT COUNT(*) FROM it_hareketler h JOIN it_cihazlar c ON c.id=h.cihaz_id WHERE h.tarih >= ?");
+$st->execute([$shBas]);
+$shToplam = (int)$st->fetchColumn();
+$shSayfaSay = max(1, (int)ceil($shToplam / IT_SON_HAREKET_SAYFA));
+$shSayfa = min($shSayfaSay, max(1, (int)($_GET['hs'] ?? 1)));
+$st = $pdoIt->prepare("SELECT h.*, c.envanter_no, c.ad FROM it_hareketler h JOIN it_cihazlar c ON c.id=h.cihaz_id
+                       WHERE h.tarih >= ? ORDER BY h.tarih DESC, h.id DESC
+                       LIMIT " . IT_SON_HAREKET_SAYFA . " OFFSET " . (($shSayfa - 1) * IT_SON_HAREKET_SAYFA));
+$st->execute([$shBas]);
+$son = $st->fetchAll();
+// Sayfa bağlantısı: diğer GET parametreleri korunur, panele geri dönülür
+$shLink = fn(int $n) => '?' . http_build_query(array_merge($_GET, ['hs' => $n])) . '#son-hareketler';
 $bos = $o['toplam'] === 0;
 $f0 = fn($n) => number_format((float)$n, 0, ',', '.');
 $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
@@ -318,12 +333,18 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
   </div>
   <div class="col-12">
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-white"><strong><i class="bi bi-clock-history me-1"></i>Son hareketler</strong></div>
+    <div class="card border-0 shadow-sm" id="son-hareketler">
+      <div class="card-header bg-white d-flex flex-wrap align-items-center gap-2">
+        <strong><i class="bi bi-clock-history me-1"></i>Son hareketler</strong>
+        <span class="small text-muted">son <?= IT_SON_HAREKET_GUN ?> gün · <?= format_date($shBas) ?> → bugün · <?= $f0($shToplam) ?> hareket</span>
+        <?php if ($shSayfaSay > 1): ?>
+        <span class="ms-auto small text-muted"><?= $shSayfa ?> / <?= $shSayfaSay ?> sayfa</span>
+        <?php endif; ?>
+      </div>
       <div class="table-responsive"><table class="table table-sm table-hover mb-0" style="font-size:.84rem">
         <thead class="table-light"><tr><th>Tarih</th><th>Cihaz</th><th>İşlem</th><th>Kişi</th><th>Açıklama</th><th>Kaydeden</th></tr></thead>
         <tbody>
-        <?php if (!$son): ?><tr><td colspan="6" class="text-muted text-center py-3">Hareket yok.</td></tr><?php endif; ?>
+        <?php if (!$son): ?><tr><td colspan="6" class="text-muted text-center py-3">Son <?= IT_SON_HAREKET_GUN ?> günde hareket yok.</td></tr><?php endif; ?>
         <?php foreach ($son as $hr): $hx = IT_HAREKET[$hr['tur']] ?? [$hr['tur'], 'secondary', 'bi-dot']; ?>
           <tr><td class="text-nowrap"><?= format_date($hr['tarih']) ?></td>
               <td><a href="cihaz_detay.php?id=<?= (int)$hr['cihaz_id'] ?>" class="font-monospace text-decoration-none"><?= h($hr['envanter_no']) ?></a> <span class="small text-muted"><?= h($hr['ad']) ?></span></td>
@@ -332,6 +353,16 @@ require_once __DIR__ . '/../includes/header.php';
               <td class="small text-muted"><?= h($hr['kullanici'] ?: '—') ?></td></tr>
         <?php endforeach; ?>
         </tbody></table></div>
+      <?php if ($shSayfaSay > 1):
+          $shIlk = ($shSayfa - 1) * IT_SON_HAREKET_SAYFA + 1; $shSon = min($shToplam, $shSayfa * IT_SON_HAREKET_SAYFA); ?>
+      <div class="card-footer bg-white d-flex align-items-center gap-2 small">
+        <span class="text-muted"><?= $f0($shIlk) ?>–<?= $f0($shSon) ?> / <?= $f0($shToplam) ?></span>
+        <div class="ms-auto btn-group btn-group-sm">
+          <a class="btn btn-outline-secondary<?= $shSayfa <= 1 ? ' disabled' : '' ?>" href="<?= h($shLink($shSayfa - 1)) ?>"<?= $shSayfa <= 1 ? ' aria-disabled="true" tabindex="-1"' : '' ?>><i class="bi bi-chevron-left"></i> Önceki</a>
+          <a class="btn btn-outline-secondary<?= $shSayfa >= $shSayfaSay ? ' disabled' : '' ?>" href="<?= h($shLink($shSayfa + 1)) ?>"<?= $shSayfa >= $shSayfaSay ? ' aria-disabled="true" tabindex="-1"' : '' ?>>Sonraki <i class="bi bi-chevron-right"></i></a>
+        </div>
+      </div>
+      <?php endif; ?>
     </div>
   </div>
 </div>

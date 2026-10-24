@@ -1045,6 +1045,16 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   dokunulmadı, kişinin lokasyonu korundu · 36 telefon katlara dağıldı (BK 14 / ZK 16 / MK 6), 24'ü kişiye
   bağlı · **2. yükleme 0 yeni / 0 güncellenen**, cihaz/hareket sayısı aynı. U051/U052/U056/devir testleri
   yeniden koştu, hepsi geçti.
+  **DASHBOARD "SON HAREKETLER": SON 7 GÜN + 25'ER SAYFA (2026-10-24, kullanıcı: "dashboard sayfasında son
+  yedi gün olsun ve 25 satırı geçmesin, geçerse ileri geri yapılabilsin")** — panel eskiden kayıt sırasına göre
+  sabit son 12 hareketi gösteriyordu. Artık `it/index.php` yalnız **`h.tarih` son 7 gün (bugün dahil)** olan
+  hareketleri listeler (`IT_SON_HAREKET_GUN`), sıralama `tarih DESC, id DESC`, sayfa başına **25 satır**
+  (`IT_SON_HAREKET_SAYFA`), ‹ Önceki / Sonraki › düğmeleri `?hs=` ile (diğer GET parametreleri korunur, `#son-hareketler`
+  çapasıyla panele dönülür; aralık dışı/bozuk sayfa no 1..son'a kırpılır). Başlıkta "son 7 gün · <başlangıç> → bugün ·
+  N hareket" + "x / y sayfa", altta "26–50 / 60". ⚠ Süzgeç hareketin **tarihine** bakar, kayıt anına değil — içe
+  aktarmanın geriye dönük tarihli yazdığı transfer zinciri (ör. 19.10 sevk) 7 günü geçmişse panelde görünmez, cihaz
+  kartında durur. Eşik PHP'de hesaplanıp bağlanır (INTERVAL yok). Test (scratchpad `dash/`): 60 hareket → 25/25/10,
+  7 günden eski 2 kayıt hariç, `hs=0/abc/9` kırpıldı, 10 kayıtta sayfalama çıkmıyor, 0 kayıtta "Son 7 günde hareket yok".
   **"DATA TOO LONG FOR COLUMN 'ram'" — FORM AKTARIMI DURUYORDU (2026-10-24, 77 formluk yüklemede)** — `FIM_COKLU`
   alanları (ram · disk · islemci…) birden çok etiketi "Etiket: değer · …" diye birleştirdiğinden RAM 120 karakteri
   aştı; MySQL katı kipte tek bir sığmayan değer `fim_import`'u fırlatıyor ve **77 formun tamamı** "Aktarım hatası"
