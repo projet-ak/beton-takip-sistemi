@@ -1045,6 +1045,25 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   dokunulmadı, kişinin lokasyonu korundu · 36 telefon katlara dağıldı (BK 14 / ZK 16 / MK 6), 24'ü kişiye
   bağlı · **2. yükleme 0 yeni / 0 güncellenen**, cihaz/hareket sayısı aynı. U051/U052/U056/devir testleri
   yeniden koştu, hepsi geçti.
+  **FORM AKTARIMI = KÜNYE ALMA, ZİMMET DEĞİL + "ARŞİV KAYDI" DURUMU (2026-10-24, kullanıcı: "burdaki amacım kişiye
+  zimmetleme değil, cihaz bilgilerini alma ve cihaz kartı açmak; eski cihaz bilgileri bende kayıtlıysa güncellesin,
+  yoksa arşiv cihaz olarak ibare olsun — cihazların nerede, hangi şantiyede olduğunu ve durumunu bilmiyorum")** —
+  • **`IT_DURUM`'a `arsiv`** ("Arşiv Kaydı (yeri bilinmiyor)", `bi-archive`): eski tahsis formundan açılmış, konumu ve
+  kullanım durumu DOĞRULANMAMIŞ kart. `belirsiz`'den farkı: hiç sayılmadı/aranmadı, yalnız künyesi biliniyor.
+  **Envanterden DÜŞMEZ** (`IT_DURUM_DUSEN`'e girmez). `it_ozet()` `arsiv` sayacı → dashboard'a **"Arşiv kaydı"** KPI'ı
+  (`cihazlar.php?durum=arsiv`). Cihaz kartında arşivdeyken menüde **"Yeri belirlendi (arşiv kaydı bulundu)"** çıkar —
+  mevcut `bulundu` işlemini kullanır (lokasyon seçilir, zimmetliyse aktif değilse depoda olur). `cim_durum()` "ARŞİV" → arsiv.
+  • **`fim_import` yeni seçenek `zimmetle` — VARSAYILAN KAPALI.** Kapalıyken: formdaki kişi/sicil/birim/lokasyon cihaza
+  BAĞLANMAZ, `fim_form_notu()` ile **nota** "Tahsis formunda (<dosya>): kullanıcı … · lokasyon …" olarak düşer (aynı satır
+  varsa tekrar yazılmaz → idempotent); **kayıtlı cihazda durum · zimmet · lokasyon DEĞİŞMEZ**, yalnız künye güncellenir,
+  sahte iade/zimmet hareketi yazılmaz; **eşleşmeyen form `durum='arsiv'`, lokasyonsuz, zimmetsiz** açılır, günlüğe
+  "Tahsis formundan ARŞİV KAYDI olarak açıldı — yeri ve durumu doğrulanmadı" yazılır. Açılırsa eski davranış birebir
+  (kişiye zimmet, lokasyon, "personel kartı aç" alt seçeneği — JS ile yalnız zimmetle açıkken etkin).
+  `form_import.php`: ön izlemede "sistemde yok — arşiv kaydı açılacak" rozeti, sütun "Formdaki kullanıcı", raporda
+  "N arşiv kaydı" rozeti + `?durum=arsiv` bağlantısı. Test (scratchpad `arsiv_test.php`, 20 sağlama): kayıtlı B136
+  (Ahmet Kaya'da, M023'te) künyesi güncellendi, zimmet/durum/lokasyon aynı, formdaki "Fikret Sarı" yalnız notta · yeni
+  B999 arşiv + zimmetsiz + lokasyonsuz + künyeli · 2. yükleme 0/0, hareket ve not tekrarı yok · zimmetle açıkken eski
+  davranış. ⚠ `it_ozet` bu harness'te `DATE_ADD(… INTERVAL …)` yüzünden 0 döner (SQLite) — sayaç doğrudan SQL ile doğrulandı.
   **ESKİ İKİLİ .XLS OKUNUR (2026-10-24, kullanıcı: tahsis formu "B136 - Fikret Sarı.xls" form aktarımında
   "Kabul edilen uzantılar: .xlsx · .pdf" diye reddedildi)** — kurumsal formlar gerçek BIFF (.xls, `D0 CF 11 E0`)
   olarak geliyor. **`shuchkin/simplexls` 1.0.0** (MIT, saf PHP, SimpleXLSX'in kardeşi) composer ile eklendi

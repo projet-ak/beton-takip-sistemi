@@ -316,6 +316,12 @@ const IT_DURUM = [
     // ile önceki hâline (zimmetliyse kullanımda, değilse depoda) döner; bulunamazsa
     // "Kayıp / çalıntı bildir" ile envanterden düşürülür.
     'belirsiz' => ['Yeri Belirsiz',         'warning text-dark','bi-geo-alt'],
+    // ⚠ ARŞİV KAYDI (2026-10-24, kullanıcı: "amacım zimmetleme değil cihaz kartı açmak; cihazların
+    // nerede, hangi şantiyede olduğunu ve durumunu bilmiyorum"): eski tahsis formlarından açılan,
+    // konumu ve kullanım durumu DOĞRULANMAMIŞ cihaz kartı. Belirsiz'den farkı: hiç sayılmadı/aranmadı,
+    // yalnız künyesi biliniyor. Envanterden DÜŞMEZ (kart ve künye korunur); cihaz bulunduğunda kartındaki
+    // "Yeri belirlendi" işlemiyle lokasyonu yazılır ve depoda/kullanımda olur.
+    'arsiv'    => ['Arşiv Kaydı (yeri bilinmiyor)', 'light text-dark border', 'bi-archive'],
     'kayip'    => ['Kayıp / Çalıntı',       'warning text-dark','bi-question-octagon'],
     'hibe'     => ['Hibe / Devredildi',     'primary',          'bi-gift'],
     'hurda'    => ['Hurda / Kullanım dışı', 'dark',             'bi-trash'],
@@ -599,12 +605,12 @@ function it_secenekler(PDO $pdo, string $sutun): array
 /** Dashboard / rapor özeti. */
 function it_ozet(PDO $pdo): array
 {
-    $o = ['toplam'=>0,'aktif'=>0,'depoda'=>0,'transfer'=>0,'transfer_edildi'=>0,'serviste'=>0,'arizali'=>0,'belirsiz'=>0,'kayip'=>0,'hibe'=>0,'hurda'=>0,'dusen'=>0,
+    $o = ['toplam'=>0,'aktif'=>0,'depoda'=>0,'transfer'=>0,'transfer_edildi'=>0,'serviste'=>0,'arizali'=>0,'belirsiz'=>0,'arsiv'=>0,'kayip'=>0,'hibe'=>0,'hurda'=>0,'dusen'=>0,
           'mali'=>0.0,'garantiBitiyor'=>0,'garantiBitti'=>0,'zimmetliKisi'=>0,'lisans'=>0];
     try {
         $r = $pdo->query("SELECT COUNT(*) toplam,
                 SUM(durum='aktif') aktif, SUM(durum='depoda') depoda, SUM(durum='transfer') transfer, SUM(durum='transfer_edildi') transfer_edildi, SUM(durum='serviste') serviste,
-                SUM(durum='arizali') arizali, SUM(durum='belirsiz') belirsiz, SUM(durum='hurda') hurda,
+                SUM(durum='arizali') arizali, SUM(durum='belirsiz') belirsiz, SUM(durum='arsiv') arsiv, SUM(durum='hurda') hurda,
                 SUM(durum='kayip') kayip, SUM(durum='hibe') hibe,
                 COALESCE(SUM(CASE WHEN " . it_envanterde() . " THEN " . it_mali_tl() . " END),0) mali,
                 SUM(" . it_envanterde() . " AND garanti_bitis BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 60 DAY)) garantiBitiyor,

@@ -307,6 +307,20 @@ function fim_cihaz_alanlari(array $v): array
 }
 
 /**
+ * Formdaki kişi / birim / lokasyon bilgisini tek not satırına çevirir — zimmet açılmadığında bu bilgi
+ * kaybolmasın ("bu cihaz bir zamanlar kimdeydi" sorusunun izi). Hepsi boşsa ''.
+ */
+function fim_form_notu(array $v, string $dosya): string
+{
+    $p = [];
+    foreach (['kisi' => 'kullanıcı', 'sicil_no' => 'sicil', 'departman' => 'birim', 'lokasyon' => 'lokasyon'] as $k => $et) {
+        $x = trim((string)($v[$k] ?? ''));
+        if ($x !== '') $p[] = $et . ' ' . $x;
+    }
+    return $p ? 'Tahsis formunda (' . $dosya . '): ' . implode(' · ', $p) : '';
+}
+
+/**
  * Çözümlenmiş formları `it_cihazlar`'a işler.
  *
  * **Eşleşme sırası** cihaz kodu → IFS nesne no → seri no → envanter no (cihaz içe aktarmayla aynı).
@@ -315,13 +329,23 @@ function fim_cihaz_alanlari(array $v): array
  * Form dosyası cihaza **belge olarak bağlanır** ve yaşam günlüğüne satır yazılır.
  *
  * @param array $dosyalar [['ad'=>, 'yol'=>, 'v'=>fim_cozumle çıktısı, 'sayfa'=>], …]
- * @param array $opt bos_doldur · personel_ekle · belge_tur ('belge'|'zimmet') · kullanici
+ * ⚠⚠ **Varsayılan amaç KÜNYE almaktır, zimmetleme DEĞİL** (2026-10-24, kullanıcı: "amacım kişiye
+ * zimmetleme değil, cihaz bilgilerini alıp kart açmak; cihazların nerede ve hangi durumda olduğunu
+ * bilmiyorum"). `$opt['zimmetle']` KAPALIYKEN:
+ *  · formdaki kişi / birim / lokasyon cihaza BAĞLANMAZ — yalnız nota "Tahsis formunda: …" diye düşer
+ *    (eski formdaki kullanıcı bugünkü kullanıcı olmayabilir);
+ *  · mevcut cihazın durumu, zimmeti ve lokasyonu DEĞİŞMEZ — yalnız künye alanları güncellenir;
+ *  · eşleşmeyen form **"Arşiv Kaydı"** (`durum='arsiv'`, lokasyonsuz) olarak açılır — yeri doğrulanınca
+ *    cihaz kartındaki "Yeri belirlendi" işlemiyle depoda/kullanımda olur.
+ *
+ * @param array $opt bos_doldur · zimmetle · personel_ekle · belge_tur ('belge'|'zimmet') · kullanici
  */
 function fim_import(PDO $pdo, array $dosyalar, array $opt = []): array
 {
     $r = ['okunan' => 0, 'yeni' => [], 'guncellenen' => [], 'degismeyen' => 0, 'atlanan' => [],
           'kisi_yok' => [], 'belge' => 0, 'kisi_eklenen' => []];
     $bosDoldur  = !empty($opt['bos_doldur']);
+    $zimmetle   = !empty($opt['zimmetle']);
     $belgeTur   = ($opt['belge_tur'] ?? 'belge') === 'zimmet' ? 'zimmet' : 'belge';
     $kullanici  = $opt['kullanici'] ?? null;
 
@@ -356,9 +380,10 @@ function fim_import(PDO $pdo, array $dosyalar, array $opt = []): array
             continue;
         }
 
-        // ── Kişi ve lokasyon bağı
+        // ── Kişi ve lokasyon bağı (yalnız "zimmetle" açıkken — yoksa yalnız nota düşer)
         $personelId = null; $kisiAd = trim((string)($v['kisi'] ?? ''));
-        if ($kisiAd !== '') {
+        $formNot = fim_form_notu($v, $ad);
+        if ($zimmetle && $kisiAd !== '') {
             // Önce SİCİL (aynı adlı kişiler ayrışır), sonra normalize ad+soyad
             $per = null;
             $sicil = trim((string)($v['sicil_no'] ?? ''));
@@ -376,7 +401,7 @@ function fim_import(PDO $pdo, array $dosyalar, array $opt = []): array
                                      'neden' => ($nasilKisi ?? '') === 'coklu' ? 'aynı adlı birden çok personel — elle bağlayın' : 'personel kartı yok'];
         }
         $lokId = null;
-        if (trim((string)($v['lokasyon'] ?? '')) !== '' && function_exists('pim_lokasyon_bul')) {
+        if ($zimmetle && trim((string)($v['lokasyon'] ?? '')) !== '' && function_exists('pim_lokasyon_bul')) {
             $lokId = pim_lokasyon_bul($pdo, (string)$v['lokasyon']) ?: null;
         }
         if ($personelId && !empty($per)) {
@@ -386,7 +411,7 @@ function fim_import(PDO $pdo, array $dosyalar, array $opt = []): array
             if (trim((string)($per['birim'] ?? '')) !== '') $yy['departman'] = (string)$per['birim'];
         }
         if ($lokId) $yy['lokasyon_id'] = $lokId;
-        if (trim((string)($v['departman'] ?? '')) !== '') $yy['departman'] = it_buyuk((string)$v['departman']);
+        if ($zimmetle && trim((string)($v['departman'] ?? '')) !== '') $yy['departman'] = it_buyuk((string)$v['departman']);
 
         if ($m) {
             // ── GÜNCELLE: yalnız formda dolu gelen alanlar
@@ -401,6 +426,12 @@ function fim_import(PDO $pdo, array $dosyalar, array $opt = []): array
                            . ' → ' . mb_substr((string)$yeni, 0, 30);
             }
             $cihazId = (int)$m['id'];
+            // Formdaki kullanıcı/lokasyon bilgisi nota EKLENİR (ezilmez); aynı satır zaten varsa tekrar yazılmaz
+            if ($formNot !== '' && !str_contains((string)($m['notlar'] ?? ''), $formNot)) {
+                $set[] = "`notlar`=?";
+                $par[] = trim((string)($m['notlar'] ?? '') . "\n" . $formNot);
+                $degisen[] = 'not: ' . mb_substr($formNot, 0, 40);
+            }
             if ($set) {
                 $par[] = $cihazId;
                 $pdo->prepare("UPDATE it_cihazlar SET " . implode(', ', $set) . " WHERE id=?")->execute($par);
@@ -414,14 +445,18 @@ function fim_import(PDO $pdo, array $dosyalar, array $opt = []): array
             $yy['envanter_no'] = it_envanter_no($pdo);
             $yy['ad'] = $yy['ad'] ?? trim((string)($yy['marka'] ?? '') . ' ' . (string)($yy['model'] ?? ''));
             if (trim((string)$yy['ad']) === '') $yy['ad'] = it_kategoriAd($yy['kategori']);
-            $yy['durum'] = $yy['durum'] ?? 'depoda';
+            // Zimmetlenmeyen yeni kart ARŞİV KAYDIDIR: yeri ve kullanım durumu doğrulanmadı
+            $yy['durum'] = $yy['durum'] ?? ($zimmetle ? 'depoda' : 'arsiv');
+            if ($formNot !== '') $yy['notlar'] = $formNot;
             $kolonlar = array_keys($yy);
             $pdo->prepare("INSERT INTO it_cihazlar (" . implode(',', array_map(fn($k) => "`$k`", $kolonlar)) . ") VALUES ("
                           . implode(',', array_fill(0, count($kolonlar), '?')) . ")")->execute(array_values($yy));
             $cihazId = (int)$pdo->lastInsertId();
-            $r['yeni'][] = ['dosya' => $ad, 'id' => $cihazId, 'kim' => trim(($yy['cihaz_kodu'] ?? '') . ' ' . $yy['ad'])];
+            $r['yeni'][] = ['dosya' => $ad, 'id' => $cihazId, 'kim' => trim(($yy['cihaz_kodu'] ?? '') . ' ' . $yy['ad']),
+                            'arsiv' => $yy['durum'] === 'arsiv'];
             it_hareket_ekle($pdo, $cihazId, 'giris', $yy['tedarikci'] ?? null,
-                'Tahsis formuyla envantere eklendi (' . $ad . ')', $yy['alis_tarihi'] ?? null);
+                ($yy['durum'] === 'arsiv' ? 'Tahsis formundan ARŞİV KAYDI olarak açıldı — yeri ve durumu doğrulanmadı ('
+                                          : 'Tahsis formuyla envantere eklendi (') . $ad . ')', $yy['alis_tarihi'] ?? null);
             if ($personelId) it_hareket_ekle($pdo, $cihazId, 'zimmet', $yy['zimmetli'] ?? null, 'Tahsis formundaki kullanıcı', null);
             // Sonraki dosyalar bu cihazı bulabilsin
             foreach ([['kod', 'cihaz_kodu'], ['ifs', 'varlik_kodu'], ['seri', 'seri_no'], ['env', 'envanter_no']] as [$a, $kol]) {

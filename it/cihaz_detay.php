@@ -489,7 +489,8 @@ $f2 = fn($n) => number_format((float)$n, 2, ',', '.');
                 <?php else: ?><option value="transfer">➜ Transfere çıkar (başka projeye gönder)</option><?php endif; ?>
               </optgroup>
               <optgroup label="Konum">
-                <?php if ($c['durum'] === 'belirsiz'): ?><option value="bulundu">📍 Cihaz bulundu</option>
+                <?php if ($c['durum'] === 'arsiv'): ?><option value="bulundu">📍 Yeri belirlendi (arşiv kaydı bulundu)</option>
+                <?php elseif ($c['durum'] === 'belirsiz'): ?><option value="bulundu">📍 Cihaz bulundu</option>
                 <?php else: ?><option value="belirsiz">📍 Yeri belirsiz (nerede olduğu belli değil)</option><?php endif; ?>
               </optgroup>
               <optgroup label="Envanterden düş">

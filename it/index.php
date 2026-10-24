@@ -150,6 +150,9 @@ require_once __DIR__ . '/../includes/header.php';
     // Yeri belirsiz: envanterde sayılır (kayıp DEĞİL, aranıyor) — sayımda bulunamayanlar burada birikir
     ['Yeri belirsiz', $f0($o['belirsiz']), 'bi-geo-alt', $o['belirsiz'] ? 'warning' : 'secondary', 'cihazlar.php?durum=belirsiz',
      $o['belirsiz'] ? 'aranıyor — bulunursa kartından "Cihaz bulundu"' : 'yeri bilinmeyen cihaz yok'],
+    // Arşiv kaydı: eski tahsis formlarından açılmış, yeri/durumu henüz doğrulanmamış kartlar
+    ['Arşiv kaydı', $f0($o['arsiv']), 'bi-archive', 'secondary', 'cihazlar.php?durum=arsiv',
+     $o['arsiv'] ? 'yeri doğrulanmadı — bulununca kartından "Yeri belirlendi"' : 'arşivde bekleyen kart yok'],
     ['Envanterden düşen', $f0($o['dusen']), 'bi-trash', 'dark', 'cihazlar.php?durum=dusen',
      'hurda ' . $f0($o['hurda']) . ' · kayıp ' . $f0($o['kayip']) . ' · hibe ' . $f0($o['hibe'])],
   ];

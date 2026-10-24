@@ -87,7 +87,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$gecerli) $hata = 'Aktarılacak geçerli form yok.';
         else {
             $opt = ['bos_doldur'    => !empty($_POST['bos_doldur']),
-                    'personel_ekle' => !empty($_POST['personel_ekle']),
+                    'zimmetle'      => !empty($_POST['zimmetle']),
+                    'personel_ekle' => !empty($_POST['zimmetle']) && !empty($_POST['personel_ekle']),
                     'belge_tur'     => ($_POST['belge_tur'] ?? 'belge') === 'zimmet' ? 'zimmet' : 'belge',
                     'kullanici'     => $kisi];
             try { $rapor = fim_import($pdoIt, $gecerli, $opt); }
@@ -116,7 +117,7 @@ $gecerliSayi = count(array_filter($formlar, fn($f) => empty($f['hata'])));
 <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
   <a href="cihazlar.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i></a>
   <h4 class="mb-0"><i class="bi bi-file-earmark-text text-primary me-2"></i>Form ile İçe Aktar</h4>
-  <span class="text-muted small">cihaz tahsis formundan künye güncelleme</span>
+  <span class="text-muted small">tahsis formundan cihaz künyesi alma — kayıtlıysa güncellenir, değilse arşiv kaydı açılır</span>
   <div class="ms-auto d-flex gap-2">
     <a href="cihaz_import.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-table me-1"></i>Liste ile İçe Aktar</a>
   </div>
@@ -144,9 +145,15 @@ $gecerliSayi = count(array_filter($formlar, fn($f) => empty($f['hata'])));
       <?php endforeach; ?></tbody></table></div></div>
   <?php endif; ?>
   <?php if ($rapor['yeni']): ?>
-  <div class="card border-0 shadow-sm mb-3"><div class="card-header bg-white"><strong>Yeni açılan cihazlar (<?= $y ?>)</strong></div>
+  <?php $arsivSay = count(array_filter($rapor['yeni'], fn($x) => !empty($x['arsiv']))); ?>
+  <div class="card border-0 shadow-sm mb-3"><div class="card-header bg-white"><strong>Yeni açılan cihaz kartları (<?= $y ?>)</strong>
+    <?php if ($arsivSay): ?><span class="badge bg-light text-dark border ms-1"><i class="bi bi-archive me-1"></i><?= $arsivSay ?> arşiv kaydı</span><?php endif; ?></div>
+    <?php if ($arsivSay): ?><div class="px-3 pt-2 small text-muted">Arşiv kayıtları lokasyonsuz ve zimmetsiz açıldı — sistemde
+      <a href="cihazlar.php?durum=arsiv">Arşiv Kaydı</a> durumunda bekler. Cihaz bulununca kartındaki işlem menüsünden
+      <strong>"Yeri belirlendi"</strong> seçip lokasyonunu yazın.</div><?php endif; ?>
     <ul class="list-group list-group-flush"><?php foreach ($rapor['yeni'] as $x): ?>
       <li class="list-group-item small"><a href="cihaz_detay.php?id=<?= (int)$x['id'] ?>"><?= h($x['kim']) ?></a>
+        <?php if (!empty($x['arsiv'])): ?><span class="badge bg-light text-dark border"><i class="bi bi-archive me-1"></i>arşiv</span><?php endif; ?>
         <span class="text-muted">— <?= h($x['dosya']) ?></span></li><?php endforeach; ?></ul></div>
   <?php endif; ?>
   <?php if ($rapor['atlanan']): ?>
@@ -167,7 +174,8 @@ $gecerliSayi = count(array_filter($formlar, fn($f) => empty($f['hata'])));
 <?php elseif ($formlar): /* ═══════════ ÖN İZLEME ═══════════ */ ?>
   <div class="alert alert-info">
     <strong><?= count($formlar) ?> dosya okundu</strong>, <?= $gecerliSayi ?> tanesi form olarak tanındı.
-    Aşağıda her formun hangi cihazla eşleştiği ve hangi alanların dolacağı görünüyor — onaylayınca aktarılır.
+    Kayıtlı cihazların <strong>künyesi güncellenir</strong> (durumu, zimmeti ve lokasyonu değişmez);
+    sistemde olmayanlar <strong>Arşiv Kaydı</strong> olarak açılır (yeri ve durumu bilinmiyor). Onaylayınca aktarılır.
   </div>
   <form method="post" class="card border-0 shadow-sm mb-3">
     <input type="hidden" name="islem" value="aktar">
@@ -179,9 +187,14 @@ $gecerliSayi = count(array_filter($formlar, fn($f) => empty($f['hata'])));
             <div class="form-text">Cihazda DOLU olan bilgiye dokunulmaz. Eski tarihli formlar yeni veriyi ezmesin diye.</div></label>
         </div></div>
         <div class="col-md-4"><div class="form-check">
-          <input class="form-check-input" type="checkbox" name="personel_ekle" id="personel_ekle" value="1" <?= yetki_var('duzenle') ? '' : 'disabled' ?>>
-          <label class="form-check-label" for="personel_ekle"><strong>Eşleşmeyen kişi için personel kartı aç</strong>
-            <div class="form-text">Formdaki "Ad Soyad" sistemde yoksa kart açılır ve cihaz ona zimmetlenir.</div></label>
+          <input class="form-check-input" type="checkbox" name="zimmetle" id="zimmetle" value="1">
+          <label class="form-check-label" for="zimmetle"><strong>Formdaki kişiye zimmetle</strong> <span class="text-muted small">(varsayılan kapalı)</span>
+            <div class="form-text">Kapalıyken formdaki kullanıcı/lokasyon yalnız <em>nota</em> yazılır; zimmet açılmaz,
+              yeni kartlar <strong>Arşiv Kaydı</strong> olur. Formun bugünkü kullanıcıyı gösterdiğinden eminseniz açın.</div></label>
+        </div>
+        <div class="form-check ms-4 mt-1">
+          <input class="form-check-input" type="checkbox" name="personel_ekle" id="personel_ekle" value="1" disabled data-yetkili="<?= yetki_var('duzenle') ? 1 : 0 ?>">
+          <label class="form-check-label small" for="personel_ekle">Eşleşmeyen kişi için personel kartı aç</label>
         </div></div>
         <div class="col-md-4"><label class="form-label small mb-1">Form dosyası neyi belgeliyor?</label>
           <select name="belge_tur" class="form-select form-select-sm">
@@ -196,10 +209,19 @@ $gecerliSayi = count(array_filter($formlar, fn($f) => empty($f['hata'])));
       <button class="btn btn-outline-secondary" name="islem" value="vazgec" formnovalidate>Vazgeç</button>
     </div>
   </form>
+  <script>
+  // "Personel kartı aç" yalnız zimmetleme açıkken anlamlıdır
+  (function () {
+    var z = document.getElementById('zimmetle'), p = document.getElementById('personel_ekle');
+    if (!z || !p) return;
+    function esitle() { p.disabled = !z.checked || p.dataset.yetkili !== '1'; if (p.disabled) p.checked = false; }
+    z.addEventListener('change', esitle); esitle();
+  })();
+  </script>
 
   <div class="card border-0 shadow-sm">
     <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0" style="font-size:.85rem">
-      <thead class="table-light"><tr><th>Dosya</th><th>Cihaz Kodu</th><th>Tip</th><th>Eşleşen cihaz</th><th>Kullanıcı</th><th>Okunan alanlar</th></tr></thead>
+      <thead class="table-light"><tr><th>Dosya</th><th>Cihaz Kodu</th><th>Tip</th><th>Eşleşen cihaz</th><th>Formdaki kullanıcı</th><th>Okunan alanlar</th></tr></thead>
       <tbody>
       <?php foreach ($formlar as $f):
         if (!empty($f['hata'])): ?>
@@ -224,7 +246,7 @@ $gecerliSayi = count(array_filter($formlar, fn($f) => empty($f['hata'])));
           <td><?= h(it_kategoriAd($v['kategori'] ?: 'diger')) ?></td>
           <td><?php if ($es): ?><a href="cihaz_detay.php?id=<?= (int)$es['id'] ?>"><?= h(trim(($es['cihaz_kodu'] ?? '') . ' ' . $es['ad'])) ?></a>
                 <span class="badge bg-success-subtle text-success border">güncellenecek</span>
-              <?php else: ?><span class="badge bg-primary-subtle text-primary border">yeni cihaz açılacak</span><?php endif; ?></td>
+              <?php else: ?><span class="badge bg-light text-dark border"><i class="bi bi-archive me-1"></i>sistemde yok — arşiv kaydı açılacak</span><?php endif; ?></td>
           <td><?= h($v['kisi'] ?: '—') ?></td>
           <td class="small text-muted"><?= h(implode(' · ', array_slice(array_keys($dolu), 0, 10))) ?><?= count($dolu) > 10 ? ' …' : '' ?></td>
         </tr>

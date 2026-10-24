@@ -653,6 +653,7 @@ function cim_durum(string $s): ?string
 {
     $n = pim_norm($s);
     if ($n === '') return null;
+    if (str_contains($n, 'ARSIV')) return 'arsiv';
     if (str_contains($n, 'HURDA') || str_contains($n, 'IMHA')) return 'hurda';
     if (str_contains($n, 'KAYIP') || str_contains($n, 'CALINTI') || str_contains($n, 'ZAYI')) return 'kayip';
     if (str_contains($n, 'HIBE') || str_contains($n, 'DEVIR') || str_contains($n, 'DEVRED')) return 'hibe';
