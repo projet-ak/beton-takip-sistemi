@@ -429,7 +429,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   metni ikinci kez çözüyordu; `<script>` blokları atılır — çerçeve dosyasının JS'inde "<table" metni geçer).
   ⚠ Excel bu biçimde İKİ parça üretir: kısa **çerçeve** (frameset) + `…_dosyalar/sheet001.htm` (asıl veri). Kullanıcının
   ilk gönderdiği `exportusers20260909.xls` yalnız çerçeveydi → `pim_html_oku` bunu tanır, "sheet001.htm'i ya da .xlsx
-  yükle" der. İkili BIFF .xls (D0CF11E0) desteklenmez → ".xlsx olarak kaydet" mesajı. **3 adım**: yükle → oturumda
+  yükle" der. İkili BIFF .xls (D0CF11E0) 2026-10-24'ten beri **okunur** (`pim_excel_ac` → SimpleXLS). **3 adım**: yükle → oturumda
   grid (`$_SESSION['it_pim']`, ≤5000 satır) + `pim_baslik_satiri` (ilk 15 satırda bilinen başlıkla en çok eşleşen) +
   `pim_harita` otomatik sütun→alan eşleme (`PIM_ALAN` TR/EN eş anlamlılar: Ad/First Name/Given Name, Soyad/Last Name/SN,
   Display Name→ad_soyad [ayrı Ad+Soyad varsa atlanır; "NAME" yalnız SURNAME yoksa ad_soyad], Title/Job Title→unvan,
@@ -1045,6 +1045,20 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   dokunulmadı, kişinin lokasyonu korundu · 36 telefon katlara dağıldı (BK 14 / ZK 16 / MK 6), 24'ü kişiye
   bağlı · **2. yükleme 0 yeni / 0 güncellenen**, cihaz/hareket sayısı aynı. U051/U052/U056/devir testleri
   yeniden koştu, hepsi geçti.
+  **ESKİ İKİLİ .XLS OKUNUR (2026-10-24, kullanıcı: tahsis formu "B136 - Fikret Sarı.xls" form aktarımında
+  "Kabul edilen uzantılar: .xlsx · .pdf" diye reddedildi)** — kurumsal formlar gerçek BIFF (.xls, `D0 CF 11 E0`)
+  olarak geliyor. **`shuchkin/simplexls` 1.0.0** (MIT, saf PHP, SimpleXLSX'in kardeşi) composer ile eklendi
+  (`vendor/` repoda; paketin `.git` klasörü silindi). Ortak açıcı **`pim_excel_ac($yol)`** (`_import.php`):
+  biçimi UZANTIDAN değil **ilk baytlardan** anlar (PK → SimpleXLSX, D0CF11E0 → SimpleXLS) ve ikisi de aynı
+  `sheetNames()`/`rows()` arayüzünü verdiği için çağıran fark görmez. Kullananlar: `pim_oku` (personel + cihaz
+  içe aktarma — eskiden BIFF'te "xlsx olarak kaydedin" hatası veriyordu) ve `fim_oku` (form aktarımı; ".xls" adlı
+  ama Excel "Web Sayfası" HTML'i olan dosya `pim_oku`'ya düşer). `form_import.php` uzantı/accept listesine `.xls`.
+  ⚠ Ek koruma **`fim_efsane_mi()`**: değer penceresinde (sonraki 3 hücre) tip efsanesi ("N - Notebook",
+  "D - Diğer"; kod `FIM_TIP_KOD`'da) DEĞER sayılmaz — efsane formun hemen sağındaysa boş "Marka" satırı
+  "N - Notebook" yazıyordu; yalnız `kategori` alanı efsaneyi okur. Test (scratchpad): aynı form xlsx ↔ soffice ile
+  üretilmiş .xls **birebir aynı çiftleri** verdi · `xls_imp.php` 7 sağlama (mevcut B136 kartı güncellendi, Türkçe
+  "Bilgi İşlem Ltd. Şti." bozulmadı, marka efsaneden dolmadı, FİKRET SARI'ya zimmet, belge eklendi, 2. yükleme 0
+  güncellenen/0 yeni belge) · `kulp_test.php` .xls hâliyle 10/10 (tarih hücreleri doğru okunuyor).
   **"TRANSFER EDİLMİŞTİR" EXCEL'DEN OKUNUR (2026-10-24, kullanıcı: Batıyakası U030-U031-U039 → Kulp I-IV HES
   İşletmesi I001'e giden 7 PoE switch + 3 PTZ kamera)** — ⚠ `cim_durum()` "Transfer Edilmiştir" metnini 'TRANSFER'
   kelimesinden ötürü **`transfer` (yolda)** okuyordu; `?sablon=mevcut` round-trip'inde de yeni kayıt yolda açılırdı.
@@ -1770,7 +1784,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 ### Teknoloji
 - Backend: PHP (framework yok), PDO/MySQL 8, prepared statements her yerde.
 - Frontend: Bootstrap 5.3.3 + Bootstrap Icons, Chart.js 4.4.4, Google Fonts (Outfit), sunucu-tarafı render + PWA (`manifest.json`, `sw.js`).
-- Excel: `Shuchkin\SimpleXLSX` (composer, okuma) + `includes/XlsxWriter.php` (yazma; **varsayılan ERN Taahhüt logolu** — kurucu 2. parametre false ile kapatılır, başlık 4. satıra kayar) + client-side **ExcelJS** (formatlı rapor). **Rapor dışa aktarma ortak katmanı `assets/js/ern_rapor.js`**: ERN_RAPOR.wb/title/hdr/save (logolu çok sayfalı ExcelJS) + ERN_RAPOR.popup({mode:'pdf'|'print'}) (logolu A4 penceresi, jsPDF doğrudan kaydet + yazdır). TÜM modül raporları (beton hariç kendi eski deseninde) bu katmanı kullanır: Excel'e Aktar + PDF İndir + Yazdır üçlüsü. Sayfa script'ten önce `window.ERN_ROOT` tanımlar ('' veya '../'). **Tablo sütunu gizle/göster ortak katmanı `assets/js/kolon_sec.js`** (`ERN_KOLON.kur`, IT listelerinde kullanılıyor — ayrıntı IT Envanter bölümünde). **Aranabilir açılır menü ortak katmanı `assets/js/secici.js`** (`<select data-ara>` → `ERN_SECICI`; native select kalır, Türkçe harf duyarsız arama — ayrıntı IT Envanter bölümünde).
+- Excel: `Shuchkin\SimpleXLSX` + `Shuchkin\SimpleXLS` (eski ikili .xls; composer, okuma — IT'de ortak açıcı `pim_excel_ac`) + `includes/XlsxWriter.php` (yazma; **varsayılan ERN Taahhüt logolu** — kurucu 2. parametre false ile kapatılır, başlık 4. satıra kayar) + client-side **ExcelJS** (formatlı rapor). **Rapor dışa aktarma ortak katmanı `assets/js/ern_rapor.js`**: ERN_RAPOR.wb/title/hdr/save (logolu çok sayfalı ExcelJS) + ERN_RAPOR.popup({mode:'pdf'|'print'}) (logolu A4 penceresi, jsPDF doğrudan kaydet + yazdır). TÜM modül raporları (beton hariç kendi eski deseninde) bu katmanı kullanır: Excel'e Aktar + PDF İndir + Yazdır üçlüsü. Sayfa script'ten önce `window.ERN_ROOT` tanımlar ('' veya '../'). **Tablo sütunu gizle/göster ortak katmanı `assets/js/kolon_sec.js`** (`ERN_KOLON.kur`, IT listelerinde kullanılıyor — ayrıntı IT Envanter bölümünde). **Aranabilir açılır menü ortak katmanı `assets/js/secici.js`** (`<select data-ara>` → `ERN_SECICI`; native select kalır, Türkçe harf duyarsız arama — ayrıntı IT Envanter bölümünde).
 - **ArUco okuma/üretme: `assets/vendor/cv.js` + `aruco.js`** (js-aruco2 v2.0.0, MIT) — düz `<script>`,
   global `CV`/`AR`, **build adımı yok**; PTS modülünde kiosk okuma ve kart basımı bunu kullanır.
   ⚠ `assets/vendor/` DIŞARIDAN alınan, DEĞİŞTİRİLMEYEN kütüphaneler içindir (bkz. oradaki README).

@@ -58,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($dosyalar as $f) {
                 $ad = basename((string)($f['name'] ?? ''));
                 if ((int)($f['error'] ?? 1) !== UPLOAD_ERR_OK) { $yeni[] = ['ad' => $ad, 'hata' => 'Yükleme hatası (kod ' . (int)$f['error'] . ').']; continue; }
-                if (!preg_match('/\.(xlsx|xlsm|pdf|txt|csv)$/i', $ad)) { $yeni[] = ['ad' => $ad, 'hata' => 'Kabul edilen uzantılar: .xlsx · .pdf'];  continue; }
+                if (!preg_match('/\.(xlsx|xlsm|xls|pdf|txt|csv)$/i', $ad)) { $yeni[] = ['ad' => $ad, 'hata' => 'Kabul edilen uzantılar: .xlsx · .xls · .pdf'];  continue; }
                 // Geçici klasöre taşı — tmp dosyası istek bitince silinir, ön izlemeden sonra lazım
                 $hedef = $BEKLEYEN . '/' . date('Ymd_His') . '_' . substr(md5($ad . microtime()), 0, 8) . '_' . preg_replace('/[^\w.\-]+/u', '_', $ad);
                 if (!@move_uploaded_file($f['tmp_name'], $hedef) && !@rename($f['tmp_name'], $hedef)) {
@@ -239,7 +239,7 @@ $gecerliSayi = count(array_filter($formlar, fn($f) => empty($f['hata'])));
         <input type="hidden" name="islem" value="yukle">
         <div class="card-body">
           <label class="form-label"><strong>Tahsis formlarını seçin</strong> <span class="text-muted small">(birden çok dosya seçebilirsiniz)</span></label>
-          <input type="file" name="dosya[]" class="form-control" multiple accept=".xlsx,.xlsm,.pdf,.txt,.csv" required>
+          <input type="file" name="dosya[]" class="form-control" multiple accept=".xlsx,.xlsm,.xls,.pdf,.txt,.csv" required>
           <div class="form-text mt-2">
             Her dosya <strong>bir cihazın</strong> tahsis formudur (ör. <code>B053 - Sergender Atmaca.xlsx</code>).
             Sistem formdaki <em>Cihaz Kodu · Marka · Model · Serial · Alış Tarihi · Tedarikçi · Fatura No ·
@@ -259,7 +259,7 @@ $gecerliSayi = count(array_filter($formlar, fn($f) => empty($f['hata'])));
           <li>Formun kendisi cihaza <strong>belge olarak</strong> eklenir; aynı dosya ikinci kez yüklenirse tekrar eklenmez.</li>
         </ol>
         <div class="text-muted">
-          <strong>.xlsx</strong> doğrudan okunur. <strong>.pdf</strong> için sunucuda <code>pdftotext</code> ya da
+          <strong>.xlsx</strong> ve eski <strong>.xls</strong> doğrudan okunur. <strong>.pdf</strong> için sunucuda <code>pdftotext</code> ya da
           AI belge okuma gerekir; yoksa formu Excel olarak kaydedip yükleyin.
         </div>
       </div></div>

@@ -128,7 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         };
         else {
             $ad = basename((string)$f['name']);
-            if (!preg_match('/\.(xlsx|xls|csv|txt|htm|html)$/i', $ad)) $hata = 'Kabul edilen uzantılar: .xlsx, .xls (web sayfası), .csv, .htm/.html';
+            if (!preg_match('/\.(xlsx|xls|csv|txt|htm|html)$/i', $ad)) $hata = 'Kabul edilen uzantılar: .xlsx, .xls, .csv, .htm/.html';
             else {
                 try {
                     $g = pim_oku($f['tmp_name'], $ad);
@@ -230,7 +230,7 @@ require_once __DIR__ . '/../includes/header.php';
         <label class="form-label fw-semibold">İK / Active Directory / Microsoft 365 kullanıcı dışa aktarma dosyası</label>
         <input type="file" name="dosya" class="form-control" accept=".xlsx,.xls,.csv,.txt,.htm,.html" required <?= $yazabilir ? '' : 'disabled' ?>>
         <div class="form-text">
-          Kabul edilen biçimler: <strong>.xlsx</strong> · <strong>.csv</strong> (; veya , ayraçlı) · Excel <strong>"Web Sayfası" .xls/.htm</strong> (HTML tablo).
+          Kabul edilen biçimler: <strong>.xlsx</strong> · eski <strong>.xls</strong> · <strong>.csv</strong> (; veya , ayraçlı) · Excel <strong>"Web Sayfası" .xls/.htm</strong> (HTML tablo).
           Sütun başlıkları Türkçe ya da İngilizce olabilir (Ad / First Name, Soyad / Last Name, Display Name, Title, Department, Mobile, Email, Office…);
           eşleme bir sonraki adımda gösterilir, dilerseniz düzeltirsiniz.
         </div>

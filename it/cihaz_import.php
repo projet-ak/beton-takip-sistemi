@@ -150,7 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         };
         else {
             $ad = basename((string)$f['name']);
-            if (!preg_match('/\.(xlsx|xls|csv|txt|htm|html)$/i', $ad)) $hata = 'Kabul edilen uzantılar: .xlsx, .xls (web sayfası), .csv, .htm/.html';
+            if (!preg_match('/\.(xlsx|xls|csv|txt|htm|html)$/i', $ad)) $hata = 'Kabul edilen uzantılar: .xlsx, .xls, .csv, .htm/.html';
             else {
                 try {
                     $g = pim_oku($f['tmp_name'], $ad);

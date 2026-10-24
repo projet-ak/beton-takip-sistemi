@@ -4,8 +4,58 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "574abaca39a2b37841bb0f03664cbd64",
+    "content-hash": "d2ea1aa15389e022bc36f23a9869aba9",
     "packages": [
+        {
+            "name": "shuchkin/simplexls",
+            "version": "1.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/shuchkin/simplexls.git",
+                "reference": "0aad1dd0c8703c8fcc3234eda9d22d08e25b6579"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/shuchkin/simplexls/zipball/0aad1dd0c8703c8fcc3234eda9d22d08e25b6579",
+                "reference": "0aad1dd0c8703c8fcc3234eda9d22d08e25b6579",
+                "shasum": ""
+            },
+            "require": {
+                "ext-mbstring": "*",
+                "php": ">=5.5"
+            },
+            "type": "library",
+            "autoload": {
+                "classmap": [
+                    "src/SimpleXLS.php"
+                ]
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Sergey Shuchkin (SMSPILOT)",
+                    "email": "sergey.shuchkin@gmail.com",
+                    "homepage": "https://shuchkin.ru"
+                }
+            ],
+            "description": "Parse and retrieve data from old format Excel XLS files. MS Excel 97 workbooks PHP reader.",
+            "homepage": "https://github.com/shuchkin/simplexls",
+            "keywords": [
+                "backend",
+                "excel",
+                "parser",
+                "php",
+                "xls"
+            ],
+            "support": {
+                "issues": "https://github.com/shuchkin/simplexls/issues",
+                "source": "https://github.com/shuchkin/simplexls/tree/1.0.0"
+            },
+            "time": "2025-03-03T21:58:30+00:00"
+        },
         {
             "name": "shuchkin/simplexlsx",
             "version": "1.1.16",
@@ -69,5 +119,5 @@
     "prefer-lowest": false,
     "platform": {},
     "platform-dev": {},
-    "plugin-api-version": "2.9.0"
+    "plugin-api-version": "2.6.0"
 }

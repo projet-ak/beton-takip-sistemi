@@ -8,6 +8,7 @@ class ComposerStaticInitb74d44ff475eac0ae46a438c0829bca8
 {
     public static $classMap = array (
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
+        'Shuchkin\\SimpleXLS' => __DIR__ . '/..' . '/shuchkin/simplexls/src/SimpleXLS.php',
         'Shuchkin\\SimpleXLSX' => __DIR__ . '/..' . '/shuchkin/simplexlsx/src/SimpleXLSX.php',
     );
 

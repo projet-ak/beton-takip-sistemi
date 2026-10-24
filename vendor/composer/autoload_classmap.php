@@ -7,5 +7,6 @@ $baseDir = dirname($vendorDir);
 
 return array(
     'Composer\\InstalledVersions' => $vendorDir . '/composer/InstalledVersions.php',
+    'Shuchkin\\SimpleXLS' => $vendorDir . '/shuchkin/simplexls/src/SimpleXLS.php',
     'Shuchkin\\SimpleXLSX' => $vendorDir . '/shuchkin/simplexlsx/src/SimpleXLSX.php',
 );

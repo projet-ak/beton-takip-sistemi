@@ -66,6 +66,12 @@ const FIM_COKLU = ['disk', 'ozellik', 'notlar'];
  */
 const FIM_TIP_KOD = ['B' => 'bilgisayar', 'N' => 'laptop', 'M' => 'monitor', 'YF' => 'yazici', 'D' => 'diger'];
 
+/** Hücre formun tip efsanesinden mi? — "B - Bilgisayar" · "YF - Yazıcı/Fotokopi" (kod FIM_TIP_KOD'da). */
+function fim_efsane_mi(string $v): bool
+{
+    return (bool)preg_match('/^\s*([A-Za-z]{1,2})\s*[-–]\s*\S/u', $v, $m) && isset(FIM_TIP_KOD[strtoupper($m[1])]);
+}
+
 /** Bir formun DOLU sayılması için gereken en az etiket eşleşmesi (yabancı sayfa ayıklansın). */
 const FIM_MIN_ESLESME = 3;
 
@@ -111,6 +117,9 @@ function fim_sayfa_ciftleri(array $satirlar, int $pencere = 3): array
                 if ($v === '') continue;
                 // Yandaki hücre başka bir ETİKETSE bu satırda değer yok (yatay başlık satırı)
                 if (fim_etiket_mi($v)) break;
+                // Yandaki hücre TİP EFSANESİ ("N - Notebook", "D - Diğer") ise değer yoktur —
+                // efsane sütunu formun hemen sağında durabiliyor; yalnız kategori alanı onu okur.
+                if ($alan !== 'kategori' && fim_efsane_mi($v)) break;
                 $deger = $v; break;
             }
             $puan++;                                   // etiket bulundu (değeri boş olsa da form belirtisi)
@@ -122,7 +131,7 @@ function fim_sayfa_ciftleri(array $satirlar, int $pencere = 3): array
 }
 
 /**
- * Dosyadan form çiftlerini okur (.xlsx · .pdf · düz metin).
+ * Dosyadan form çiftlerini okur (.xlsx · eski ikili .xls · .pdf · düz metin).
  *
  * ⚠ Kurumsal form dosyasında çoğu zaman **birden çok sayfa** olur: asıl form + Excel'in kendi
  * İngilizce envanter şablonu ("Home Contents Inventory List" — Insurance policy number…).
@@ -160,12 +169,18 @@ function fim_oku(string $yol, string $ad): array
         return ['ciftler' => $s['ciftler'], 'sayfa' => null, 'bicim' => $uz, 'kaynak' => null];
     }
 
-    if (!in_array($uz, ['xlsx', 'xlsm'], true)) {
-        throw new RuntimeException('Desteklenmeyen dosya türü (.' . $uz . '). Form .xlsx ya da .pdf olmalı.');
+    if (!in_array($uz, ['xlsx', 'xlsm', 'xls'], true)) {
+        throw new RuntimeException('Desteklenmeyen dosya türü (.' . $uz . '). Form .xlsx, .xls ya da .pdf olmalı.');
     }
-    if (!class_exists('Shuchkin\\SimpleXLSX')) require_once __DIR__ . '/../vendor/autoload.php';
-    $x = Shuchkin\SimpleXLSX::parse($yol);
-    if (!$x) throw new RuntimeException('Excel açılamadı: ' . Shuchkin\SimpleXLSX::parseError());
+    $magic = (string)file_get_contents($yol, false, null, 0, 4);
+    if ($magic !== "PK\x03\x04" && $magic !== "\xD0\xCF\x11\xE0") {
+        // ".xls" adlı ama Excel "Web Sayfası" (HTML tablo) — ortak okuyucu tek sayfa grid döndürür
+        $g = pim_oku($yol, $ad);
+        $s = fim_sayfa_ciftleri($g['satirlar']);
+        if ($s['puan'] < FIM_MIN_ESLESME) throw new RuntimeException('Bu dosya bir cihaz tahsis formuna benzemiyor (tanınan alan bulunamadı).');
+        return ['ciftler' => $s['ciftler'], 'sayfa' => $g['sayfa'] ?? null, 'bicim' => $g['bicim'], 'kaynak' => null];
+    }
+    $x = pim_excel_ac($yol);   // .xlsx ya da eski ikili .xls — ikisi de sheetNames()/rows()
 
     $enIyi = null;
     foreach ($x->sheetNames() as $i => $sayfaAd) {
@@ -183,7 +198,7 @@ function fim_oku(string $yol, string $ad): array
     if ($enIyi === null || $enIyi['puan'] < FIM_MIN_ESLESME) {
         throw new RuntimeException('Bu dosya bir cihaz tahsis formuna benzemiyor (tanınan alan bulunamadı).');
     }
-    return ['ciftler' => $enIyi['ciftler'], 'sayfa' => $enIyi['sayfa'], 'bicim' => 'xlsx', 'kaynak' => null];
+    return ['ciftler' => $enIyi['ciftler'], 'sayfa' => $enIyi['sayfa'], 'bicim' => $magic === "PK\x03\x04" ? 'xlsx' : 'xls', 'kaynak' => null];
 }
 
 /** Düz metinden (PDF çıktısı) "Etiket : Değer" / "Etiket   Değer" satırlarını çıkarır. */

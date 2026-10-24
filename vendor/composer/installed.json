@@ -1,6 +1,59 @@
 {
     "packages": [
         {
+            "name": "shuchkin/simplexls",
+            "version": "1.0.0",
+            "version_normalized": "1.0.0.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/shuchkin/simplexls.git",
+                "reference": "0aad1dd0c8703c8fcc3234eda9d22d08e25b6579"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/shuchkin/simplexls/zipball/0aad1dd0c8703c8fcc3234eda9d22d08e25b6579",
+                "reference": "0aad1dd0c8703c8fcc3234eda9d22d08e25b6579",
+                "shasum": ""
+            },
+            "require": {
+                "ext-mbstring": "*",
+                "php": ">=5.5"
+            },
+            "time": "2025-03-03T21:58:30+00:00",
+            "type": "library",
+            "installation-source": "source",
+            "autoload": {
+                "classmap": [
+                    "src/SimpleXLS.php"
+                ]
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Sergey Shuchkin (SMSPILOT)",
+                    "email": "sergey.shuchkin@gmail.com",
+                    "homepage": "https://shuchkin.ru"
+                }
+            ],
+            "description": "Parse and retrieve data from old format Excel XLS files. MS Excel 97 workbooks PHP reader.",
+            "homepage": "https://github.com/shuchkin/simplexls",
+            "keywords": [
+                "backend",
+                "excel",
+                "parser",
+                "php",
+                "xls"
+            ],
+            "support": {
+                "issues": "https://github.com/shuchkin/simplexls/issues",
+                "source": "https://github.com/shuchkin/simplexls/tree/1.0.0"
+            },
+            "install-path": "../shuchkin/simplexls"
+        },
+        {
             "name": "shuchkin/simplexlsx",
             "version": "1.1.16",
             "version_normalized": "1.1.16.0",

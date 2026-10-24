@@ -55,10 +55,9 @@ function pim_oku(string $yol, string $ad): array
     $bas = (string)file_get_contents($yol, false, null, 0, 2048);
     $magic = substr($bas, 0, 4);
 
-    if ($magic === "PK\x03\x04") { // xlsx (zip)
-        if (!class_exists('Shuchkin\\SimpleXLSX')) require_once __DIR__ . '/../vendor/autoload.php';
-        $x = \Shuchkin\SimpleXLSX::parse($yol);
-        if (!$x) throw new RuntimeException('Excel okunamadı: ' . \Shuchkin\SimpleXLSX::parseError());
+    if ($magic === "PK\x03\x04" || $magic === "\xD0\xCF\x11\xE0") { // xlsx (zip) · eski ikili xls (BIFF)
+        $x = pim_excel_ac($yol);
+        $bicim = $magic === "PK\x03\x04" ? 'xlsx' : 'xls';
         // En çok dolu satırı olan sayfa seçilir (ilk 20 satıra bakılarak)
         $enIyi = 0; $enIyiSkor = -1; $adlar = $x->sheetNames();
         foreach ($adlar as $i => $sad) {
@@ -68,16 +67,35 @@ function pim_oku(string $yol, string $ad): array
         }
         $satirlar = [];
         foreach ($x->rows($enIyi, 5000) as $r) $satirlar[] = array_map(fn($c) => trim((string)$c), $r);
-        return ['satirlar' => $satirlar, 'bicim' => 'xlsx', 'sayfa' => $adlar[$enIyi] ?? null];
-    }
-    if ($magic === "\xD0\xCF\x11\xE0") { // BIFF ikili xls
-        throw new RuntimeException('Bu dosya eski ikili Excel (.xls) biçiminde. Excel\'de açıp "Farklı Kaydet → Excel Çalışma Kitabı (.xlsx)" olarak kaydedin ve tekrar yükleyin.');
+        return ['satirlar' => $satirlar, 'bicim' => $bicim, 'sayfa' => $adlar[$enIyi] ?? null];
     }
     $icerik = (string)file_get_contents($yol);
     if (stripos($icerik, '<table') !== false || stripos($icerik, '<html') !== false || in_array($uz, ['htm','html','xls'], true) && stripos($icerik, '<') !== false) {
         return pim_html_oku($icerik);
     }
     return pim_csv_oku($icerik);
+}
+
+/**
+ * Excel dosyasını açar: .xlsx (SimpleXLSX) ya da eski ikili .xls / BIFF (SimpleXLS).
+ * İkisi de aynı arayüzü sunar — sheetNames() · rows($sayfa, $limit) — çağıran fark görmez.
+ * ⚠ Biçim UZANTIDAN değil dosyanın ilk baytlarından anlaşılır: kurumsal formlar ".xls" adıyla
+ * gerçek ikili Excel olarak geliyor, Excel "Web Sayfası" ise yine ".xls" adlı HTML'dir.
+ * @throws RuntimeException açılamayan dosya
+ */
+function pim_excel_ac(string $yol): object
+{
+    if (!class_exists('Shuchkin\\SimpleXLSX') || !class_exists('Shuchkin\\SimpleXLS')) require_once __DIR__ . '/../vendor/autoload.php';
+    $magic = (string)file_get_contents($yol, false, null, 0, 4);
+    if ($magic === "\xD0\xCF\x11\xE0") {
+        $x = \Shuchkin\SimpleXLS::parseFile($yol);
+        if (!$x) throw new RuntimeException('Eski Excel (.xls) okunamadı: ' . \Shuchkin\SimpleXLS::parseError()
+            . ' — Excel\'de açıp "Farklı Kaydet → Excel Çalışma Kitabı (.xlsx)" olarak kaydedip yükleyin.');
+        return $x;
+    }
+    $x = \Shuchkin\SimpleXLSX::parse($yol);
+    if (!$x) throw new RuntimeException('Excel okunamadı: ' . \Shuchkin\SimpleXLSX::parseError());
+    return $x;
 }
 
 /** Excel "Web Sayfası" (HTML tablo) → grid. Frameset-yalnız dosyayı ayırt eder. */
