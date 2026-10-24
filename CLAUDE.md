@@ -1045,6 +1045,18 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   dokunulmadı, kişinin lokasyonu korundu · 36 telefon katlara dağıldı (BK 14 / ZK 16 / MK 6), 24'ü kişiye
   bağlı · **2. yükleme 0 yeni / 0 güncellenen**, cihaz/hareket sayısı aynı. U051/U052/U056/devir testleri
   yeniden koştu, hepsi geçti.
+  **"DATA TOO LONG FOR COLUMN 'ram'" — FORM AKTARIMI DURUYORDU (2026-10-24, 77 formluk yüklemede)** — `FIM_COKLU`
+  alanları (ram · disk · islemci…) birden çok etiketi "Etiket: değer · …" diye birleştirdiğinden RAM 120 karakteri
+  aştı; MySQL katı kipte tek bir sığmayan değer `fim_import`'u fırlatıyor ve **77 formun tamamı** "Aktarım hatası"
+  ile duruyordu (transaction yok — hatadan önceki formlar yazılmış olabilir; tekrar yükleme idempotent).
+  • **`IT_KOLON_UZUNLUK` + `it_kolon_kirp(&$y)`** (`_ortak.php`): `it_cihazlar` metin kolonlarının genişliği ŞEMAYLA
+  AYNI tutulur (yeni kolon eklenirse buraya da yazılmalı); sığmayan değer `…` ile kırpılır, **TAM hâli nota**
+  "Formdaki tam ram: …" olarak düşer (bilgi kaybolmaz; aynı satır varsa tekrar yazılmaz). Türetilen `ad` da kırpılır.
+  • **Her form kendi try/catch'inde**: hata veren form `atlanan`a "kaydedilemedi — <hata>" sebebiyle düşer, sonraki
+  formlar aktarılmaya devam eder; sağlama (okunan = yeni + güncellenen + değişmeyen + atlanan) korunur.
+  Test (scratchpad `kirp_test.php`, 7 sağlama; SQLite VARCHAR sınırı uygulamadığından MySQL hatası trigger ile
+  taklit edildi): 139 kr. RAM → 120 kr. + tam değer notta · bozuk form sebebiyle atlandı, ARKASINDAKİ form aktarıldı ·
+  2. yükleme 0/0. ⚠ `cim_import` (liste aktarımı) henüz bu kırpmayı kullanmıyor — aynı hata orada çıkarsa aynı yardımcı bağlanmalı.
   **FORM AKTARIMI = KÜNYE ALMA, ZİMMET DEĞİL + "ARŞİV KAYDI" DURUMU (2026-10-24, kullanıcı: "burdaki amacım kişiye
   zimmetleme değil, cihaz bilgilerini alma ve cihaz kartı açmak; eski cihaz bilgileri bende kayıtlıysa güncellesin,
   yoksa arşiv cihaz olarak ibare olsun — cihazların nerede, hangi şantiyede olduğunu ve durumunu bilmiyorum")** —

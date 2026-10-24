@@ -1346,6 +1346,36 @@ const IT_TANIM_TUR = [
 function it_tanim_tablosu(string $tur): string { return IT_TANIM_TUR[$tur][3] ?? 'it_cihazlar'; }
 
 /** Tanım adının yazılabileceği en uzun metin (hedef kolonun genişliği). */
+/**
+ * `it_cihazlar` metin kolonlarının genişliği (şemayla AYNI olmalı). İçe aktarmalar yazmadan önce
+ * değeri buna göre kırpar — MySQL katı kipte sığmayan değer **"Data too long"** ile tüm aktarımı
+ * durduruyordu (form aktarımında birleşen RAM bilgisi 120 karakteri aştı, 2026-10-24).
+ */
+const IT_KOLON_UZUNLUK = [
+    'envanter_no' => 20, 'kategori' => 20, 'ad' => 150, 'marka' => 80, 'model' => 120, 'seri_no' => 120,
+    'durum' => 20, 'zimmetli' => 120, 'departman' => 80, 'lokasyon' => 120, 'tedarikci' => 120,
+    'fatura_no' => 60, 'ip_adresi' => 45, 'mac_adresi' => 40, 'isletim_sistemi' => 80, 'ozellikler' => 255,
+    'lisans_anahtari' => 160, 'varlik_kodu' => 60, 'cihaz_kodu' => 60, 'sasi_no' => 120, 'islemci' => 160,
+    'ram' => 120, 'ekran_karti' => 160, 'disk' => 160, 'anakart' => 160, 'ekran_boyutu' => 40,
+    'cozunurluk' => 40, 'disk_seri' => 80, 'imei' => 32,
+];
+
+/**
+ * Kolona sığmayan metinleri kırpar. Dönüş: kırpılan alanların TAM değerleri [kolon => metin] —
+ * çağıran bunları nota yazar ki bilgi kaybolmasın.
+ */
+function it_kolon_kirp(array &$y): array
+{
+    $tam = [];
+    foreach ($y as $k => $v) {
+        $max = IT_KOLON_UZUNLUK[$k] ?? null;
+        if ($max === null || !is_string($v) || mb_strlen($v) <= $max) continue;
+        $tam[$k] = $v;
+        $y[$k] = rtrim(mb_substr($v, 0, $max - 1)) . '…';
+    }
+    return $tam;
+}
+
 function it_tanim_uzunluk(string $tur): int
 {
     // ⚠ Hedef kolonun genişliğiyle AYNI olmalı; aşarsa kayıt sırasında sessizce kırpılır

@@ -366,6 +366,9 @@ function fim_import(PDO $pdo, array $dosyalar, array $opt = []): array
         $per = null; $nasilKisi = ''; $cihazId = 0;      // ⚠ önceki dosyadan sızmasın
         $v   = $d['v'];
         $ad  = (string)($d['ad'] ?? 'form');
+        // ⚠ Her form KENDİ hatasıyla atlanır: bir dosyadaki sorun (sığmayan değer, bozuk tarih…)
+        // önceden 77 formun tamamını "Aktarım hatası" ile durduruyordu.
+        try {
         $yy  = fim_cihaz_alanlari($v);
 
         // ── Eşleşme
@@ -413,6 +416,11 @@ function fim_import(PDO $pdo, array $dosyalar, array $opt = []): array
         if ($lokId) $yy['lokasyon_id'] = $lokId;
         if ($zimmetle && trim((string)($v['departman'] ?? '')) !== '') $yy['departman'] = it_buyuk((string)$v['departman']);
 
+        // Kolona sığmayan değer kırpılır, TAM hâli nota yazılır (bilgi kaybolmaz)
+        foreach (it_kolon_kirp($yy) as $kol => $tamDeger) {
+            $formNot .= ($formNot !== '' ? "\n" : '') . 'Formdaki tam ' . $kol . ': ' . $tamDeger;
+        }
+
         if ($m) {
             // ── GÜNCELLE: yalnız formda dolu gelen alanlar
             $set = []; $par = []; $degisen = [];
@@ -445,6 +453,7 @@ function fim_import(PDO $pdo, array $dosyalar, array $opt = []): array
             $yy['envanter_no'] = it_envanter_no($pdo);
             $yy['ad'] = $yy['ad'] ?? trim((string)($yy['marka'] ?? '') . ' ' . (string)($yy['model'] ?? ''));
             if (trim((string)$yy['ad']) === '') $yy['ad'] = it_kategoriAd($yy['kategori']);
+            it_kolon_kirp($yy);   // türetilen ad da kolona sığmalı
             // Zimmetlenmeyen yeni kart ARŞİV KAYDIDIR: yeri ve kullanım durumu doğrulanmadı
             $yy['durum'] = $yy['durum'] ?? ($zimmetle ? 'depoda' : 'arsiv');
             if ($formNot !== '') $yy['notlar'] = $formNot;
@@ -475,6 +484,9 @@ function fim_import(PDO $pdo, array $dosyalar, array $opt = []): array
                     if ($ok) $r['belge']++;
                 }
             } catch (Throwable $e) {}
+        }
+        } catch (Throwable $e) {
+            $r['atlanan'][] = ['dosya' => $ad, 'neden' => 'kaydedilemedi — ' . $e->getMessage()];
         }
     }
     return $r;
