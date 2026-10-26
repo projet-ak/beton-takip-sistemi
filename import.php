@@ -4,6 +4,7 @@ require_once __DIR__ . '/includes/auth.php';
 if (!file_exists(__DIR__ . '/config.php')) { redirect('install.php'); }
 require_auth(['admin', 'teknik_ofis_admin']);
 require_once __DIR__ . '/includes/db.php';
+beton_onay_gocu($pdo);   // onay akışı kapalı: bekleyenler geçerli sayılır
 require_once __DIR__ . '/includes/fatura.php';   // fat_irs_norm: ANM2026-4710 ↔ ANM2026000004710 aynı belgedir
 require_once __DIR__ . '/vendor/autoload.php';
 

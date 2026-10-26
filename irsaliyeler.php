@@ -10,6 +10,7 @@ if (!file_exists(__DIR__ . '/config.php')) { redirect('install.php'); }
 
 require_auth();
 require_once __DIR__ . '/includes/db.php';
+beton_onay_gocu($pdo);   // onay akışı kapalı: bekleyenler geçerli sayılır
 
 $tip       = in_array($_GET['tip'] ?? '', ['alis','iade','tum'], true) ? $_GET['tip'] : 'alis';
 $pageTitle = ($tip === 'alis' ? 'Alış' : ($tip === 'iade' ? 'İade' : 'Tüm')) . ' İrsaliyeleri — Beton Takip Sistemi';
@@ -111,7 +112,12 @@ $filtreProje  = isset($_GET['proje_id'])    && ctype_digit($_GET['proje_id'])   
 $filtreYil    = isset($_GET['yil'])         && ctype_digit($_GET['yil'])         ? (int)$_GET['yil']         : 0;
 $filtreAy     = isset($_GET['ay'])          && ctype_digit($_GET['ay'])          ? (int)$_GET['ay']          : 0;
 $filtreArama  = trim($_GET['ara'] ?? '');
-$DURUMLAR     = ['beklemede'=>'Beklemede','saha_onaylandi'=>'Saha Onaylı','onaylandi'=>'Teknik Onaylı','reddedildi'=>'Reddedildi'];
+// Onay akışı kapalıyken (varsayılan) kayıtlar anında geçerlidir; durum yalnız eski akışta
+// REDDEDİLMİŞ kayıtları ayırmak için kalır (onlar toplamlara girmez).
+$onayAcik     = beton_onay_aktif();
+$DURUMLAR     = $onayAcik
+    ? ['beklemede'=>'Beklemede','saha_onaylandi'=>'Saha Onaylı','onaylandi'=>'Teknik Onaylı','reddedildi'=>'Reddedildi']
+    : ['reddedildi'=>'Reddedilenler'];
 $filtreDurum  = isset($_GET['durum']) && isset($DURUMLAR[$_GET['durum']]) ? $_GET['durum'] : '';
 $tarihBas     = isset($_GET['tarih_bas']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tarih_bas']) ? $_GET['tarih_bas'] : '';
 $tarihBit     = isset($_GET['tarih_bit']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['tarih_bit']) ? $_GET['tarih_bit'] : '';
@@ -273,7 +279,7 @@ if ($ihrac === 'xlsx') {
         'Sıra No', 'Tip', 'Tarih', 'İrsaliye No', 'Araç Plaka',
         'Tedarikçi', 'Beton Sınıfı', 'Parsel', 'Blok', 'Kot',
         'Pompa', 'Firma', 'Proje', 'Miktar (m³)', 'Birim',
-        'Durum', 'Saha Onay Tarihi', 'Teknik Onay Tarihi', 'Açıklama',
+        'Durum', ...($onayAcik ? ['Saha Onay Tarihi', 'Teknik Onay Tarihi'] : []), 'Açıklama',
     ]);
 
     foreach ($liste as $r) {
@@ -293,9 +299,12 @@ if ($ihrac === 'xlsx') {
             ['v' => $r['proje_kod'] ?? '',                                  't' => 'text'],
             ['v' => $r['miktar'] ?? 0,                                      't' => 'number'],
             ['v' => $r['birim'] ?? 'm³',                                   't' => 'text'],
-            ['v' => $durumLabel[$r['durum'] ?? ''] ?? ($r['durum'] ?? ''), 't' => 'text'],
-            ['v' => $r['saha_onay_tarih'] ?? '',                            't' => 'date'],
-            ['v' => $r['teknik_onay_tarih'] ?? '',                          't' => 'date'],
+            ['v' => $onayAcik || ($r['durum'] ?? '') === 'reddedildi'
+                    ? ($durumLabel[$r['durum'] ?? ''] ?? ($r['durum'] ?? '')) : '', 't' => 'text'],
+            ...($onayAcik ? [
+                ['v' => $r['saha_onay_tarih'] ?? '',                        't' => 'date'],
+                ['v' => $r['teknik_onay_tarih'] ?? '',                      't' => 'date'],
+            ] : []),
             ['v' => $r['aciklama'] ?? '',                                   't' => 'text'],
         ]);
     }
@@ -318,8 +327,7 @@ if ($ihrac === 'xlsx') {
         ['v' => $toplamM3,     't' => 'number'],
         ['v' => 'm³',          't' => 'text'],
         ['v' => count($liste) . ' kayıt', 't' => 'text'],
-        ['v' => '',            't' => 'text'],
-        ['v' => '',            't' => 'text'],
+        ...($onayAcik ? [['v' => '', 't' => 'text'], ['v' => '', 't' => 'text']] : []),
         ['v' => '',            't' => 'text'],
     ]);
 
@@ -487,7 +495,7 @@ require_once __DIR__ . '/includes/header.php';
             </div>
             <?php endif; ?>
             <div class="col-sm-6 col-md-2">
-                <label class="form-label small mb-1">Onay Durumu</label>
+                <label class="form-label small mb-1"><?= $onayAcik ? 'Onay Durumu' : 'Durum' ?></label>
                 <select name="durum" class="form-select form-select-sm">
                     <option value="">Tümü</option>
                     <?php foreach ($DURUMLAR as $dk => $dv): ?>
@@ -543,6 +551,7 @@ require_once __DIR__ . '/includes/header.php';
             </button>
             <ul class="dropdown-menu dropdown-menu-end shadow-sm">
                 <li><h6 class="dropdown-header">Bu sayfadaki kayıtlardan</h6></li>
+                <?php if ($onayAcik): ?>
                 <li><button type="button" class="dropdown-item" onclick="secDurum('beklemede')">
                     <i class="bi bi-clock text-warning me-2"></i>Beklemede olanlar
                     <span class="badge bg-secondary ms-1" data-say="beklemede">0</span></button></li>
@@ -552,6 +561,7 @@ require_once __DIR__ . '/includes/header.php';
                 <li><button type="button" class="dropdown-item" onclick="secDurum('onaylandi')">
                     <i class="bi bi-patch-check text-primary me-2"></i>Teknik onaylı olanlar
                     <span class="badge bg-secondary ms-1" data-say="onaylandi">0</span></button></li>
+                <?php endif; ?>
                 <li><button type="button" class="dropdown-item" onclick="secDurum('reddedildi')">
                     <i class="bi bi-x-circle text-danger me-2"></i>Reddedilenler
                     <span class="badge bg-secondary ms-1" data-say="reddedildi">0</span></button></li>
@@ -617,7 +627,7 @@ require_once __DIR__ . '/includes/header.php';
                             <?php endif; ?>
                             <th class="text-center tbl-hide-mobile">#</th>
                             <?php if ($tip === 'tum'): ?><th>Tip</th><?php endif; ?>
-                            <th><?= sortBaslik('durum', 'Durum') ?></th>
+                            <?php if ($onayAcik): ?><th><?= sortBaslik('durum', 'Durum') ?></th><?php endif; ?>
                             <th><?= sortBaslik('tarih', 'Tarih') ?></th>
                             <th><?= sortBaslik('irsaliye', 'İrsaliye No') ?></th>
                             <th class="text-center" title="Evrak kontrol: fatura · irsaliye görseli · kantar fişi (renkli = var, soluk = eksik)">Evrak</th>
@@ -646,14 +656,17 @@ require_once __DIR__ . '/includes/header.php';
                                 <?php if ($tip === 'tum'): ?>
                                 <td><?= $r['tip']==='alis' ? '<span class="badge bg-success">Alış</span>' : '<span class="badge bg-danger">İade</span>' ?></td>
                                 <?php endif; ?>
-                                <td><?= durum_badge($r['durum'] ?? 'onaylandi') ?></td>
+                                <?php if ($onayAcik): ?><td><?= durum_badge($r['durum'] ?? 'onaylandi') ?></td><?php endif; ?>
                                 <td class="text-nowrap"><?= format_date($r['tarih']) ?></td>
                                 <td class="text-nowrap">
                                     <a href="irsaliye_detay.php?id=<?= (int)$r['id'] ?>" class="text-decoration-none fw-semibold">
                                         <?= h($r['irsaliye_no'] ?: '#'.$r['id']) ?>
                                     </a>
                                     <?php if (irs_taslak_mi($r)): ?>
-                                    <span class="badge bg-warning text-dark" title="Faturadan otomatik açılmış TASLAK (0 m³) — Excel aktarımıyla gerçek veriler gelmeden onaylanamaz">TASLAK</span>
+                                    <span class="badge bg-warning text-dark" title="Faturadan otomatik açılmış TASLAK (0 m³) — Excel aktarımıyla gerçek veriler gelir<?= $onayAcik ? ', o zamana kadar onaylanamaz' : '' ?>">TASLAK</span>
+                                    <?php endif; ?>
+                                    <?php if (!$onayAcik && ($r['durum'] ?? '') === 'reddedildi'): ?>
+                                    <span class="badge bg-danger" title="Eski onay akışında reddedilmiş — toplamlara girmez<?= !empty($r['red_neden']) ? ': ' . h($r['red_neden']) : '' ?>"><i class="bi bi-x-circle-fill me-1"></i>Reddedildi</span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="text-center text-nowrap">
@@ -721,7 +734,7 @@ require_once __DIR__ . '/includes/header.php';
                             <?php endforeach; ?>
                             <tr class="table-secondary fw-bold">
                                 <?php
-                                $preCols = ($tip === 'tum' ? 11 : 10) + (can_edit() ? 1 : 0);   // +1: Evrak (Miktar'dan önce)
+                                $preCols = ($tip === 'tum' ? 11 : 10) + (can_edit() ? 1 : 0) - ($onayAcik ? 0 : 1);   // +1: Evrak (Miktar'dan önce) · −1: onay kapalıyken Durum yok
                                 ?>
                                 <td colspan="<?= $preCols ?>" class="text-end">TOPLAM</td>
                                 <td class="text-end"><?= format_number($toplamM3, 2) ?> m³</td>
@@ -729,7 +742,7 @@ require_once __DIR__ . '/includes/header.php';
                             </tr>
                         <?php else: ?>
                             <?php
-                            $baseCols = $tip === 'tum' ? 13 : 12;   // +1: Evrak kolonu
+                            $baseCols = ($tip === 'tum' ? 13 : 12) - ($onayAcik ? 0 : 1);   // +1: Evrak kolonu · −1: onay kapalıyken Durum yok
                             $colspan = $baseCols + (can_edit() ? 2 : 0);
                             ?>
                             <tr>

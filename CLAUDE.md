@@ -10,7 +10,7 @@ konvansiyonları ve dağıtım sürecini içerir. Yeni bir görevden önce **bun
 **ERN Holding — Beton & Demir Takip Sistemi.** Saf PHP (PDO/MySQL) + Bootstrap 5.3
 tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 
-- **Beton modülü** = kök dizin (`/`). Hazır beton irsaliyeleri, iki aşamalı onay, raporlar.
+- **Beton modülü** = kök dizin (`/`). Hazır beton irsaliyeleri, raporlar. ⚠ **Onay akışı 2026-10-26'da KALDIRILDI** (bkz. §4 başı).
 - **Demir modülü** = `demir/` alt klasörü. İnşaat demiri (rebar) sipariş→sevkiyat→kantar→
   taşerona teslim (tutanak)→icmal zinciri. **Ayrı veritabanı** kullanır.
 - **Seramik modülü** = `seramik/` alt klasörü. Seramik ambar giriş/çıkış + canlı stok.
@@ -2029,6 +2029,33 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 
 ## 4. Beton Modülü (kök dizin)
 
+- ⭐ **ONAY AKIŞI KALDIRILDI (2026-10-26, kullanıcı: "beton sisteminde onay olmasın kaldıralım")** — eskiden irsaliye
+  `beklemede` → saha onayı (`saha_onaylandi`) → teknik ofis onayı (`onaylandi`) adımlarından geçiyordu. Artık
+  **kaydedildiği anda geçerlidir** (`durum='onaylandi'`). Kod SİLİNMEDİ, anahtara bağlandı:
+  **`beton_onay_aktif()`** (auth.php) = `defined('BETON_ONAY') && BETON_ONAY` — geri açmak için `config.php`'ye
+  `define('BETON_ONAY', true);`. Kapalıyken: `can_approve_saha/teknik()` **false** döner (onay düğmeleri, toplu
+  onay, dashboard "onay bekliyor" kartları, formdaki onay paneli kendiliğinden kalkar) · form / toplu giriş /
+  faturadan açılan taslak `onaylandi` yazar · liste ekranında **Durum sütunu yok**, durum süzgeci yalnız
+  "Reddedilenler" · Excel'de saha/teknik onay tarihi sütunları yok, Durum yalnız reddedilende dolu.
+  • **`beton_onay_gocu($pdo)`** (functions.php; index · irsaliyeler · irsaliye_form · toplu_irsaliye · import ·
+  api/hizli_kaydet başında): kolon VARSAYILANINI `'onaylandi'` yapar (`ALTER COLUMN … SET DEFAULT` — durum
+  yazmayan ekleme yolları [hızlı tarama, Excel aktarımı] de böylece geçerli kayıt açar) ve `beklemede` /
+  `saha_onaylandi` kayıtları `onaylandi`ya çeker (oturum başına bir tarama, `audit_log`'a tek özet satırı).
+  **Toplamlar DEĞİŞMEZ** — raporlar zaten `durum<>'reddedildi'` sayıyordu. ⚠ Anahtar sonradan açılırsa varsayılan
+  `'onaylandi'` KALIR (geri alınmaz); form/toplu giriş yine `beklemede` yazar.
+  • **Reddedilmiş eski kayıtlar korunur** (toplamlara girmez): listede irsaliye no yanında kırmızı **Reddedildi**
+  rozeti, formda kırmızı bant + **"Reddi kaldır ve kaydet"** (`onay_aksiyonu=red_kaldir` → `onaylandi`,
+  `red_neden` NULL, audit_log). Reddetme işlemi artık yok.
+  • **Düzenleme yetkisi** (`can_edit_irsaliye`, durum kilidi yok): admin / teknik_ofis_admin / teknik_ofis /
+  matriste `duzenle` → her kayıt · saha_sefi → yalnız **kendi girdiği** (`created_by`) kayıt. Matrisli
+  "yalnız giriş" kullanıcısı düzenleme formunu zaten açamaz (`sayfa_islemi` → duzenle).
+  `[FATURADAN]` taslak etiketi ve TASLAK rozeti aynen durur (yalnız "onaylanamaz" ibareleri kalktı).
+  Test (scratchpad `bt/`, **gerçek MariaDB 10.11** + kurulum.php şeması, `kos.php` sayfa koşucusu): göç 3 kaydı
+  çevirdi, reddedilen dokunulmadı, varsayılan `onaylandi`, ikinci çalıştırmada audit 1 satır kaldı · durum
+  yazmayan INSERT → onaylandi · liste/form/dashboard/Excel uyarısız, onay öğeleri yok · red kaldırma ·
+  yetki matrisi 5 kullanıcı × 3 kayıt · **`BETON_ONAY=1` ile eski akış birebir** (beklemede kalıyor, paneller ve
+  kartlar geri geliyor). ⚠ Boş veritabanında `kurulum.php` 280. satırda `modul_erisim_semasi()` tanımsız diye
+  duruyor (auth.php yalnız users doluyken yükleniyor) — bu değişiklikten bağımsız, mevcut kurulumları etkilemez.
 - **`index.php`** — Dashboard; admin girişinde günlük otomatik yedek (`backups/`, gzip, 30 gün). **Fatura & belge aksiyon kartları** (işlenen fatura/bağlı irsaliye/faturasız irsaliye/eksik sayısı → fatura_eslestir; bekleyen belge sayısı → belge_dagit; tablolar yoksa gizli; eksik varsa kart ?eksik=1 paneline gider). **Proje → Parsel → Blok → Kot hiyerarşi akordeonu** (dökülen m³, etkin proje `COALESCE(i.proje_id, par.proje_id)`; proje filtresine saygılı).
 - **`irsaliyeler.php`** — Alış/İade/Tüm liste. Filtreler, toplu saha/teknik onay, **toplu güncelleme** (`toplu_islem=guncelle`: Proje→Parsel→Blok→Kot kademeli modal + Açıklama; yalnız doldurulan alanlar değişir, `can_edit()`), **whitelist sıralama**
   (sütun başlığına tıkla), CSV/XLSX export.

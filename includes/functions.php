@@ -155,6 +155,36 @@ function irs_taslak_mi($rowOrAciklama): bool
 }
 
 /**
+ * Onay akışı kapalıyken (beton_onay_aktif() false) eski akışta bekleyen irsaliyeleri
+ * geçerli sayar: beklemede / saha_onaylandi → onaylandi ve kolonun VARSAYILANINI
+ * 'onaylandi' yapar — durum yazmayan ekleme yolları (hızlı tarama, Excel aktarımı)
+ * de böylece onay beklemeyen kayıt açar. Reddedilenlere dokunulmaz (toplamlara girmez).
+ * İdempotent; tarama kullanıcı oturumu başına bir kez yapılır. Hata sayfayı bozmaz.
+ * Toplamlar etkilenmez: raporlar zaten durum<>'reddedildi' sayıyordu.
+ */
+function beton_onay_gocu(PDO $pdo): int
+{
+    static $yapildi = false;
+    if ($yapildi || !function_exists('beton_onay_aktif') || beton_onay_aktif()) return 0;
+    $yapildi = true;
+    $n = 0;
+    try {
+        $kol = $pdo->query("SHOW COLUMNS FROM irsaliyeler LIKE 'durum'")->fetch();
+        $varsayilanEski = $kol && ($kol['Default'] ?? '') !== 'onaylandi';
+        if ($varsayilanEski) {
+            $pdo->exec("ALTER TABLE irsaliyeler ALTER COLUMN durum SET DEFAULT 'onaylandi'");
+        }
+        if ($varsayilanEski || empty($_SESSION['beton_onay_gocu'])) {
+            $n = (int)$pdo->exec("UPDATE irsaliyeler SET durum='onaylandi' WHERE durum IN ('beklemede','saha_onaylandi')");
+            if ($n > 0) audit_log($pdo, 'irsaliyeler', 0, 'UPDATE', null,
+                ['islem' => 'onay akışı kaldırıldı — bekleyen irsaliyeler geçerli sayıldı', 'adet' => $n]);
+            if (session_status() === PHP_SESSION_ACTIVE) $_SESSION['beton_onay_gocu'] = 1;
+        }
+    } catch (Throwable $e) {}
+    return $n;
+}
+
+/**
  * Audit log kaydı yaz
  *
  * @param PDO    $pdo

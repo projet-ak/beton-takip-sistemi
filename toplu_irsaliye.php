@@ -16,6 +16,7 @@ require_once __DIR__ . '/includes/auth.php';
 if (!file_exists(__DIR__ . '/config.php')) { redirect('install.php'); }
 require_auth(['admin','teknik_ofis_admin','teknik_ofis','saha_sefi','depo']);
 require_once __DIR__ . '/includes/db.php';
+beton_onay_gocu($pdo);   // onay akışı kapalı: bekleyenler geçerli sayılır
 require_once __DIR__ . '/includes/fatura.php';   // fat_irs_norm
 
 if (!can_edit()) { flash('error', 'Bu işlem için yetkiniz yok.'); redirect('irsaliyeler.php'); }
@@ -50,7 +51,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pq = $pdo->prepare("SELECT kod FROM projeler WHERE id=?"); $pq->execute([$ortak['proje_id']]);
         $projeNo = $pq->fetchColumn() ?: null;
     }
-    $durum = has_role('admin','teknik_ofis_admin') ? 'onaylandi' : 'beklemede';
+    // Onay akışı kapalıysa (varsayılan) kayıt anında geçerlidir
+    $durum = (!beton_onay_aktif() || has_role('admin','teknik_ofis_admin')) ? 'onaylandi' : 'beklemede';
     $uid   = current_user_id();
 
     // Mevcut numaralar (normalize) — mükerrer/taslak tespiti

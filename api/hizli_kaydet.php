@@ -20,6 +20,7 @@ if (!file_exists(dirname(__DIR__) . '/config.php')) {
 }
 
 require_once dirname(__DIR__) . '/includes/db.php';
+beton_onay_gocu($pdo);   // onay akışı kapalı: kolon varsayılanı 'onaylandi'
 ob_end_clean();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { echo json_encode(['ok'=>false,'msg'=>'POST gerekli']); exit; }

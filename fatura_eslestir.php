@@ -132,9 +132,11 @@ if (($_POST['action'] ?? '') === 'kaydet') {
                 $tarih0 = fat_tarih_norm($_POST['tarih'] ?? '') ?: date('Y-m-d');
                 $ins0 = $pdo->prepare("INSERT INTO irsaliyeler
                     (tip, durum, irsaliye_no, fatura_no, tedarikci_id, tarih, miktar, birim, aciklama, created_by)
-                    VALUES ('alis', 'beklemede', ?, ?, ?, ?, 0, 'M3', ?, ?)");
+                    VALUES ('alis', ?, ?, ?, ?, ?, 0, 'M3', ?, ?)");
+                // Taslak [FATURADAN] etiketiyle ayırt edilir; onay akışı kapalıysa beklemeye düşmez
+                $durum0 = beton_onay_aktif() ? 'beklemede' : 'onaylandi';
                 foreach ($esl0['eksik'] as $no0) {
-                    $ins0->execute([$no0, trim((string)($_POST['fatura_no'] ?? '')) ?: null, $tedId, $tarih0,
+                    $ins0->execute([$durum0, $no0, trim((string)($_POST['fatura_no'] ?? '')) ?: null, $tedId, $tarih0,
                                     '[FATURADAN] Fatura eşleştirmeden otomatik oluşturuldu — Excel aktarımında gerçek verilerle güncellenir.',
                                     current_user_id()]);
                     $yeniId0 = (int)$pdo->lastInsertId();
@@ -1349,7 +1351,7 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                         <?php elseif ((int)$f['eksik_adet'] > 0): $fel = json_decode((string)($f['eksik_liste'] ?? ''), true); ?>
                         <a href="?eksik=1" class="text-danger text-decoration-none" title="<?= h(is_array($fel) ? implode(', ', $fel) : 'numara listesi için tıklayın') ?>"><?= (int)$f['eksik_adet'] ?> <i class="bi bi-box-arrow-up-right small"></i></a>
                         <?php elseif ($fTaslak): ?>
-                        <span class="badge bg-warning text-dark" title="Faturadan otomatik açılmış taslak irsaliyeler — Excel aktarımıyla gerçek veriler gelmeden EKSİK sayılır, onaylanamaz"><?= $fTaslak ?> taslak</span>
+                        <span class="badge bg-warning text-dark" title="Faturadan otomatik açılmış taslak irsaliyeler — Excel aktarımıyla gerçek veriler gelmeden EKSİK sayılır<?= beton_onay_aktif() ? ', onaylanamaz' : '' ?>"><?= $fTaslak ?> taslak</span>
                         <?php else: ?>0<?php endif; ?>
                     </td>
                     <td><?php if ($f['dosya_url']): ?><a href="<?= h($f['dosya_url']) ?>" target="_blank"><i class="bi bi-file-earmark-pdf"></i></a><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
@@ -1374,7 +1376,7 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                             <?php $ft = 0.0; foreach ($fIrs as $fi): $ft += (float)$fi['miktar']; ?>
                                 <tr>
                                     <td><a href="irsaliye_detay.php?id=<?= (int)$fi['id'] ?>" target="_blank"><code><?= h($fi['irsaliye_no']) ?></code></a>
-                                        <?php if (irs_taslak_mi($fi)): ?><span class="badge bg-warning text-dark" title="Faturadan otomatik açıldı — Excel aktarımıyla dolana kadar onaylanamaz">TASLAK</span><?php endif; ?></td>
+                                        <?php if (irs_taslak_mi($fi)): ?><span class="badge bg-warning text-dark" title="Faturadan otomatik açıldı — Excel aktarımıyla dolar<?= beton_onay_aktif() ? ', o zamana kadar onaylanamaz' : '' ?>">TASLAK</span><?php endif; ?></td>
                                     <td><?= h(format_date($fi['tarih'])) ?></td>
                                     <td><?= h((string)$fi['arac_plaka']) ?></td>
                                     <td><?= h((string)$fi['beton_sinifi']) ?></td>

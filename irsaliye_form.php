@@ -10,6 +10,7 @@ if (!file_exists(__DIR__ . '/config.php')) { redirect('install.php'); }
 // Depo dahil tüm oluşturma/görüntüleme rolleri
 require_auth(['admin','teknik_ofis_admin','teknik_ofis','saha_sefi','depo']);
 require_once __DIR__ . '/includes/db.php';
+beton_onay_gocu($pdo);   // onay akışı kapalı: bekleyenler geçerli sayılır
 
 $tip    = in_array($_GET['tip'] ?? '', ['alis','iade'], true) ? $_GET['tip'] : 'alis';
 $editId = isset($_GET['id']) && ctype_digit($_GET['id']) ? (int)$_GET['id'] : 0;
@@ -24,7 +25,9 @@ if ($editId) {
 
     // Yetki kontrolü: bu irsaliyeyi düzenleyebilir mi?
     if (!can_edit_irsaliye($row)) {
-        flash('error', 'Bu irsaliyeyi düzenleme yetkiniz yok (durum: ' . ($row['durum'] ?? '?') . ').');
+        flash('error', beton_onay_aktif()
+            ? 'Bu irsaliyeyi düzenleme yetkiniz yok (durum: ' . ($row['durum'] ?? '?') . ').'
+            : 'Bu irsaliyeyi düzenleme yetkiniz yok — yalnız kendi girdiğiniz irsaliyeleri düzenleyebilirsiniz.');
         redirect("irsaliyeler.php?tip={$tip}");
     }
 }
@@ -122,7 +125,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (!$tedarikciId || !$tarih || $miktar <= 0) {
         $error = 'Tedarikçi, tarih ve miktar zorunludur. Miktar sıfırdan büyük olmalıdır.';
     } elseif (!$error) {
-        $yeniDurum = has_role('admin','teknik_ofis_admin') ? 'onaylandi' : 'beklemede';
+        // Onay akışı kapalıysa (varsayılan) kayıt anında geçerlidir
+        $yeniDurum = (!beton_onay_aktif() || has_role('admin','teknik_ofis_admin')) ? 'onaylandi' : 'beklemede';
 
         try {
             if ($editId) {
@@ -143,6 +147,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $aciklama, $uid, $editId,
                 ]);
 
+                // ── Reddi kaldır (onay akışı kapalıyken eski akışta reddedilmiş kayıt) ──
+                if ($editId && $onayAksiyonu === 'red_kaldir' && !beton_onay_aktif()) {
+                    $pdo->prepare("UPDATE irsaliyeler SET durum='onaylandi', red_neden=NULL WHERE id=? AND durum='reddedildi'")->execute([$editId]);
+                    audit_log($pdo, 'irsaliyeler', $editId, 'UPDATE', ['durum' => 'reddedildi'], ['durum' => 'onaylandi']);
+                    flash('success', 'Red kaldırıldı — irsaliye artık toplamlara giriyor.');
+                    redirect("irsaliyeler.php?tip={$tipPost}");
+                }
                 // ── Onayla işlemi: form kaydedildikten sonra uygula ─────────
                 if ($editId && in_array($onayAksiyonu, ['saha_onayla','teknik_onayla'])) {
                     // Proje kontrolü: az önce kaydedilen proje_id üzerinden
@@ -249,7 +260,7 @@ require_once __DIR__ . '/includes/header.php';
     <h4 class="mb-0 me-auto">
         <?= $editId ? '<i class="bi bi-pencil text-warning me-2"></i>İrsaliye Düzenle' : '<i class="bi bi-plus-circle text-success me-2"></i>Yeni İrsaliye Ekle' ?>
     </h4>
-    <?php if ($editId && isset($row['durum'])): ?>
+    <?php if ($editId && isset($row['durum']) && (beton_onay_aktif() || $row['durum'] === 'reddedildi')): ?>
         <?= durum_badge($row['durum']) ?>
     <?php endif; ?>
 </div>
@@ -262,14 +273,28 @@ require_once __DIR__ . '/includes/header.php';
     <div class="alert alert-warning">
         <i class="bi bi-receipt-cutoff me-2"></i><strong>FATURADAN AÇILMIŞ TASLAK:</strong>
         Bu irsaliye, faturada bulunup sistemde olmadığı için fatura eşleştirmeden otomatik oluşturuldu (0 m³).
-        Excel aktarımı aynı numarayı getirdiğinde gerçek verilerle kendiliğinden dolar — <strong>o zamana kadar onaylanamaz</strong>.
+        Excel aktarımı aynı numarayı getirdiğinde gerçek verilerle kendiliğinden dolar<?= beton_onay_aktif() ? ' — <strong>o zamana kadar onaylanamaz</strong>' : '' ?>.
         Verileri elle tamamlayacaksanız açıklamadaki <code>[FATURADAN]</code> etiketini silin.
     </div>
 <?php endif; ?>
 
+<?php if ($editId && !beton_onay_aktif() && ($row['durum'] ?? '') === 'reddedildi'): ?>
+<div class="alert alert-danger d-flex flex-wrap align-items-center gap-2">
+    <div class="me-auto">
+        <i class="bi bi-x-circle-fill me-2"></i><strong>Bu irsaliye eski onay akışında REDDEDİLMİŞ</strong> —
+        dökülen m³ toplamlarına ve raporlara girmiyor.
+        <?php if (!empty($row['red_neden'])): ?><span class="small">Red nedeni: <em><?= h($row['red_neden']) ?></em></span><?php endif; ?>
+    </div>
+    <button type="button" class="btn btn-sm btn-outline-danger" onclick="submitOnay('red_kaldir')"
+            title="Değişiklikleri kaydeder ve irsaliyeyi geçerli kayda döndürür">
+        <i class="bi bi-arrow-counterclockwise me-1"></i>Reddi kaldır ve kaydet
+    </button>
+</div>
+<?php endif; ?>
+
 <?php
-// Onay akışı bilgi paneli
-if ($editId && isset($row['durum'])):
+// Onay akışı bilgi paneli (yalnız onay akışı açıkken — config BETON_ONAY)
+if ($editId && isset($row['durum']) && beton_onay_aktif()):
     $rd = $row['durum'];
 ?>
 <div class="card mb-4 border-0" style="background:var(--bt-bg-soft)">

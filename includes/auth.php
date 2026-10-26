@@ -633,14 +633,38 @@ function can_edit(): bool
 }
 
 /**
+ * Beton irsaliye ONAY AKIŞI (saha onayı + teknik ofis onayı) açık mı?
+ * 2026-10-26'da kaldırıldı (kullanıcı: "beton sisteminde onay olmasın") — irsaliye
+ * kaydedildiği anda geçerlidir. Geri açmak için config.php'ye:
+ *     define('BETON_ONAY', true);
+ * Kapalıyken can_approve_*() false döner (onay düğmeleri/kartları kendiliğinden kalkar)
+ * ve beton_onay_gocu() bekleyen kayıtları 'onaylandi'ya çeker.
+ */
+function beton_onay_aktif(): bool
+{
+    return defined('BETON_ONAY') && BETON_ONAY;
+}
+
+/**
  * Belirli bir irsaliyeyi düzenleyip düzenleyemeyeceği:
  * - admin / teknik_ofis_admin: her zaman
  * - teknik_ofis: saha_onaylandi veya beklemede ise
  * - saha_sefi: beklemede ise
  * - depo: hiçbir zaman (sadece oluşturur)
+ * Onay akışı KAPALIYKEN durum kilidi yoktur (hepsi 'onaylandi'): değiştirme yetkisi /
+ * teknik ofis her kaydı, saha şefi yalnız KENDİ girdiği kaydı düzenler.
  */
 function can_edit_irsaliye(array $irsaliye): bool
 {
+    if (!beton_onay_aktif()) {
+        $kendi = isset($_SESSION['user']['id'])
+              && (int)($irsaliye['created_by'] ?? 0) === (int)$_SESSION['user']['id'];
+        // Matrisli kullanıcıda düzenleme formu zaten 'duzenle' ister (sayfa_islemi)
+        if (yetki_matris() !== null && !is_admin()) return yetki_var('duzenle');
+        if (has_role('admin', 'teknik_ofis_admin', 'teknik_ofis')) return true;
+        if (has_role('saha_sefi')) return $kendi;
+        return false;
+    }
     if (yetki_matris() !== null && !is_admin()) {
         // Matrisli kullanıcı: değiştirme yetkisi → her durumda; yalnız giriş yetkisi → henüz onaylanmamışsa
         if (yetki_var('duzenle')) return true;
@@ -659,6 +683,7 @@ function can_edit_irsaliye(array $irsaliye): bool
  */
 function can_approve_saha(): bool
 {
+    if (!beton_onay_aktif()) return false;
     if (yetki_matris() !== null && !is_admin()) return yetki_var('onay');
     return has_role('admin', 'teknik_ofis_admin', 'saha_sefi');
 }
@@ -669,6 +694,7 @@ function can_approve_saha(): bool
  */
 function can_approve_teknik(): bool
 {
+    if (!beton_onay_aktif()) return false;
     if (yetki_matris() !== null && !is_admin()) return yetki_var('onay');
     return has_role('admin', 'teknik_ofis_admin', 'teknik_ofis');
 }

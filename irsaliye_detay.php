@@ -196,7 +196,7 @@ require_once __DIR__ . '/includes/header.php';
 <div class="alert alert-warning">
     <i class="bi bi-receipt-cutoff me-2"></i><strong>FATURADAN AÇILMIŞ TASLAK:</strong>
     Bu irsaliye, faturada bulunup sistemde olmadığı için fatura eşleştirmeden otomatik oluşturuldu (0 m³).
-    Excel aktarımı aynı numarayı getirdiğinde gerçek verilerle kendiliğinden dolar — <strong>o zamana kadar onaylanamaz</strong>.
+    Excel aktarımı aynı numarayı getirdiğinde gerçek verilerle kendiliğinden dolar<?= beton_onay_aktif() ? ' — <strong>o zamana kadar onaylanamaz</strong>' : '' ?>.
 </div>
 <?php endif; ?>
 

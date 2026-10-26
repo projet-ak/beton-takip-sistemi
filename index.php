@@ -12,6 +12,7 @@ if (!file_exists(__DIR__ . '/config.php')) {
 
 require_auth();
 require_once __DIR__ . '/includes/db.php';
+beton_onay_gocu($pdo);   // onay akışı kapalı: bekleyenler geçerli sayılır
 
 // Günlük otomatik yedek — admin dashboard'a her girdiğinde kontrol eder.
 // 5 veritabanının (beton/demir/seramik/depo/akaryakit) her biri ayrı dosyaya alınır.
@@ -202,7 +203,7 @@ try {
 // Bekleyen onaylar
 $bekleyenSaha = 0;
 $bekleyenTeknik = 0;
-try {
+if (beton_onay_aktif()) try {   // onay akışı kapalıyken (varsayılan) bekleyen kayıt olmaz
     $bekleyenSaha   = (int)$pdo->query("SELECT COUNT(*) FROM irsaliyeler WHERE durum='beklemede'")->fetchColumn();
     $bekleyenTeknik = (int)$pdo->query("SELECT COUNT(*) FROM irsaliyeler WHERE durum='saha_onaylandi'")->fetchColumn();
 } catch (Exception $e) {}
