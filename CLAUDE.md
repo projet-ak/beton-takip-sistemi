@@ -2054,8 +2054,13 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   çevirdi, reddedilen dokunulmadı, varsayılan `onaylandi`, ikinci çalıştırmada audit 1 satır kaldı · durum
   yazmayan INSERT → onaylandi · liste/form/dashboard/Excel uyarısız, onay öğeleri yok · red kaldırma ·
   yetki matrisi 5 kullanıcı × 3 kayıt · **`BETON_ONAY=1` ile eski akış birebir** (beklemede kalıyor, paneller ve
-  kartlar geri geliyor). ⚠ Boş veritabanında `kurulum.php` 280. satırda `modul_erisim_semasi()` tanımsız diye
-  duruyor (auth.php yalnız users doluyken yükleniyor) — bu değişiklikten bağımsız, mevcut kurulumları etkilemez.
+  kartlar geri geliyor). `kurulum.php` de sonunda `beton_onay_gocu()` çağırır (sıfır kurulumda varsayılan baştan `onaylandi`).
+  • **`kurulum.php` BOŞ VERİTABANINDA YARIDA KALIYORDU (2026-10-29 düzeltildi)**: `includes/functions.php` +
+  `auth.php` yalnız `users` doluyken (admin kapısı için) yükleniyordu; ilk kurulumda 280. satırdaki
+  `modul_erisim_semasi()` "undefined function" ile patlıyor, admin seed'i hiç yazılmıyordu. İki dosya artık
+  KOŞULSUZ yüklenir (auth.php oturumsuz yüklemede yönlendirmez), `require_auth(['admin'])` yine yalnız kurulu
+  sistemde çalışır. Doğrulandı (MariaDB): boş DB → kurulum tamam, 2 admin seed, 21 tablo · kurulu sistemde
+  oturumsuz → giriş sayfasına yönlenir · admin ile tekrar → idempotent · saha şefi → "Yetkisiz Erişim".
 - **`index.php`** — Dashboard; admin girişinde günlük otomatik yedek (`backups/`, gzip, 30 gün). **Fatura & belge aksiyon kartları** (işlenen fatura/bağlı irsaliye/faturasız irsaliye/eksik sayısı → fatura_eslestir; bekleyen belge sayısı → belge_dagit; tablolar yoksa gizli; eksik varsa kart ?eksik=1 paneline gider). **Proje → Parsel → Blok → Kot hiyerarşi akordeonu** (dökülen m³, etkin proje `COALESCE(i.proje_id, par.proje_id)`; proje filtresine saygılı).
 - **`irsaliyeler.php`** — Alış/İade/Tüm liste. Filtreler, toplu saha/teknik onay, **toplu güncelleme** (`toplu_islem=guncelle`: Proje→Parsel→Blok→Kot kademeli modal + Açıklama; yalnız doldurulan alanlar değişir, `can_edit()`), **whitelist sıralama**
   (sütun başlığına tıkla), CSV/XLSX export.

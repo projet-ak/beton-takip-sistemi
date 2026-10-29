@@ -18,12 +18,16 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
 
+    // Şema yardımcıları (modul_erisim_semasi, yetki_semasi, modul_ayar_semasi …) bu iki dosyada —
+    // boş veritabanında da yüklenmeli; eskiden yalnız users doluyken yükleniyor, ilk kurulum
+    // "Call to undefined function modul_erisim_semasi()" ile yarıda kalıyordu.
+    require_once __DIR__ . '/includes/functions.php';
+    require_once __DIR__ . '/includes/auth.php';
+
     // Güvenlik: ilk kurulumdan sonra (users tablosu doluysa) yalnız admin çalıştırabilir.
     $__kuruldu = false;
     try { $__kuruldu = (int)$pdo->query("SELECT COUNT(*) FROM users")->fetchColumn() > 0; } catch (Throwable $e) { $__kuruldu = false; }
     if ($__kuruldu) {
-        require_once __DIR__ . '/includes/functions.php';
-        require_once __DIR__ . '/includes/auth.php';
         require_auth(['admin']);
     }
 
@@ -284,6 +288,12 @@ try {
 
     modul_ayar_semasi($pdo);     // modul_ayarlar (modül adı / gizleme / sıra — moduller.php)
     $log[] = ['ok', 'modul_ayarlar tablosu eklendi / zaten mevcuttu'];
+
+    if (!beton_onay_aktif()) {      // onay akışı kaldırıldı: irsaliyeler.durum varsayılanı 'onaylandi'
+        $__gocen = beton_onay_gocu($pdo);
+        $log[] = ['ok', "irsaliye onay akışı kapalı — durum varsayılanı 'onaylandi'"
+                      . ($__gocen ? " ({$__gocen} bekleyen irsaliye geçerli sayıldı)" : '')];
+    }
 
     // ── İndeksleri garanti et (mevcut DB'lerde CREATE TABLE indeks eklemez) ────
     $idxEnsure = [
