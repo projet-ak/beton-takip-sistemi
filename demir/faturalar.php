@@ -46,6 +46,47 @@ function dfat_semasi_kur(PDO $pdo): void {
 }
 dfat_semasi_kur($pdoDemir);
 
+/**
+ * KG okuyucu. Demir miktarı ondalıksız BİNLİK yazılır ("26.400 KG" = 26400 kg) — genel
+ * fat_sayi() noktayı ondalık sayıp 26,4 döndürür. Üçerli gruplar (26.400 · 1.234.567 ·
+ * 26,550) binliktir; "26.400,00" / "66420.000" / "27680" fat_sayi'ye bırakılır.
+ * ⚠ Formdaki "Miktar (kg)" kutusu da "26.400" biçiminde basılır — kayıtta MUTLAKA bu kullanılır.
+ */
+function dfat_kg(?string $s): ?float {
+    $s = preg_replace('/[^\d.,]/', '', trim((string)$s));
+    if ($s === '' || $s === null) return null;
+    if (preg_match('/^\d{1,3}(?:\.\d{3})+$/', $s) || preg_match('/^\d{1,3}(?:,\d{3})+$/', $s)) {
+        return (float)str_replace(['.', ','], '', $s);
+    }
+    return fat_sayi($s);
+}
+
+/**
+ * Bozuk kayıt onarımı (idempotent): eski sürüm formdaki "26.400" kg değerini fat_sayi ile
+ * okuyup 26,4 kg yazıyordu → listede her fatura "0,03 t" görünüyordu. Gerçek demir faturasında
+ * kg başına fiyat ~30 ₺'dir; tutar ÷ kg 1000 ₺'yi aşıyorsa değer binde bir okunmuştur → ×1000.
+ * (Kutuda ondalıksız gösterildiği için ×1000 değeri birebir geri getirir.)
+ */
+function dfat_kg_onar(PDO $pdo): int {
+    try {
+        return $pdo->exec("UPDATE demir_faturalar SET miktar_kg = miktar_kg * 1000
+                           WHERE miktar_kg > 0 AND miktar_kg < 1000 AND tutar IS NOT NULL AND tutar / miktar_kg > 1000") ?: 0;
+    } catch (Throwable $e) { return 0; }
+}
+$__kgOnarilan = dfat_kg_onar($pdoDemir);
+
+/** AI ile okumada demire özgü talimat (tekil yükleme, yeniden okuma ve toplu işleme ortak) */
+function dfat_ai_sistem(): string {
+    return 'Sen bir e-Fatura okuyucusun. Verilen DEMİR faturasındaki METNİ olduğu gibi düz metin '
+         . 'olarak yaz. Hiçbir şey uydurma, yorum ekleme, özetleme. Şu satırları MUTLAKA aynen aktar: '
+         . 'Fatura No, Fatura Tarihi, ETTN, Sipariş No, başlıktaki "İrsaliye No" / "İrsaliye No (1)" alanları, '
+         . 'faturanın altındaki "İrsaliyeler:" listesi, kalemlerdeki '
+         . '"[İRS.NO:...]" ve "[E-IRSALIYE NO TARIH:...]" ve "[BELGE NO:...]" köşeli parantezli etiketlerin '
+         . 'TAMAMI, kalem tablosundaki malzeme adları ve Miktar değerleri BİRİMİYLE (örn. "27.680 Kg", "26.400 KG"), '
+         . '"Toplam Miktar", "Vergiler Dahil Toplam Tutar" ve "Ödenecek Tutar" satırları, "Satıcı" ve "Alıcı" '
+         . 'unvan satırları ile VKN / "Vergi No" satırları. Rulo/bağ kodu listelerini (CA02..., FD03... gibi) aktarmana gerek YOK.';
+}
+
 // ── Demir faturası metin çözümleme ───────────────────────────────────────────
 // Tedarikçiden tedarikçiye 3 farklı irsaliye gösterimi görüldü (gerçek faturalardan):
 //   Çakıroğlu : başlıkta "İrsaliye No: CKI2026000003302" (etiketle değer ayrı satıra düşebilir)
@@ -77,8 +118,16 @@ function dfat_cikar(string $metin): array {
     if (preg_match('/Sipariş\s*No[:\s]*([A-Z0-9][A-Z0-9\-\/]{3,29})/iu', $t, $m)) $d['siparis_no'] = strtoupper($m[1]);
 
     // 1) Başlık alanı: "İrsaliye No: CKI2026..." (değer alt satıra düşebilir, virgüllü liste olabilir)
-    if (preg_match_all('/İrsaliye\s*No(?:su)?[:\s]*([A-Z]{2,6}\d{6,20}(?:\s*,\s*[A-Z]{2,6}\d{6,20})*)/iu', $t, $mm)) {
+    //    Karadeniz Demir: "İrsaliye No (1): KRI2026000025094" — sıra numarası parantezde
+    if (preg_match_all('/İrsaliye\s*No(?:su)?(?:\s*\(\d+\))?[:\s]*([A-Z]{2,6}\d{6,20}(?:\s*,\s*[A-Z]{2,6}\d{6,20})*)/iu', $t, $mm)) {
         foreach ($mm[1] as $grup) foreach (preg_split('/\s*,\s*/', $grup) as $no) $ekle($no);
+    }
+    // 1b) Alt bilgi listesi: "İrsaliyeler:\nKRI2026000025094, 27/10/2026" — numara + tarih çiftleri
+    if (preg_match('/İrsaliyeler\s*:(.{0,800})/isu', $t, $bm)) {
+        $blok = preg_split('/Notlar\s*:/iu', $bm[1])[0];
+        if (preg_match_all('/\b([A-Z]{2,6}\d{6,20})\s*,\s*\d{1,2}[.\-\/]\d{1,2}[.\-\/]\d{4}/u', $blok, $mm)) {
+            foreach ($mm[1] as $no) $ekle($no);
+        }
     }
     // 2) Kalem içi: "[İRS.NO:2124-08.05.2026]" — düz sayı numara
     if (preg_match_all('/\[?İRS\.?\s*NO[:\s]*([0-9]{2,12})\s*-\s*[\d.\-\/]{8,10}\]?/iu', $t, $mm)) {
@@ -102,15 +151,17 @@ function dfat_cikar(string $metin): array {
     // Miktar: "Toplam Miktar 27680" / "TOPLAM MİKTAR : 66420.000" → kg;
     // yoksa kalem satırlarındaki ",00 kg" değerlerinin toplamı (ondalıksız özet
     // satırındaki "26,550KG" tekrarları çift saymasın diye ondalık ŞART)
-    if (preg_match('/Toplam\s*M[İIiı]ktar[:\s]*([\d.,]+)/iu', $t, $m)) $d['miktar_kg'] = fat_sayi($m[1]);
+    if (preg_match('/Toplam\s*M[İIiı]ktar[:\s]*([\d.,]+)/iu', $t, $m)) $d['miktar_kg'] = dfat_kg($m[1]);
     if ($d['miktar_kg'] === null && preg_match_all('/([\d.,]+,\d{2})\s*kg\.?\b/iu', $t, $mm)) {
         $top = 0.0; $var = false;
         foreach ($mm[1] as $v) { $f = fat_sayi($v); if ($f !== null) { $top += $f; $var = true; } }
         if ($var) $d['miktar_kg'] = $top;
     }
-    if ($d['miktar_kg'] === null && preg_match_all('/([\d.,]+)\s*Kg\.?\b/u', $t, $mm)) {   // Çakıroğlu: "10.800\n Kg."
+    // Çakıroğlu: "10.800\n Kg." · Karadeniz: "26.400 KG" (ondalıksız binlik → dfat_kg).
+    // Büyük harfli KG için boşluk şart: "10MM-26,550KG" özet tekrarları toplamı ikiye katlamasın.
+    if ($d['miktar_kg'] === null && preg_match_all('/([\d.,]+)(?:\s*Kg\.?|\s+KG)\b/u', $t, $mm)) {
         $top = 0.0; $var = false;
-        foreach ($mm[1] as $v) { $f = fat_sayi($v); if ($f !== null) { $top += $f; $var = true; } }
+        foreach ($mm[1] as $v) { $f = dfat_kg($v); if ($f !== null) { $top += $f; $var = true; } }
         if ($var) $d['miktar_kg'] = $top;
     }
 
@@ -149,6 +200,12 @@ function dfat_cikar(string $metin): array {
     } elseif ($kgListe && count($kgListe) === count($d['irsaliyeler'])) {
         // Cangül düzeni: kalemlerde çap yok; kalem sırası dipnottaki e-irsaliye sırasıyla eşleşir
         foreach ($kgListe as $i => $kg) $d['kalemler'][] = ['cap' => null, 'kg' => $kg, 'irs' => $d['irsaliyeler'][$i]];
+    } elseif (preg_match_all('/(?:Ø\s*|\bN\s*-?\s*)?(\d{1,2})\s*MM\b[^\n]{0,100}?\s([\d.]+(?:,\d+)?)\s*KG\b/iu', $t, $mm, PREG_SET_ORDER)) {
+        // Karadeniz düzeni: "N-12mm 12mt İnş.Demiri 26.400 KG" — satırda çap + kg (irsaliye tek)
+        foreach ($mm as $g) {
+            $c = (int)$g[1]; $f = dfat_kg($g[2]);
+            if ($c >= 6 && $c <= 50 && $f !== null && $f > 0) $d['kalemler'][] = ['cap' => $c, 'kg' => $f, 'irs' => null];
+        }
     }
     // Sağlama: kalem toplamı fatura toplamının binde biriyse ölçek hatası var demektir — düzelt
     if ($d['kalemler'] && $d['miktar_kg'] !== null) {
@@ -185,6 +242,16 @@ function dfat_cikar(string $metin): array {
             }
             $d['satici_unvan'] = $unvan;
         }
+    }
+
+    // İDİS düzeni (Karadeniz): "Satıcı (Şube): Karadeniz Demir …" + "Vergi No / Dairesi: 5090025659 / …".
+    // "VKN" kelimesi hiç geçmez; satıcı bloğu "Alıcı" bloğundan ÖNCE gelir.
+    if ($d['satici_vkn'] === null && preg_match_all('/Vergi\s*No(?:\s*\/\s*Dairesi)?\s*:\s*([0-9]{10,11})/iu', $t, $vm, PREG_OFFSET_CAPTURE)) {
+        $aliciOff = preg_match('/Al[ıi]c[ıi](?:\s*\([^)\n]*\))?\s*:/iu', $t, $am, PREG_OFFSET_CAPTURE) ? $am[0][1] : null;
+        foreach ($vm[1] as [$v0, $o0]) if ($aliciOff === null || $o0 < $aliciOff) { $d['satici_vkn'] = $v0; break; }
+    }
+    if ($d['satici_unvan'] === null && preg_match('/Sat[ıi]c[ıi](?:\s*\([^)\n]*\))?\s*:\s*([^\n]{3,150})/iu', $t, $sm)) {
+        $d['satici_unvan'] = trim($sm[1]);
     }
 
     // Karekod metne yapıştırılmışsa kesin alanlar oradan gelir
@@ -261,14 +328,7 @@ if (($_POST['action'] ?? '') === 'cozumle') {
             $hedefAd = date('Ymd_His') . '_' . substr(md5($ad.microtime(true)), 0, 8) . '.' . $ext;
             $tam = $tmp;
             if (@move_uploaded_file($tmp, $dir.'/'.$hedefAd)) { $dosyaUrl = 'uploads/demir_fatura/'.date('Y/m').'/'.$hedefAd; $tam = $dir.'/'.$hedefAd; }
-            // AI okumada demire özgü talimat: irsaliye/belge etiketleri tedarikçiye göre değişir
-            $aiSistem = 'Sen bir e-Fatura okuyucusun. Verilen DEMİR faturasındaki METNİ olduğu gibi düz metin '
-                      . 'olarak yaz. Hiçbir şey uydurma, yorum ekleme, özetleme. Şu satırları MUTLAKA aynen aktar: '
-                      . 'Fatura No, Fatura Tarihi, ETTN, Sipariş No, başlıktaki "İrsaliye No" alanı, kalemlerdeki '
-                      . '"[İRS.NO:...]" ve "[E-IRSALIYE NO TARIH:...]" ve "[BELGE NO:...]" köşeli parantezli etiketlerin '
-                      . 'TAMAMI, kalem tablosundaki malzeme adları ve Miktar değerleri BİRİMİYLE (örn. "27.680 Kg"), '
-                      . '"Toplam Miktar", "Vergiler Dahil Toplam Tutar" ve "Ödenecek Tutar" satırları, satıcı ve alıcı '
-                      . 'VKN satırları. Rulo/bağ kodu listelerini (CA02..., FD03... gibi) aktarmana gerek YOK.';
+            $aiSistem = dfat_ai_sistem();   // demire özgü talimat (irsaliye/belge etiketleri tedarikçiye göre değişir)
             $okunan = fat_dosyadan_metin($tam, $mime, $kaynakOkuma, $aiSistem);
             if ($okunan !== null && $okunan !== '') $metin = $okunan;
             elseif ($metin === '') $hata = 'Dosyadan metin okunamadı — fatura metnini kopyalayıp kutuya yapıştırın.';
@@ -288,135 +348,375 @@ if (($_POST['action'] ?? '') === 'cozumle') {
             $mq = $pdoDemir->prepare("SELECT * FROM demir_faturalar WHERE fatura_no = ? OR (ettn IS NOT NULL AND ettn <> '' AND ettn = ?) LIMIT 1");
             $mq->execute([(string)$v['fatura_no'], (string)$v['ettn']]);
             $mevcut = $mq->fetch() ?: null;
-            // Tedarikçi önerisi: normalize unvan ile demir_tedarikciler
-            $onerTedId = 0;
-            if ($v['satici_unvan']) {
-                $u = fat_unvan_norm($v['satici_unvan']);
-                foreach ($pdoDemir->query("SELECT id, ad FROM demir_tedarikciler") as $td) {
-                    $a = fat_unvan_norm($td['ad']);
-                    if ($a !== '' && mb_strlen($a) >= 4 && (str_contains($u, $a) || str_contains($a, $u))) { $onerTedId = (int)$td['id']; break; }
-                }
-            }
+            // Tedarikçi önerisi: VKN → normalize unvan (öneri aşamasında OLUŞTURULMAZ)
+            $onerTedId = (int)(dfat_tedarikci_coz($pdoDemir, null, $v['satici_unvan'], $v['satici_vkn'], false)[0] ?? 0);
             $sonuc = ['v'=>$v, 'e'=>$e, 'dosya_url'=>$dosyaUrl, 'mevcut'=>$mevcut, 'oner_ted'=>$onerTedId,
                       'metin'=>$metin, 'kaynak'=>$kaynakOkuma ?? null];
         }
     }
 }
 
+// ── Ortak kayıt çekirdeği (tekil kayıt · yeniden okuma · toplu işleme) ─────────
+/**
+ * Tedarikçi çözümü: seçili id → VKN → normalize unvan → (izin varsa) oluştur.
+ * VKN'siz mevcut kayda faturadaki VKN tamamlanır. Döner: [id|null, ad|null, yeni_mi]
+ */
+function dfat_tedarikci_coz(PDO $pdo, ?int $tedId, ?string $unvan, ?string $vkn, bool $olustur = true): array {
+    if ($tedId) {
+        $tq = $pdo->prepare("SELECT ad FROM demir_tedarikciler WHERE id = ?"); $tq->execute([$tedId]);
+        $ad = $tq->fetchColumn();
+        if ($ad !== false) return [$tedId, (string)$ad, false];
+    }
+    $unvan = trim((string)$unvan);
+    $vkn   = preg_replace('/\D/', '', (string)$vkn) ?: null;
+    $liste = $pdo->query("SELECT id, ad, vkn FROM demir_tedarikciler")->fetchAll();
+    if ($vkn) foreach ($liste as $td) {
+        if (preg_replace('/\D/', '', (string)$td['vkn']) === $vkn) return [(int)$td['id'], (string)$td['ad'], false];
+    }
+    $u = fat_unvan_norm($unvan);
+    if ($u !== '' && mb_strlen($u) >= 4) {
+        foreach ($liste as $td) {
+            $a = fat_unvan_norm($td['ad']);
+            if ($a !== '' && mb_strlen($a) >= 4 && (str_contains($u, $a) || str_contains($a, $u))) {
+                if ($vkn && trim((string)$td['vkn']) === '') {
+                    $pdo->prepare("UPDATE demir_tedarikciler SET vkn = ? WHERE id = ?")->execute([$vkn, (int)$td['id']]);
+                }
+                return [(int)$td['id'], (string)$td['ad'], false];
+            }
+        }
+        if ($olustur) {
+            $ad = mb_substr($unvan, 0, 150);
+            $pdo->prepare("INSERT INTO demir_tedarikciler (ad, vkn) VALUES (?, ?)")->execute([$ad, $vkn]);
+            return [(int)$pdo->lastInsertId(), $ad, true];
+        }
+    }
+    return [null, $unvan !== '' ? $unvan : null, false];
+}
+
+/**
+ * Faturayı kaydeder — no VEYA ETTN ile kayıtlıysa GÜNCELLER (mükerrer açılmaz) — ve verilen
+ * sevkiyatları bağlar. $eksikOlustur: sevkiyatlarda bulunamayan irsaliyeler [FATURADAN] taslak
+ * sevkiyat olarak açılır (Excel aktarımı aynı numarayı getirince silinmez, güncellenir).
+ * $p: fatura_no, ettn, tarih (Y-m-d), tedarikci_id, tedarikci (unvan), satici_vkn, siparis_no,
+ *     irsaliyeler[], miktar_kg (float), tutar, brut_tutar, dosya_url, notlar, kalemler[]
+ */
+function dfat_kaydet(PDO $pdo, array $p, array $svkIds, bool $eksikOlustur): array {
+    $faturaNo = strtoupper(trim((string)($p['fatura_no'] ?? '')));
+    if ($faturaNo === '') throw new RuntimeException('Fatura no zorunlu.');
+    $ettn = strtoupper(trim((string)($p['ettn'] ?? ''))) ?: null;
+    [$tedId, $tedAd, $tedYeni] = dfat_tedarikci_coz($pdo, (int)($p['tedarikci_id'] ?? 0) ?: null,
+                                                    $p['tedarikci'] ?? null, $p['satici_vkn'] ?? null);
+    $irsListe = array_values(array_unique(array_filter(array_map(fn($x) => strtoupper(trim((string)$x)), (array)($p['irsaliyeler'] ?? [])))));
+    $kalemler = array_slice(array_values(array_filter((array)($p['kalemler'] ?? []), 'is_array')), 0, 200);
+
+    $mq = $pdo->prepare("SELECT id FROM demir_faturalar WHERE fatura_no = ? OR (ettn IS NOT NULL AND ettn <> '' AND ? <> '' AND ettn = ?) LIMIT 1");
+    $mq->execute([$faturaNo, (string)$ettn, (string)$ettn]);
+    $fid = (int)($mq->fetchColumn() ?: 0);
+    $yeni = $fid === 0;
+
+    $par = [$ettn, fat_tarih_norm((string)($p['tarih'] ?? '')) ?: null, $tedAd, $tedId,
+            trim((string)($p['siparis_no'] ?? '')) ?: null,
+            $irsListe ? json_encode($irsListe, JSON_UNESCAPED_UNICODE) : null,
+            isset($p['miktar_kg']) && $p['miktar_kg'] !== null ? (float)$p['miktar_kg'] : null,
+            isset($p['tutar']) && $p['tutar'] !== null ? (float)$p['tutar'] : null,
+            isset($p['brut_tutar']) && $p['brut_tutar'] !== null ? (float)$p['brut_tutar'] : null,
+            trim((string)($p['dosya_url'] ?? '')) ?: null,
+            trim((string)($p['notlar'] ?? '')) ?: null,
+            $kalemler ? json_encode($kalemler, JSON_UNESCAPED_UNICODE) : null];
+    if ($fid) {
+        $pdo->prepare("UPDATE demir_faturalar SET ettn=?, tarih=?, tedarikci=?, tedarikci_id=?, siparis_no=?,
+            irsaliye_liste=?, miktar_kg=?, tutar=?, brut_tutar=?, dosya_url=COALESCE(?, dosya_url), notlar=?,
+            kalemler=COALESCE(?, kalemler) WHERE id=?")
+            ->execute([...$par, $fid]);
+    } else {
+        $pdo->prepare("INSERT INTO demir_faturalar (fatura_no, ettn, tarih, tedarikci, tedarikci_id, siparis_no,
+            irsaliye_liste, miktar_kg, tutar, brut_tutar, dosya_url, notlar, kalemler, created_by)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+            ->execute([$faturaNo, ...$par, current_user_id()]);
+        $fid = (int)$pdo->lastInsertId();
+    }
+    // Sevkiyat bağları
+    $bagli = 0;
+    $upd = $pdo->prepare("UPDATE demir_sevkiyatlar SET fatura_id = ? WHERE id = ?");
+    foreach (array_unique(array_filter(array_map('intval', $svkIds))) as $sid) { $upd->execute([$fid, $sid]); $bagli++; }
+
+    $taslakOlusan = 0; $taslakUyari = '';
+    if ($eksikOlustur) {
+        if (!$tedId) {
+            $taslakUyari = 'Taslak sevkiyat OLUŞTURULMADI: tedarikçi seçilmedi ve faturadan da çözülemedi.';
+        } else {
+            // Kaydetme anında yeniden doğrula — bu arada girilmiş sevkiyat varsa taslak AÇILMAZ (mükerrer imkânsız).
+            // Başka faturaya bağlı sevkiyat burada TAŞINMAZ (o karar tekil ekranda kutucukla verilir).
+            $tekrar = dfat_eslestir($pdo, $irsListe, []);
+            foreach ($tekrar['eslesen'] as $r0) {
+                if (empty($r0['fatura_id']) || (int)$r0['fatura_id'] === $fid) $upd->execute([$fid, (int)$r0['id']]);
+            }
+            // Çap çözümü: demir_caplar'daki adlardan sayı çıkar (duz öncelikli)
+            $capMap = [];
+            foreach ($pdo->query("SELECT id, ad, tip FROM demir_caplar") as $c0) {
+                if (preg_match('/(\d+)/', (string)$c0['ad'], $cm)) {
+                    $n0 = (int)$cm[1];
+                    if (!isset($capMap[$n0]) || $c0['tip'] === 'duz') $capMap[$n0] = (int)$c0['id'];
+                }
+            }
+            $tarih0 = fat_tarih_norm((string)($p['tarih'] ?? '')) ?: date('Y-m-d');
+            $insS = $pdo->prepare("INSERT INTO demir_sevkiyatlar
+                (irsaliye_no, irsaliye_tarih, gelis_tarih, tedarikci_id, aciklama, fatura_id, created_by)
+                VALUES (?,?,?,?,?,?,?)");
+            $insK = $pdo->prepare("INSERT INTO demir_sevkiyat_kalemleri (sevkiyat_id, cap_id, irsaliye_miktar) VALUES (?,?,?)");
+            foreach ($tekrar['eksik'] as $no0) {
+                $insS->execute([$no0, $tarih0, $tarih0, $tedId,
+                    '[FATURADAN] ' . $faturaNo . ' faturasından otomatik oluşturuldu — Excel aktarımında gerçek verilerle güncellenir.',
+                    $fid, current_user_id()]);
+                $sid0 = (int)$pdo->lastInsertId();
+                // Kalemler: bu irsaliyeye ait olanlar; irsaliye tekse tümü
+                $n0k = fat_irs_norm($no0);
+                foreach ($kalemler as $kl) {
+                    $ait = (isset($kl['irs']) && $kl['irs'] !== null && $kl['irs'] !== '')
+                         ? (fat_irs_norm((string)$kl['irs']) === $n0k)
+                         : (count($irsListe) === 1);
+                    if (!$ait || empty($kl['kg'])) continue;
+                    $capId0 = isset($kl['cap']) && $kl['cap'] !== null ? ($capMap[(int)$kl['cap']] ?? null) : null;
+                    if ($capId0 === null) continue;   // çapı bilinmeyen kalem yazılamaz (cap_id zorunlu)
+                    $insK->execute([$sid0, $capId0, round(((float)$kl['kg']) / 1000, 3)]);
+                }
+                $taslakOlusan++;
+            }
+        }
+    }
+    return ['id' => $fid, 'no' => $faturaNo, 'yeni' => $yeni, 'bagli' => $bagli, 'taslak' => $taslakOlusan,
+            'uyari' => $taslakUyari, 'ted_ad' => $tedAd, 'ted_yeni' => $tedYeni];
+}
+
+/** Faturadaki eşleşen sevkiyatları ikiye ayırır: bağlanabilir (boşta / zaten bu faturada) · başka faturada. */
+function dfat_bagla_ayir(array $eslesen, int $fid = 0): array {
+    $ids = []; $baska = [];
+    foreach ($eslesen as $r) {
+        if (empty($r['fatura_id']) || ($fid && (int)$r['fatura_id'] === $fid)) $ids[] = (int)$r['id'];
+        else $baska[] = (string)($r['irsaliye_no'] ?: $r['kantar_fis_no']);
+    }
+    return [$ids, $baska];
+}
+
 // ── 2) Kaydet ────────────────────────────────────────────────────────────────
 if (($_POST['action'] ?? '') === 'kaydet') {
     try {
-        $faturaNo = strtoupper(trim((string)($_POST['fatura_no'] ?? '')));
-        if ($faturaNo === '') throw new RuntimeException('Fatura no zorunlu.');
-        $ettn = strtoupper(trim((string)($_POST['ettn'] ?? ''))) ?: null;
-        $tedId = (int)($_POST['tedarikci_id'] ?? 0) ?: null;
-        $tedAd = trim((string)($_POST['tedarikci'] ?? '')) ?: null;
-        if ($tedId) { $tq = $pdoDemir->prepare("SELECT ad FROM demir_tedarikciler WHERE id=?"); $tq->execute([$tedId]); $tedAd = $tq->fetchColumn() ?: $tedAd; }
-        $irsListe = array_values(array_filter(array_map('trim', explode(',', (string)($_POST['irsaliye_liste'] ?? '')))));
-
-        $mq = $pdoDemir->prepare("SELECT id FROM demir_faturalar WHERE fatura_no = ? OR (ettn IS NOT NULL AND ettn <> '' AND ? <> '' AND ettn = ?) LIMIT 1");
-        $mq->execute([$faturaNo, (string)$ettn, (string)$ettn]);
-        $fid = (int)($mq->fetchColumn() ?: 0);
-
-        // Tedarikçi seçilmemişse faturadaki satıcı unvanıyla get-or-create (taslak için de gerekli)
-        if (!$tedId && $tedAd !== null && $tedAd !== '') {
-            $u = fat_unvan_norm($tedAd);
-            if ($u !== '' && mb_strlen($u) >= 4) {
-                foreach ($pdoDemir->query("SELECT id, ad FROM demir_tedarikciler") as $td0) {
-                    $a0 = fat_unvan_norm($td0['ad']);
-                    if ($a0 !== '' && mb_strlen($a0) >= 4 && (str_contains($u, $a0) || str_contains($a0, $u))) { $tedId = (int)$td0['id']; break; }
-                }
-                if (!$tedId) {
-                    $pdoDemir->prepare("INSERT INTO demir_tedarikciler (ad) VALUES (?)")->execute([$tedAd]);
-                    $tedId = (int)$pdoDemir->lastInsertId();
-                    flash('info', 'Yeni demir tedarikçisi oluşturuldu: ' . $tedAd);
-                }
-            }
-        }
-
-        $kalemler = json_decode((string)($_POST['kalemler'] ?? ''), true);
-        $kalemler = is_array($kalemler) ? array_slice($kalemler, 0, 200) : [];
-
-        $par = [$ettn, fat_tarih_norm($_POST['tarih'] ?? '') ?: null, $tedAd, $tedId,
-                trim((string)($_POST['siparis_no'] ?? '')) ?: null,
-                $irsListe ? json_encode($irsListe, JSON_UNESCAPED_UNICODE) : null,
-                fat_sayi((string)($_POST['miktar_kg'] ?? '')), fat_sayi((string)($_POST['tutar'] ?? '')),
-                fat_sayi((string)($_POST['brut_tutar'] ?? '')),
-                trim((string)($_POST['dosya_url'] ?? '')) ?: null,
-                trim((string)($_POST['notlar'] ?? '')) ?: null,
-                $kalemler ? json_encode($kalemler, JSON_UNESCAPED_UNICODE) : null];
-        if ($fid) {
-            $pdoDemir->prepare("UPDATE demir_faturalar SET ettn=?, tarih=?, tedarikci=?, tedarikci_id=?, siparis_no=?,
-                irsaliye_liste=?, miktar_kg=?, tutar=?, brut_tutar=?, dosya_url=COALESCE(?, dosya_url), notlar=?,
-                kalemler=COALESCE(?, kalemler) WHERE id=?")
-                ->execute([...$par, $fid]);
-        } else {
-            $pdoDemir->prepare("INSERT INTO demir_faturalar (fatura_no, ettn, tarih, tedarikci, tedarikci_id, siparis_no,
-                irsaliye_liste, miktar_kg, tutar, brut_tutar, dosya_url, notlar, kalemler, created_by)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-                ->execute([$faturaNo, ...$par, current_user_id()]);
-            $fid = (int)$pdoDemir->lastInsertId();
-        }
-        // Sevkiyat bağları
-        $svkIds = array_values(array_filter(array_map('intval', (array)($_POST['svk_id'] ?? []))));
-        $bagli = 0;
-        if ($svkIds) {
-            $upd = $pdoDemir->prepare("UPDATE demir_sevkiyatlar SET fatura_id = ? WHERE id = ?");
-            foreach ($svkIds as $sid) { $upd->execute([$fid, $sid]); $bagli++; }
-        }
-
-        // İsteğe bağlı: sevkiyatlarda bulunamayan irsaliyelerden TASLAK SEVKİYAT oluştur
-        // ([FATURADAN] etiketi — Excel aktarımı aynı numarayı getirince taslak SİLİNMEZ, güncellenir).
-        $taslakOlusan = 0; $taslakUyari = '';
-        if (!empty($_POST['eksik_olustur'])) {
-            if (!$tedId) {
-                $taslakUyari = 'Taslak sevkiyat OLUŞTURULMADI: tedarikçi seçilmedi ve faturadan da çözülemedi.';
-            } else {
-                // Kaydetme anında yeniden doğrula — bu arada girilmiş sevkiyat varsa taslak AÇILMAZ (mükerrer imkânsız)
-                $tekrar = dfat_eslestir($pdoDemir, $irsListe, []);
-                foreach ($tekrar['eslesen'] as $r0) {
-                    $pdoDemir->prepare("UPDATE demir_sevkiyatlar SET fatura_id = ? WHERE id = ?")->execute([$fid, (int)$r0['id']]);
-                }
-                // Çap çözümü: demir_caplar'daki adlardan sayı çıkar (duz öncelikli)
-                $capMap = [];
-                foreach ($pdoDemir->query("SELECT id, ad, tip FROM demir_caplar") as $c0) {
-                    if (preg_match('/(\d+)/', (string)$c0['ad'], $cm)) {
-                        $n0 = (int)$cm[1];
-                        if (!isset($capMap[$n0]) || $c0['tip'] === 'duz') $capMap[$n0] = (int)$c0['id'];
-                    }
-                }
-                $tarih0 = fat_tarih_norm($_POST['tarih'] ?? '') ?: date('Y-m-d');
-                $insS = $pdoDemir->prepare("INSERT INTO demir_sevkiyatlar
-                    (irsaliye_no, irsaliye_tarih, gelis_tarih, tedarikci_id, aciklama, fatura_id, created_by)
-                    VALUES (?,?,?,?,?,?,?)");
-                $insK = $pdoDemir->prepare("INSERT INTO demir_sevkiyat_kalemleri (sevkiyat_id, cap_id, irsaliye_miktar) VALUES (?,?,?)");
-                foreach ($tekrar['eksik'] as $no0) {
-                    $insS->execute([$no0, $tarih0, $tarih0, $tedId,
-                        '[FATURADAN] ' . $faturaNo . ' faturasından otomatik oluşturuldu — Excel aktarımında gerçek verilerle güncellenir.',
-                        $fid, current_user_id()]);
-                    $sid0 = (int)$pdoDemir->lastInsertId();
-                    // Kalemler: bu irsaliyeye ait olanlar; irsaliye tekse tümü
-                    $n0k = fat_irs_norm($no0);
-                    foreach ($kalemler as $kl) {
-                        $ait = (isset($kl['irs']) && $kl['irs'] !== null && $kl['irs'] !== '')
-                             ? (fat_irs_norm((string)$kl['irs']) === $n0k)
-                             : (count($irsListe) === 1);
-                        if (!$ait || empty($kl['kg'])) continue;
-                        $capId0 = isset($kl['cap']) && $kl['cap'] !== null ? ($capMap[(int)$kl['cap']] ?? null) : null;
-                        if ($capId0 === null) continue;   // çapı bilinmeyen kalem yazılamaz (cap_id zorunlu)
-                        $insK->execute([$sid0, $capId0, round(((float)$kl['kg']) / 1000, 3)]);
-                    }
-                    $taslakOlusan++;
-                }
-            }
-        }
-
-        flash('success', "Fatura {$faturaNo} kaydedildi"
-            . ($bagli ? ", {$bagli} sevkiyata bağlandı" : "")
-            . ($taslakOlusan ? ", {$taslakOlusan} eksik irsaliye TASLAK sevkiyat olarak oluşturuldu (Excel aktarımında gerçek verilerle güncellenir)" : "") . ".");
-        if ($taslakUyari) flash('warning', $taslakUyari);
+        $kal = json_decode((string)($_POST['kalemler'] ?? ''), true);
+        $r = dfat_kaydet($pdoDemir, [
+            'fatura_no'   => (string)($_POST['fatura_no'] ?? ''),
+            'ettn'        => (string)($_POST['ettn'] ?? ''),
+            'tarih'       => (string)($_POST['tarih'] ?? ''),
+            'tedarikci_id'=> (int)($_POST['tedarikci_id'] ?? 0),
+            'tedarikci'   => trim((string)($_POST['tedarikci'] ?? '')) ?: null,
+            'satici_vkn'  => (string)($_POST['satici_vkn'] ?? ''),
+            'siparis_no'  => (string)($_POST['siparis_no'] ?? ''),
+            'irsaliyeler' => explode(',', (string)($_POST['irsaliye_liste'] ?? '')),
+            // ⚠ Kutu "26.400" biçiminde basılır — fat_sayi bunu 26,4 okuyordu; dfat_kg binliği tanır
+            'miktar_kg'   => dfat_kg((string)($_POST['miktar_kg'] ?? '')),
+            'tutar'       => fat_sayi((string)($_POST['tutar'] ?? '')),
+            'brut_tutar'  => fat_sayi((string)($_POST['brut_tutar'] ?? '')),
+            'dosya_url'   => (string)($_POST['dosya_url'] ?? ''),
+            'notlar'      => (string)($_POST['notlar'] ?? ''),
+            'kalemler'    => is_array($kal) ? $kal : [],
+        ], (array)($_POST['svk_id'] ?? []), !empty($_POST['eksik_olustur']));
+        if ($r['ted_yeni']) flash('info', 'Yeni demir tedarikçisi oluşturuldu: ' . $r['ted_ad']);
+        flash('success', "Fatura {$r['no']} kaydedildi"
+            . ($r['bagli'] ? ", {$r['bagli']} sevkiyata bağlandı" : "")
+            . ($r['taslak'] ? ", {$r['taslak']} eksik irsaliye TASLAK sevkiyat olarak oluşturuldu (Excel aktarımında gerçek verilerle güncellenir)" : "") . ".");
+        if ($r['uyari']) flash('warning', $r['uyari']);
     } catch (Throwable $eK) { flash('error', 'Kayıt hatası: ' . $eK->getMessage()); }
     redirect('faturalar.php');
+}
+
+// ── 2a) Kayıtlı faturayı DOSYASINDAN yeniden oku (eski sürümde okunamayan irsaliye/kg/tedarikçi) ──
+// Dolu tutar/tarih/ETTN korunur; irsaliye listesi, kg ve kalemler yeni okumadan gelir. Eşleşen sevkiyatlar
+// bağlanır — BAŞKA faturaya bağlı olanlar taşınmaz, yalnız raporlanır.
+if (($_POST['action'] ?? '') === 'yeniden_oku' && ctype_digit((string)($_POST['fatura_id'] ?? ''))) {
+    @set_time_limit(180);
+    $fid = (int)$_POST['fatura_id'];
+    $fq = $pdoDemir->prepare("SELECT * FROM demir_faturalar WHERE id = ?"); $fq->execute([$fid]);
+    $f = $fq->fetch();
+    $kok = realpath(__DIR__ . '/../uploads/demir_fatura');
+    $tam = ($f && $f['dosya_url']) ? realpath(__DIR__ . '/../' . $f['dosya_url']) : false;
+    if (!$f) flash('error', 'Fatura bulunamadı.');
+    elseif (!$tam || !$kok || !str_starts_with($tam, $kok . DIRECTORY_SEPARATOR) || !is_file($tam)) {
+        flash('error', 'Faturanın dosyası sunucuda bulunamadı — PDF\'i yukarıdan yeniden yükleyin (kayıt güncellenir, mükerrer açılmaz).');
+    } else {
+        try {
+            $metin = fat_dosyadan_metin($tam, guess_mime($tam, $tam), $kyn, dfat_ai_sistem());
+            if ($metin === null || trim($metin) === '') throw new RuntimeException('dosyadan metin okunamadı.');
+            $v = dfat_cikar($metin);
+            $e = dfat_eslestir($pdoDemir, $v['irsaliyeler'], $v['belge_nolar']);
+            [$ids, $baska] = dfat_bagla_ayir($e['eslesen'], $fid);
+            $eskiIrs = json_decode((string)$f['irsaliye_liste'], true) ?: [];
+            $eskiKal = json_decode((string)($f['kalemler'] ?? ''), true) ?: [];
+            $r = dfat_kaydet($pdoDemir, [
+                'fatura_no'   => $f['fatura_no'],
+                'ettn'        => $f['ettn'] ?: $v['ettn'],
+                'tarih'       => $f['tarih'] ?: $v['tarih'],
+                'tedarikci_id'=> (int)$f['tedarikci_id'],
+                'tedarikci'   => $f['tedarikci'] ?: $v['satici_unvan'],
+                'satici_vkn'  => $v['satici_vkn'],
+                'siparis_no'  => $f['siparis_no'] ?: $v['siparis_no'],
+                'irsaliyeler' => $v['irsaliyeler'] ?: $eskiIrs,
+                'miktar_kg'   => $v['miktar_kg'] ?? ($f['miktar_kg'] !== null ? (float)$f['miktar_kg'] : null),
+                'tutar'       => $f['tutar'] !== null ? (float)$f['tutar'] : $v['tutar'],
+                'brut_tutar'  => $f['brut_tutar'] !== null ? (float)$f['brut_tutar'] : $v['brut_tutar'],
+                'dosya_url'   => null,
+                'notlar'      => $f['notlar'],
+                'kalemler'    => $v['kalemler'] ?: $eskiKal,
+            ], $ids, false);
+            $msj = "{$f['fatura_no']} dosyasından yeniden okundu (" . ($kyn === 'ai' ? 'AI' : 'pdftotext') . "): "
+                 . count($v['irsaliyeler']) . ' irsaliye'
+                 . ($v['miktar_kg'] !== null ? ', ' . number_format($v['miktar_kg'] / 1000, 3, ',', '.') . ' t' : '')
+                 . ($r['bagli'] ? ", {$r['bagli']} sevkiyata bağlandı" : '') . '.';
+            if ($e['eksik']) $msj .= ' Sevkiyatlarda bulunamayan: ' . implode(', ', $e['eksik']) . ' — sevkiyat girilince tekrar okuyun ya da PDF\'i yükleyip taslak kutusunu kullanın.';
+            if ($baska) $msj .= ' Başka faturaya bağlı olduğu için TAŞINMAYAN: ' . implode(', ', $baska) . '.';
+            if ($r['ted_yeni']) $msj .= ' Yeni tedarikçi oluşturuldu: ' . $r['ted_ad'] . '.';
+            flash(($e['eksik'] || $baska || !$v['irsaliyeler']) ? 'warning' : 'success', $msj);
+        } catch (Throwable $eY) { flash('error', 'Yeniden okuma hatası: ' . $eY->getMessage()); }
+    }
+    redirect('faturalar.php' . (($_POST['fatura_ara'] ?? '') !== '' ? '?fatura_ara=' . urlencode((string)$_POST['fatura_ara']) : ''));
+}
+
+// ── 2c) TOPLU FATURA KONTROLÜ: "bu 100 dosyadan hangisi işlenmiş?" (beton deseni) ──
+// Numara önce DOSYA ADINDAN (e-fatura dosyaları numarayla adlandırılır), yoksa PDF içeriğinden
+// (yalnız pdftotext — AI harcanmaz) çıkarılır; kayıtlı faturalarla no VEYA ETTN üzerinden normalize
+// karşılaştırılır. İşlenmemişler modülün kendi bekleme klasöründe tutulur ki rapordaki
+// "ÇÖZÜMLE ve KAYDET" düğmesi yeniden yükletmeden işleyebilsin.
+$DFAT_BEKLEME = __DIR__ . '/../uploads/demir_fatura_bekleyen';
+if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar']['tmp_name'])) {
+    @set_time_limit(300);
+    if (!is_dir($DFAT_BEKLEME)) @mkdir($DFAT_BEKLEME, 0755, true);
+    foreach ((array)@glob($DFAT_BEKLEME . '/dfk_*') as $eskiF) {          // 2 günden eski artıklar temizlenir
+        if (@filemtime($eskiF) < time() - 2*86400) @unlink($eskiF);
+    }
+    $noIdx = []; $ettnIdx = [];
+    foreach ($pdoDemir->query("SELECT f.id, f.fatura_no, f.ettn, f.tarih, f.tedarikci, f.irsaliye_liste,
+                                      (SELECT COUNT(*) FROM demir_sevkiyatlar s WHERE s.fatura_id = f.id) bagli
+                               FROM demir_faturalar f") as $fr) {
+        $k = fat_irs_norm((string)$fr['fatura_no']); if ($k !== '') $noIdx[$k] = $fr;
+        $e0 = strtoupper(trim((string)$fr['ettn'])); if ($e0 !== '') $ettnIdx[$e0] = $fr;
+    }
+    $kSonuc = [];
+    foreach ($_FILES['dosyalar']['tmp_name'] as $i => $tmp) {
+        $ad = (string)$_FILES['dosyalar']['name'][$i];
+        if ((int)$_FILES['dosyalar']['error'][$i] !== UPLOAD_ERR_OK || !is_uploaded_file($tmp)) {
+            $kSonuc[] = ['ad'=>$ad, 'durum'=>'hata', 'mesaj'=>'yükleme hatası']; continue;
+        }
+        $mime = guess_mime($tmp, $ad);
+        if (!in_array($mime, ['application/pdf','image/jpeg','image/png','image/webp'], true)) {
+            $kSonuc[] = ['ad'=>$ad, 'durum'=>'hata', 'mesaj'=>'desteklenmeyen tür (' . $mime . ')']; continue;
+        }
+        $no = null; $ettn = null; $kaynak = 'dosya adı';
+        if (preg_match('/([A-Z][A-Z0-9]{2}\d{13})/i', $ad, $m)) $no = strtoupper($m[1]);
+        if ($no === null && $mime === 'application/pdf') {
+            $t0 = fat_pdftotext($tmp);
+            if ($t0 !== null && $t0 !== '') {
+                $v0 = dfat_cikar($t0);
+                $no = $v0['fatura_no']; $ettn = $v0['ettn']; $kaynak = 'PDF içeriği';
+            }
+        }
+        $fr = $no !== null ? ($noIdx[fat_irs_norm($no)] ?? null) : null;
+        if (!$fr && $ettn !== null) $fr = $ettnIdx[$ettn] ?? null;
+        if ($fr) {
+            $kSonuc[] = ['ad'=>$ad, 'no'=>$no ?: $fr['fatura_no'], 'durum'=>'islenmis', 'kaynak'=>$kaynak, 'id'=>(int)$fr['id'],
+                         'tarih'=>$fr['tarih'], 'ted'=>$fr['tedarikci'], 'bagli'=>(int)$fr['bagli'],
+                         'irs'=>count(json_decode((string)$fr['irsaliye_liste'], true) ?: [])];
+            continue;
+        }
+        // Numara okunamasa da dosya bekletilir — "ÇÖZÜMLE ve KAYDET" AI ile içeriği okuyabilir
+        $satir = ['ad'=>$ad, 'no'=>$no, 'durum'=>($no === null && $ettn === null) ? 'okunamadi' : 'islenmemis', 'kaynak'=>$no ? $kaynak : null];
+        $ext = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'pdf';
+        if (preg_match('/^[a-z0-9]{1,6}$/', $ext)) {
+            $pid = uniqid('dfk_', true) . '.' . $ext;
+            if (@move_uploaded_file($tmp, $DFAT_BEKLEME . '/' . $pid)) $satir['dosya'] = $pid;
+        }
+        $kSonuc[] = $satir;
+    }
+    $_SESSION['dfat_kontrol'] = array_merge($_SESSION['dfat_kontrol'] ?? [], $kSonuc);
+    if (($_POST['ajax'] ?? '') === '1') {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'islenen'    => count($kSonuc),
+            'islenmis'   => count(array_filter($kSonuc, fn($r) => $r['durum'] === 'islenmis')),
+            'islenmemis' => count(array_filter($kSonuc, fn($r) => $r['durum'] === 'islenmemis')),
+            'diger'      => count(array_filter($kSonuc, fn($r) => !in_array($r['durum'], ['islenmis','islenmemis'], true))),
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    redirect('faturalar.php?kontrol=1');
+}
+$kontrolSonuc = null;
+if (isset($_GET['kontrol']) && !empty($_SESSION['dfat_kontrol'])) {
+    $kontrolSonuc = $_SESSION['dfat_kontrol'];
+    unset($_SESSION['dfat_kontrol']);
+}
+
+// ── 2d) İŞLENMEMİŞLERİ ÇÖZÜMLE ve KAYDET (kontrol raporundan, 2'şerli parti AJAX) ──
+// metin (pdftotext→AI) → dfat_cikar → tedarikçi VKN/unvandan bul-yoksa oluştur → eşleşen
+// sevkiyatları bağla (başka faturadakiler TAŞINMAZ) → isteğe bağlı eksikleri taslak sevkiyat aç.
+if (($_POST['action'] ?? '') === 'fatura_isle' && !empty($_POST['dosya'])) {
+    @set_time_limit(600);
+    $taslakAc = !empty($_POST['taslak']);
+    $iSonuc = [];
+    $adlar = (array)($_POST['ad'] ?? []);
+    foreach (array_values((array)$_POST['dosya']) as $i => $pid) {
+        $pid = basename((string)$pid);
+        if (!preg_match('/^dfk_[\w.]+$/', $pid)) continue;
+        $orjAd = basename((string)($adlar[$i] ?? $pid));
+        $tam = $DFAT_BEKLEME . '/' . $pid;
+        if (!is_file($tam)) { $iSonuc[] = ['ad'=>$orjAd, 'durum'=>'hata', 'mesaj'=>'dosya bulunamadı (süresi dolmuş olabilir — kontrolü yeniden çalıştırın)']; continue; }
+        try {
+            $mime  = guess_mime($tam, $orjAd);
+            $metin = fat_dosyadan_metin($tam, $mime, $kyn, dfat_ai_sistem());
+            $v = ($metin !== null && trim($metin) !== '') ? dfat_cikar($metin) : null;
+            if ($v && $v['fatura_no'] === null && preg_match('/([A-Z][A-Z0-9]{2}\d{13})/i', $orjAd, $fm)) $v['fatura_no'] = strtoupper($fm[1]);
+            if (!$v || !$v['fatura_no']) {
+                $iSonuc[] = ['ad'=>$orjAd, 'durum'=>'hata', 'mesaj'=>'fatura no çözülemedi — yukarıdaki "Fatura Yükle" ile tekil işleyin']; continue;
+            }
+            $mq = $pdoDemir->prepare("SELECT id FROM demir_faturalar WHERE fatura_no = ? OR (ettn IS NOT NULL AND ettn <> '' AND ? <> '' AND ettn = ?) LIMIT 1");
+            $mq->execute([$v['fatura_no'], (string)$v['ettn'], (string)$v['ettn']]);
+            if ($mq->fetchColumn()) {
+                @unlink($tam);
+                $iSonuc[] = ['ad'=>$orjAd, 'no'=>$v['fatura_no'], 'durum'=>'zaten', 'mesaj'=>'zaten işlenmiş']; continue;
+            }
+            $e = dfat_eslestir($pdoDemir, $v['irsaliyeler'], $v['belge_nolar']);
+            [$ids, $baska] = dfat_bagla_ayir($e['eslesen']);
+            $dir = __DIR__ . '/../uploads/demir_fatura/' . date('Y/m');
+            if (!is_dir($dir)) @mkdir($dir, 0755, true);
+            $hedefAd = date('Ymd_His') . '_' . substr(md5($pid . microtime(true)), 0, 8) . '.' . (pathinfo($pid, PATHINFO_EXTENSION) ?: 'pdf');
+            $dosyaUrl = @rename($tam, $dir . '/' . $hedefAd) ? 'uploads/demir_fatura/' . date('Y/m') . '/' . $hedefAd : null;
+            $r = dfat_kaydet($pdoDemir, [
+                'fatura_no' => $v['fatura_no'], 'ettn' => $v['ettn'], 'tarih' => $v['tarih'],
+                'tedarikci' => $v['satici_unvan'], 'satici_vkn' => $v['satici_vkn'], 'siparis_no' => $v['siparis_no'],
+                'irsaliyeler' => $v['irsaliyeler'], 'miktar_kg' => $v['miktar_kg'], 'tutar' => $v['tutar'],
+                'brut_tutar' => $v['brut_tutar'], 'dosya_url' => $dosyaUrl, 'notlar' => 'Toplu kontrolden otomatik işlendi',
+                'kalemler' => $v['kalemler'],
+            ], $ids, $taslakAc);
+            $iSonuc[] = ['ad'=>$orjAd, 'no'=>$r['no'], 'durum'=>'kaydedildi', 'kaynak'=>$kyn,
+                         'ted'=>$r['ted_ad'], 'ted_yeni'=>$r['ted_yeni'],
+                         'ton'=>$v['miktar_kg'] !== null ? $v['miktar_kg'] / 1000 : null, 'tutar'=>$v['tutar'],
+                         'irs'=>count($v['irsaliyeler']), 'bagli'=>$r['bagli'], 'taslak'=>$r['taslak'],
+                         'eksik'=>$taslakAc ? [] : $e['eksik'], 'baska'=>$baska, 'uyari'=>$r['uyari']];
+        } catch (Throwable $eI) {
+            $iSonuc[] = ['ad'=>$orjAd, 'durum'=>'hata', 'mesaj'=>$eI->getMessage()];
+        }
+    }
+    $_SESSION['dfat_islem'] = array_merge($_SESSION['dfat_islem'] ?? [], $iSonuc);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'islenen'    => count($iSonuc),
+        'kaydedilen' => count(array_filter($iSonuc, fn($r) => $r['durum'] === 'kaydedildi')),
+        'zaten'      => count(array_filter($iSonuc, fn($r) => $r['durum'] === 'zaten')),
+        'hata'       => count(array_filter($iSonuc, fn($r) => $r['durum'] === 'hata')),
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+$islemSonuc = null;
+if (isset($_GET['islem']) && !empty($_SESSION['dfat_islem'])) {
+    $islemSonuc = $_SESSION['dfat_islem'];
+    unset($_SESSION['dfat_islem']);
 }
 
 // ── 2b) Eksik alanı elle düzelt (Kayıtlı Faturalar listesinden) ──────────────
@@ -424,7 +724,8 @@ if (($_POST['action'] ?? '') === 'alan_duzelt' && ctype_digit((string)($_POST['f
     $fid = (int)$_POST['fatura_id'];
     $alan = (string)($_POST['alan'] ?? '');
     if (!in_array($alan, ['miktar_kg', 'tutar'], true)) { flash('error', 'Geçersiz alan.'); redirect('faturalar.php'); }
-    $deger = fat_sayi((string)($_POST['deger'] ?? ''));
+    // kg kutusuna "27.680" yazılır (binlik) — fat_sayi onu 27,68 okurdu
+    $deger = $alan === 'miktar_kg' ? dfat_kg((string)($_POST['deger'] ?? '')) : fat_sayi((string)($_POST['deger'] ?? ''));
     if ($deger === null || $deger < 0) {
         flash('error', 'Geçerli bir değer girin (örn. 27680 veya 27.680).');
     } else {
@@ -507,6 +808,8 @@ require_once __DIR__ . '/../includes/header.php';
 <p class="text-muted small mb-3">Tedarikçi e-faturasındaki irsaliye numarası sevkiyat kayıtlarıyla eşleştirilir; fatura tonajı kantarla karşılaştırılır.</p>
 <?php foreach(['success','error','warning','info'] as $t): if($m=get_flash($t)): ?><div class="alert alert-<?= $t==='error'?'danger':$t ?>"><?= h($m) ?></div><?php endif; endforeach; ?>
 <?php if ($hata): ?><div class="alert alert-danger"><?= h($hata) ?></div><?php endif; ?>
+<?php if ($__kgOnarilan): ?><div class="alert alert-info"><i class="bi bi-wrench-adjustable me-1"></i>
+    <strong><?= (int)$__kgOnarilan ?> faturanın miktarı düzeltildi</strong> — eski sürüm "26.400 kg" değerini binde bir okuyup 26,4 kg kaydediyordu (listede "0,03 t" görünüyordu).</div><?php endif; ?>
 
 <div class="card mb-3">
     <div class="card-header bg-white fw-semibold"><i class="bi bi-upload me-1"></i> Fatura Yükle / Metin Yapıştır</div>
@@ -526,6 +829,219 @@ require_once __DIR__ . '/../includes/header.php';
         </form>
     </div>
 </div>
+
+<!-- TOPLU FATURA KONTROLÜ: dosyalar kaydedilmez, yalnız "işlenmiş mi?" raporu üretilir -->
+<div class="card mb-3 border-info">
+    <div class="card-header bg-white fw-semibold"><i class="bi bi-clipboard-check me-1 text-info"></i> Toplu Fatura Kontrolü
+        <span class="text-muted small fw-normal">— elinize çok sayıda demir faturası mı geldi? Hepsini seçin, hangisi işlenmiş hangisi işlenmemiş tek raporda görün</span></div>
+    <div class="card-body">
+        <form method="post" enctype="multipart/form-data" class="row g-2 align-items-end" id="kontrolForm">
+            <input type="hidden" name="action" value="fatura_kontrol">
+            <div class="col-md-7">
+                <label class="form-label small">Fatura dosyaları <span class="text-muted">(çoklu seçim — PDF önerilir; işlenmiş olanlar sisteme KAYDEDİLMEZ, yalnız kontrol edilir)</span></label>
+                <input type="file" name="dosyalar[]" class="form-control form-control-sm" multiple accept=".pdf,.jpg,.jpeg,.png,.webp" required>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-info btn-sm text-white" id="kontrolBtn"><i class="bi bi-search me-1"></i>Kontrol Et</button>
+            </div>
+            <div class="col-12 d-none" id="kntKutu">
+                <div class="progress" style="height:20px"><div class="progress-bar bg-info progress-bar-striped progress-bar-animated" id="kntBar" style="width:0%">0%</div></div>
+                <div class="small text-muted mt-1" id="kntDurum"></div>
+            </div>
+        </form>
+        <div class="form-text">Numara önce <strong>dosya adından</strong> okunur (e-fatura dosyaları numarayla adlandırılır: <code>KRD2026000019728.pdf</code>), bulunamazsa PDF içeriğinden çıkarılır; kayıtlı faturalarla <strong>no VEYA ETTN</strong> üzerinden normalize karşılaştırılır. Bu adımda AI kullanılmaz.</div>
+    </div>
+</div>
+
+<?php if ($kontrolSonuc !== null):
+    $kIslenmis   = array_filter($kontrolSonuc, fn($r) => $r['durum'] === 'islenmis');
+    $kBagsiz     = array_filter($kIslenmis, fn($r) => (int)$r['bagli'] === 0);
+    $kIslenmemis = array_filter($kontrolSonuc, fn($r) => in_array($r['durum'], ['islenmemis','okunamadi'], true));
+    $kHata       = array_filter($kontrolSonuc, fn($r) => $r['durum'] === 'hata'); ?>
+<div class="card mb-4 border-info">
+    <div class="card-header bg-white fw-semibold"><i class="bi bi-clipboard-data me-1 text-info"></i> Kontrol Raporu
+        <span class="badge bg-primary ms-1"><?= count($kontrolSonuc) ?> dosya</span>
+        <span class="badge bg-success"><?= count($kIslenmis) ?> işlenmiş</span>
+        <?php if ($kBagsiz): ?><span class="badge bg-warning text-dark" title="Kayıtlı ama hiçbir sevkiyata bağlı değil"><?= count($kBagsiz) ?> bağsız</span><?php endif; ?>
+        <span class="badge bg-danger"><?= count($kIslenmemis) ?> işlenmemiş</span>
+        <?php if ($kHata): ?><span class="badge bg-secondary"><?= count($kHata) ?> hata</span><?php endif; ?></div>
+    <div class="card-body p-0"><div class="table-responsive" style="max-height:60vh">
+        <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
+            <thead class="table-light" style="position:sticky;top:0"><tr>
+                <th>Dosya</th><th>Fatura No</th><th>Durum</th><th>Sistemdeki Kayıt</th><th>Numara Kaynağı</th>
+            </tr></thead>
+            <tbody>
+            <?php foreach ($kontrolSonuc as $r): ?>
+                <tr class="<?= in_array($r['durum'], ['islenmemis','okunamadi'], true) ? 'table-danger' : ($r['durum'] === 'islenmis' ? ((int)$r['bagli'] === 0 ? 'table-warning' : '') : 'table-secondary') ?>">
+                    <td class="small"><?= h($r['ad']) ?></td>
+                    <td class="font-monospace small"><?= h((string)($r['no'] ?? '—')) ?></td>
+                    <td>
+                        <?php if ($r['durum'] === 'islenmis'): ?><span class="badge bg-success">✓ işlenmiş</span>
+                        <?php elseif ($r['durum'] === 'islenmemis'): ?><span class="badge bg-danger">✗ işlenmemiş</span>
+                        <?php elseif ($r['durum'] === 'okunamadi'): ?><span class="badge bg-danger" title="Dosya adında ve PDF metninde numara bulunamadı — ÇÖZÜMLE ve KAYDET içeriği AI ile okur">✗ numara okunamadı</span>
+                        <?php else: ?><span class="badge bg-secondary"><?= h($r['mesaj'] ?? 'hata') ?></span><?php endif; ?>
+                    </td>
+                    <td class="small">
+                        <?php if ($r['durum'] === 'islenmis'): ?>
+                            <?= h(format_date($r['tarih'])) ?><?= $r['ted'] ? ' · ' . h($r['ted']) : '' ?> ·
+                            <?php if ((int)$r['bagli'] > 0): ?><?= (int)$r['bagli'] ?> sevkiyat bağlı
+                            <?php else: ?><span class="text-warning-emphasis fw-semibold"><?= (int)$r['irs'] ? 'irsaliyesi sevkiyatlarda yok' : 'irsaliye no okunamamış' ?> — listede <i class="bi bi-arrow-repeat"></i> ile yeniden okuyun</span><?php endif; ?>
+                            · <a href="faturalar.php?fatura_ara=<?= urlencode((string)$r['no']) ?>">kaydı aç</a>
+                        <?php elseif (in_array($r['durum'], ['islenmemis','okunamadi'], true)): ?>
+                            <span class="text-danger">sistemde yok</span>
+                        <?php endif; ?>
+                    </td>
+                    <td class="small text-muted"><?= h((string)($r['kaynak'] ?? '')) ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div></div>
+    <?php if ($kIslenmemis):
+        $islenebilir = array_values(array_filter($kIslenmemis, fn($r) => !empty($r['dosya']))); ?>
+    <div class="card-footer bg-white small">
+        <strong class="text-danger">İşlenmemiş (kopyalanabilir):</strong>
+        <code><?= h(implode(', ', array_map(fn($r) => (string)($r['no'] ?? $r['ad']), $kIslenmemis))) ?></code>
+        <?php if ($islenebilir): ?>
+        <div class="mt-2 pt-2 border-top">
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" id="isleTaslak">
+                <label class="form-check-label" for="isleTaslak">Sevkiyatlarda bulunamayan irsaliyeleri <span class="badge bg-secondary">[FATURADAN]</span> <strong>taslak sevkiyat</strong> olarak aç
+                    <span class="text-muted">(isteğe bağlı — Excel aktarımı aynı numarayı getirince taslak silinmez, güncellenir)</span></label>
+            </div>
+            <button type="button" class="btn btn-success btn-sm" id="isleBtn"
+                    data-dosyalar="<?= h(json_encode(array_map(fn($r) => ['d' => $r['dosya'], 'a' => $r['ad']], $islenebilir), JSON_UNESCAPED_UNICODE)) ?>">
+                <i class="bi bi-cpu me-1"></i>İşlenmemiş <?= count($islenebilir) ?> faturayı ÇÖZÜMLE ve KAYDET
+            </button>
+            <span class="text-muted ms-2">Her fatura okunur, tedarikçisi VKN/unvandan bulunur (yoksa oluşturulur), irsaliyeleri sevkiyatlara bağlanır. Başka faturaya bağlı sevkiyat taşınmaz — raporlanır.</span>
+            <div class="d-none mt-2" id="isleKutu">
+                <div class="progress" style="height:20px"><div class="progress-bar bg-success progress-bar-striped progress-bar-animated" id="isleBar" style="width:0%">0%</div></div>
+                <div class="small text-muted mt-1" id="isleDurum"></div>
+                <div class="small text-danger mt-1"><i class="bi bi-exclamation-circle me-1"></i>PDF metni yoksa AI okur — fatura başına birkaç saniye sürer, sayfayı kapatmayın.</div>
+            </div>
+        </div>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+</div>
+<script>
+// İşlenmemişleri otomatik işle: dosyalar sunucuda bekliyor, 2'şerli partilerle çözümlenir (AI ağır iş)
+(function () {
+    var btn = document.getElementById('isleBtn');
+    if (!btn) return;
+    btn.addEventListener('click', async function () {
+        var dosyalar = JSON.parse(btn.dataset.dosyalar || '[]');
+        if (!dosyalar.length) return;
+        var taslak = document.getElementById('isleTaslak').checked;
+        if (!confirm(dosyalar.length + ' fatura otomatik çözümlenip KAYDEDİLECEK' + (taslak ? ' (eksik irsaliyeler taslak sevkiyat olarak açılacak)' : '') + '. Devam edilsin mi?')) return;
+        btn.disabled = true;
+        document.getElementById('isleKutu').classList.remove('d-none');
+        var bar = document.getElementById('isleBar'), durum = document.getElementById('isleDurum');
+        var BATCH = 2, oz = {kaydedilen:0, zaten:0, hata:0};
+        var csrfEl = document.querySelector('input[name=csrf]');
+        for (var i = 0; i < dosyalar.length; i += BATCH) {
+            var fd = new FormData();
+            fd.append('action', 'fatura_isle');
+            if (taslak) fd.append('taslak', '1');
+            if (csrfEl) fd.append('csrf', csrfEl.value);
+            dosyalar.slice(i, i + BATCH).forEach(function (d) { fd.append('dosya[]', d.d); fd.append('ad[]', d.a); });
+            try {
+                var j = await (await fetch('faturalar.php', { method: 'POST', body: fd })).json();
+                oz.kaydedilen += j.kaydedilen || 0; oz.zaten += j.zaten || 0; oz.hata += j.hata || 0;
+            } catch (err) { oz.hata += Math.min(BATCH, dosyalar.length - i); }
+            var y = Math.round(100 * Math.min(i + BATCH, dosyalar.length) / dosyalar.length);
+            bar.style.width = y + '%'; bar.textContent = y + '%';
+            durum.textContent = Math.min(i + BATCH, dosyalar.length) + '/' + dosyalar.length + ' fatura işlendi — kaydedilen '
+                              + oz.kaydedilen + (oz.zaten ? ', zaten işlenmiş ' + oz.zaten : '') + (oz.hata ? ', hata ' + oz.hata : '');
+        }
+        durum.textContent = 'Tamamlandı — işlem raporu açılıyor…';
+        location.href = 'faturalar.php?islem=1';
+    });
+})();
+</script>
+<?php endif; ?>
+
+<?php if ($islemSonuc !== null):
+    $iKay = array_filter($islemSonuc, fn($r) => $r['durum'] === 'kaydedildi');
+    $iZat = array_filter($islemSonuc, fn($r) => $r['durum'] === 'zaten');
+    $iHat = array_filter($islemSonuc, fn($r) => $r['durum'] === 'hata');
+    $iEksikli = array_filter($iKay, fn($r) => !empty($r['eksik']) || !empty($r['baska']) || (int)($r['irs'] ?? 0) === 0); ?>
+<div class="card mb-4 border-success">
+    <div class="card-header bg-white fw-semibold"><i class="bi bi-cpu me-1 text-success"></i> Otomatik İşleme Raporu
+        <span class="badge bg-success"><?= count($iKay) ?> kaydedildi</span>
+        <?php if ($iZat): ?><span class="badge bg-secondary"><?= count($iZat) ?> zaten işlenmişti</span><?php endif; ?>
+        <?php if ($iHat): ?><span class="badge bg-danger"><?= count($iHat) ?> işlenemedi</span><?php endif; ?></div>
+    <div class="card-body p-0"><div class="table-responsive" style="max-height:60vh">
+        <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
+            <thead class="table-light" style="position:sticky;top:0"><tr>
+                <th>Fatura No</th><th>Durum</th><th>Tedarikçi</th><th class="text-end">Ton</th><th class="text-end">Tutar</th>
+                <th class="text-end">İrsaliye</th><th class="text-end">Bağlanan Svk.</th><th>Bulunamayan / not</th><th></th>
+            </tr></thead>
+            <tbody>
+            <?php foreach ($islemSonuc as $r): ?>
+                <tr class="<?= $r['durum'] === 'hata' ? 'table-danger' : ($r['durum'] === 'zaten' ? 'table-secondary' : '') ?>">
+                    <td class="font-monospace small"><?= h((string)($r['no'] ?? $r['ad'])) ?></td>
+                    <td>
+                        <?php if ($r['durum'] === 'kaydedildi'): ?><span class="badge bg-success">✓ kaydedildi</span>
+                        <?php elseif ($r['durum'] === 'zaten'): ?><span class="badge bg-secondary">zaten işlenmiş</span>
+                        <?php else: ?><span class="badge bg-danger">✗ işlenemedi</span> <span class="small text-danger"><?= h((string)($r['mesaj'] ?? '')) ?></span><?php endif; ?>
+                    </td>
+                    <td class="small"><?= h((string)($r['ted'] ?? '')) ?><?= !empty($r['ted_yeni']) ? ' <span class="badge bg-info text-dark">yeni oluşturuldu</span>' : '' ?></td>
+                    <td class="text-end font-monospace"><?= isset($r['ton']) && $r['ton'] !== null ? number_format($r['ton'], 3, ',', '.') : '—' ?></td>
+                    <td class="text-end font-monospace"><?= isset($r['tutar']) && $r['tutar'] !== null ? $fmt($r['tutar']) . ' ₺' : '—' ?></td>
+                    <td class="text-end"><?= isset($r['irs']) ? (int)$r['irs'] : '—' ?></td>
+                    <td class="text-end <?= isset($r['bagli']) && (int)$r['bagli'] === 0 ? 'text-danger fw-bold' : '' ?>"><?= isset($r['bagli']) ? (int)$r['bagli'] : '—' ?>
+                        <?= !empty($r['taslak']) ? ' <span class="badge bg-warning text-dark" title="taslak sevkiyat açıldı">+' . (int)$r['taslak'] . ' taslak</span>' : '' ?></td>
+                    <td class="small">
+                        <?php foreach ((array)($r['eksik'] ?? []) as $n): ?><span class="badge bg-danger-subtle text-danger border border-danger-subtle me-1" title="sevkiyatlarda yok"><?= h($n) ?></span><?php endforeach; ?>
+                        <?php foreach ((array)($r['baska'] ?? []) as $n): ?><span class="badge bg-warning-subtle text-warning-emphasis border me-1" title="başka faturaya bağlı — taşınmadı"><?= h($n) ?> · başka faturada</span><?php endforeach; ?>
+                        <?php if ($r['durum'] === 'kaydedildi' && (int)($r['irs'] ?? 0) === 0): ?><span class="text-danger">irsaliye no okunamadı</span><?php endif; ?>
+                        <?php if (!empty($r['uyari'])): ?><div class="text-warning-emphasis"><?= h($r['uyari']) ?></div><?php endif; ?>
+                    </td>
+                    <td><?php if (!empty($r['no'])): ?><a href="faturalar.php?fatura_ara=<?= urlencode((string)$r['no']) ?>" class="small">kaydı aç</a><?php endif; ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div></div>
+    <?php if ($iEksikli): ?>
+    <div class="card-footer bg-white small">
+        <i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>
+        <strong><?= count($iEksikli) ?> faturanın</strong> irsaliyesi sevkiyata bağlanamadı. Sevkiyat henüz girilmemişse girildikten sonra
+        listede <i class="bi bi-arrow-repeat"></i> <strong>yeniden oku</strong> ile bağlayın, ya da faturayı tekil yükleyip taslak sevkiyat kutusunu kullanın.
+    </div>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
+
+<script>
+// Toplu kontrol: büyük seçimler 15'erli partilerle gönderilir (PHP max_file_uploads sınırına takılmasın)
+document.getElementById('kontrolForm').addEventListener('submit', async function (e) {
+    var form = this;
+    var files = Array.from(form.querySelector('input[type=file]').files || []);
+    if (files.length <= 15) return;
+    e.preventDefault();
+    var BATCH = 15;
+    document.getElementById('kontrolBtn').disabled = true;
+    document.getElementById('kntKutu').classList.remove('d-none');
+    var bar = document.getElementById('kntBar'), durum = document.getElementById('kntDurum');
+    var toplam = files.length, oz = {islenmis:0, islenmemis:0, diger:0};
+    for (var i = 0; i < toplam; i += BATCH) {
+        var fd = new FormData();
+        fd.append('action', 'fatura_kontrol'); fd.append('ajax', '1');
+        var csrf = form.querySelector('input[name=csrf]'); if (csrf) fd.append('csrf', csrf.value);
+        files.slice(i, i + BATCH).forEach(function (f) { fd.append('dosyalar[]', f); });
+        try {
+            var j = await (await fetch('faturalar.php', { method: 'POST', body: fd })).json();
+            oz.islenmis += j.islenmis || 0; oz.islenmemis += j.islenmemis || 0; oz.diger += j.diger || 0;
+        } catch (err) { oz.diger += Math.min(BATCH, toplam - i); }
+        var y = Math.round(100 * Math.min(i + BATCH, toplam) / toplam);
+        bar.style.width = y + '%'; bar.textContent = y + '%';
+        durum.textContent = Math.min(i + BATCH, toplam) + '/' + toplam + ' kontrol edildi — işlenmiş ' + oz.islenmis + ', işlenmemiş ' + oz.islenmemis + (oz.diger ? ', diğer ' + oz.diger : '');
+    }
+    location.href = 'faturalar.php?kontrol=1';
+});
+</script>
 
 <?php if ($sonuc): $v = $sonuc['v']; $e = $sonuc['e']; $ton = $v['miktar_kg'] !== null ? $v['miktar_kg']/1000 : null; ?>
 
@@ -573,7 +1089,8 @@ require_once __DIR__ . '/../includes/header.php';
                 <?php endforeach; ?>
             </select>
             <?php if ($v['satici_unvan']): ?><div class="form-text">Faturadaki satıcı: <?= h($v['satici_unvan']) ?><?= $v['satici_vkn'] ? ' (VKN '.h($v['satici_vkn']).')' : '' ?></div><?php endif; ?>
-            <input type="hidden" name="tedarikci" value="<?= h((string)$v['satici_unvan']) ?>"></div>
+            <input type="hidden" name="tedarikci" value="<?= h((string)$v['satici_unvan']) ?>">
+            <input type="hidden" name="satici_vkn" value="<?= h((string)$v['satici_vkn']) ?>"></div>
         <div class="col-md-3"><label class="form-label">Sipariş No <span class="text-muted small">(tedarikçinin)</span></label>
             <input name="siparis_no" class="form-control" value="<?= h((string)$v['siparis_no']) ?>"></div>
         <div class="col-md-3"><label class="form-label">Miktar (kg)</label>
@@ -767,7 +1284,15 @@ require_once __DIR__ . '/../includes/header.php';
                         <?= $fark===null ? '—' : $fmt($fark) ?></td>
                     <td class="text-center"><span class="badge <?= (int)$f['bagli'] ? 'bg-success' : 'bg-danger' ?>"><?= (int)$f['bagli'] ?></span></td>
                     <td><?php if ($f['dosya_url']): ?><a href="../<?= h($f['dosya_url']) ?>" target="_blank"><i class="bi bi-file-earmark-pdf"></i></a><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
-                    <td class="text-end"><?php if (is_admin()): ?>
+                    <td class="text-end text-nowrap">
+                        <?php if ($f['dosya_url']): ?>
+                        <form method="post" class="d-inline" onsubmit="this.querySelector('button').disabled=true">
+                            <input type="hidden" name="action" value="yeniden_oku"><input type="hidden" name="fatura_id" value="<?= (int)$f['id'] ?>">
+                            <input type="hidden" name="fatura_ara" value="<?= h($fatAra) ?>">
+                            <button class="btn btn-sm <?= (int)$f['bagli'] ? 'btn-outline-secondary' : 'btn-outline-primary' ?> py-0" title="Dosyadan yeniden oku: irsaliye no, kg ve tedarikçi yeniden çözülür, eşleşen sevkiyatlar bağlanır"><i class="bi bi-arrow-repeat"></i></button>
+                        </form>
+                        <?php endif; ?>
+                        <?php if (is_admin()): ?>
                         <a class="btn btn-sm btn-outline-danger py-0" href="?sil=<?= (int)$f['id'] ?>" onclick="return confirm('Fatura kaydı silinsin, sevkiyat bağları çözülsün mü?')"><i class="bi bi-trash"></i></a>
                     <?php endif; ?></td>
                 </tr>

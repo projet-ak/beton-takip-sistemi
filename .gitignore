@@ -373,6 +373,8 @@ uploads/scans/
 # PTS geçiş fotoğrafları — kanıt görüntüleri sunucuda kalır, repoya girmez
 uploads/pts/
 uploads/it_form_bekleyen/
+# Demir toplu fatura kontrolü — işlenmeyi bekleyen geçici dosyalar (2 günde temizlenir)
+uploads/demir_fatura_bekleyen/
 
 # Geçici çalışma dosyaları
 scratch/
