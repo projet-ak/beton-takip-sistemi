@@ -2379,6 +2379,17 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
   (Xcode ile iPhone'a, APK ile Android'e doğrudan kurulum). Öneri: önce ücretsiz test → sonra Play → sonra App Store.
 - **Ek (opsiyonel):** Push bildirim (FCM + APNs) — "onay bekleyen irsaliye" vb.; temel offline önbellek.
 
+### A2) Drive yedeği — kendi Google client ID'si (BEKLEMEDE, kullanıcı "sonra yaparız" dedi)
+- 2026-11-01 kurulum TAMAM: aaPanel → Görev Zamanlama "ERN Drive Yedek" her gün 03:30, ilk çalıştırma
+  `rclone kodu=0`, Drive'da `ERN-Sistem-Yedek` (176 dosya). Ama rclone'un **ORTAK client ID'si 2026 içinde
+  kapatılacak** (rclone config uyarısı) — o gün kart kırmızıya döner.
+- Yapılacak: Google Cloud Console'da `ERN Yedek` projesi AÇILDI, Drive API + OAuth (External) kuruldu ama
+  **Branding tamamlanmadığı için "Publish app" yapılamadı** (Testing'de kalırsa token 7 günde düşer).
+  Sıra: Branding (app name + 2 e-posta, Save) → Audience → Publish app → Clients → Desktop app → id/secret
+  → ⚠ drive.file her uygulamaya yalnız KENDİ dosyalarını gösterir: önce Drive'daki klasörü
+  `ERN-Sistem-Yedek-eski` yap → sunucuda `rclone config` → `e` → `ernyedek` → id/secret → token yenile
+  (Windows'ta sunucunun verdiği YENİ `rclone authorize` satırı; "doğrulanmamış uygulama" → Gelişmiş → devam).
+
 ### B) Beton — açık işler
 - **PRP Bina Üstyapı canlı zayiat:** `prp_ustyapi.php`'de SAHADA DÖKÜLEN'i gerçek irsaliyelerden (blok/kot/imalat)
   otomatik çekip ZAİYAT ORANI'nı canlı hesaplamak; %5 (fore kazık %15) limit aşımını kırmızı göstermek.
