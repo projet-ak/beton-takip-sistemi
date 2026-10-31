@@ -118,8 +118,8 @@ const MODULLER = [
 
 /** Modül erişim denetiminden MUAF kök sayfalar (giriş/çıkış, kurulum, yönetim, tanıtım). */
 const MODUL_MUAF = [
-    'login.php','logout.php','install.php','tanitim.php','deploy.php','deploy2.php','migrate.php',
-    'migrate_scan_url.php','onbellek_temizle.php','sistem_kontrol.php','kurulum.php',
+    'login.php','logout.php','install.php','tanitim.php','deploy2.php',
+    'onbellek_temizle.php','sistem_kontrol.php','kurulum.php',
     'kullanicilar.php','ai_ayarlar.php','yedek.php','aktivite.php','veri_kontrol.php','moduller.php','mukerrer.php',
 ];
 

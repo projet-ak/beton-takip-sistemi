@@ -159,6 +159,16 @@ $obsolete = [
     'api/mesaj_al.php',                   // → whatsapp/api/mesaj_al.php
     'setup.php',                          // kaldırıldı (güvenlik)
     'metraj_takip.php',                   // kaldırıldı (sayfalar ayrıştı)
+    'deploy.php',                         // eski cPanel deploy'u — deploy2.php kullanılıyor
+    'import2.php',                        // eski tek seferlik U030/U031 aktarımı — import.php kullanılıyor
+    'migrate.php',                        // tek seferlik migrasyon — kurulum.php kapsıyor
+    'migrate_scan_url.php',               // tek seferlik — kolonu api/hizli_kaydet.php oluşturuyor
+    'Dockerfile',                         // Docker kullanılmıyor (aaPanel VPS)
+    'docker-compose.yml',
+    'docker/apache.conf',
+    'docker/deploy-vps.sh',
+    'docker/init.sql',
+    'beton takip sistrmi.slnx',           // Visual Studio dosyası
     'uploads/ERN Holding_Logo_Beyaz.jpg.jpeg',   // → uploads/logo/
     'uploads/ERN Holding_Logo_Beyaz.png',
     'uploads/ERN Holding_Logo_Renkli (1).png',
