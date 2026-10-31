@@ -23,11 +23,16 @@ WEB_KULLANICI="${ERN_WEB_KULLANICI:-www}"
 KOK="$(cd "$(dirname "$0")/.." && pwd)"
 LOG="/tmp/ern_drive_yedek.log"
 
+# PHP seçimi: pdo_mysql eklentisi YÜKLÜ olan ilk PHP. ⚠ Sunucudaki düz "php" komutu çoğu zaman
+# aaPanel'in site PHP'si değildir ve pdo_mysql'i yoktur ("could not find driver") — bu yüzden önce
+# aaPanel sürümleri (/www/server/php/NN) yeniden eskiye denenir. Elle: ERN_PHP=/yol/php bash …
 PHP=""
-for p in "$(command -v php 2>/dev/null)" /www/server/php/85/bin/php /www/server/php/84/bin/php /www/server/php/83/bin/php /www/server/php/82/bin/php; do
-    if [ -n "$p" ] && [ -x "$p" ]; then PHP="$p"; break; fi
+for p in "${ERN_PHP:-}" $(ls -d /www/server/php/*/bin/php 2>/dev/null | sort -t/ -k5 -rn) "$(command -v php 2>/dev/null)"; do
+    [ -n "$p" ] && [ -x "$p" ] || continue
+    if "$p" -r 'exit(extension_loaded("pdo_mysql") ? 0 : 1);' >/dev/null 2>&1; then PHP="$p"; break; fi
 done
-if [ -z "$PHP" ]; then echo "HATA: php bulunamadı"; exit 1; fi
+if [ -z "$PHP" ]; then echo "HATA: pdo_mysql eklentili php bulunamadı (ERN_PHP=/www/server/php/85/bin/php ile belirtin)"; exit 1; fi
+echo "== php: $PHP"
 RCLONE="$(command -v rclone 2>/dev/null || echo /usr/bin/rclone)"
 
 echo "== $(date '+%F %T') yedek alınıyor"
