@@ -2,10 +2,11 @@
 /**
  * db_prekast.php — Prekast Takip modülü DB bağlantısı ($pdoPrekast)
  *
- * Prekast **CRM ile aynı veritabanını paylaşır** (tablolar `prekast_` önekli), bu yüzden
- * bağlantı db_crm.php üzerinden kurulur. İleride ayrılmak istenirse config.php'ye
+ * Varsayılan: CRM'in veritabanı (tablolar `prekast_` önekli). Kendi veritabanına taşımak için
+ * prekast/veritabani_tasi.php kullanılır (kopyala + doğrula), ardından config.php'ye
  *   define('PREKAST_DB_NAME', 'takbulut_prekast');
- * eklenmesi yeterli — o zaman kendi bağlantısı açılır.
+ * eklenir — o zaman kendi bağlantısı açılır (CLAUDE.md §0). ⚠ Sabiti veriler KOPYALANMADAN
+ * eklemek modülü boş açar (eski veriler CRM veritabanında kalır, kaybolmaz).
  */
 require_once __DIR__ . '/db_crm.php';
 

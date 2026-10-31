@@ -28,17 +28,20 @@ foreach (['prekast_isler','prekast_gunluk','prekast_icmal'] as $t) {
 
 require_once __DIR__ . '/../includes/header.php';
 $__pkDb    = $__prekastDb ?? DB_NAME;
-$__pkAyri  = $__pkDb !== DB_NAME;
+$__pkKendi = $__pkDb !== $__crmDb && $__pkDb !== DB_NAME;   // §0: kendi veritabanı
 ?>
 <h4 class="mb-3"><i class="bi bi-bricks text-primary me-2"></i>Prekast Takip Kurulum</h4>
 
-<div class="alert <?= $__pkAyri ? 'alert-success' : 'alert-warning' ?> py-2 mb-3 small">
+<div class="alert <?= $__pkKendi ? 'alert-success' : 'alert-warning' ?> py-2 mb-3 small">
     <strong>Aktif veritabanı:</strong> <code><?= h($__pkDb) ?></code>
-    <?php if ($__pkAyri): ?>
-        &mdash; &#10003; Prekast, <strong>CRM veritabanını paylaşır</strong> (tablolar <code>prekast_</code> önekli).
+    <?php if ($__pkKendi): ?>
+        &mdash; &#10003; Prekast <strong>kendi veritabanında</strong>.
     <?php else: ?>
-        &mdash; &#9888; Beton ile <strong>aynı</strong> veritabanı. Ayırmak için config.php'ye
-        <code>define('CRM_DB_NAME','takbulut_crm');</code> ekleyin.
+        &mdash; &#9888; Prekast <?= $__pkDb === $__crmDb && $__crmDb !== DB_NAME ? '<strong>CRM</strong>' : '<strong>ana (beton)</strong>' ?>
+        veritabanını paylaşıyor. Kuralımız gereği her modül kendi veritabanında olmalı.
+        <?php if (has_role('admin')): ?>
+        <a href="veritabani_tasi.php" class="alert-link ms-1"><i class="bi bi-database-gear"></i> Kendi veritabanına taşı</a>
+        <?php endif; ?>
     <?php endif; ?>
 </div>
 

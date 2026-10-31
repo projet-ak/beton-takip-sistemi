@@ -187,6 +187,27 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   `CRM_DB_NAME`), tablolar `prekast_` önekli; ayırma (`PREKAST_DB_NAME`) yalnız canlı veri göçü kararı
   bekliyor, teknik engel yok (prekast tabloları crm tablolarına JOIN atmıyor);
   `includes/db_prekast.php` → `$pdoPrekast` (istenirse `PREKAST_DB_NAME` ile ayrılır).
+  ⭐ **TAŞIMA ARACI HAZIR (2026-11-01, kullanıcı: "Prekast'ı kendi veritabanına taşıyalım")** —
+  `prekast/veritabani_tasi.php` (yalnız admin; Prekast Kurulum ekranındaki sarı banttan açılır) + çekirdek
+  `prekast/_tasi.php` (pkt_*). 4 adım: ① hedef DB (öneri `takbulut_prekast`; DB kullanıcısının yetkisi varsa
+  ekran `CREATE DATABASE` yapar — kaynakla AYNI charset/collation; yetmezse aaPanel'den açılır ve config'e
+  YALNIZ `PREKAST_DB_USER`/`PREKAST_DB_PASS` yazılır, `PREKAST_DB_NAME` HENÜZ değil) ② **Kopyala**:
+  `SHOW CREATE TABLE` birebir (AUTO_INCREMENT dahil) + 200'erli INSERT, sonra her tablo satır sayısı + **içerik
+  özeti** (birincil anahtar sıralı md5; iki bağlantı da `ATTR_STRINGIFY_FETCHES`) ile karşılaştırılır; hedefe
+  **`prekast_tasima`** işaret satırı (zaman + tablo özetleri) yazılır, kaynağa yalnız OKUMA ③ config.php'ye
+  `define('PREKAST_DB_NAME', …)` (elle) ④ **Eski kopyaları kaldır**: yalnız kaynak kopyadan beri DEĞİŞMEDİYSE,
+  önce CRM DB'nin tam yedeği (`manual_crm_…`), sonra `prekast_*` DROP + audit_log. ⚠ **Canlı veriyi ezmeme
+  kuralı** `pkt_kopya_izni()`: hedefte veri varsa kopya yalnız son kopyadan beri değişmemişse; geçişten SONRA
+  hedef yeni kayıt almışsa üzerine ASLA yazılmaz ("üzerine yaz" kutusu yalnız geçişten önce). 2. ve 3. adım
+  arasında eskiye çizelge yüklenirse 4. adım fark eder ve "Yeniden kopyala" der; iki taraf da değiştiyse kutulu
+  zorla silme (önce o günkü çizelge yeniden yüklenir — içe aktarma birleştirme yapar). Ekran `db_prekast.php`'yi
+  YÜKLEMEZ (PREKAST_DB_NAME tanımlı ama DB yokken 503 vermesin), bağlantıları kendisi açar. ⚠ audit_log `islem`
+  ENUM('INSERT','UPDATE','DELETE') — başka değer yazılamaz. Test (MariaDB + gerçek sayfa koşucusu): 1044 yetki
+  hatası → aaPanel yolu · ayrı kullanıcıyla kopya 137/2/2 satır birebir, Türkçe metin ve AUTO_INCREMENT korunuyor ·
+  geçiş öncesi eskiye yazma → algılandı, yeniden kopya · yanlış onay reddi · silmede yedek + yalnız prekast_
+  tabloları gitti, crm tabloları duruyor · 4 prekast sayfası yeni DB'den uyarısız · `pkt_kopya_izni` 16 sağlama ·
+  yedek listesi prekast'ı ayrı kullanıcıyla alıyor. **Canlıda henüz ÇALIŞTIRILMADI** — çalıştırılınca bu
+  istisna kalkar (§0 ve §6 notlarını güncelle).
   **Kaynak: sahadan GÜNLÜK gelen "İŞ TAKİP / HAKKEDİŞ ÇİZELGESİ" Excel'i.** Çizelge SABİT bir iş
   listesidir; her gün aynı satırlar gelir, yalnız **durumlar dolar**: Kesim → Silikon → Metraj →
   Hakkediş (= metraj × birim fiyat). Bu yüzden içe aktarma tam yenileme DEĞİL **BİRLEŞTİRME**
@@ -1812,7 +1833,8 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 >    Kopyalama anlıktır; sonrasında iki taraf bağımsız yaşar. **Bedeli kabul edilmiştir**: aynı kişi/varlık
 >    iki modülde iki kayıttır, yalnız bir anahtar (sicil no, VKN…) üzerinden eşleşir.
 >
-> ⚠ Bilinen istisna: **Prekast → CRM DB'sini paylaşıyor** (§6). Ayırma yalnız veri göçü kararı bekliyor.
+> ⚠ Bilinen istisna: **Prekast → CRM DB'sini paylaşıyor** (§6). Taşıma aracı hazır:
+> `prekast/veritabani_tasi.php` (2026-11-01) — canlıda çalıştırılınca istisna kalkar.
 
 > **⭐ TEMEL İLKE — Excel şablonu "kutsal kitap" (tek doğru kaynak).** Sistem, ilgili Excel
 > şablonunu **birebir yansıtır**; veri/toplam çelişkisinde **Excel esastır**, sistem ona göre
@@ -2217,7 +2239,8 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · **Sipariş Talepleri** · **
 > ⚠️ **AÇIK İSTİSNA — Prekast hâlâ CRM'in veritabanını paylaşıyor** (`takbulut_crm`, `prekast_` önekli
 > tablolar). Bu §0 kuralına AYKIRIDIR ve bilinerek bırakılmıştır: ayırmak **canlı veri taşımak** demektir
 > (`PREKAST_DB_NAME` sabiti zaten hazır; yeni DB açılıp `prekast_*` tabloları taşınmalı). Prekast tabloları
-> CRM tablolarına JOIN atmadığı için ayırma teknik olarak risksizdir — **yalnız veri göçü kararı bekliyor.**
+> CRM tablolarına JOIN atmadığı için ayırma teknik olarak risksizdir. **Taşıma aracı hazır** (2026-11-01):
+> `prekast/veritabani_tasi.php` kopyalar + doğrular + eski kopyaları yedek alarak kaldırır (Prekast bölümüne bak).
 > Prekast tabloları: `prekast_isler` · `prekast_gunluk` · **`prekast_icmal`** (kitabın İCMAL sayfasının
 > birebir fotoğrafı; icmal ekranındaki "Excel (dosyadan)" görünümü bunu okur).
 
