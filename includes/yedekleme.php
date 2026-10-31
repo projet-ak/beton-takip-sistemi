@@ -2,8 +2,10 @@
 /**
  * yedekleme.php — Çok veritabanlı yedekleme yardımcıları
  *
- * Sistem 5 ayrı veritabanı kullanır (beton/demir/seramik/depo/akaryakit).
- * Buradaki fonksiyonlar her biri için AYRI yedek dosyası üretir:
+ * Her modülün kendi veritabanı vardır (CLAUDE.md §0): beton · demir · seramik · depo · akaryakıt ·
+ * crm · it · pts (+ prekast ayrıldıysa). Buradaki fonksiyonlar her biri için AYRI yedek dosyası üretir:
+ * ⚠ 2026-11-01'e kadar liste yalnız ilk 5'i içeriyordu — CRM, IT Envanter ve Personel Takip HİÇ
+ *   yedeklenmiyordu. Yeni modül eklenince $tanim'a satır eklenmeli.
  *     {tip}_{modul}_{Y-m-d_H-i-s}_{rastgele16}.sql.gz   ör. auto_demir_2026-08-02_03-00-00_9f3c…e1.sql.gz
  *
  * ⚠ Sondaki RASTGELE ek güvenlik içindir: canlı sunucu Nginx, backups/.htaccess ÇALIŞMAZ.
@@ -23,6 +25,11 @@ function yedek_db_listesi(): array
         ['seramik',   'Seramik',   'SERAMIK_DB_NAME',   'SERAMIK_DB_USER',   'SERAMIK_DB_PASS'],
         ['depo',      'Depo',      'DEPO_DB_NAME',      'DEPO_DB_USER',      'DEPO_DB_PASS'],
         ['akaryakit', 'Akaryakıt', 'AKARYAKIT_DB_NAME', 'AKARYAKIT_DB_USER', 'AKARYAKIT_DB_PASS'],
+        ['crm',       'CRM',       'CRM_DB_NAME',       'CRM_DB_USER',       'CRM_DB_PASS'],   // prekast tabloları da burada
+        ['it',        'IT Envanter', 'IT_DB_NAME',      'IT_DB_USER',        'IT_DB_PASS'],
+        ['pts',       'Personel Takip', 'PTS_DB_NAME',  'PTS_DB_USER',       'PTS_DB_PASS'],
+        // Prekast yalnız CRM'den AYRILDIYSA ayrı yedeklenir; ayrılmadıysa DB adı tekilleştirmesi onu atlar
+        ['prekast',   'Prekast',   'PREKAST_DB_NAME',   'PREKAST_DB_USER',   'PREKAST_DB_PASS'],
     ];
 
     $liste = [];

@@ -196,7 +196,7 @@ require_once __DIR__ . '/includes/header.php';
         $bugunMu = $oz['son'] && date('Y-m-d', $oz['son']) === date('Y-m-d');
         $renk = $oz['adet'] === 0 ? 'border-danger' : ($bugunMu ? 'border-success' : 'border-warning');
     ?>
-    <div class="col-6 col-lg">
+    <div class="col-6 col-md-4 col-xl-3">
         <div class="card <?= $renk ?> h-100">
             <div class="card-body py-3">
                 <div class="fw-bold d-flex align-items-center gap-2">

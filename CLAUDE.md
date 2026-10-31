@@ -2211,7 +2211,7 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · **Sipariş Talepleri** · **
 > ⚠️ Bu sabitlerden biri **tanımsız kalırsa** ilgili modül sessizce **ana DB'ye** düşer ve veriler
 > "kaybolmuş" görünür (tablolar önekli olduğu için çakışma olmaz, ama modül boş açılır).
 > Aktif DB'yi ilgili modülün `kurulum_*.php` sayfasındaki **rozetten** görebilirsin
-> (yeşil = ayrı DB, sarı = ana DB). Yedekleme artık **8 DB'yi birden** kapsamalıdır.
+> (yeşil = ayrı DB, sarı = ana DB). Yedekleme **8 DB'yi birden** kapsar — ⚠ 2026-11-01'e kadar `yedek_db_listesi()` (`includes/yedekleme.php`) yalnız beton/demir/seramik/depo/akaryakıt'ı içeriyordu, **CRM · IT · PTS HİÇ yedeklenmiyordu**; eklendi (+ `prekast` satırı: yalnız `PREKAST_DB_NAME` CRM'den ayrı bir DB'yse yedeklenir, değilse DB adı tekilleştirmesi atlar — tabloları zaten CRM yedeğinde). **Yeni modül eklenince bu listeye satır ekle.**
 >
 > ⚠️ **AÇIK İSTİSNA — Prekast hâlâ CRM'in veritabanını paylaşıyor** (`takbulut_crm`, `prekast_` önekli
 > tablolar). Bu §0 kuralına AYKIRIDIR ve bilinerek bırakılmıştır: ayırmak **canlı veri taşımak** demektir
