@@ -169,6 +169,10 @@ foreach ($allFiles as $f) {
 $filtre = isset($_GET['m']) && isset($moduller[$_GET['m']]) ? $_GET['m'] : '';
 $gosterilecek = $filtre ? array_values(array_filter($yedekler, fn($y) => $y['modul'] === $filtre)) : $yedekler;
 
+// Google Drive kopyası (sunucudaki gece görevi tools/drive_yedek.sh yazar)
+$drive = yedek_drive_durum($pdo);
+$driveYas = $drive['son_basarili'] ? (time() - strtotime($drive['son_basarili']['zaman'])) / 3600 : null;
+
 $tipRozet = ['auto' => ['Otomatik','bg-info'], 'manual' => ['Manuel','bg-primary'], 'pre_restore' => ['Geri yükleme öncesi','bg-warning text-dark']];
 
 require_once __DIR__ . '/includes/header.php';
@@ -222,6 +226,74 @@ require_once __DIR__ . '/includes/header.php';
         </div>
     </div>
     <?php endforeach; ?>
+</div>
+
+<?php
+// ── Google Drive kopyası ─────────────────────────────────────────────────────
+$dSon = $drive['son']; $dOk = $drive['son_basarili'];
+if (!$dSon)                          { $dRenk = 'secondary'; $dIkon = 'bi-cloud-slash';            $dBaslik = 'Google Drive kopyası kurulmadı'; }
+elseif (!(int)$dSon['basarili'])     { $dRenk = 'danger';    $dIkon = 'bi-cloud-slash-fill';       $dBaslik = 'Google Drive kopyası BAŞARISIZ'; }
+elseif ($driveYas !== null && $driveYas > 36) { $dRenk = 'warning'; $dIkon = 'bi-cloud-haze2';     $dBaslik = 'Google Drive kopyası gecikti'; }
+else                                 { $dRenk = 'success';   $dIkon = 'bi-cloud-check-fill';       $dBaslik = 'Google Drive kopyası güncel'; }
+?>
+<div class="card border-<?= $dRenk ?> mb-4">
+    <div class="card-body py-3">
+        <div class="d-flex flex-wrap align-items-center gap-3">
+            <i class="bi <?= $dIkon ?> fs-3 text-<?= $dRenk ?>"></i>
+            <div class="flex-grow-1">
+                <div class="fw-bold"><?= h($dBaslik) ?></div>
+                <div class="small text-muted">
+                <?php if (!$dSon): ?>
+                    Yedekler yalnız bu sunucuda duruyor — sunucu giderse yedekler de gider. Sunucuda rclone kurulup
+                    her gece çalışan görev tanımlanınca yedekler otomatik olarak Google Drive'a kopyalanır.
+                <?php else: ?>
+                    <?php if ($dOk): ?>
+                        Son başarılı kopya: <strong><?= h(date('d.m.Y H:i', strtotime($dOk['zaman']))) ?></strong>
+                        · <?= (int)$dOk['kopyalanan'] ?> yeni dosya gönderildi
+                        <?= (int)$dOk['silinen'] ? '· ' . (int)$dOk['silinen'] . ' eski dosya Drive\'dan silindi' : '' ?>
+                        <?= $dOk['drive_toplam'] !== null ? '· Drive\'da toplam <strong>' . (int)$dOk['drive_toplam'] . '</strong> yedek' : '' ?>
+                    <?php else: ?>
+                        Henüz hiç başarılı kopya yok.
+                    <?php endif; ?>
+                    <?php if ($dRenk === 'warning'): ?>
+                        <br><span class="text-warning-emphasis">Son kopyanın üzerinden <?= (int)$driveYas ?> saat geçti — gece görevi çalışmıyor olabilir (aaPanel → Zamanlanmış Görev).</span>
+                    <?php endif; ?>
+                <?php endif; ?>
+                </div>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#driveKurulum">
+                <i class="bi bi-gear me-1"></i><?= $dSon ? 'Kurulum / ayrıntı' : 'Nasıl kurulur?' ?>
+            </button>
+        </div>
+        <?php if ($dSon && !(int)$dSon['basarili']): ?>
+            <div class="alert alert-danger small mt-3 mb-0">
+                <strong><?= h(date('d.m.Y H:i', strtotime($dSon['zaman']))) ?> — son deneme başarısız.</strong>
+                <pre class="mb-0 mt-1 small" style="white-space:pre-wrap"><?= h((string)$dSon['mesaj']) ?></pre>
+            </div>
+        <?php endif; ?>
+        <div class="collapse" id="driveKurulum">
+            <hr>
+            <ol class="small mb-2">
+                <li><strong>Sunucuya rclone kur</strong> (aaPanel → Terminal):
+                    <pre class="bg-body-tertiary border rounded p-2 mt-1 mb-2">curl -4 -fsSL https://rclone.org/install.sh | bash</pre></li>
+                <li><strong>Drive bağlantısını tanımla:</strong> <code>rclone config</code> → <code>n</code> (yeni) → ad: <code>ernyedek</code>
+                    → depolama: <code>drive</code> → client_id / client_secret: boş bırak (Enter) → scope: <code>drive.file</code>
+                    → kalan sorular Enter → "Use auto config?" sorusuna <code>n</code>.
+                    rclone ekrana <code>rclone authorize "drive" "…"</code> ile başlayan bir komut yazar.</li>
+                <li><strong>Kendi bilgisayarında izin ver:</strong> rclone.org/downloads'tan Windows sürümünü indir, zip'i aç,
+                    o klasörde komut isteminde 2. adımdaki komutu <em>aynen</em> çalıştır → tarayıcıda Google hesabını seç → izin ver.
+                    Ekranda çıkan token metnini kopyalayıp sunucudaki <code>rclone config</code> ekranına yapıştır → Shared Drive: <code>n</code> → <code>y</code> → <code>q</code>.</li>
+                <li><strong>Dene:</strong>
+                    <pre class="bg-body-tertiary border rounded p-2 mt-1 mb-2">bash <?= h(__DIR__) ?>/tools/drive_yedek.sh</pre>
+                    Sonunda "rclone kodu=0" yazmalı; bu kart yeşile döner, yedekler Drive'da <code>ERN-Sistem-Yedek</code> klasöründe görünür.</li>
+                <li><strong>Gece görevi:</strong> aaPanel → Zamanlanmış Görev → Ekle → Tür: <em>Shell Script</em> → Her gün 03:30 → içerik:
+                    <pre class="bg-body-tertiary border rounded p-2 mt-1 mb-0">bash <?= h(__DIR__) ?>/tools/drive_yedek.sh</pre></li>
+            </ol>
+            <div class="small text-muted">Sunucuda otomatik yedekler 30 gün, Drive'da 90 gün saklanır. Görev yedeği kendisi de alır —
+                artık yedek için bir yöneticinin panele girmesi gerekmez. <code>drive.file</code> izni rclone'a yalnız kendi oluşturduğu
+                dosyalara erişim verir; Drive'ınızdaki diğer dosyaları göremez.</div>
+        </div>
+    </div>
 </div>
 
 <div class="row g-4">

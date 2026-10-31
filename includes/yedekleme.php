@@ -181,3 +181,47 @@ function yedek_adlari_gizle(string $dir): int
     }
     return $n;
 }
+
+// ── Google Drive kopyası (rclone) ─────────────────────────────────────────────
+// Kopyalamayı sunucudaki gece görevi yapar: tools/drive_yedek.sh → rclone copy backups/ → Drive.
+// Görev sonucu tools/yedek_cron.php üzerinden bu tabloya yazılır; yedek.php son durumu gösterir.
+// Durum DOSYAYA değil DB'ye yazılır: backups/ Nginx'te korumasız, oraya konan her dosya okunabilir.
+
+function yedek_drive_semasi(PDO $pdo): void
+{
+    $pdo->exec("CREATE TABLE IF NOT EXISTS yedek_drive_log (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        zaman DATETIME NOT NULL,
+        basarili TINYINT(1) NOT NULL DEFAULT 0,
+        kopyalanan INT NOT NULL DEFAULT 0,
+        silinen INT NOT NULL DEFAULT 0,
+        drive_toplam INT NULL,
+        mesaj TEXT NULL,
+        INDEX idx_zaman (zaman)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+/** Gece görevinin sonucunu yazar; 180 günden eski günlük satırları temizlenir. */
+function yedek_drive_kaydet(PDO $pdo, bool $ok, int $kopyalanan, int $silinen, ?int $toplam, string $mesaj): void
+{
+    yedek_drive_semasi($pdo);
+    $pdo->prepare("INSERT INTO yedek_drive_log (zaman, basarili, kopyalanan, silinen, drive_toplam, mesaj) VALUES (?,?,?,?,?,?)")
+        ->execute([date('Y-m-d H:i:s'), $ok ? 1 : 0, $kopyalanan, $silinen, $toplam, $mesaj !== '' ? mb_substr($mesaj, 0, 4000) : null]);
+    $pdo->prepare("DELETE FROM yedek_drive_log WHERE zaman < ?")->execute([date('Y-m-d H:i:s', strtotime('-180 days'))]);
+}
+
+/**
+ * Son görev sonucu + son BAŞARILI kopya. Görev hiç çalışmadıysa ['son' => null].
+ * @return array{son: ?array, son_basarili: ?array}
+ */
+function yedek_drive_durum(PDO $pdo): array
+{
+    try {
+        yedek_drive_semasi($pdo);
+        $son = $pdo->query("SELECT * FROM yedek_drive_log ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC) ?: null;
+        $ok  = $pdo->query("SELECT * FROM yedek_drive_log WHERE basarili = 1 ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC) ?: null;
+        return ['son' => $son, 'son_basarili' => $ok];
+    } catch (Throwable $e) {
+        return ['son' => null, 'son_basarili' => null];
+    }
+}
