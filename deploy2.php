@@ -123,7 +123,7 @@ function dp_curl_ayar($ch, array $basliklar, int $sure): void
         CURLOPT_RETURNTRANSFER  => true,
         CURLOPT_FOLLOWLOCATION  => true,
         CURLOPT_MAXREDIRS       => 5,
-        CURLOPT_CONNECTTIMEOUT  => 10,            // bağlantı kurulamıyorsa 10 sn'de vazgeç (eskiden sınırsız → 502)
+        CURLOPT_CONNECTTIMEOUT  => 8,             // bağlantı kurulamıyorsa 8 sn'de vazgeç (eskiden sınırsız → 502); dp_api 3 kez dener
         CURLOPT_TIMEOUT         => max(5, $sure),
         CURLOPT_LOW_SPEED_LIMIT => 256,
         CURLOPT_LOW_SPEED_TIME  => 15,
@@ -146,19 +146,33 @@ function dp_basliklar(bool $api): array
 /** GitHub API GET → [kod, gövde, hata] */
 function dp_api(string $yol, int $sure = 20): array
 {
-    $ch = curl_init('https://api.github.com/repos/' . REPO . $yol);
-    dp_curl_ayar($ch, dp_basliklar(true), $sure);
-    $govde = curl_exec($ch);
-    $kod   = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $hata  = curl_error($ch);
-    unset($ch); // PHP 8.0+ curl_close() no-op (8.5'te deprecated)
-    return [$kod, is_string($govde) ? $govde : '', $hata];
+    // ⚠ VPS → GitHub bağlantısı ARA SIRA kuruluyor/kurulamıyor (2026-11-01: bir deploy 3,5 sn'de
+    // bitti, hemen sonrakinde "Connection timed out after 10002 ms"). Bağlantı KURULAMAZSA
+    // (HTTP 0) iki kez daha denenir: önce yine IPv4, sonra serbest IP (IPv6 rotası açıksa o).
+    // Çalışan kip $IPV4'e yazılır — aynı istekteki raw indirmeleri de onu kullanır.
+    global $IPV4;
+    $denemeler = $IPV4 ? [true, true, false] : [false, false];
+    $sonuc = [0, '', ''];
+    foreach ($denemeler as $i => $v4) {
+        $IPV4 = $v4;
+        $ch = curl_init('https://api.github.com/repos/' . REPO . $yol);
+        dp_curl_ayar($ch, dp_basliklar(true), $sure);
+        $govde = curl_exec($ch);
+        $kod   = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $hata  = curl_error($ch);
+        unset($ch); // PHP 8.0+ curl_close() no-op (8.5'te deprecated)
+        $sonuc = [$kod, is_string($govde) ? $govde : '', $hata];
+        if ($kod !== 0) break;                       // sunucu yanıt verdi (hata kodu olsa bile) — tekrar anlamsız
+        if ($i < count($denemeler) - 1) usleep(500000);
+    }
+    if ($sonuc[0] !== 0) $GLOBALS['dp_deneme'] = $i + 1;
+    return $sonuc;
 }
 
 function dp_api_hata(string $adim, int $kod, string $govde, string $hata): void
 {
     $ipucu = match (true) {
-        $hata !== ''  => 'Bağlantı hatası: ' . $hata . ' — sunucu GitHub\'a ulaşamıyor (DNS / güvenlik duvarı / IPv6). "&ip=any" ya da "&mod=zip" deneyin.',
+        $hata !== ''  => 'Bağlantı hatası: ' . $hata . ' — sunucu GitHub\'a 3 denemede de (IPv4 ×2, serbest IP ×1) ulaşamadı. Bu VPS\'te ARA SIRA oluyor: 1-2 dakika sonra sayfayı yenileyin. Sürerse aaPanel Terminal\'de "curl -4 -sS -o /dev/null -w %{http_code} https://api.github.com" ile bağlantıyı deneyin.',
         $kod === 401  => 'GitHub PAT geçersiz/süresi dolmuş.',
         $kod === 403  => 'GitHub erişimi reddetti — PAT yetkisi yetersiz ya da saatlik API sınırı doldu (PAT tanımlanırsa sınır 5000/saat).',
         $kod === 404  => 'Dal veya repo bulunamadı; repo private ise config.php\'de GITHUB_PAT tanımlayın.',
@@ -303,7 +317,7 @@ $opc = $yazilan ? dp_opcache() : 'gerek yok';
 $sure = round(microtime(true) - $__basla, 1);
 $ortak = ['branch' => BRANCH, 'commit' => substr($commit, 0, 7), 'repo_dosya' => $toplam,
           'degisen' => count($degisen), 'agac_sn' => $agacSure, 'sure_sn' => $sure, 'opcache' => $opc,
-          'ipv4' => $IPV4, 'yazilan' => $yazilan, 'hatalar' => $hatalar];
+          'ipv4' => $IPV4, 'baglanti_deneme' => $GLOBALS['dp_deneme'] ?? 1, 'yazilan' => $yazilan, 'hatalar' => $hatalar];
 
 // Bütçe doldu, indirilecek dosya kaldı → sayfa yenilenip kaldığı yerden devam eder
 if ($kalan) {
