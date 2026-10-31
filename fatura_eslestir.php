@@ -43,7 +43,7 @@ if (($_POST['action'] ?? '') === 'coz') {
             // Dosyayı sakla (fatura arşivi)
             $dir = __DIR__ . '/uploads/faturalar/' . date('Y/m');
             if (!is_dir($dir)) @mkdir($dir, 0755, true);
-            $ext  = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: ($mime === 'application/pdf' ? 'pdf' : 'jpg');
+            $ext  = guvenli_uzanti($ad, $mime, 'jpg');
             $hedefAd = date('Ymd_His') . '_' . substr(md5($ad . microtime(true)), 0, 8) . '.' . $ext;
             if (@move_uploaded_file($tmp, $dir . '/' . $hedefAd)) {
                 $dosyaUrl = 'uploads/faturalar/' . date('Y/m') . '/' . $hedefAd;
@@ -289,7 +289,7 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
                               'tarih'=>$fr['tarih'], 'bagli'=>(int)$fr['bagli'], 'eksik'=>(int)$fr['eksik_adet']];
         else {
             $satir = ['ad'=>$ad, 'no'=>$no, 'durum'=>'islenmemis', 'kaynak'=>$kaynak];
-            $ext = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'pdf';
+            $ext = guvenli_uzanti($ad, '', 'pdf');
             if (preg_match('/^[a-z0-9]{1,6}$/', $ext)) {
                 $pid = uniqid('fk_', true) . '.' . $ext;
                 if (@move_uploaded_file($tmp, $KONT_BEKLEME . '/' . $pid)) $satir['dosya'] = $pid;
@@ -358,7 +358,7 @@ if (($_POST['action'] ?? '') === 'fatura_isle' && !empty($_POST['dosya'])) {
             $ids = array_map(fn($r) => (int)$r['id'], $esl['eslesen']);
             $dir = __DIR__ . '/uploads/faturalar/' . date('Y/m');
             if (!is_dir($dir)) @mkdir($dir, 0755, true);
-            $hedefAd  = date('Ymd_His') . '_' . substr(md5($pid . microtime(true)), 0, 8) . '.' . (pathinfo($pid, PATHINFO_EXTENSION) ?: 'pdf');
+            $hedefAd  = date('Ymd_His') . '_' . substr(md5($pid . microtime(true)), 0, 8) . '.' . guvenli_uzanti($pid, '', 'pdf');
             $dosyaUrl = null;
             if (@rename($tam, $dir . '/' . $hedefAd)) $dosyaUrl = 'uploads/faturalar/' . date('Y/m') . '/' . $hedefAd;
             // Tür: irsaliye numarası yoksa metinden sezilir (pompa kirası / hizmet faturası)

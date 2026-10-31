@@ -38,7 +38,7 @@ if ($canEdit && $_SERVER['REQUEST_METHOD']==='POST' && isset($_FILES['evrak']) &
     } else {
         $dir = __DIR__ . '/../uploads/demir_iade/' . $id . '/';
         if (!is_dir($dir)) @mkdir($dir, 0755, true);
-        $ext = pathinfo($_FILES['evrak']['name'], PATHINFO_EXTENSION) ?: ($mime==='application/pdf'?'pdf':'jpg');
+        $ext = guvenli_uzanti($_FILES['evrak']['name'], $mime, 'jpg');
         $ad  = 'imzali_' . date('Ymd_His') . '.' . strtolower($ext);
         if (move_uploaded_file($_FILES['evrak']['tmp_name'], $dir.$ad)) {
             $url = 'uploads/demir_iade/' . $id . '/' . $ad;

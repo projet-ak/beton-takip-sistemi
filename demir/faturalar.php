@@ -324,7 +324,7 @@ if (($_POST['action'] ?? '') === 'cozumle') {
         else {
             $dir = __DIR__ . '/../uploads/demir_fatura/' . date('Y/m');
             if (!is_dir($dir)) @mkdir($dir, 0755, true);
-            $ext = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'pdf';
+            $ext = guvenli_uzanti($ad, $mime, 'pdf');
             $hedefAd = date('Ymd_His') . '_' . substr(md5($ad.microtime(true)), 0, 8) . '.' . $ext;
             $tam = $tmp;
             if (@move_uploaded_file($tmp, $dir.'/'.$hedefAd)) { $dosyaUrl = 'uploads/demir_fatura/'.date('Y/m').'/'.$hedefAd; $tam = $dir.'/'.$hedefAd; }
@@ -627,7 +627,7 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
         }
         // Numara okunamasa da dosya bekletilir — "ÇÖZÜMLE ve KAYDET" AI ile içeriği okuyabilir
         $satir = ['ad'=>$ad, 'no'=>$no, 'durum'=>($no === null && $ettn === null) ? 'okunamadi' : 'islenmemis', 'kaynak'=>$no ? $kaynak : null];
-        $ext = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'pdf';
+        $ext = guvenli_uzanti($ad, '', 'pdf');
         if (preg_match('/^[a-z0-9]{1,6}$/', $ext)) {
             $pid = uniqid('dfk_', true) . '.' . $ext;
             if (@move_uploaded_file($tmp, $DFAT_BEKLEME . '/' . $pid)) $satir['dosya'] = $pid;
@@ -685,7 +685,7 @@ if (($_POST['action'] ?? '') === 'fatura_isle' && !empty($_POST['dosya'])) {
             [$ids, $baska] = dfat_bagla_ayir($e['eslesen']);
             $dir = __DIR__ . '/../uploads/demir_fatura/' . date('Y/m');
             if (!is_dir($dir)) @mkdir($dir, 0755, true);
-            $hedefAd = date('Ymd_His') . '_' . substr(md5($pid . microtime(true)), 0, 8) . '.' . (pathinfo($pid, PATHINFO_EXTENSION) ?: 'pdf');
+            $hedefAd = date('Ymd_His') . '_' . substr(md5($pid . microtime(true)), 0, 8) . '.' . guvenli_uzanti($pid, '', 'pdf');
             $dosyaUrl = @rename($tam, $dir . '/' . $hedefAd) ? 'uploads/demir_fatura/' . date('Y/m') . '/' . $hedefAd : null;
             $r = dfat_kaydet($pdoDemir, [
                 'fatura_no' => $v['fatura_no'], 'ettn' => $v['ettn'], 'tarih' => $v['tarih'],

@@ -242,7 +242,7 @@ function blg_dosya_tasi(string $tmp, string $ad, int $irsId, string $kokDizin): 
 {
     $dir = rtrim($kokDizin, '/') . '/uploads/irsaliye_' . $irsId . '/';
     if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) return null;
-    $ext  = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'bin';
+    $ext  = guvenli_uzanti($ad, '', 'bin');
     $yeni = uniqid('blg_', true) . '.' . $ext;
     $tam  = $dir . $yeni;
     $ok   = is_uploaded_file($tmp) ? @move_uploaded_file($tmp, $tam) : @rename($tmp, $tam);

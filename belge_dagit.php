@@ -85,7 +85,7 @@ if (($_POST['action'] ?? '') === 'dagit' && !empty($_FILES['belge']['tmp_name'])
 
         // Önce bekleme klasörüne al — okuma/eşleşme başarısız olsa da dosya kaybolmasın
         if (!is_dir($BEKLEME)) @mkdir($BEKLEME, 0755, true);
-        $gecici = $BEKLEME . '/' . uniqid('bkl_', true) . '.' . (strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'bin');
+        $gecici = $BEKLEME . '/' . uniqid('bkl_', true) . '.' . guvenli_uzanti($ad, $mime);
         if (!@move_uploaded_file($tmp, $gecici)) { $sonuclar[] = ['ad'=>$ad,'durum'=>'hata','mesaj'=>'Diske yazılamadı']; continue; }
 
         $sonuclar[] = bd_isle($pdo, $gecici, $ad, $tur, $uygula);
@@ -147,7 +147,7 @@ if (($_POST['action'] ?? '') === 'belge_kontrol' && !empty($_FILES['belge']['tmp
                          'irsaliye_no'=>$bulundu['irsaliye_no'], 'tur'=>$bulundu['tur'], 'tarih'=>$bulundu['created_at']];
             continue;
         }
-        $ext = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'bin';
+        $ext = guvenli_uzanti($ad, '', 'bin');
         $pid = uniqid('bkl_', true) . '.' . (preg_match('/^[a-z0-9]{1,6}$/', $ext) ? $ext : 'bin');
         if (@move_uploaded_file($tmp, $BEKLEME . '/' . $pid)) {
             blg_bekleme_notu($BEKLEME . '/' . $pid, ['ad'=>$ad, 'tur'=>$tur, 'okunan'=>null]);

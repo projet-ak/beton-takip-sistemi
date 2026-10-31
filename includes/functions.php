@@ -142,6 +142,34 @@ function guess_mime(string $path, string $filename = ''): string
     return $map[$ext] ?? 'application/octet-stream';
 }
 
+/** Diske yazılmasına izin verilen uzantılar (belge + görsel + tablo). */
+const GUVENLI_UZANTILAR = ['pdf','jpg','jpeg','png','webp','gif','bmp','heic','heif',
+                           'doc','docx','xls','xlsx','xlsm','csv','txt'];
+
+/**
+ * Yüklenen dosya için GÜVENLİ uzantı döndürür.
+ * Kullanıcının verdiği uzantı yalnız GUVENLI_UZANTILAR içindeyse korunur; değilse
+ * (php, phtml, phar, html, svg …) MIME'dan türetilir, o da yoksa $varsayilan.
+ * Neden: canlı sunucu Nginx — uploads/.htaccess ÇALIŞMAZ. guess_mime() içeriğe baktığı için
+ * başı "%PDF" olan "x.php" MIME kontrolünden geçer; uzantı korunursa uploads/ altında
+ * çalıştırılabilir PHP oluşur. Her move_uploaded_file öncesi uzantı bu fonksiyondan alınmalı.
+ */
+function guvenli_uzanti(string $ad, string $mime = '', string $varsayilan = 'bin'): string
+{
+    $ext = strtolower(pathinfo($ad, PATHINFO_EXTENSION));
+    if (in_array($ext, GUVENLI_UZANTILAR, true)) return $ext;
+    $harita = [
+        'application/pdf' => 'pdf', 'image/jpeg' => 'jpg', 'image/png' => 'png',
+        'image/webp' => 'webp', 'image/gif' => 'gif', 'image/bmp' => 'bmp',
+        'image/heic' => 'heic', 'image/heif' => 'heif',
+        'application/msword' => 'doc',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+        'application/vnd.ms-excel' => 'xls',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'xlsx',
+    ];
+    return $harita[$mime] ?? $varsayilan;
+}
+
 /**
  * Faturadan otomatik açılmış TASLAK irsaliye mi?
  * (fatura_eslestir.php eksik numaralardan taslak açarken açıklamaya [FATURADAN]

@@ -203,7 +203,7 @@ function crm_belge_yukle(PDO $pdo, int $arizaId, array $f, ?string $kullanici = 
 
     $dir = __DIR__ . '/../uploads/crm_ariza/' . $arizaId;
     if (!is_dir($dir) && !@mkdir($dir, 0755, true)) return [false, 'Klasör oluşturulamadı: uploads/crm_ariza/' . $arizaId];
-    $ext  = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'bin';
+    $ext  = guvenli_uzanti($ad, $mime, 'bin');
     $yeni = 'belge_' . date('Ymd_His') . '_' . substr(md5($ad . microtime()), 0, 6) . '.' . $ext;
     if (!@move_uploaded_file($f['tmp_name'], $dir . '/' . $yeni)) return [false, h($ad) . ': dosya diske yazılamadı.'];
 

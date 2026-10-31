@@ -253,7 +253,7 @@ function dp_evrak_kaydet(PDO $pdo, array $hr, array $f): array
     $hid = (int)$hr['id'];
     $dir = __DIR__ . '/../uploads/depo_hareket/' . $hid;
     if (!is_dir($dir) && !@mkdir($dir, 0755, true)) return [false, 'Klasör oluşturulamadı.'];
-    $ext  = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'pdf';
+    $ext  = guvenli_uzanti($ad, $mime, 'pdf');
     $yeni = 'evrak_' . date('Ymd_His') . '.' . $ext;
     if (!@move_uploaded_file($f['tmp_name'], $dir . '/' . $yeni)) return [false, 'Dosya diske yazılamadı.'];
 

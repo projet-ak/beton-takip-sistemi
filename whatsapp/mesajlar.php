@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mesaj_ekle'])) {
             $mime = guess_mime($tmp, $ad);
             if (!in_array($mime, $izin, true))                 { $yuklemeHatasi[] = "$ad: desteklenmeyen tür"; continue; }
             if (($_FILES['gorseller']['size'][$i] ?? 0) > 8*1024*1024) { $yuklemeHatasi[] = "$ad: 8 MB'dan büyük"; continue; }
-            $uzanti = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'jpg';
+            $uzanti = guvenli_uzanti($ad, $mime, 'jpg');
             $hedef  = uniqid('wa_', true) . '.' . preg_replace('/[^a-z0-9]/', '', $uzanti);
             if (move_uploaded_file($tmp, $dizin . '/' . $hedef)) {
                 $gorseller[] = 'uploads/whatsapp/' . date('Y/m') . '/' . $hedef;

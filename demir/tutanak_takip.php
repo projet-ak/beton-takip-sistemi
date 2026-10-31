@@ -122,7 +122,7 @@ if ($canEdit && ($_POST['action'] ?? '') === 'evrak' && ctype_digit($_POST['id']
         $key = $tutNo !== '' ? preg_replace('/[^A-Za-z0-9_-]/', '_', $tutNo) : ('satir' . $sid);
         $dir = __DIR__ . '/../uploads/demir_tutanak_takip/' . $key . '/';
         if (!is_dir($dir)) @mkdir($dir, 0755, true);
-        $ext = pathinfo($_FILES['evrak']['name'], PATHINFO_EXTENSION) ?: ($mime==='application/pdf'?'pdf':'jpg');
+        $ext = guvenli_uzanti($_FILES['evrak']['name'], $mime, 'jpg');
         $ad  = 'evrak_' . date('Ymd_His') . '.' . strtolower($ext);
         if (move_uploaded_file($_FILES['evrak']['tmp_name'], $dir.$ad)) {
             $url = 'uploads/demir_tutanak_takip/' . $key . '/' . $ad;

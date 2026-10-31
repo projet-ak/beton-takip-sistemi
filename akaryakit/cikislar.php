@@ -106,7 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'evrak
         } else {
             $dir = __DIR__ . '/../uploads/akaryakit_cikis/' . $id;
             if (!is_dir($dir)) @mkdir($dir, 0755, true);
-            $ext = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'pdf';
+            $ext = guvenli_uzanti($ad, $mime, 'pdf');
             $yeni = 'evrak_' . date('Ymd_His') . '.' . $ext;
             if (@move_uploaded_file($_FILES['evrak']['tmp_name'], $dir . '/' . $yeni)) {
                 if ($kayit['evrak_url']) @unlink(__DIR__ . '/../' . $kayit['evrak_url']);   // eskisini değiştir

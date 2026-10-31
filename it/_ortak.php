@@ -728,7 +728,7 @@ function it_belge_kaydet(PDO $pdo, int $cihazId, string $yol, string $ad, ?strin
 
     $dir = __DIR__ . '/../uploads/it_envanter/' . $cihazId;
     if (!is_dir($dir) && !@mkdir($dir, 0755, true)) return [false, 'Klasör oluşturulamadı: uploads/it_envanter/' . $cihazId];
-    $ext  = strtolower(pathinfo($ad, PATHINFO_EXTENSION)) ?: 'bin';
+    $ext  = guvenli_uzanti($ad, $mime, 'bin');
     $yeni = 'belge_' . date('Ymd_His') . '_' . substr(md5($ad . microtime()), 0, 6) . '.' . $ext;
     $hedef = $dir . '/' . $yeni;
     $ok = $tasi ? @move_uploaded_file($yol, $hedef) : @copy($yol, $hedef);

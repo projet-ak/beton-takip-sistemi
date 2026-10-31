@@ -1849,6 +1849,11 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 - PHP 8.5. `curl_close()` deprecated → kullanma. `fileinfo` eklentisi kapalı olabilir:
   MIME tespiti için `mime_content_type()`/`finfo_*` **doğrudan çağrılmaz**, `guess_mime()`
   (functions.php) kullanılır — eklenti yoksa uzantıdan tahmin eder.
+- ⚠ **Web sunucusu Nginx — `.htaccess` dosyaları ÇALIŞMAZ.** `uploads/`, `backups/` vb. koruması
+  aaPanel → Site → Yapılandırma'daki Nginx kurallarıyla yapılır (2026-10-31 eklendi).
+  Yeni dosya yükleme kodu yazarken **uzantı her zaman `guvenli_uzanti($ad, $mime, $varsayilan)`**
+  (functions.php) ile alınır; kullanıcının verdiği uzantı asla doğrudan kullanılmaz
+  (guess_mime içeriğe baktığı için `%PDF` başlıklı `x.php` MIME kontrolünden geçer).
 
 ### Deploy yöntemi
 - **`deploy2.php`** (tercih edilen): tarayıcıdan `deploy2.php?token=...` açılır;
