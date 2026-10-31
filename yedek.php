@@ -135,6 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['sql_dosya'])) {
 }
 
 // ── Yedek listesi (.sql ve .sql.gz) ───────────────────────────────────────────
+yedek_adlari_gizle($backupDir);   // eski, tahmin edilebilir adlı yedeklere rastgele ek (Nginx .htaccess'i okumaz)
 $yedekler = [];
 $allFiles = array_merge(
     glob($backupDir . '/*.sql.gz') ?: [],

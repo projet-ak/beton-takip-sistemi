@@ -4,7 +4,11 @@
  *
  * Sistem 5 ayrı veritabanı kullanır (beton/demir/seramik/depo/akaryakit).
  * Buradaki fonksiyonlar her biri için AYRI yedek dosyası üretir:
- *     {tip}_{modul}_{Y-m-d_H-i-s}.sql.gz      ör. auto_demir_2026-08-02_03-00-00.sql.gz
+ *     {tip}_{modul}_{Y-m-d_H-i-s}_{rastgele16}.sql.gz   ör. auto_demir_2026-08-02_03-00-00_9f3c…e1.sql.gz
+ *
+ * ⚠ Sondaki RASTGELE ek güvenlik içindir: canlı sunucu Nginx, backups/.htaccess ÇALIŞMAZ.
+ * Ek olmadan ad tarih + saatten ibaretti (günde 86.400 olasılık) ve tahmin edilerek tüm
+ * veritabanı dökümü indirilebilirdi. Eski adlı dosyalar yedek_adlari_gizle() ile yeniden adlandırılır.
  *
  * Bir modülün *_DB_NAME sabiti tanımsızsa o modül ana DB'ye düşer; bu durumda
  * aynı veritabanı iki kez yedeklenmesin diye DB adına göre tekilleştirme yapılır.
@@ -61,7 +65,7 @@ function yedek_baglan(array $modul): ?PDO
 function yedek_olustur(PDO $pdo, string $dir, string $tip, string $modulKey, string $dbAdi = ''): ?string
 {
     try {
-        $dosyaAdi = $tip . '_' . $modulKey . '_' . date('Y-m-d_H-i-s') . '.sql.gz';
+        $dosyaAdi = $tip . '_' . $modulKey . '_' . date('Y-m-d_H-i-s') . '_' . bin2hex(random_bytes(8)) . '.sql.gz';
         $yol      = $dir . '/' . $dosyaAdi;
 
         $tablolar = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
@@ -122,6 +126,7 @@ function yedek_tumunu_al(string $dir, string $tip = 'manual'): array
 function yedek_otomatik_calistir(string $dir, int $saklamaGun = 30): void
 {
     if (!is_dir($dir)) @mkdir($dir, 0755, true);
+    yedek_adlari_gizle($dir);
     $bugun = date('Y-m-d');
 
     foreach (yedek_db_listesi() as $m) {
@@ -151,4 +156,21 @@ function yedek_ad_coz(string $dosyaAdi): array
         return ['tip' => $m[1], 'modul' => 'beton'];   // eski format
     }
     return ['tip' => 'manual', 'modul' => 'beton'];
+}
+
+/**
+ * Tahmin edilebilir adlı eski yedekleri (rastgele eki olmayanları) yeniden adlandırır.
+ * İdempotent: eki olan dosyaya dokunmaz. rename() dosya tarihini korur — saklama süresi bozulmaz.
+ * @return int yeniden adlandırılan dosya sayısı
+ */
+function yedek_adlari_gizle(string $dir): int
+{
+    $n = 0;
+    foreach (array_merge(glob($dir . '/*.sql.gz') ?: [], glob($dir . '/*.sql') ?: []) as $f) {
+        $ad = basename($f);
+        if (preg_match('/_[0-9a-f]{16}\.sql(\.gz)?$/', $ad)) continue;
+        $yeni = preg_replace('/(\.sql(\.gz)?)$/', '_' . bin2hex(random_bytes(8)) . '$1', $ad);
+        if ($yeni !== $ad && @rename($f, $dir . '/' . $yeni)) $n++;
+    }
+    return $n;
 }
