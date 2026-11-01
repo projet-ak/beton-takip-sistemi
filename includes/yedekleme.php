@@ -25,10 +25,11 @@ function yedek_db_listesi(): array
         ['seramik',   'Seramik',   'SERAMIK_DB_NAME',   'SERAMIK_DB_USER',   'SERAMIK_DB_PASS'],
         ['depo',      'Depo',      'DEPO_DB_NAME',      'DEPO_DB_USER',      'DEPO_DB_PASS'],
         ['akaryakit', 'Akaryakıt', 'AKARYAKIT_DB_NAME', 'AKARYAKIT_DB_USER', 'AKARYAKIT_DB_PASS'],
-        ['crm',       'CRM',       'CRM_DB_NAME',       'CRM_DB_USER',       'CRM_DB_PASS'],   // prekast tabloları da burada
+        ['crm',       'CRM',       'CRM_DB_NAME',       'CRM_DB_USER',       'CRM_DB_PASS'],
         ['it',        'IT Envanter', 'IT_DB_NAME',      'IT_DB_USER',        'IT_DB_PASS'],
         ['pts',       'Personel Takip', 'PTS_DB_NAME',  'PTS_DB_USER',       'PTS_DB_PASS'],
-        // Prekast yalnız CRM'den AYRILDIYSA ayrı yedeklenir; ayrılmadıysa DB adı tekilleştirmesi onu atlar
+        // Prekast 2026-11-01'den beri kendi DB'sinde; PREKAST_DB_NAME tanımsız bir kurulumda CRM'e düşer ve
+        // DB adı tekilleştirmesi onu atlar (tabloları CRM yedeğindedir)
         ['prekast',   'Prekast',   'PREKAST_DB_NAME',   'PREKAST_DB_USER',   'PREKAST_DB_PASS'],
     ];
 

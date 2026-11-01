@@ -183,10 +183,9 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   `DATE_FORMAT(NOW(),'%Y-%m-01')` → `strftime(...)`) ve `crm_semasi_kur`'u no-op yapar; **test hep
   güncel kodu koşar** (elle yamalı kopya bayatlıyordu).
 - **Prekast modülü** = `prekast/` alt klasörü. Cephe prekast (T profil) **montaj iş takibi + hakkediş**.
-  ⚠ **§0 kuralının bilinen istisnası** — **CRM ile aynı veritabanını paylaşır** (`takbulut_crm`,
-  `CRM_DB_NAME`), tablolar `prekast_` önekli; ayırma (`PREKAST_DB_NAME`) yalnız canlı veri göçü kararı
-  bekliyor, teknik engel yok (prekast tabloları crm tablolarına JOIN atmıyor);
-  `includes/db_prekast.php` → `$pdoPrekast` (istenirse `PREKAST_DB_NAME` ile ayrılır).
+  ⭐ **2026-11-01'DEN BERİ KENDİ VERİTABANINDA** (`takbulut_prekast`, `PREKAST_DB_NAME`) — önceden
+  CRM'in veritabanını paylaşıyordu (§0'ın tek istisnasıydı); aşağıdaki taşıma aracıyla canlıda ayrıldı.
+  Tablolar `prekast_` önekli, `includes/db_prekast.php` → `$pdoPrekast` (PREKAST_DB_NAME tanımsızsa CRM DB'sine düşer).
   ⭐ **TAŞIMA ARACI HAZIR (2026-11-01, kullanıcı: "Prekast'ı kendi veritabanına taşıyalım")** —
   `prekast/veritabani_tasi.php` (yalnız admin; Prekast Kurulum ekranındaki sarı banttan açılır) + çekirdek
   `prekast/_tasi.php` (pkt_*). 4 adım: ① hedef DB (öneri `takbulut_prekast`; DB kullanıcısının yetkisi varsa
@@ -206,8 +205,9 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   hatası → aaPanel yolu · ayrı kullanıcıyla kopya 137/2/2 satır birebir, Türkçe metin ve AUTO_INCREMENT korunuyor ·
   geçiş öncesi eskiye yazma → algılandı, yeniden kopya · yanlış onay reddi · silmede yedek + yalnız prekast_
   tabloları gitti, crm tabloları duruyor · 4 prekast sayfası yeni DB'den uyarısız · `pkt_kopya_izni` 16 sağlama ·
-  yedek listesi prekast'ı ayrı kullanıcıyla alıyor. **Canlıda henüz ÇALIŞTIRILMADI** — çalıştırılınca bu
-  istisna kalkar (§0 ve §6 notlarını güncelle).
+  yedek listesi prekast'ı ayrı kullanıcıyla alıyor. **CANLIDA ÇALIŞTIRILDI (2026-11-01)**: 165 iş · 14 günlük ·
+  64 icmal satırı birebir kopyalandı, config'e `PREKAST_DB_NAME` eklendi, CRM'deki eski kopyalar yedek alınarak
+  silindi — 4 adım da yeşil. Ekran durum bilgisi için açık kalır (yeniden kopyalamaya izin vermez).
   **Kaynak: sahadan GÜNLÜK gelen "İŞ TAKİP / HAKKEDİŞ ÇİZELGESİ" Excel'i.** Çizelge SABİT bir iş
   listesidir; her gün aynı satırlar gelir, yalnız **durumlar dolar**: Kesim → Silikon → Metraj →
   Hakkediş (= metraj × birim fiyat). Bu yüzden içe aktarma tam yenileme DEĞİL **BİRLEŞTİRME**
@@ -1833,8 +1833,8 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
 >    Kopyalama anlıktır; sonrasında iki taraf bağımsız yaşar. **Bedeli kabul edilmiştir**: aynı kişi/varlık
 >    iki modülde iki kayıttır, yalnız bir anahtar (sicil no, VKN…) üzerinden eşleşir.
 >
-> ⚠ Bilinen istisna: **Prekast → CRM DB'sini paylaşıyor** (§6). Taşıma aracı hazır:
-> `prekast/veritabani_tasi.php` (2026-11-01) — canlıda çalıştırılınca istisna kalkar.
+> ✓ Eski istisna kapandı: **Prekast 2026-11-01'de CRM DB'sinden kendi DB'sine taşındı**
+> (`prekast/veritabani_tasi.php`). Artık istisna yok — her modül kendi veritabanında.
 
 > **⭐ TEMEL İLKE — Excel şablonu "kutsal kitap" (tek doğru kaynak).** Sistem, ilgili Excel
 > şablonunu **birebir yansıtır**; veri/toplam çelişkisinde **Excel esastır**, sistem ona göre
@@ -2225,7 +2225,7 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · **Sipariş Talepleri** · **
 
 ## 6. Veritabanları
 
-> **Canlıda 8 AYRI veritabanı vardır** — kural §0'da: her modül kendi DB'sinde.
+> **Canlıda 9 AYRI veritabanı vardır** — kural §0'da: her modül kendi DB'sinde (+ `takbulut_prekast`, 2026-11-01).
 > `takbulut_beton` (beton) · `takbulut_demir` · `takbulut_seramik` · `takbulut_depo` ·
 > `takbulut_akaryakit` · `takbulut_crm` · **`takbulut_it`** (IT Envanter) · **`takbulut_pts`**
 > (Personel Takip — 2026-09-14'te IT'den ayrıldı, kendi `pts_personel` listesiyle).
@@ -2236,11 +2236,9 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · **Sipariş Talepleri** · **
 > Aktif DB'yi ilgili modülün `kurulum_*.php` sayfasındaki **rozetten** görebilirsin
 > (yeşil = ayrı DB, sarı = ana DB). Yedekleme **8 DB'yi birden** kapsar — ⚠ 2026-11-01'e kadar `yedek_db_listesi()` (`includes/yedekleme.php`) yalnız beton/demir/seramik/depo/akaryakıt'ı içeriyordu, **CRM · IT · PTS HİÇ yedeklenmiyordu**; eklendi (+ `prekast` satırı: yalnız `PREKAST_DB_NAME` CRM'den ayrı bir DB'yse yedeklenir, değilse DB adı tekilleştirmesi atlar — tabloları zaten CRM yedeğinde). **Yeni modül eklenince bu listeye satır ekle.**
 >
-> ⚠️ **AÇIK İSTİSNA — Prekast hâlâ CRM'in veritabanını paylaşıyor** (`takbulut_crm`, `prekast_` önekli
-> tablolar). Bu §0 kuralına AYKIRIDIR ve bilinerek bırakılmıştır: ayırmak **canlı veri taşımak** demektir
-> (`PREKAST_DB_NAME` sabiti zaten hazır; yeni DB açılıp `prekast_*` tabloları taşınmalı). Prekast tabloları
-> CRM tablolarına JOIN atmadığı için ayırma teknik olarak risksizdir. **Taşıma aracı hazır** (2026-11-01):
-> `prekast/veritabani_tasi.php` kopyalar + doğrular + eski kopyaları yedek alarak kaldırır (Prekast bölümüne bak).
+> ✓ **Prekast kendi veritabanında** (`takbulut_prekast`, `PREKAST_DB_NAME`) — 2026-11-01'e kadar CRM'in
+> veritabanını paylaşıyordu; `prekast/veritabani_tasi.php` ile kopyalanıp doğrulandı, CRM'deki eski kopyalar
+> yedek alınarak silindi. Yedekleme onu ayrı dosya olarak alır.
 > Prekast tabloları: `prekast_isler` · `prekast_gunluk` · **`prekast_icmal`** (kitabın İCMAL sayfasının
 > birebir fotoğrafı; icmal ekranındaki "Excel (dosyadan)" görünümü bunu okur).
 

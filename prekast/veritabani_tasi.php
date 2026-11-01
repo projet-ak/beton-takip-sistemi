@@ -124,11 +124,18 @@ $rozet = fn(bool $ok, string $no) => '<span class="badge rounded-pill ' . ($ok ?
     . ($ok ? '<i class="bi bi-check-lg"></i>' : $no) . '</span>';
 ?>
 <h4 class="mb-1"><i class="bi bi-database-gear text-primary me-2"></i>Prekast — Kendi Veritabanına Taşıma</h4>
+<?php if ($aktif && $isaret && !$kT): ?>
+<p class="text-muted small mb-3">
+    Prekast kendi veritabanında (<code><?= h($hedefDb) ?></code>) çalışıyor; CRM veritabanında prekast tablosu kalmadı.
+    Bu ekran yalnız durum bilgisi için açık tutulur.
+</p>
+<?php else: ?>
 <p class="text-muted small mb-3">
     Prekast tabloları şu an CRM'in veritabanında (<code><?= h($kaynakDb) ?></code>) duruyor. Kuralımız gereği her modül
     kendi veritabanında olmalı. Bu ekran tabloları yeni veritabanına <strong>kopyalar, satır satır doğrular</strong> ve
     geçişten sonra eski kopyaları yedek alarak kaldırır. Kopyalama sırasında mevcut veriye dokunulmaz.
 </p>
+<?php endif; ?>
 
 <?php if ($sonuc): ?>
 <div class="alert <?= $sonuc['ok'] ? 'alert-success' : 'alert-danger' ?>">
