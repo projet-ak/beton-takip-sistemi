@@ -232,6 +232,8 @@ function pk_ozet(PDO $pdo, string $cizelge = ''): array
             SUM(silikon=1) silikon,
             SUM(kesim=1 AND silikon=0) silikonBekleyen,
             SUM(kesim=0) kesimBekleyen,
+            SUM(metraj > 0) olculen,
+            SUM(silikon=1 AND metraj <= 0) olculmemis,
             COALESCE(SUM(metraj),0)   metraj,
             COALESCE(SUM(hakkedis),0) hakkedis,
             COUNT(DISTINCT blok) blok,
@@ -240,13 +242,23 @@ function pk_ozet(PDO $pdo, string $cizelge = ''): array
     $st->execute($p);
     $o = $st->fetch() ?: [];
     $dw = ' WHERE dosyada = 0' . ($cizelge !== '' ? ' AND cizelge = ?' : '');
-    $ds = $pdo->prepare("SELECT COUNT(*) FROM prekast_isler $dw"); $ds->execute($p);
-    $o['dusen'] = (int)$ds->fetchColumn();
-    foreach (['toplam','kesim','silikon','silikonBekleyen','kesimBekleyen','dusen','blok'] as $k) $o[$k] = (int)($o[$k] ?? 0);
+    // Arşivdeki (son çizelgede olmayan) işlerin metraj/hakkedişi — toplamlara GİRMEZ ama görünür olmalı:
+    // eski iş sayfası taşıyan bir kitap yüklenince ölçülmüş işler buraya düşüp hakkediş "eriyor" gibi görünüyordu.
+    $ds = $pdo->prepare("SELECT COUNT(*) n, SUM(silikon=1) tamam, COALESCE(SUM(metraj),0) metraj,
+                                COALESCE(SUM(hakkedis),0) hakkedis FROM prekast_isler $dw");
+    $ds->execute($p);
+    $d = $ds->fetch() ?: [];
+    $o['dusen'] = (int)($d['n'] ?? 0);
+    $o['dusenTamam']    = (int)($d['tamam'] ?? 0);
+    $o['dusenMetraj']   = (float)($d['metraj'] ?? 0);
+    $o['dusenHakkedis'] = (float)($d['hakkedis'] ?? 0);
+    foreach (['toplam','kesim','silikon','silikonBekleyen','kesimBekleyen','dusen','blok','olculen','olculmemis'] as $k) $o[$k] = (int)($o[$k] ?? 0);
     foreach (['metraj','hakkedis'] as $k) $o[$k] = (float)($o[$k] ?? 0);
     $o['oran'] = $o['toplam'] ? round($o['silikon'] * 100 / $o['toplam'], 1) : 0.0;
-    // Bekleyen işlerin tahmini hakkedişi: tamamlananların ortalama metrajı × birim fiyat
-    $ortMetraj = $o['silikon'] ? $o['metraj'] / $o['silikon'] : 0;
+    // Bekleyen işlerin tahmini hakkedişi: METRAJI ÖLÇÜLMÜŞ işlerin ortalaması × birim fiyat.
+    // ⚠ Eskiden "toplam metraj ÷ tamamlanan iş" idi — HESAPLAMA'dan gelen, silikonu yapılmış ama metrajı
+    //   ölçülmemiş (0) işler paydaya girip ortalamayı 6 m'den 1,5 m'ye düşürüyordu.
+    $ortMetraj = $o['olculen'] ? $o['metraj'] / $o['olculen'] : 0;
     $bf = (float)($pdo->query("SELECT birim_fiyat FROM prekast_isler WHERE birim_fiyat>0 ORDER BY id DESC LIMIT 1")->fetchColumn() ?: 0);
     $o['ortMetraj']      = $ortMetraj;
     $o['birimFiyat']     = $bf;

@@ -17,6 +17,23 @@ require_once __DIR__ . '/_ortak.php';
 pk_semasi_kur($pdoPrekast);
 $pageTitle = 'Prekast Dashboard';
 
+// Arşivdeki (son çizelgede olmayan) işleri çizelgeye geri al — kayıtlar zaten silinmemişti, yalnız
+// "dosyada" işareti açılır. Eski iş sayfası taşıyan kitaplar ölçülmüş işleri arşive düşürüyordu;
+// kural "dosyadaki tüm veriler olsun, çizelge yalnız dolsun" (CLAUDE.md Prekast §17.09).
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['islem'] ?? '') === 'arsiv_geri') {
+    if (!yetki_var('duzenle')) { flash('error', 'Bu işlem için değiştirme yetkisi gerekir.'); redirect('index.php'); }
+    $cz = trim((string)($_POST['cizelge'] ?? ''));
+    $sql = 'UPDATE prekast_isler SET dosyada = 1 WHERE dosyada = 0' . ($cz !== '' ? ' AND cizelge = ?' : '');
+    $st = $pdoPrekast->prepare($sql);
+    $st->execute($cz !== '' ? [$cz] : []);
+    $n = $st->rowCount();
+    require_once __DIR__ . '/../includes/db.php';   // $pdo — audit_log ana veritabanında
+    audit_log($pdo, 'prekast_isler', 0, 'UPDATE', ['dosyada' => 0, 'cizelge' => $cz ?: 'tümü'],
+        ['dosyada' => 1, 'adet' => $n], current_user_id());
+    flash('success', $n . ' iş arşivden çizelgeye geri alındı; metraj ve hakkedişleri artık toplamlara giriyor.');
+    redirect('index.php' . ($cz !== '' ? '?cizelge=' . urlencode($cz) : ''));
+}
+
 $cizelgeler = pk_secenekler($pdoPrekast, 'cizelge');
 $secili = trim((string)($_GET['cizelge'] ?? ''));
 if ($secili !== '' && !in_array($secili, $cizelgeler, true)) $secili = '';   // whitelist
@@ -110,9 +127,20 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 
 <?php if ($ozet['dusen']): ?>
-<div class="alert alert-secondary py-2 small">
-    <i class="bi bi-archive me-1"></i><strong><?= $f0($ozet['dusen']) ?> iş</strong> son çizelgede yok
-    (silinmedi, arşivde duruyor). <a href="isler.php?dosyada=0" class="alert-link">listele →</a>
+<div class="alert <?= $ozet['dusenHakkedis'] > 0 ? 'alert-warning' : 'alert-secondary' ?> py-2 small d-flex flex-wrap align-items-center gap-2">
+    <span><i class="bi bi-archive me-1"></i><strong><?= $f0($ozet['dusen']) ?> iş</strong> son çizelgede yok
+    (silinmedi, arşivde duruyor)<?php if ($ozet['dusenHakkedis'] > 0): ?> — içlerinde
+    <strong><?= $f0($ozet['dusenTamam']) ?> tamamlanmış iş · <?= $f2($ozet['dusenMetraj']) ?> m ·
+    <?= $f0($ozet['dusenHakkedis']) ?> TL hakkediş</strong> var ve aşağıdaki toplamlara <strong>girmiyor</strong>.
+    Genelde sebep, yüklenen kitabın iş sayfasının eski olmasıdır<?php endif; ?>.
+    <a href="isler.php?dosyada=0" class="alert-link">listele →</a></span>
+    <?php if (yetki_var('duzenle')): ?>
+    <form method="post" class="ms-auto" onsubmit="return confirm('Arşivdeki <?= (int)$ozet['dusen'] ?> iş çizelgeye geri alınacak ve toplamlara girecek. Devam edilsin mi?')">
+        <input type="hidden" name="islem" value="arsiv_geri">
+        <input type="hidden" name="cizelge" value="<?= h($secili) ?>">
+        <button class="btn btn-sm btn-outline-dark"><i class="bi bi-arrow-counterclockwise me-1"></i>Çizelgeye geri al</button>
+    </form>
+    <?php endif; ?>
 </div>
 <?php endif; ?>
 
@@ -120,19 +148,21 @@ require_once __DIR__ . '/../includes/header.php';
 <?php
 $kpi = [
     ['Toplam iş', $f0($ozet['toplam']), 'secondary', 'bi-list-check', 'isler.php'],
-    ['Tamamlanan', $f0($ozet['silikon']), 'success', 'bi-check-circle-fill', 'isler.php?durum=tamam'],
+    ['Tamamlanan', $f0($ozet['silikon']), 'success', 'bi-check-circle-fill', 'isler.php?durum=tamam',
+        $ozet['olculmemis'] ? $f0($ozet['olculmemis']) . ' tanesinin metrajı ölçülmemiş' : ''],
     ['Silikon bekleyen', $f0($ozet['silikonBekleyen']), 'warning', 'bi-hourglass-split', 'isler.php?durum=kesim'],
     ['Kesim bekleyen', $f0($ozet['kesimBekleyen']), 'danger', 'bi-scissors', 'isler.php?durum=bekliyor'],
     ['Toplam metraj', $f2($ozet['metraj']) . ' m', 'info', 'bi-rulers', null],
     ['Hakkediş', $f0($ozet['hakkedis']) . ' TL', 'primary', 'bi-cash-coin', 'raporlar.php'],
 ];
-foreach ($kpi as [$ad, $deger, $renk, $ikon, $link]): ?>
+foreach ($kpi as $__k): [$ad, $deger, $renk, $ikon, $link] = $__k; $alt = $__k[5] ?? ''; ?>
     <div class="col-6 col-md-4 col-xl-2">
         <?php if ($link): ?><a href="<?= h($link) ?>" class="text-decoration-none text-reset"><?php endif; ?>
         <div class="card border-0 shadow-sm h-100"><div class="card-body py-3 text-center">
             <i class="bi <?= $ikon ?> text-<?= $renk ?> fs-4"></i>
             <div class="fs-5 fw-bold mt-1"><?= $deger ?></div>
             <div class="small text-muted"><?= $ad ?></div>
+            <?php if ($alt !== ''): ?><div class="small text-warning-emphasis" style="font-size:.72rem"><?= h($alt) ?></div><?php endif; ?>
         </div></div>
         <?php if ($link): ?></a><?php endif; ?>
     </div>
@@ -146,7 +176,7 @@ foreach ($kpi as [$ad, $deger, $renk, $ikon, $link]): ?>
             <?= $f0($ozet['silikon']) ?> / <?= $f0($ozet['toplam']) ?> iş ·
             kesim <?= $f0($ozet['kesim']) ?> · bekleyen işlerin tahmini hakkedişi
             <strong><?= $f0($ozet['tahminiKalan']) ?> TL</strong>
-            (ort. <?= $f2($ozet['ortMetraj']) ?> m × <?= $f0($ozet['birimFiyat']) ?> TL)
+            (ölçülen <?= $f0($ozet['olculen']) ?> işin ort. <?= $f2($ozet['ortMetraj']) ?> m × <?= $f0($ozet['birimFiyat']) ?> TL)
         </span>
     </div>
     <div class="progress" style="height:22px">

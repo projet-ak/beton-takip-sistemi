@@ -208,6 +208,20 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   yedek listesi prekast'ı ayrı kullanıcıyla alıyor. **CANLIDA ÇALIŞTIRILDI (2026-11-01)**: 165 iş · 14 günlük ·
   64 icmal satırı birebir kopyalandı, config'e `PREKAST_DB_NAME` eklendi, CRM'deki eski kopyalar yedek alınarak
   silindi — 4 adım da yeşil. Ekran durum bilgisi için açık kalır (yeniden kopyalamaya izin vermez).
+  **"PREKAST VERİLER GARİP" (2026-11-01, taşımadan hemen sonra; taşıma DEĞİL, eski iki sorun)** — panoda
+  114 iş · 97 tamamlanan · 144,20 m · 272.538 TL + "51 iş son çizelgede yok" bandı. (1) ⚠⚠ **Tahmini hakkediş
+  ortalaması yanlıştı**: `pk_ozet` `ortMetraj = metraj ÷ tamamlanan` hesaplıyordu; HESAPLAMA'dan gelen,
+  silikonu yapılmış ama metrajı ÖLÇÜLMEMİŞ (0) işler paydaya girip ortalamayı ~6 m'den 1,49 m'ye düşürüyordu.
+  Artık payda **metrajı ölçülmüş iş sayısı** (`olculen` = metraj>0); `olculmemis` (silikon=1 ve metraj=0)
+  "Tamamlanan" kartının altında "N tanesinin metrajı ölçülmemiş" diye yazar. (2) **Arşivdeki işlerin hakkedişi
+  görünmüyordu**: `dosyada=0` satırlar toplamlara girmez (doğru) ama bant yalnız adet söylüyordu. `pk_ozet`
+  artık `dusenTamam/dusenMetraj/dusenHakkedis` döndürür; bant hakkediş varsa SARI olur ve "X m · Y TL hakkediş
+  toplamlara girmiyor — genelde sebep kitabın iş sayfasının eski olması" der. Bu 51 iş, `dusen_koru` kutusu
+  (2026-09-17) gelmeden ÖNCE eski iş sayfalı bir kitap yüklenince arşive düşmüştü; kutu yeni düşüşü engeller ama
+  eskiden düşenleri geri ALMAZ. **"Çizelgeye geri al"** düğmesi (`index.php` `islem=arsiv_geri`,
+  `yetki_var('duzenle')`, onaylı, `audit_log` ana DB'ye) seçili çizelgenin `dosyada=0` satırlarını `1` yapar —
+  kayıtlar zaten silinmemişti. Kimlik anahtarı tekil olduğundan mükerrer oluşmaz. Test (MariaDB, pkt): bant
+  "51 tamamlanmış iş · 366,18 m · 692.080 TL", ort. 4,81 m (30 ölçülen) · geri alma → 165 iş, audit 1 satır.
   **Kaynak: sahadan GÜNLÜK gelen "İŞ TAKİP / HAKKEDİŞ ÇİZELGESİ" Excel'i.** Çizelge SABİT bir iş
   listesidir; her gün aynı satırlar gelir, yalnız **durumlar dolar**: Kesim → Silikon → Metraj →
   Hakkediş (= metraj × birim fiyat). Bu yüzden içe aktarma tam yenileme DEĞİL **BİRLEŞTİRME**
