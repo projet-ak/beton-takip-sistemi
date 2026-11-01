@@ -222,6 +222,13 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   `yetki_var('duzenle')`, onaylı, `audit_log` ana DB'ye) seçili çizelgenin `dosyada=0` satırlarını `1` yapar —
   kayıtlar zaten silinmemişti. Kimlik anahtarı tekil olduğundan mükerrer oluşmaz. Test (MariaDB, pkt): bant
   "51 tamamlanmış iş · 366,18 m · 692.080 TL", ort. 4,81 m (30 ölçülen) · geri alma → 165 iş, audit 1 satır.
+  Canlıda geri alındı: **165 iş · 148 tamamlanan (70'inin metrajı ölçülmemiş) · 499,20 m · 943.488 TL**, ort. 6,40 m.
+  (3) ⚠ **"Toplam tamamlanan" çizgisi AŞAĞI iniyordu** (73 → 26): `pk_gunluk_seri` her yüklemenin ANLIK
+  fotoğrafını (`prekast_gunluk.silikon`) çiziyordu, eski iş sayfalı kitap yüklenince fotoğraf düşüyordu.
+  Artık çizgi **bugünkü kayıtlardan birikimli** (`silikon_tarih`'e göre, `dosyada=1` — KPI ile aynı küme;
+  tarihsiz tamamlanmışlar açılış) → yalnız artar, sonu "Tamamlanan" KPI'ına eşit. Çubuklar da `dosyada=1`.
+  `prekast_gunluk` yalnız gün eksenini genişletir (geri-gitme kontrolü `cz_*` sütunlarını kullanmaya devam eder).
+  Test: 58 gün, monoton, son = KPI = 148; index + raporlar uyarısız.
   **Kaynak: sahadan GÜNLÜK gelen "İŞ TAKİP / HAKKEDİŞ ÇİZELGESİ" Excel'i.** Çizelge SABİT bir iş
   listesidir; her gün aynı satırlar gelir, yalnız **durumlar dolar**: Kesim → Silikon → Metraj →
   Hakkediş (= metraj × birim fiyat). Bu yüzden içe aktarma tam yenileme DEĞİL **BİRLEŞTİRME**

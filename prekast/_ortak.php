@@ -274,46 +274,54 @@ function pk_son_import(PDO $pdo): ?array
 }
 
 /**
- * Günlük ilerleme serisi: her rapor gününün anlık toplamı + o gün tamamlanan iş sayısı.
- * `prekast_gunluk` anlık fotoğrafları verir; `silikon_tarih` ise gün gün tamamlananları.
+ * Günlük ilerleme serisi: o gün tamamlanan/kesilen iş sayısı (`silikon_tarih`/`kesim_tarih`) +
+ * bugünkü kayıtlardan BİRİKİMLİ toplam (yalnız artar). `prekast_gunluk` yalnız gün eksenini genişletir.
  * Aradaki boş günler doldurulur ki zaman ekseni doğru olsun.
  */
 function pk_gunluk_seri(PDO $pdo, int $sonGun = 0): array
 {
     pk_semasi_kur($pdo);
-    $anlik = [];
-    foreach ($pdo->query("SELECT rapor_tarihi, MAX(satir) satir, MAX(kesim) kesim, MAX(silikon) silikon,
-                                 MAX(metraj) metraj, MAX(hakkedis) hakkedis
-                          FROM prekast_gunluk GROUP BY rapor_tarihi ORDER BY rapor_tarihi")->fetchAll() as $r)
-        $anlik[$r['rapor_tarihi']] = $r;
+    // ⚠ "Toplam tamamlanan" çizgisi BUGÜNKÜ kayıtlardan birikimli kurulur (silikon damgası gününe kadar
+    //   tamamlanan işler). Eskiden her yüklemenin anlık fotoğrafı (prekast_gunluk.silikon) çiziliyordu;
+    //   iş sayfası eski bir kitap yüklendiğinde fotoğraf 73'ten 26'ya düşüyor ve "toplam" çizgisi
+    //   aşağı iniyordu — birikimli bir toplam geriye gidemez. Panodaki KPI'larla aynı küme (dosyada=1).
+    $gunluk = [];
+    foreach ($pdo->query("SELECT rapor_tarihi FROM prekast_gunluk GROUP BY rapor_tarihi")->fetchAll(PDO::FETCH_COLUMN) as $g)
+        $gunluk[$g] = true;
     // Gün gün tamamlanan (ilk kez "Yapıldı" damgası)
     $tamam = [];
     foreach ($pdo->query("SELECT silikon_tarih t, COUNT(*) n, COALESCE(SUM(metraj),0) m, COALESCE(SUM(hakkedis),0) h
-                          FROM prekast_isler WHERE silikon_tarih IS NOT NULL
+                          FROM prekast_isler WHERE dosyada = 1 AND silikon = 1 AND silikon_tarih IS NOT NULL
                           GROUP BY silikon_tarih ORDER BY silikon_tarih")->fetchAll() as $r) $tamam[$r['t']] = $r;
     $kesimG = [];
     foreach ($pdo->query("SELECT kesim_tarih t, COUNT(*) n FROM prekast_isler
-                          WHERE kesim_tarih IS NOT NULL GROUP BY kesim_tarih")->fetchAll() as $r) $kesimG[$r['t']] = (int)$r['n'];
+                          WHERE dosyada = 1 AND kesim_tarih IS NOT NULL GROUP BY kesim_tarih")->fetchAll() as $r) $kesimG[$r['t']] = (int)$r['n'];
+    // Tarihi damgalanmamış tamamlanmış işler (çok eski kayıtlar) serinin başında açılış olarak sayılır
+    $ac = $pdo->query("SELECT COUNT(*) n, COALESCE(SUM(metraj),0) m, COALESCE(SUM(hakkedis),0) h
+                       FROM prekast_isler WHERE dosyada = 1 AND silikon = 1 AND silikon_tarih IS NULL")->fetch() ?: [];
 
-    $gunler = array_unique(array_merge(array_keys($anlik), array_keys($tamam), array_keys($kesimG)));
+    $gunler = array_unique(array_merge(array_keys($gunluk), array_keys($tamam), array_keys($kesimG)));
     if (!$gunler) return [];
     sort($gunler);
     $son = max($gunler[count($gunler) - 1], date('Y-m-d'));
 
-    $seri = []; $sonAnlik = null;
+    $seri = [];
+    $topN = (int)($ac['n'] ?? 0); $topM = (float)($ac['m'] ?? 0); $topH = (float)($ac['h'] ?? 0);
     $d = new DateTime($gunler[0]); $bit = new DateTime($son);
     while ($d <= $bit) {
         $g = $d->format('Y-m-d');
-        if (isset($anlik[$g])) $sonAnlik = $anlik[$g];
+        $topN += (int)($tamam[$g]['n'] ?? 0);
+        $topM += (float)($tamam[$g]['m'] ?? 0);
+        $topH += (float)($tamam[$g]['h'] ?? 0);
         $seri[] = [
             'gun'          => $g,
             'tamamlanan'   => (int)($tamam[$g]['n'] ?? 0),
             'kesilen'      => (int)($kesimG[$g] ?? 0),
             'gunMetraj'    => (float)($tamam[$g]['m'] ?? 0),
             'gunHakkedis'  => (float)($tamam[$g]['h'] ?? 0),
-            'toplamSilikon'=> (int)($sonAnlik['silikon'] ?? 0),
-            'toplamMetraj' => (float)($sonAnlik['metraj'] ?? 0),
-            'toplamHakkedis'=> (float)($sonAnlik['hakkedis'] ?? 0),
+            'toplamSilikon'=> $topN,
+            'toplamMetraj' => round($topM, 2),
+            'toplamHakkedis'=> round($topH, 2),
         ];
         $d->modify('+1 day');
     }
