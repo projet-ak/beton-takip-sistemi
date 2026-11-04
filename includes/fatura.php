@@ -30,11 +30,12 @@
 const FAT_TUR = [
     'beton'  => ['Beton (irsaliyeli)', 'primary',   'bi-truck',        'Beton teslimi — faturadaki irsaliyeler sistemle eşleştirilir, m³ mutabakatı yapılır.'],
     'pompa'  => ['Pompa Kirası',       'info',      'bi-cone-striped', 'Beton pompası kira/servis bedeli — irsaliyesi yoktur, m³ mutabakatına girmez.'],
+    'fark'   => ['Fiyat Farkı',        'warning',   'bi-graph-up-arrow', 'Dönem fiyat farkı (ör. "EKİM AYI FİYAT FARKI") — irsaliyesi ve m³\'ü yoktur, tutar olarak arşivlenir.'],
     'hizmet' => ['Hizmet / Gider',     'secondary', 'bi-receipt',      'Nakliye, kira, laboratuvar vb. gider faturası — irsaliye eşleştirmesi yapılmaz.'],
 ];
 
 /** İrsaliye/m³ mutabakatına GİRMEYEN fatura türleri. */
-const FAT_TUR_IRSALIYESIZ = ['pompa', 'hizmet'];
+const FAT_TUR_IRSALIYESIZ = ['pompa', 'fark', 'hizmet'];
 
 /** Geçerli tür anahtarına indirger (bilinmeyen/boş → 'beton'). */
 function fat_tur_norm(?string $t): string
@@ -69,6 +70,13 @@ function fat_tur_sez(string $metin, array $veri): array
     $pompa  = ['POMPA', 'BOOM', 'MOBIL POMPA', 'POMPAJ'];
     $hizmet = ['KIRA', 'KIRALAMA', 'NAKLIYE', 'HIZMET BEDELI', 'MOBILIZASYON', 'DEMOBILIZASYON',
                'LABORATUVAR', 'NUMUNE', 'SERVIS BEDELI', 'DANISMANLIK', 'AKARYAKIT', 'MAZOT'];
+
+    // Fiyat farkı faturası (BFA2026000001525, SAFİ BETON: "EKİM AYI FİYAT FARKI", 1 Adet) —
+    // tek kalemli, irsaliyesiz; pompa/hizmet anahtar kelimelerinden ÖNCE denenir.
+    if (preg_match('/F[I]YAT\s*FARK/u', $t)) {
+        return ['tur' => 'fark',
+                'gerekce' => 'Faturada hiç irsaliye numarası yok ve metinde "FİYAT FARKI" geçiyor.'];
+    }
 
     $bulunan = [];
     foreach ($pompa as $k) if (strpos($t, $k) !== false) $bulunan[] = $k;

@@ -1205,9 +1205,12 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
 <?php endif; ?>
 
 <div class="mb-4">
-    <button class="btn btn-<?= $baskasi ? 'warning' : 'success' ?>" <?= ($eslesenAdet || $eksikAdet) ? '' : 'disabled' ?>
-            <?= $baskasi ? 'onclick="return confirm(\'İşaretli irsaliyelerden bazıları başka bir faturaya bağlı. Bu faturaya taşınsın mı?\')"' : '' ?>>
-        <i class="bi bi-save me-1"></i><?= $mevcut ? 'Mevcut Faturayı Güncelle' : 'Faturayı Kaydet' ?> ve İrsaliyeleri Bağla
+    <?php /* ⚠ Düğme eskiden irsaliye yoksa KAPALIYDI → irsaliyesiz faturalar (fiyat farkı, pompa kirası)
+             hiç kaydedilemiyordu. Artık her zaman açık; beton türünde irsaliye yoksa onay sorulur. */ ?>
+    <button class="btn btn-<?= $baskasi ? 'warning' : 'success' ?>" id="faturaKaydetBtn"
+            data-irs="<?= (int)($eslesenAdet + $eksikAdet) ?>"
+            data-baskasi="<?= $baskasi ? 1 : 0 ?>">
+        <i class="bi bi-save me-1"></i><?= $mevcut ? 'Mevcut Faturayı Güncelle' : 'Faturayı Kaydet' ?><span id="faturaKaydetEk"><?= $turIrs ? ' ve İrsaliyeleri Bağla' : '' ?></span>
     </button>
     <a href="fatura_eslestir.php" class="btn btn-outline-secondary">Vazgeç</a>
 </div>
@@ -1237,9 +1240,25 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
         document.querySelectorAll('[data-beton-mutabakat]').forEach(function (el) {
             el.classList.toggle('opacity-50', disi);
         });
+        var ek = document.getElementById('faturaKaydetEk');
+        if (ek) ek.textContent = disi ? '' : ' ve İrsaliyeleri Bağla';
     }
     sec.addEventListener('change', uygula);
     uygula();
+})();
+(function () {
+    var btn = document.getElementById('faturaKaydetBtn');
+    if (!btn) return;
+    var irsaliyesiz = <?= json_encode(FAT_TUR_IRSALIYESIZ) ?>;
+    btn.addEventListener('click', function (ev) {
+        var sec = document.getElementById('faturaTur');
+        var disi = sec && irsaliyesiz.indexOf(sec.value) !== -1;
+        if (!disi && btn.dataset.irs === '0' &&
+            !confirm('Faturada hiç irsaliye numarası bulunamadı.\n\nBeton (irsaliyeli) türünde irsaliyesiz kaydedilsin mi?\n'
+                   + '(Fiyat farkı, pompa kirası vb. ise "Fatura Türü" alanından türünü seçin.)')) { ev.preventDefault(); return; }
+        if (btn.dataset.baskasi === '1' &&
+            !confirm('İşaretli irsaliyelerden bazıları başka bir faturaya bağlı. Bu faturaya taşınsın mı?')) { ev.preventDefault(); }
+    });
 })();
 </script>
 <?php endif; ?>
@@ -1267,7 +1286,7 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
         <span class="badge bg-primary" title="<?= $fatAra !== '' ? 'Arama sonucu' : 'Toplam fatura sayısı' ?>"><?= count($kayitli) ?> fatura
             · <?= $fmt(array_sum(array_map(fn($x)=>(float)$x['miktar_m3'], $betonFat))) ?> m³
             · <?= $fmt(array_sum(array_map(fn($x)=>(float)$x['tutar'], $kayitli))) ?> ₺
-            <?= $digerFat ? '· ' . $digerFat . ' irsaliyesiz (pompa/hizmet)' : '' ?></span>
+            <?= $digerFat ? '· ' . $digerFat . ' irsaliyesiz (pompa/fiyat farkı/hizmet)' : '' ?></span>
     </div>
     <div class="card-body p-0">
     <?php if (!$kayitli): ?>
