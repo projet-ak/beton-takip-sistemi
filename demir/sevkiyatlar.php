@@ -35,7 +35,8 @@ $liste = $pdoDemir->prepare("
            t.ad AS tedarikci_adi, p.kod AS proje_kod, ta.ad AS taseron_adi,
            COALESCE(k.top_irs,0) AS top_irs,
            COALESCE(k.top_knt,0) AS top_knt,
-           COALESCE(k.top_knt,0) - COALESCE(k.top_irs,0) AS fark,
+           k.fark_knt AS fark,
+           COALESCE(k.tartili,0) AS tartili,
            COALESCE(k.cap_sayi,0) AS cap_sayi
     FROM demir_sevkiyatlar s
     LEFT JOIN demir_tedarikciler t ON t.id = s.tedarikci_id
@@ -45,6 +46,10 @@ $liste = $pdoDemir->prepare("
         SELECT sevkiyat_id,
                SUM(irsaliye_miktar) AS top_irs,
                SUM(kantar_miktar)   AS top_knt,
+               -- Kantar farkı YALNIZ tartılan kalemlerde: tartılmamış (faturadan açılan taslak vb.)
+               -- sevkiyat −irsaliyenin tamamı kadar fark üretip toplamı bozuyordu. NULL = hiç tartılmamış.
+               SUM(CASE WHEN kantar_miktar IS NOT NULL THEN kantar_miktar - irsaliye_miktar END) AS fark_knt,
+               COUNT(kantar_miktar) AS tartili,
                COUNT(*)             AS cap_sayi
         FROM demir_sevkiyat_kalemleri GROUP BY sevkiyat_id
     ) k ON k.sevkiyat_id = s.id
@@ -55,7 +60,7 @@ $liste->execute($params);
 $liste = $liste->fetchAll();
 
 $topIrs  = array_sum(array_column($liste, 'top_irs'));
-$topFark = array_sum(array_column($liste, 'fark'));
+$topFark = array_sum(array_map('floatval', array_column($liste, 'fark')));   // tartılmamışlar (NULL) farka girmez
 
 $projeler     = $pdoDemir->query("SELECT id,kod FROM demir_projeler WHERE aktif=1 ORDER BY kod")->fetchAll();
 $tedarikciler = $pdoDemir->query("SELECT id,ad FROM demir_tedarikciler WHERE aktif=1 ORDER BY ad")->fetchAll();
@@ -76,7 +81,7 @@ if (($_GET['export'] ?? '') === 'xlsx') {
             ['v'=>$r['kantar_fis_no'] ?: '','t'=>'text'],
             ['v'=>(float)$r['top_irs'],'t'=>'number'],
             ['v'=>(float)$r['top_knt'],'t'=>'number'],
-            ['v'=>(float)$r['fark'],'t'=>'number'],
+            $r['fark'] === null ? ['v'=>'','t'=>'text'] : ['v'=>(float)$r['fark'],'t'=>'number'],
         ]);
     }
     $xl->row([['v'=>'TOPLAM','t'=>'text'],['v'=>'','t'=>'text'],['v'=>'','t'=>'text'],['v'=>'','t'=>'text'],['v'=>'','t'=>'text'],['v'=>'','t'=>'text'],['v'=>'','t'=>'text'],['v'=>$topIrs,'t'=>'number'],['v'=>array_sum(array_column($liste,'top_knt')),'t'=>'number'],['v'=>$topFark,'t'=>'number']]);
@@ -129,7 +134,7 @@ require_once __DIR__ . '/../includes/header.php';
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($liste as $r): $fark=(float)$r['fark']; ?>
+                    <?php foreach ($liste as $r): $farkYok = $r['fark'] === null; $fark=(float)$r['fark']; ?>
                     <tr>
                         <td class="text-muted small"><?= (int)$r['id'] ?></td>
                         <td class="fw-semibold font-monospace"><?= h($r['irsaliye_no']) ?></td>
@@ -140,7 +145,8 @@ require_once __DIR__ . '/../includes/header.php';
                         <td class="text-end"><?= number_format($r['top_irs'],3,',','.') ?></td>
                         <td class="text-end"><?= $r['top_knt']>0 ? number_format($r['top_knt'],3,',','.') : '<span class="text-muted">—</span>' ?></td>
                         <td class="text-end fw-semibold <?= abs($fark)<0.0005?'text-muted':($fark<0?'text-danger':'text-success') ?>">
-                            <?= abs($fark)<0.0005 ? '0' : (($fark>0?'+':'').number_format($fark,3,',','.')) ?>
+                            <?php if ($farkYok): ?><span class="text-muted fw-normal small" title="Kantarda tartılmamış — fark hesaplanmaz">tartılmadı</span>
+                            <?php else: ?><?= abs($fark)<0.0005 ? '0' : (($fark>0?'+':'').number_format($fark,3,',','.')) ?><?php endif; ?>
                         </td>
                         <td class="text-end text-nowrap">
                             <?php if (has_role('admin','teknik_ofis_admin','saha_sefi','depo')): ?>

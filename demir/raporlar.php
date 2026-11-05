@@ -32,7 +32,8 @@ foreach ($aylikRaw->fetchAll() as $r) { $aylik[(int)$r['ay']] = ['adet'=>(int)$r
 
 // ── Çap özeti ─────────────────────────────────────────────────────────────────
 $capOzet = $pdoDemir->prepare("
-    SELECT c.ad, c.tip, COALESCE(SUM(sk.irsaliye_miktar),0) irs, COALESCE(SUM(sk.kantar_miktar),0) knt
+    SELECT c.ad, c.tip, COALESCE(SUM(sk.irsaliye_miktar),0) irs, COALESCE(SUM(sk.kantar_miktar),0) knt,
+           COALESCE(SUM(CASE WHEN sk.kantar_miktar IS NOT NULL THEN sk.kantar_miktar - sk.irsaliye_miktar END),0) kfark
     FROM demir_caplar c
     JOIN demir_sevkiyat_kalemleri sk ON sk.cap_id=c.id
     JOIN demir_sevkiyatlar s ON s.id=sk.sevkiyat_id
@@ -43,7 +44,8 @@ $capRows = $capOzet->fetchAll();
 // ── Tedarikçi özeti ───────────────────────────────────────────────────────────
 $tedOzet = $pdoDemir->prepare("
     SELECT COALESCE(t.ad,'(tanımsız)') firma, COUNT(DISTINCT s.id) adet,
-           COALESCE(SUM(sk.irsaliye_miktar),0) irs, COALESCE(SUM(sk.kantar_miktar),0) knt
+           COALESCE(SUM(sk.irsaliye_miktar),0) irs, COALESCE(SUM(sk.kantar_miktar),0) knt,
+           COALESCE(SUM(CASE WHEN sk.kantar_miktar IS NOT NULL THEN sk.kantar_miktar - sk.irsaliye_miktar END),0) kfark
     FROM demir_sevkiyatlar s JOIN demir_sevkiyat_kalemleri sk ON sk.sevkiyat_id=s.id
     LEFT JOIN demir_tedarikciler t ON t.id=s.tedarikci_id
     $wSQL GROUP BY s.tedarikci_id ORDER BY irs DESC");
@@ -92,7 +94,7 @@ $detayRows = $detay->fetchAll();
 
 $totTon  = array_sum(array_column($capRows,'irs'));
 $totKnt  = array_sum(array_column($capRows,'knt'));
-$totFark = $totKnt - $totTon;
+$totFark = array_sum(array_column($capRows,'kfark'));   // kantar farkı yalnız tartılan kalemlerde
 $totSevk = count($detayRows);
 
 // ── Firma bazlı teslim matrisi (tüm dönem; tutanak verisi) ────────────────────
@@ -151,7 +153,7 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
             <table class="table table-sm table-hover align-middle mb-0">
                 <thead class="table-light"><tr><th>Çap</th><th class="text-end">İrsaliye</th><th class="text-end">Kantar</th><th class="text-end">Fark</th></tr></thead>
                 <tbody>
-                <?php foreach($capRows as $r): $f=(float)$r['knt']-(float)$r['irs']; ?>
+                <?php foreach($capRows as $r): $f=(float)$r['kfark']; ?>
                     <tr><td class="fw-semibold"><?= h($r['ad']) ?></td><td class="text-end"><?= $fmt($r['irs']) ?></td><td class="text-end"><?= $fmt($r['knt']) ?></td><td class="text-end <?= abs($f)<0.0005?'text-muted':($f<0?'text-danger':'text-success') ?>"><?= abs($f)<0.0005?'0':(($f>0?'+':'').$fmt($f)) ?></td></tr>
                 <?php endforeach; ?>
                 <?php if(!$capRows): ?><tr><td colspan="4" class="text-center text-muted py-4">Veri yok.</td></tr><?php endif; ?>
@@ -164,7 +166,7 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
 <div class="row g-3">
     <div class="col-lg-6"><div class="card"><div class="card-header bg-white fw-semibold">Tedarikçi Özeti</div><div class="card-body p-0"><div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0"><thead class="table-light"><tr><th>Tedarikçi</th><th class="text-center">Sevkiyat</th><th class="text-end">İrsaliye (t)</th><th class="text-end">Fark</th></tr></thead><tbody>
-        <?php foreach($tedRows as $r): $f=(float)$r['knt']-(float)$r['irs']; ?>
+        <?php foreach($tedRows as $r): $f=(float)$r['kfark']; ?>
             <tr><td class="fw-semibold"><?= h($r['firma']) ?></td><td class="text-center"><?= (int)$r['adet'] ?></td><td class="text-end"><?= $fmt($r['irs']) ?></td><td class="text-end <?= abs($f)<0.0005?'text-muted':($f<0?'text-danger':'text-success') ?>"><?= abs($f)<0.0005?'0':(($f>0?'+':'').$fmt($f)) ?></td></tr>
         <?php endforeach; ?>
         <?php if(!$tedRows): ?><tr><td colspan="4" class="text-center text-muted py-4">Veri yok.</td></tr><?php endif; ?>
@@ -240,8 +242,8 @@ const R = {
     donem: <?= json_encode($donem, JSON_UNESCAPED_UNICODE) ?>,
     kpi: { sevkiyat: <?= $totSevk ?>, ton: <?= json_encode($totTon) ?>, kantar: <?= json_encode($totKnt) ?>, fark: <?= json_encode($totFark) ?> },
     aylik: <?= json_encode(array_map(fn($i)=>['ay'=>$ayAdlari[$i],'adet'=>$aylik[$i]['adet'],'ton'=>$aylik[$i]['ton']], range(1,12)), JSON_UNESCAPED_UNICODE) ?>,
-    cap: <?= json_encode(array_map(fn($r)=>['ad'=>$r['ad'],'tip'=>$r['tip'],'irs'=>(float)$r['irs'],'knt'=>(float)$r['knt']], $capRows), JSON_UNESCAPED_UNICODE) ?>,
-    ted: <?= json_encode(array_map(fn($r)=>['firma'=>$r['firma'],'adet'=>(int)$r['adet'],'irs'=>(float)$r['irs'],'knt'=>(float)$r['knt']], $tedRows), JSON_UNESCAPED_UNICODE) ?>,
+    cap: <?= json_encode(array_map(fn($r)=>['ad'=>$r['ad'],'tip'=>$r['tip'],'irs'=>(float)$r['irs'],'knt'=>(float)$r['knt'],'fark'=>(float)$r['kfark']], $capRows), JSON_UNESCAPED_UNICODE) ?>,
+    ted: <?= json_encode(array_map(fn($r)=>['firma'=>$r['firma'],'adet'=>(int)$r['adet'],'irs'=>(float)$r['irs'],'knt'=>(float)$r['knt'],'fark'=>(float)$r['kfark']], $tedRows), JSON_UNESCAPED_UNICODE) ?>,
     proje: <?= json_encode(array_map(fn($r)=>['kod'=>$r['kod'],'adet'=>(int)$r['adet'],'ton'=>(float)$r['ton']], $prjRows), JSON_UNESCAPED_UNICODE) ?>,
     projeCaps: <?= json_encode($prjCapCaps, JSON_UNESCAPED_UNICODE) ?>,
     projeCap: <?= json_encode(array_map(fn($pk,$caps)=>['proje'=>$pk,'caps'=>$caps,'top'=>round($prjCapTop[$pk]??0,3)], array_keys($prjCapMatris), array_values($prjCapMatris)), JSON_UNESCAPED_UNICODE) ?>,
@@ -296,7 +298,7 @@ async function exportExcel(){
         let ws=wb.addWorksheet('Özet'); title(ws,'DEMİR RAPORU — ÖZET');
         ws.addRow(['Sevkiyat', R.kpi.sevkiyat]); ws.addRow(['Toplam Gelen (t)', R.kpi.ton]); ws.addRow(['Toplam Kantar (t)', R.kpi.kantar]); ws.addRow(['Kantar Farkı (t)', R.kpi.fark]); ws.addRow([]);
         let h=ws.addRow(['Çap','Tür','İrsaliye (t)','Kantar (t)','Fark (t)']); styleHdr(h);
-        R.cap.forEach(c=>ws.addRow([c.ad,c.tip,c.irs,c.knt,c.knt-c.irs]));
+        R.cap.forEach(c=>ws.addRow([c.ad,c.tip,c.irs,c.knt,c.fark]));
         ws.columns.forEach(col=>col.width=16); ws.getColumn(1).width=22;
 
         // Aylık
@@ -307,7 +309,7 @@ async function exportExcel(){
         // Tedarikçi
         ws=wb.addWorksheet('Tedarikçi'); title(ws,'TEDARİKÇİ ÖZETİ');
         h=ws.addRow(['Tedarikçi','Sevkiyat','İrsaliye (t)','Kantar (t)','Fark (t)']); styleHdr(h);
-        R.ted.forEach(t=>ws.addRow([t.firma,t.adet,t.irs,t.knt,t.knt-t.irs])); ws.columns.forEach(c=>c.width=18); ws.getColumn(1).width=24;
+        R.ted.forEach(t=>ws.addRow([t.firma,t.adet,t.irs,t.knt,t.fark])); ws.columns.forEach(c=>c.width=18); ws.getColumn(1).width=24;
 
         // Proje (kırılım + çap matrisi)
         ws=wb.addWorksheet('Proje'); title(ws,'PROJE KIRILIMI');
@@ -347,8 +349,8 @@ function exportPDF(mode){
     const f=n=>Number(n).toLocaleString('tr-TR',{minimumFractionDigits:3,maximumFractionDigits:3});
     const tbl=ERN_RAPOR.tbl;
     let html='<div class="kpis"><div><b>'+R.kpi.sevkiyat+'</b>Sevkiyat</div><div><b>'+f(R.kpi.ton)+' t</b>Toplam Gelen</div><div><b>'+f(R.kpi.kantar)+' t</b>Kantar</div><div><b>'+(R.kpi.fark>0?'+':'')+f(R.kpi.fark)+' t</b>Fark</div></div>';
-    html+='<h2>Çap Bazında</h2>'+tbl(['Çap','İrsaliye','Kantar','Fark'], R.cap.map(c=>[c.ad,f(c.irs),f(c.knt),(c.knt-c.irs>0?'+':'')+f(c.knt-c.irs)]));
-    html+='<h2>Tedarikçi Özeti</h2>'+tbl(['Tedarikçi','Sevkiyat','İrsaliye','Fark'], R.ted.map(t=>[t.firma,t.adet,f(t.irs),(t.knt-t.irs>0?'+':'')+f(t.knt-t.irs)]));
+    html+='<h2>Çap Bazında</h2>'+tbl(['Çap','İrsaliye','Kantar','Fark'], R.cap.map(c=>[c.ad,f(c.irs),f(c.knt),(c.fark>0?'+':'')+f(c.fark)]));
+    html+='<h2>Tedarikçi Özeti</h2>'+tbl(['Tedarikçi','Sevkiyat','İrsaliye','Fark'], R.ted.map(t=>[t.firma,t.adet,f(t.irs),(t.fark>0?'+':'')+f(t.fark)]));
     html+='<h2>Proje Özeti</h2>'+tbl(['Proje','Sevkiyat','Gelen'], R.proje.map(p=>[p.kod,p.adet,f(p.ton)]));
     if(R.firmaTeslim.length) html+='<h2>Firma Bazlı Teslim (Proje × Çap — net)</h2>'+tbl(['Firma','Proje','Çap','Ton'], R.firmaTeslim.map(x=>[x.firma,x.proje,x.cap,f(x.ton)]));
     ERN_RAPOR.popup({title:'DEMİR RAPORU', meta:'Dönem: '+R.donem, body:html, mode:mode, filename:'ERN_Demir_Rapor'});

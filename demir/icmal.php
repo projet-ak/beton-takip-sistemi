@@ -93,7 +93,7 @@ if (isset($_GET['cap_detay']) && ctype_digit($_GET['cap_detay'])) {
                     <td><?= h($s['tedarikci'] ?: '—') ?></td>
                     <td><?= $s['proje'] ? '<span class="badge bg-secondary">'.h($s['proje']).'</span>' : '—' ?></td>
                     <td class="text-end"><?= $fmt($s['irs']) ?></td>
-                    <td class="text-end"><?= $fmt($s['knt']) ?></td>
+                    <td class="text-end"><?= $s['knt'] !== null ? $fmt($s['knt']) : '<span class="text-muted small" title="Kantarda tartılmamış">tartılmadı</span>' ?></td>
                     <td class="text-end"><a href="sevkiyat_form.php?id=<?= (int)$s['id'] ?>" class="btn btn-xs btn-outline-primary" title="İrsaliyeye git"><i class="bi bi-box-arrow-up-right"></i></a></td>
                 </tr>
             <?php endforeach; ?>
@@ -153,12 +153,15 @@ if (isset($_GET['cap_detay']) && ctype_digit($_GET['cap_detay'])) {
 $capIcmal = $pdoDemir->prepare("
     SELECT c.id, c.ad, c.tip,
            COALESCE(agg.irs,0) AS irs,
-           COALESCE(agg.knt,0) AS knt
+           COALESCE(agg.knt,0) AS knt,
+           COALESCE(agg.kfark,0) AS kfark
     FROM demir_caplar c
     LEFT JOIN (
         SELECT sk.cap_id,
                SUM(sk.irsaliye_miktar) AS irs,
-               SUM(sk.kantar_miktar)   AS knt
+               SUM(sk.kantar_miktar)   AS knt,
+               -- Kantar farkı yalnız TARTILAN kalemlerde (tartılmamış taslak −irsaliye kadar fark üretmesin)
+               SUM(CASE WHEN sk.kantar_miktar IS NOT NULL THEN sk.kantar_miktar - sk.irsaliye_miktar END) AS kfark
         FROM demir_sevkiyat_kalemleri sk
         JOIN demir_sevkiyatlar s ON s.id = sk.sevkiyat_id
         $whereSQL
@@ -173,7 +176,8 @@ $capRows = $capIcmal->fetchAll();
 $tedSQL = "
     SELECT t.ad AS firma,
            COALESCE(SUM(sk.irsaliye_miktar),0) AS irs,
-           COALESCE(SUM(sk.kantar_miktar),0)   AS knt
+           COALESCE(SUM(sk.kantar_miktar),0)   AS knt,
+           COALESCE(SUM(CASE WHEN sk.kantar_miktar IS NOT NULL THEN sk.kantar_miktar - sk.irsaliye_miktar END),0) AS kfark
     FROM demir_sevkiyatlar s
     JOIN demir_sevkiyat_kalemleri sk ON sk.sevkiyat_id = s.id
     LEFT JOIN demir_tedarikciler t ON t.id = s.tedarikci_id
@@ -185,7 +189,7 @@ $tedRows = $tedIcmal->fetchAll();
 
 $totIrs = array_sum(array_column($capRows,'irs'));
 $totKnt = array_sum(array_column($capRows,'knt'));
-$totFark= $totKnt - $totIrs;
+$totFark= array_sum(array_column($capRows,'kfark'));   // yalnız tartılan kalemler
 
 $projeler = $pdoDemir->query("SELECT id,kod,aciklama FROM demir_projeler WHERE aktif=1 ORDER BY kod")->fetchAll();
 
@@ -199,7 +203,7 @@ if (($_GET['export'] ?? '') === 'xlsx') {
         $xl->row([
             ['v'=>$r['ad'],'t'=>'text'], ['v'=>$r['tip'],'t'=>'text'],
             ['v'=>(float)$r['irs'],'t'=>'number'], ['v'=>(float)$r['knt'],'t'=>'number'],
-            ['v'=>(float)$r['knt']-(float)$r['irs'],'t'=>'number'],
+            ['v'=>(float)$r['kfark'],'t'=>'number'],
         ]);
     }
     $xl->row([['v'=>'TOPLAM','t'=>'text'],['v'=>'','t'=>'text'],['v'=>$totIrs,'t'=>'number'],['v'=>$totKnt,'t'=>'number'],['v'=>$totFark,'t'=>'number']]);
@@ -210,7 +214,7 @@ if (($_GET['export'] ?? '') === 'xlsx') {
         $xl->row([
             ['v'=>$r['firma'] ?: '(tanımsız)','t'=>'text'], ['v'=>'','t'=>'text'],
             ['v'=>(float)$r['irs'],'t'=>'number'], ['v'=>(float)$r['knt'],'t'=>'number'],
-            ['v'=>(float)$r['knt']-(float)$r['irs'],'t'=>'number'],
+            ['v'=>(float)$r['kfark'],'t'=>'number'],
         ]);
     }
     $xl->download('demir_icmal_' . date('Ymd_His') . '.xlsx');
@@ -254,7 +258,7 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
                 <table class="table table-sm table-hover align-middle mb-0">
                     <thead class="table-light"><tr><th>Çap</th><th>Tür</th><th class="text-end">İrsaliye (t)</th><th class="text-end">Kantar (t)</th><th class="text-end">Fark</th></tr></thead>
                     <tbody>
-                    <?php foreach ($capRows as $r): $f=(float)$r['knt']-(float)$r['irs']; if($r['irs']==0 && $r['knt']==0) continue; ?>
+                    <?php foreach ($capRows as $r): $f=(float)$r['kfark']; if($r['irs']==0 && $r['knt']==0) continue; ?>
                         <tr>
                             <td><a href="#" class="fw-semibold text-decoration-none cap-detay" data-cap="<?= (int)$r['id'] ?>" data-ad="<?= h($r['ad']) ?>"><?= h($r['ad']) ?> <i class="bi bi-search small opacity-50"></i></a></td>
                             <td><span class="badge bg-light text-muted border"><?= h($r['tip']) ?></span></td>
@@ -279,7 +283,7 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
                 <table class="table table-sm table-hover align-middle mb-0">
                     <thead class="table-light"><tr><th>Tedarikçi</th><th class="text-end">İrsaliye (t)</th><th class="text-end">Kantar (t)</th><th class="text-end">Fark</th></tr></thead>
                     <tbody>
-                    <?php foreach ($tedRows as $r): $f=(float)$r['knt']-(float)$r['irs']; ?>
+                    <?php foreach ($tedRows as $r): $f=(float)$r['kfark']; ?>
                         <tr>
                             <td class="fw-semibold"><?= h($r['firma'] ?: '—') ?></td>
                             <td class="text-end"><?= $fmt($r['irs']) ?></td>

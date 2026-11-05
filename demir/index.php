@@ -25,7 +25,9 @@ try {
     $sevkSayi  = (int)$q("SELECT COUNT(*) FROM demir_sevkiyatlar")->fetchColumn();
     $gelenTon  = (float)$q("SELECT COALESCE(SUM(irsaliye_miktar),0) FROM demir_sevkiyat_kalemleri")->fetchColumn();
     $kantarTon = (float)$q("SELECT COALESCE(SUM(kantar_miktar),0) FROM demir_sevkiyat_kalemleri")->fetchColumn();
-    $fark      = $kantarTon - $gelenTon;
+    // Kantar farkı yalnız TARTILAN kalemlerde — tartılmamış sevkiyat (faturadan açılan taslak vb.)
+    // irsaliyesinin tamamı kadar eksi fark üretmesin.
+    $fark      = (float)$q("SELECT COALESCE(SUM(kantar_miktar - irsaliye_miktar),0) FROM demir_sevkiyat_kalemleri WHERE kantar_miktar IS NOT NULL")->fetchColumn();
 
     // Sipariş bakiye (ifs_siparis_no eşleşmesi)
     $orderTon  = (float)$tryScalar("SELECT COALESCE(SUM(miktar_ton),0) FROM demir_siparis_kalemleri");

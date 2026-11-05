@@ -20,9 +20,9 @@ if ($tBit)   { $where[] = 's.irsaliye_tarih <= ?'; $params[] = $tBit; }
 $whereSQL = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
 
 $cap = $pdoDemir->prepare("
-    SELECT c.ad, c.tip, COALESCE(agg.irs,0) AS irs, COALESCE(agg.knt,0) AS knt
+    SELECT c.ad, c.tip, COALESCE(agg.irs,0) AS irs, COALESCE(agg.knt,0) AS knt, COALESCE(agg.kfark,0) AS kfark
     FROM demir_caplar c
-    LEFT JOIN (SELECT sk.cap_id, SUM(sk.irsaliye_miktar) irs, SUM(sk.kantar_miktar) knt
+    LEFT JOIN (SELECT sk.cap_id, SUM(sk.irsaliye_miktar) irs, SUM(sk.kantar_miktar) knt, SUM(CASE WHEN sk.kantar_miktar IS NOT NULL THEN sk.kantar_miktar - sk.irsaliye_miktar END) kfark
                FROM demir_sevkiyat_kalemleri sk JOIN demir_sevkiyatlar s ON s.id=sk.sevkiyat_id $whereSQL
                GROUP BY sk.cap_id) agg ON agg.cap_id=c.id
     GROUP BY c.id ORDER BY c.sira, c.ad");
@@ -30,7 +30,7 @@ $cap->execute($params);
 $capRows = array_filter($cap->fetchAll(), fn($r)=>$r['irs']>0 || $r['knt']>0);
 
 $ted = $pdoDemir->prepare("
-    SELECT t.ad AS firma, COALESCE(SUM(sk.irsaliye_miktar),0) irs, COALESCE(SUM(sk.kantar_miktar),0) knt
+    SELECT t.ad AS firma, COALESCE(SUM(sk.irsaliye_miktar),0) irs, COALESCE(SUM(sk.kantar_miktar),0) knt, COALESCE(SUM(CASE WHEN sk.kantar_miktar IS NOT NULL THEN sk.kantar_miktar - sk.irsaliye_miktar END),0) kfark
     FROM demir_sevkiyatlar s JOIN demir_sevkiyat_kalemleri sk ON sk.sevkiyat_id=s.id
     LEFT JOIN demir_tedarikciler t ON t.id=s.tedarikci_id $whereSQL
     GROUP BY s.tedarikci_id ORDER BY irs DESC");
@@ -39,7 +39,7 @@ $tedRows = $ted->fetchAll();
 
 $totIrs = array_sum(array_column($capRows,'irs'));
 $totKnt = array_sum(array_column($capRows,'knt'));
-$totFark = $totKnt - $totIrs;
+$totFark = array_sum(array_column($capRows,'kfark'));   // yalnız tartılan kalemler
 
 $projeAd = 'Tümü';
 if ($fProje) { $p = $pdoDemir->prepare("SELECT kod,aciklama FROM demir_projeler WHERE id=?"); $p->execute([$fProje]); if($pr=$p->fetch()) $projeAd = $pr['kod'].' — '.$pr['aciklama']; }
@@ -82,7 +82,7 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
     <div class="col">
       <h3>Çap Bazında</h3>
       <table><thead><tr><th>Çap</th><th class="r">İrsaliye</th><th class="r">Kantar</th><th class="r">Fark</th></tr></thead><tbody>
-        <?php foreach($capRows as $r): $f=(float)$r['knt']-(float)$r['irs']; ?>
+        <?php foreach($capRows as $r): $f=(float)$r['kfark']; ?>
         <tr><td><?= h($r['ad']) ?></td><td class="r"><?= $fmt($r['irs']) ?></td><td class="r"><?= $fmt($r['knt']) ?></td><td class="r"><?= ($f>0?'+':'').$fmt($f) ?></td></tr>
         <?php endforeach; ?>
       </tbody><tfoot><tr><td>TOPLAM</td><td class="r"><?= $fmt($totIrs) ?></td><td class="r"><?= $fmt($totKnt) ?></td><td class="r"><?= ($totFark>0?'+':'').$fmt($totFark) ?></td></tr></tfoot></table>
@@ -90,7 +90,7 @@ $fmt = fn($n) => number_format((float)$n, 3, ',', '.');
     <div class="col">
       <h3>Tedarikçi Bazında</h3>
       <table><thead><tr><th>Tedarikçi</th><th class="r">İrsaliye</th><th class="r">Kantar</th><th class="r">Fark</th></tr></thead><tbody>
-        <?php foreach($tedRows as $r): $f=(float)$r['knt']-(float)$r['irs']; ?>
+        <?php foreach($tedRows as $r): $f=(float)$r['kfark']; ?>
         <tr><td><?= h($r['firma'] ?: '(tanımsız)') ?></td><td class="r"><?= $fmt($r['irs']) ?></td><td class="r"><?= $fmt($r['knt']) ?></td><td class="r"><?= ($f>0?'+':'').$fmt($f) ?></td></tr>
         <?php endforeach; ?>
       </tbody></table>
