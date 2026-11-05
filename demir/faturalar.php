@@ -625,13 +625,28 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
     foreach ((array)@glob($DFAT_BEKLEME . '/dfk_*') as $eskiF) {          // 2 günden eski artıklar temizlenir
         if (@filemtime($eskiF) < time() - 2*86400) @unlink($eskiF);
     }
-    $noIdx = []; $ettnIdx = [];
+    // ⚠ Sahada PDF'ler çoğu zaman İRSALİYE numarasıyla adlandırılıyor (CKI2026000005315.pdf — fatura
+    //    CKE…'dir). Eskiden dosya adındaki numara yalnız fatura no'larında arandığından bu dosyalar
+    //    kaydedildikten sonra da her kontrolde "işlenmemiş" çıkıyordu. Artık faturaların irsaliye
+    //    listesinde de aranır ve bulunamazsa PDF İÇERİĞİ (fatura no / ETTN) ayrıca denenir.
+    $noIdx = []; $ettnIdx = []; $irsIdx = [];
     foreach ($pdoDemir->query("SELECT f.id, f.fatura_no, f.ettn, f.tarih, f.tedarikci, f.irsaliye_liste,
                                       (SELECT COUNT(*) FROM demir_sevkiyatlar s WHERE s.fatura_id = f.id) bagli
                                FROM demir_faturalar f") as $fr) {
         $k = fat_irs_norm((string)$fr['fatura_no']); if ($k !== '') $noIdx[$k] = $fr;
         $e0 = strtoupper(trim((string)$fr['ettn'])); if ($e0 !== '') $ettnIdx[$e0] = $fr;
+        foreach ((array)(json_decode((string)$fr['irsaliye_liste'], true) ?: []) as $irsN) {
+            $k = fat_irs_norm((string)$irsN); if ($k !== '' && !isset($irsIdx[$k])) $irsIdx[$k] = $fr;
+        }
     }
+    // Faturaya bağlı sevkiyatların irsaliye no'ları da (liste boş kaydedilmiş eski faturalar için)
+    try {
+        foreach ($pdoDemir->query("SELECT s.irsaliye_no, s.fatura_id FROM demir_sevkiyatlar s WHERE s.fatura_id IS NOT NULL") as $sv) {
+            $k = fat_irs_norm((string)$sv['irsaliye_no']);
+            if ($k === '' || isset($irsIdx[$k])) continue;
+            foreach ($noIdx as $fr0) if ((int)$fr0['id'] === (int)$sv['fatura_id']) { $irsIdx[$k] = $fr0; break; }
+        }
+    } catch (Throwable $eS) {}
     $kSonuc = [];
     foreach ($_FILES['dosyalar']['tmp_name'] as $i => $tmp) {
         $ad = (string)$_FILES['dosyalar']['name'][$i];
@@ -653,8 +668,20 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
         }
         $fr = $no !== null ? ($noIdx[fat_irs_norm($no)] ?? null) : null;
         if (!$fr && $ettn !== null) $fr = $ettnIdx[$ettn] ?? null;
+        // Dosya adındaki numara bir İRSALİYE no'su olabilir → o irsaliyeyi taşıyan fatura
+        if (!$fr && $no !== null && ($fr = $irsIdx[fat_irs_norm($no)] ?? null)) $kaynak = 'dosya adı (irsaliye no)';
+        // Hâlâ yoksa ve numara dosya adından geldiyse PDF içeriğine de bak (fatura no / ETTN)
+        if (!$fr && $kaynak === 'dosya adı' && $mime === 'application/pdf') {
+            $t0 = fat_pdftotext($tmp);
+            if ($t0 !== null && $t0 !== '') {
+                $v0 = dfat_cikar($t0);
+                if ($v0['fatura_no'] && ($fr = $noIdx[fat_irs_norm($v0['fatura_no'])] ?? null)) $kaynak = 'PDF içeriği';
+                elseif ($v0['ettn'] && ($fr = $ettnIdx[$v0['ettn']] ?? null)) $kaynak = 'PDF içeriği (ETTN)';
+                if (!$fr && $v0['fatura_no']) { $no = $v0['fatura_no']; $kaynak = 'PDF içeriği'; }
+            }
+        }
         if ($fr) {
-            $kSonuc[] = ['ad'=>$ad, 'no'=>$no ?: $fr['fatura_no'], 'durum'=>'islenmis', 'kaynak'=>$kaynak, 'id'=>(int)$fr['id'],
+            $kSonuc[] = ['ad'=>$ad, 'no'=>$fr['fatura_no'] ?: $no, 'durum'=>'islenmis', 'kaynak'=>$kaynak, 'id'=>(int)$fr['id'],
                          'tarih'=>$fr['tarih'], 'ted'=>$fr['tedarikci'], 'bagli'=>(int)$fr['bagli'],
                          'irs'=>count(json_decode((string)$fr['irsaliye_liste'], true) ?: [])];
             continue;
@@ -889,7 +916,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <div class="small text-muted mt-1" id="kntDurum"></div>
             </div>
         </form>
-        <div class="form-text">Numara önce <strong>dosya adından</strong> okunur (e-fatura dosyaları numarayla adlandırılır: <code>KRD2026000019728.pdf</code>), bulunamazsa PDF içeriğinden çıkarılır; kayıtlı faturalarla <strong>no VEYA ETTN</strong> üzerinden normalize karşılaştırılır. Bu adımda AI kullanılmaz.</div>
+        <div class="form-text">Numara önce <strong>dosya adından</strong> okunur (e-fatura dosyaları numarayla adlandırılır: <code>KRD2026000019728.pdf</code>), bulunamazsa PDF içeriğinden çıkarılır; kayıtlı faturalarla <strong>no VEYA ETTN</strong> üzerinden normalize karşılaştırılır. Dosya <strong>irsaliye numarasıyla</strong> adlandırılmışsa (<code>CKI2026000005315.pdf</code>) o irsaliyeyi taşıyan fatura bulunur. Bu adımda AI kullanılmaz.</div>
     </div>
 </div>
 
