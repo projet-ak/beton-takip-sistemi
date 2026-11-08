@@ -1167,6 +1167,21 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   ("… — <birim> (transferle geldi)"), `zimmet` hareketi her yeni kayıtta **Zimmet Tarihi** sütunuyla
   (eskiden hepsi aktarım günüydü). Mevcut (eşleşen) kayıtta zincir YAZILMAZ — koruma kutuları zimmet ve
   lokasyonu kilitlediği için; o kayıtlar cihaz kartındaki sevk işlemiyle taşınır.
+  ⭐ **2026-11-08'den beri SEVK LİSTESİ KAYITLI CİHAZI DA TAŞIR** (kullanıcı: Batıyakası → Kulp I001 kargo
+  listesi, 31 cihaz, HASAN BAYHAN'a zimmet) — yeni seçenek **`transfer_uygula`** ("Bu bir sevk listesi — sistemde
+  kayıtlı cihazları da hedef projeye taşı"; yalnız Transfer Geldiği Birim sütunu eşlenmişse görünür, dosyada
+  **Transfer Gönderen veya Transfer Teslim Tarihi** sütunu varsa VARSAYILAN AÇIK — Zekeriyaköy gibi envanter
+  dosyalarının tarihçe sütunları kendiliğinden taşıma yapmasın). Satırda transfer_birim + transfer_tarihi dolu,
+  hedef lokasyon BULUNMUŞ ve cihaz **başka lokasyondaysa**: eski zimmet `iade` (sevk günü) → `cim_transfer_gecmisi`
+  (sevk + teslim) → yeni `zimmet`; lokasyon/durum/zimmet künyesi dosyadan YAZILIR (koruma kutuları bu alanları
+  kilitlemez — sevk satırı bir karardır; diğer alanlar korumaya uyar). Durum `transfer` (yolda) ise zimmet
+  temizlenir. **Cihaz zaten hedefteyse dokunulmaz** → tekrar yükleme idempotent. Rapor: "Kayıtlı olup hedef
+  projeye taşınan cihazlar" tablosu (nereden → nereye, eski → yeni zimmet). Test (scratchpad `kulp2_test.php`,
+  21 sağlama + MariaDB sayfa render): boş sistemde 31 yeni, kategoriler 15 kamera / 10 ağ (Reyee RG-EST310
+  kablosuz köprü) / 3 switch / 3 aksesuar (PoE enjektör), giris→sevk→teslim→zimmet · 4'ü Batıyakası'nda kayıtlı
+  (biri OSMAN UĞUR'da, biri serviste) → 26 yeni + 4 taşınan, zimmet dönemleri OSMAN kapalı / HASAN açık, zaten
+  I001'deki cihaza hareket yazılmadı · kutu kapalıyken eski davranış · 2. yükleme 0 yeni / 0 taşınan / hareket aynı.
+  Kaynak listede **ZAT80BC00789C** diğer Reyee serilerinden farklı (sonu harf) — etiketten kontrol edilmeli.
   Test (scratchpad `u051_test.php`, gerçek `cim_import` + MySQL DDL'yi SQLite'a çeviren `sqlite_pdo.php`):
   14 sütunun hepsi eşleşti · 50 yeni · kişi ve M023 lokasyonu bulundu · günlük giris→sevk→teslim→zimmet,
   tarihler 19/19/21/21 · `it_transfer_edilenler` hedefi "M023 Merkez Depo" okuyor · zimmet dönemi açık ·

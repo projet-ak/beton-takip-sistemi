@@ -162,9 +162,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     if (count($satirlar) < 2) throw new RuntimeException('Dosyada başlık dışında veri satırı yok.');
                     $bIdx = pim_baslik_satiri($satirlar);
+                    $__h = cim_harita($satirlar[$bIdx]);
+                    // Sevk listesi (gönderen / teslim tarihi sütunu taşıyan dosya) → kayıtlı cihazları da taşı varsayılan AÇIK
+                    $__tr = in_array('transfer_birim', $__h, true) && array_intersect(['transfer_gonderen','transfer_teslim'], $__h) ? 1 : 0;
                     $_SESSION['it_cim'] = ['dosya'=>$ad, 'bicim'=>$g['bicim'], 'sayfa'=>$g['sayfa'], 'satirlar'=>$satirlar, 'satir_no'=>$satirNo,
-                                           'baslik_idx'=>$bIdx, 'harita'=>cim_harita($satirlar[$bIdx]),
-                                           'opt'=>['kisi_ekle'=>0, 'sadece_bos'=>1, 'zimmet_koru'=>1]];
+                                           'baslik_idx'=>$bIdx, 'harita'=>$__h,
+                                           'opt'=>['kisi_ekle'=>0, 'sadece_bos'=>1, 'zimmet_koru'=>1, 'transfer_uygula'=>$__tr]];
                     unset($_SESSION['it_cim_rapor']);
                     redirect('cihaz_import.php?adim=2');
                 } catch (Throwable $e) { $hata = $e->getMessage(); }
@@ -185,7 +188,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $s['opt'] = ['kisi_ekle'  => (!empty($_POST['kisi_ekle']) && yetki_var('duzenle')) ? 1 : 0,
                      'sadece_bos'  => !empty($_POST['sadece_bos'])  ? 1 : 0,
-                     'zimmet_koru' => !empty($_POST['zimmet_koru']) ? 1 : 0];
+                     'zimmet_koru' => !empty($_POST['zimmet_koru']) ? 1 : 0,
+                     'transfer_uygula' => (!empty($_POST['transfer_uygula']) && in_array('transfer_birim', $s['harita'], true)) ? 1 : 0];
         unset($s);
         if ($islem === 'aktar') {
             $s = $_SESSION['it_cim'];
@@ -333,6 +337,15 @@ require_once __DIR__ . '/../includes/header.php';
         sahte iade/zimmet satırı yazılmaz. <strong>Zimmetlisi boş</strong> olan cihaz dosyadaki kişiye zimmetlenir — orada bozulacak kayıt
         yoktur, o da eksik veridir. <strong>Durum</strong> hiçbir mevcut cihazda dosyadan değiştirilmez: serviste / arızalı / hurda / transfer
         birer karardır.)</span></label></div>
+      <?php if (in_array('transfer_birim', $s['harita'], true)): ?>
+      <div class="form-check border-start border-3 border-primary ps-2 mb-2">
+        <input class="form-check-input" type="checkbox" name="transfer_uygula" id="transfer_uygula" value="1" <?= !empty($s['opt']['transfer_uygula'])?'checked':'' ?>>
+        <label class="form-check-label" for="transfer_uygula"><strong>Bu bir sevk listesi — sistemde kayıtlı cihazları da hedef projeye taşı</strong>
+        <span class="text-muted">(Transfer Geldiği Birim + Transfer Tarihi dolu satırda cihaz <strong>zaten kayıtlıysa</strong> ve başka
+        lokasyondaysa: eski zimmet iade alınır, cihaz dosyadaki lokasyona taşınır, sevk + teslim alma + yeni zimmet yaşam günlüğüne
+        yazılır. Yukarıdaki koruma kutuları bu satırları kilitlemez. Cihaz zaten hedefteyse dokunulmaz. Kapalıysa yalnız yeni
+        cihazlar transfer geçmişiyle açılır.)</span></label></div>
+      <?php endif; ?>
       <?php if (yetki_var('duzenle')): ?>
       <div class="form-check"><input class="form-check-input" type="checkbox" name="kisi_ekle" id="kisi_ekle" value="1" <?= !empty($s['opt']['kisi_ekle'])?'checked':'' ?>>
         <label class="form-check-label" for="kisi_ekle">Dosyadaki <strong>eşleşmeyen kişiler için personel kartı aç</strong> ve cihazları onlara zimmetle
@@ -431,6 +444,13 @@ require_once __DIR__ . '/../includes/header.php';
 <?php foreach ($rap['yeni'] as $y): ?><tr><td><a href="cihaz_detay.php?id=<?= (int)$y['id'] ?>"><?= h($y['env']) ?></a></td><td><?= h($y['ad']) ?></td><td><?= h(it_kategoriAd((string)$y['kategori'])) ?></td><td><?= h($y['marka']) ?></td><td><?= h((string)$y['kisi']) ?></td><td><?= h((string)$y['lok']) ?></td></tr><?php endforeach; ?></tbody></table></div></details>
 <?php endif; ?>
 
+<?php if (!empty($rap['transfer_edilen'])): ?>
+<details class="card border-0 shadow-sm mb-3" open><summary class="card-header bg-white fw-semibold small text-primary">
+  <i class="bi bi-truck me-1"></i>Kayıtlı olup hedef projeye taşınan cihazlar (<?= count($rap['transfer_edilen']) ?>)</summary>
+<div class="table-responsive"><table class="table table-sm mb-0" style="font-size:.82rem"><thead class="table-light"><tr><th>Cihaz</th><th>Seri no</th><th>Nereden</th><th>Nereye</th><th>Eski zimmet (iade)</th><th>Yeni zimmet</th></tr></thead><tbody>
+<?php foreach ($rap['transfer_edilen'] as $t): ?><tr><td><a href="cihaz_detay.php?id=<?= (int)$t['id'] ?>"><?= h($t['kim']) ?></a></td><td><?= h($t['seri']) ?></td><td><?= h($t['kaynak']) ?></td><td><?= h($t['hedef']) ?></td><td class="text-muted"><?= h($t['eski'] ?: '—') ?></td><td class="fw-semibold"><?= h($t['yeni'] ?: '—') ?></td></tr><?php endforeach; ?></tbody></table></div></details>
+<?php endif; ?>
+
 <?php if (!empty($rap['sadece_bos']) || !empty($rap['zimmet_koru'])): ?>
 <div class="alert alert-success py-2 small">
   <i class="bi bi-shield-check me-1"></i><strong>Koruma açıktı.</strong>
@@ -440,7 +460,7 @@ require_once __DIR__ . '/../includes/header.php';
   <?php endif; ?>
   <?php if (!empty($rap['zimmet_koru'])): ?>
     Zimmetlisi olan cihazların <strong>zimmet künyesine dokunulmadı</strong>; boş olanlar dosyadaki kişiyle tamamlandı.
-    Hiçbir mevcut cihazın <strong>durumu</strong> dosyadan değiştirilmedi.
+    Hiçbir mevcut cihazın <strong>durumu</strong> dosyadan değiştirilmedi<?= !empty($rap['transfer_edilen']) ? ' (sevk listesiyle taşınan ' . count($rap['transfer_edilen']) . ' cihaz hariç)' : '' ?>.
   <?php endif; ?>
 </div>
 <?php endif; ?>

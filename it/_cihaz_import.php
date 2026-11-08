@@ -404,10 +404,15 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
     //  zimmet_koru  : mevcut kaydın zimmet künyesi (kişi/tarih/birim/durum) hiç değişmez ve
     //                 yaşam günlüğüne sahte iade/zimmet satırı YAZILMAZ. Yeni açılan cihazlar
     //                 dosyadaki kişiye zimmetlenir (orada bozulacak bir kayıt yoktur).
+    //  transfer_uygula : dosya bir SEVK listesiyse (Transfer Geldiği Birim + Transfer Tarihi dolu, hedef
+    //                 lokasyon bulunmuş) sistemde ZATEN kayıtlı cihaz da hedefe taşınır — eski zimmet iade
+    //                 alınır, sevk + teslim + yeni zimmet günlüğe yazılır. Bu bir KARAR satırıdır, koruma
+    //                 kutuları bu alanları kilitlemez. Cihaz zaten hedef lokasyondaysa dokunulmaz (idempotent).
     $sadeceBos  = !empty($opt['sadece_bos']);
     $zimmetKoru = !empty($opt['zimmet_koru']);
+    $trUygula   = !empty($opt['transfer_uygula']);
     $r = ['okunan'=>0, 'yeni'=>[], 'guncellenen'=>[], 'degismeyen'=>0, 'atlanan'=>[], 'kisi_yok'=>[], 'lokasyon_yok'=>[], 'kisi_eklenen'=>[],
-          'korunan'=>0, 'zimmet_korunan'=>[], 'sadece_bos'=>$sadeceBos, 'zimmet_koru'=>$zimmetKoru];
+          'korunan'=>0, 'zimmet_korunan'=>[], 'sadece_bos'=>$sadeceBos, 'zimmet_koru'=>$zimmetKoru, 'transfer_edilen'=>[]];
     // ⚠ 'envanter_no' BİLEREK YOK: bizim sabit numaramızdır (tutanaklarda geçer), dosya onu ezmez.
     $alanlar = ['varlik_kodu','cihaz_kodu','kategori','ad','marka','model','seri_no','sasi_no','imei','durum','zimmetli','personel_id','departman','lokasyon','lokasyon_id',
                 'zimmet_tarihi','alis_tarihi','garanti_bitis','fiyat','para_birimi','kur','fiyat_tl','sas_ref',
@@ -569,7 +574,26 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
                 $korundu = 0; $zimmetDokunulmadi = false;
                 // Cihazda hâlihazırda bir zimmet var mı? (yoksa korunacak kayıt da yoktur)
                 $zimmetliMi = $eskiKisi !== '' || (int)($m['personel_id'] ?? 0) > 0;
+                // Sevk satırı mı? (hedef lokasyon bulunmuş ve cihaz henüz orada değil)
+                $trTarih = ($trUygula && $yeni['transfer_birim'] && $yeni['transfer_tarihi'] && $lokId
+                            && (int)($m['lokasyon_id'] ?? 0) !== (int)$lokId) ? $yeni['transfer_tarihi'] : null;
+                $trZorla = [];
+                if ($trTarih) {
+                    $yolda = $yeni['durum'] === 'transfer';
+                    $trZorla = ['lokasyon' => $lokAd ?: null, 'lokasyon_id' => $lokId, 'durum' => $yeni['durum'],
+                                'transfer_birim' => $yeni['transfer_birim'], 'transfer_tarihi' => $yeni['transfer_tarihi'],
+                                'zimmetli' => $yolda ? null : $yeni['zimmetli'], 'personel_id' => $yolda ? null : $yeni['personel_id'],
+                                'zimmet_tarihi' => ($yolda || !$yeni['zimmetli']) ? null : ($yeni['zimmet_tarihi'] ?: date('Y-m-d')),
+                                'departman' => $yolda ? null : $yeni['departman']];
+                    foreach ($trZorla as $k => $y) {
+                        if ((string)($m[$k] ?? '') === (string)$y) continue;
+                        $set[] = "$k=?"; $par[] = $y;
+                        if (!in_array($k, ['lokasyon','personel_id','lokasyon_id'], true))
+                            $degisen[] = $k . ': ' . (($m[$k] ?? '') === '' || $m[$k] === null ? '—' : $m[$k]) . ' → ' . ($y ?? '—');
+                    }
+                }
                 foreach ($alanlar as $k) {
+                    if (array_key_exists($k, $trZorla)) continue;                 // sevk alanları yukarıda yazıldı
                     $y = $yeni[$k] ?? null;
                     if ($y === null || $y === '') continue;                      // dosyada boş → mevcut korunur
                     if ($k === 'ad' && !$adDosyadan) continue;                    // türetilmiş ad mevcut adı ezmez
@@ -599,8 +623,20 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
                 if ($set) {
                     $par[] = (int)$m['id'];
                     $pdo->prepare("UPDATE it_cihazlar SET " . implode(', ', $set) . " WHERE id=?")->execute($par);
+                    if ($trTarih) {
+                        // Sevk: eski zimmet iade alınır → sevk → teslim → yeni zimmet (cihaz kartındaki işlemlerle AYNI metin biçimi)
+                        $kaynak = trim((string)($m['lokasyon'] ?? '')) ?: $yeni['transfer_birim'];
+                        if ($eskiKisi !== '') it_hareket_ekle($pdo, (int)$m['id'], 'iade', $eskiKisi,
+                            'Transfer nedeniyle zimmet iade alındı — ' . $kaynak . ' (Excel aktarımı)', $trTarih);
+                        cim_transfer_gecmisi($pdo, (int)$m['id'], $trZorla + $yeni, $v, $lokAd);
+                        if ($trZorla['zimmetli']) it_hareket_ekle($pdo, (int)$m['id'], 'zimmet', $trZorla['zimmetli'],
+                            'Excel aktarımı ile zimmetlendi — ' . $lokAd, $trZorla['zimmet_tarihi']);
+                        $r['transfer_edilen'][] = ['id'=>(int)$m['id'], 'kim'=>trim(($m['cihaz_kodu'] ?: $m['envanter_no']) . ' ' . ($m['ad'] ?? '')),
+                                                   'seri'=>(string)($m['seri_no'] ?? ''), 'kaynak'=>$kaynak, 'hedef'=>$lokAd,
+                                                   'eski'=>$eskiKisi, 'yeni'=>(string)($trZorla['zimmetli'] ?? '')];
+                    }
                     // Zimmet değiştiyse cihazın yaşam günlüğüne yaz (koruma açıkken zimmet zaten yazılmadı)
-                    if (!($zimmetKoru && $zimmetliMi) && $kisiAd !== '' && pim_norm($eskiKisi) !== pim_norm($kisiAd)) {
+                    elseif (!($zimmetKoru && $zimmetliMi) && $kisiAd !== '' && pim_norm($eskiKisi) !== pim_norm($kisiAd)) {
                         if ($eskiKisi !== '') it_hareket_ekle($pdo, (int)$m['id'], 'iade', $eskiKisi, 'Excel aktarımı: zimmet devredildi → ' . $kisiAd);
                         it_hareket_ekle($pdo, (int)$m['id'], 'zimmet', $kisiAd, 'Excel aktarımı ile zimmetlendi' . ($lokAd ? ' — ' . $lokAd : ''));
                     }
