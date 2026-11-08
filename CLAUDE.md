@@ -1182,6 +1182,17 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   (biri OSMAN UĞUR'da, biri serviste) → 26 yeni + 4 taşınan, zimmet dönemleri OSMAN kapalı / HASAN açık, zaten
   I001'deki cihaza hareket yazılmadı · kutu kapalıyken eski davranış · 2. yükleme 0 yeni / 0 taşınan / hareket aynı.
   Kaynak listede **ZAT80BC00789C** diğer Reyee serilerinden farklı (sonu harf) — etiketten kontrol edilmeli.
+  ⭐ **DOSYADA DURUMU HURDA / KAYIP / HİBE GELEN CİHAZ (2026-11-08, kullanıcı: 2 HP DesignJet T795 plotter,
+  Kartal → M023, "EKSPER BİLİŞİM - İBRAHİM POLAT", zimmet 2024-01-01, durum hurda)** — eskiden yeni kayıt
+  `durum='hurda'` + zimmetli kişiyle açılıyor, günlüğe düşüm hareketi YAZILMIYORDU: zimmet dönemi açık kalıyor,
+  hurda tutanağı gerekçe/kişi bulamayıp bugüne düşüyordu. Yeni **`cim_dusum_kaydet()`**: cihaz kartındaki
+  Hurdaya ayır / Kayıp / Hibe işlemiyle AYNI sonuç — zimmet künyesi (`personel_id/zimmetli/zimmet_tarihi`)
+  temizlenir, `hurda|kayip|hibe` hareketi (kişi = dosyadaki zimmetli = teslim alan, tarih aktarım günü) yazılır →
+  zimmet dönemi kapanır, `it_dusum_son` tutanağa kişiyi verir. Yeni kayıtta ve sevk listesiyle taşınan kayıtta
+  çalışır. ⚠ **Envanterden düşmüş MEVCUT cihaz dosyadaki kişiye yeniden zimmetlenmez** (`$dustu` → CIM_ZIMMET_ALAN
+  atlanır, zimmet hareketi yazılmaz) — yoksa tekrar yüklemede temizlenen zimmet geri gelirdi. Test
+  (scratchpad `plotter_test.php` 7 sağlama): 2 yeni yazici · hurda · M023 · zimmet temiz · dönem 01.01.2024 → hurda
+  ile kapalı · envanter sayımında yok · 2. yükleme 0/0, hareket aynı; kulp2 (A/B/C) · u051 · kulp · rehber testleri yeşil.
   Test (scratchpad `u051_test.php`, gerçek `cim_import` + MySQL DDL'yi SQLite'a çeviren `sqlite_pdo.php`):
   14 sütunun hepsi eşleşti · 50 yeni · kişi ve M023 lokasyonu bulundu · günlük giris→sevk→teslim→zimmet,
   tarihler 19/19/21/21 · `it_transfer_edilenler` hedefi "M023 Merkez Depo" okuyor · zimmet dönemi açık ·

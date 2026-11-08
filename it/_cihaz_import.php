@@ -213,6 +213,18 @@ function cim_harita(array $baslik): array
 }
 
 /**
+ * Dosyada durumu hurda / kayıp / hibe gelen cihaz: cihaz kartındaki düşüm işlemiyle AYNI sonuç —
+ * zimmet künyesi temizlenir, günlüğe düşüm hareketi (kişi = son zimmetli / teslim alan) yazılır.
+ * Böylece zimmet dönemi kapanır ve hurda/zayi/hibe tutanağı bu hareketi okur.
+ */
+function cim_dusum_kaydet(PDO $pdo, int $id, string $durum, ?string $kisi): void
+{
+    $pdo->prepare("UPDATE it_cihazlar SET personel_id=NULL, zimmetli=NULL, zimmet_tarihi=NULL WHERE id=?")->execute([$id]);
+    $ad = ['hurda'=>'hurdaya ayrıldı', 'kayip'=>'kayıp / çalıntı olarak kaydedildi', 'hibe'=>'hibe / devir edildi'][$durum] ?? 'envanterden düştü';
+    it_hareket_ekle($pdo, $id, $durum, $kisi ?: null, 'Excel aktarımı ile ' . $ad . ($kisi ? ' — teslim alan: ' . $kisi : ''));
+}
+
+/**
  * Transferle gelen YENİ cihazın yaşam günlüğüne sevk + teslim alma satırlarını yazar.
  * ⚠ Biçim cihaz_detay.php ile SABİT: "Sevk: <kaynak> → <hedef> · gönderen: …" ve
  * "Transfer teslim alındı — <hedef> deposuna girdi". Teslim satırı yalnız teslim tarihi
@@ -592,8 +604,12 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
                             $degisen[] = $k . ': ' . (($m[$k] ?? '') === '' || $m[$k] === null ? '—' : $m[$k]) . ' → ' . ($y ?? '—');
                     }
                 }
+                // Envanterden DÜŞMÜŞ cihaz (hurda/kayıp/hibe) dosyadaki kişiye yeniden zimmetlenmez —
+                // cihaz kartındaki düşüm işlemi zimmeti bilerek temizler, tekrar yükleme onu geri getirmesin.
+                $dustu = it_durum_dustu((string)($m['durum'] ?? ''));
                 foreach ($alanlar as $k) {
                     if (array_key_exists($k, $trZorla)) continue;                 // sevk alanları yukarıda yazıldı
+                    if ($dustu && in_array($k, CIM_ZIMMET_ALAN, true)) continue;
                     $y = $yeni[$k] ?? null;
                     if ($y === null || $y === '') continue;                      // dosyada boş → mevcut korunur
                     if ($k === 'ad' && !$adDosyadan) continue;                    // türetilmiş ad mevcut adı ezmez
@@ -631,12 +647,13 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
                         cim_transfer_gecmisi($pdo, (int)$m['id'], $trZorla + $yeni, $v, $lokAd);
                         if ($trZorla['zimmetli']) it_hareket_ekle($pdo, (int)$m['id'], 'zimmet', $trZorla['zimmetli'],
                             'Excel aktarımı ile zimmetlendi — ' . $lokAd, $trZorla['zimmet_tarihi']);
+                        if (it_durum_dustu((string)$trZorla['durum'])) cim_dusum_kaydet($pdo, (int)$m['id'], (string)$trZorla['durum'], $trZorla['zimmetli']);
                         $r['transfer_edilen'][] = ['id'=>(int)$m['id'], 'kim'=>trim(($m['cihaz_kodu'] ?: $m['envanter_no']) . ' ' . ($m['ad'] ?? '')),
                                                    'seri'=>(string)($m['seri_no'] ?? ''), 'kaynak'=>$kaynak, 'hedef'=>$lokAd,
                                                    'eski'=>$eskiKisi, 'yeni'=>(string)($trZorla['zimmetli'] ?? '')];
                     }
                     // Zimmet değiştiyse cihazın yaşam günlüğüne yaz (koruma açıkken zimmet zaten yazılmadı)
-                    elseif (!($zimmetKoru && $zimmetliMi) && $kisiAd !== '' && pim_norm($eskiKisi) !== pim_norm($kisiAd)) {
+                    elseif (!$dustu && !($zimmetKoru && $zimmetliMi) && $kisiAd !== '' && pim_norm($eskiKisi) !== pim_norm($kisiAd)) {
                         if ($eskiKisi !== '') it_hareket_ekle($pdo, (int)$m['id'], 'iade', $eskiKisi, 'Excel aktarımı: zimmet devredildi → ' . $kisiAd);
                         it_hareket_ekle($pdo, (int)$m['id'], 'zimmet', $kisiAd, 'Excel aktarımı ile zimmetlendi' . ($lokAd ? ' — ' . $lokAd : ''));
                     }
@@ -661,6 +678,7 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
                     . ($trTarih ? ' — ' . $yeni['transfer_birim'] . ' (transferle geldi)' : ($lokAd ? ' — ' . $lokAd : '')), $trTarih);
                 if ($trTarih) cim_transfer_gecmisi($pdo, $id, $yeni, $v, $lokAd);
                 if ($yeni['zimmetli']) it_hareket_ekle($pdo, $id, 'zimmet', $yeni['zimmetli'], 'Excel aktarımı ile zimmetlendi', $yeni['zimmet_tarihi']);
+                if (it_durum_dustu((string)$yeni['durum'])) cim_dusum_kaydet($pdo, $id, (string)$yeni['durum'], $yeni['zimmetli']);
                 $kayit = $yeni + ['id'=>$id];
                 if ($yeni['varlik_kodu']) $byVarlik[pim_norm($yeni['varlik_kodu'])] = $kayit;
                 if ($yeni['cihaz_kodu'])  $byKod[pim_norm($yeni['cihaz_kodu'])] = $kayit;
