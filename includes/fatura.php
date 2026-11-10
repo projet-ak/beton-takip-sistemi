@@ -842,7 +842,8 @@ function fat_kontrol_uc(string $anahtar): void {
     if ($a !== 'kontrol_basla' && $a !== 'kontrol_hata') return;
     if ($a === 'kontrol_basla') {
         $_SESSION[$anahtar] = [];
-        $_SESSION[$anahtar . '_secilen'] = max(0, (int)($_POST['toplam'] ?? 0));
+        $_SESSION[$anahtar . '_secilen'] = max(0, (int)($_POST['toplam'] ?? 0));      // sayfalara bölündükten sonra
+        $_SESSION[$anahtar . '_dosya']   = max(0, (int)($_POST['dosya_adet'] ?? 0)); // bilgisayarda seçilen dosya
     } else {
         $liste = json_decode((string)($_POST['hatalar'] ?? '[]'), true);
         $ek = [];

@@ -658,11 +658,12 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
             foreach ($noIdx as $fr0) if ((int)$fr0['id'] === (int)$sv['fatura_id']) { $irsIdx[$k] = $fr0; break; }
         }
     } catch (Throwable $eS) {}
-    $kSonuc = []; $kN = 0; $kMd5 = null;
+    $kSonuc = []; $kN = 0; $kMd5 = null; $kQr = '';
     foreach ($_FILES['dosyalar']['tmp_name'] as $i => $tmp) {
         // Bir önceki dosyanın satır(lar)ına içerik özeti (rapor içeriği BİREBİR aynı dosyaları bulur)
-        for ($q = $kN; $q < count($kSonuc); $q++) $kSonuc[$q]['md5'] ??= $kMd5;
+        for ($q = $kN; $q < count($kSonuc); $q++) { $kSonuc[$q]['md5'] ??= $kMd5; $kSonuc[$q]['q'] ??= $kQr; }
         $kN = count($kSonuc); $kMd5 = is_file($tmp) ? (md5_file($tmp) ?: null) : null;
+        $kQr = mb_substr(trim((string)($_POST['ipucu'][$i] ?? '')), 0, 4000);
         $ad = (string)$_FILES['dosyalar']['name'][$i];
         try {   // tek bir sorunlu dosya partinin geri kalanını götürmesin
         if ((int)$_FILES['dosyalar']['error'][$i] !== UPLOAD_ERR_OK || !is_uploaded_file($tmp)) {
@@ -674,6 +675,15 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
         }
         $no = null; $ettn = null; $kaynak = 'dosya adı';
         if (preg_match('/([A-Z][A-Z0-9]{2}\d{13})/i', $ad, $m)) $no = strtoupper($m[1]);
+        // Tarayıcının sayfadan okuduğu GİB e-fatura KAREKODU (assets/js/toplu_kontrol.js) — taranmış (metinsiz)
+        // PDF'te tek güvenilir kimlik; dosya adından da güçlüdür. Çok sayfalı PDF tarayıcıda sayfalara bölünür.
+        $qrK = $kQr !== '' ? fat_qr_coz($kQr) : null; $qrUyusmaz = null;
+        if ($qrK && ($qrK['fatura_no'] || $qrK['ettn'])) {
+            if ($no !== null && $qrK['fatura_no'] && fat_irs_norm($no) !== fat_irs_norm($qrK['fatura_no']) && !isset($irsIdx[fat_irs_norm($no)])) {
+                $qrUyusmaz = 'Dosya adı ' . $no . ' ama karekoddaki fatura ' . $qrK['fatura_no'];
+            }
+            $no = $qrK['fatura_no'] ?: $no; $ettn = $qrK['ettn']; $kaynak = 'karekod';
+        }
         if ($no === null && $mime === 'application/pdf') {
             $t0 = fat_pdftotext($tmp);
             if ($t0 !== null && $t0 !== '') {
@@ -684,7 +694,7 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
         $fr = $no !== null ? ($noIdx[fat_irs_norm($no)] ?? null) : null;
         // ⚠ Dosya ADI kayıtlı bir faturayı gösteriyor ama İÇİNDE başka fatura olabilir (yanlış adlandırılmış /
         //    üzerine kaydedilmiş dosya). Ada güvenip "işlenmiş" demek, sistemde olmayan faturayı gizlerdi.
-        $adUyusmaz = null;
+        $adUyusmaz = $qrUyusmaz;
         if ($fr && $kaynak === 'dosya adı' && $mime === 'application/pdf') {
             $tA = fat_pdftotext($tmp);
             $vA = ($tA !== null && $tA !== '') ? dfat_cikar($tA) : null;
@@ -760,7 +770,7 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
             $kSonuc[] = ['ad'=>$ad, 'durum'=>'hata', 'mesaj'=>'kontrol edilemedi — ' . mb_substr($eF->getMessage(), 0, 200)];
         }
     }
-    for ($q = $kN; $q < count($kSonuc); $q++) $kSonuc[$q]['md5'] ??= $kMd5;
+    for ($q = $kN; $q < count($kSonuc); $q++) { $kSonuc[$q]['md5'] ??= $kMd5; $kSonuc[$q]['q'] ??= $kQr; }
     $_SESSION['dfat_kontrol'] = array_merge($_SESSION['dfat_kontrol'] ?? [], $kSonuc);
     if (($_POST['ajax'] ?? '') === '1') {
         header('Content-Type: application/json; charset=utf-8');
@@ -778,7 +788,8 @@ $kontrolSonuc = null;
 if (isset($_GET['kontrol']) && !empty($_SESSION['dfat_kontrol'])) {
     $kontrolSonuc = $_SESSION['dfat_kontrol'];
     $kSecilen = (int)($_SESSION['dfat_kontrol_secilen'] ?? 0);
-    unset($_SESSION['dfat_kontrol'], $_SESSION['dfat_kontrol_secilen']);
+    $kDosyaAdet = (int)($_SESSION['dfat_kontrol_dosya'] ?? 0);
+    unset($_SESSION['dfat_kontrol'], $_SESSION['dfat_kontrol_secilen'], $_SESSION['dfat_kontrol_dosya']);
 }
 
 // ── 2d) İŞLENMEMİŞLERİ ÇÖZÜMLE ve KAYDET (kontrol raporundan, 2'şerli parti AJAX) ──
@@ -818,6 +829,7 @@ if (($_POST['action'] ?? '') === 'fatura_isle' && !empty($_POST['dosya'])) {
     $taslakAc = !empty($_POST['taslak']);
     $iSonuc = [];
     $adlar = (array)($_POST['ad'] ?? []);
+    $qrlar = array_values((array)($_POST['qr'] ?? []));   // kontrolde tarayıcının okuduğu karekod
     foreach (array_values((array)$_POST['dosya']) as $i => $pid) {
         $pid = basename((string)$pid);
         if (!preg_match('/^dfk_[\w.]+$/', $pid)) continue;
@@ -828,9 +840,14 @@ if (($_POST['action'] ?? '') === 'fatura_isle' && !empty($_POST['dosya'])) {
             $mime  = guess_mime($tam, $orjAd);
             $metin = fat_dosyadan_metin($tam, $mime, $kyn, dfat_ai_sistem());
             $v = ($metin !== null && trim($metin) !== '') ? dfat_cikar($metin) : null;
+            // Karekod (kontrolde okunduysa) ESAS: taranmış sayfada AI'nın okuduğu no/tarih/ETTN/tutar/VKN düzeltilir
+            $qrI = fat_qr_coz(mb_substr((string)($qrlar[$i] ?? ''), 0, 4000));
+            if ($v && $qrI) $v = fat_qr_birlestir($v, $qrI);
             if ($v && $v['fatura_no'] === null && preg_match('/([A-Z][A-Z0-9]{2}\d{13})/i', $orjAd, $fm)) $v['fatura_no'] = strtoupper($fm[1]);
             if (!$v || !$v['fatura_no']) {
-                $iSonuc[] = ['ad'=>$orjAd, 'durum'=>'hata', 'mesaj'=>'fatura no çözülemedi — yukarıdaki "Fatura Yükle" ile tekil işleyin']; continue;
+                $iSonuc[] = ['ad'=>$orjAd, 'no'=>$qrI['fatura_no'] ?? null, 'durum'=>'hata', 'mesaj'=>$qrI
+                    ? 'taranmış sayfa: karekoddan ' . $qrI['fatura_no'] . ' okundu ama sayfanın yazısı (irsaliye listesi) okunamadı — AI ayarını kontrol edin ya da tekil "Fatura Yükle" ile işleyin'
+                    : 'fatura no çözülemedi — yukarıdaki "Fatura Yükle" ile tekil işleyin']; continue;
             }
             // ⚠ Numara VEYA ETTN ile eşleşir. ETTN aynı ama numara farklıysa (ETTN ÇAKIŞMASI) eskiden "zaten" deyip
             //    dosyayı siliyordu; dfat_kaydet ise tekil akışta o kaydın ÜSTÜNE yazardı. Artık karar kullanıcıda:
@@ -1132,7 +1149,8 @@ require_once __DIR__ . '/../includes/header.php';
 <div class="card mb-4 border-info">
     <div class="card-header bg-white fw-semibold"><i class="bi bi-clipboard-data me-1 text-info"></i> Kontrol Raporu
         <span class="badge bg-primary ms-1"><?= count($kontrolSonuc) ?> dosya</span>
-        <?php if (!empty($kSecilen)): ?><span class="badge <?= $kSecilen === count($kontrolSonuc) ? 'bg-light text-dark border' : 'bg-danger' ?>" title="Bilgisayarda seçilen dosya sayısı"><?= $kSecilen ?> seçildi</span><?php endif; ?>
+        <?php if (!empty($kSecilen)): ?><span class="badge <?= $kSecilen === count($kontrolSonuc) ? 'bg-light text-dark border' : 'bg-danger' ?>" title="Bilgisayarda seçilen dosya sayısı (çok sayfalı PDF'ler sayfa sayfa sayılır)"><?= $kSecilen ?> seçildi</span><?php endif; ?>
+        <?php if (!empty($kDosyaAdet) && $kDosyaAdet !== $kSecilen): ?><span class="badge bg-info text-dark" title="Çok sayfalı PDF'ler her sayfa ayrı fatura sayılarak bölündü"><i class="bi bi-scissors me-1"></i><?= $kDosyaAdet ?> dosya → <?= $kSecilen ?> sayfa</span><?php endif; ?>
         <span class="badge bg-success"><?= count($kIslenmis) ?> işlenmiş</span>
         <?php if ($kTekrar): ?><span class="badge bg-info text-dark" title="Birden çok dosya aynı kayıtlı faturaya düşüyor (ör. biri fatura no'suyla, biri irsaliye no'suyla adlandırılmış)"><?= count($kIlkDosya) ?> farklı fatura · <?= count($kTekrar) ?> tekrar dosya</span><?php endif; ?>
         <?php if ($kBagsiz): ?><span class="badge bg-warning text-dark" title="Kayıtlı ama hiçbir sevkiyata bağlı değil"><?= count($kBagsiz) ?> bağsız</span><?php endif; ?>
@@ -1200,7 +1218,7 @@ require_once __DIR__ . '/../includes/header.php';
                     <span class="text-muted">(isteğe bağlı — Excel aktarımı aynı numarayı getirince taslak silinmez, güncellenir)</span></label>
             </div>
             <button type="button" class="btn btn-success btn-sm" id="isleBtn"
-                    data-dosyalar="<?= h(json_encode(array_map(fn($r) => ['d' => $r['dosya'], 'a' => $r['ad']], $islenebilir), JSON_UNESCAPED_UNICODE)) ?>">
+                    data-dosyalar="<?= h(json_encode(array_map(fn($r) => ['d' => $r['dosya'], 'a' => $r['ad'], 'q' => (string)($r['q'] ?? '')], $islenebilir), JSON_UNESCAPED_UNICODE)) ?>">
                 <i class="bi bi-cpu me-1"></i>İşlenmemiş <?= count($islenebilir) ?> faturayı ÇÖZÜMLE ve KAYDET
             </button>
             <span class="text-muted ms-2">Her fatura okunur, tedarikçisi VKN/unvandan bulunur (yoksa oluşturulur), irsaliyeleri sevkiyatlara bağlanır. Başka faturaya bağlı sevkiyat taşınmaz — raporlanır.</span>
@@ -1234,7 +1252,7 @@ require_once __DIR__ . '/../includes/header.php';
             fd.append('action', 'fatura_isle');
             if (taslak) fd.append('taslak', '1');
             if (csrfEl) fd.append('csrf', csrfEl.value);
-            dosyalar.slice(i, i + BATCH).forEach(function (d) { fd.append('dosya[]', d.d); fd.append('ad[]', d.a); });
+            dosyalar.slice(i, i + BATCH).forEach(function (d) { fd.append('dosya[]', d.d); fd.append('ad[]', d.a); fd.append('qr[]', d.q || ''); });
             try {
                 var j = await (await fetch('faturalar.php', { method: 'POST', body: fd })).json();
                 oz.kaydedilen += j.kaydedilen || 0; oz.zaten += j.zaten || 0; oz.hata += j.hata || 0;
