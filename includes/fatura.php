@@ -610,6 +610,42 @@ function fat_ai_oku(string $path, string $mime, ?string $sistemOverride = null):
 }
 
 /**
+ * Faturada olup sistemde bulunmayan irsaliyeleri TASLAK olarak açar.
+ *
+ * Numaralar önce yeniden aranır (çözümlemeden beri girilmiş — gerçek kayıt ya da önceki
+ * taslak — olabilir); bulunanlar için YENİ KAYIT AÇILMAZ, yalnız id'leri döner. Gerçekten
+ * olmayanlar fatura tarihi/tedarikçisiyle, 0 m³ ve [FATURADAN] etiketiyle açılır; Excel
+ * aktarımı aynı numarayı getirdiğinde taslak silinmez, gerçek verilerle güncellenir.
+ * Tekil kayıt, toplu "Çözümle ve Kaydet" ve kayıtlı faturanın eksik paneli bunu paylaşır.
+ *
+ * @return array{ids:int[], acilan:int, mevcut:int, acilan_nolar:string[]}
+ */
+function fat_taslak_ac(PDO $pdo, array $nolar, int $tedId, ?string $tarih, ?string $faturaNo, ?int $userId = null): array
+{
+    $nolar = array_slice(array_values(array_filter(array_map('strval', $nolar), fn($n) => trim($n) !== '')), 0, 500);
+    $sonuc = ['ids' => [], 'acilan' => 0, 'mevcut' => 0, 'acilan_nolar' => []];
+    if (!$nolar || $tedId <= 0) return $sonuc;
+    $esl = fat_eslestir($pdo, $nolar);
+    foreach ($esl['eslesen'] as $r) { $sonuc['ids'][] = (int)$r['id']; $sonuc['mevcut']++; }
+    $ins = $pdo->prepare("INSERT INTO irsaliyeler
+        (tip, durum, irsaliye_no, fatura_no, tedarikci_id, tarih, miktar, birim, aciklama, created_by)
+        VALUES ('alis', ?, ?, ?, ?, ?, 0, 'M3', ?, ?)");
+    // Taslak [FATURADAN] etiketiyle ayırt edilir; onay akışı kapalıysa beklemeye düşmez
+    $durum = (function_exists('beton_onay_aktif') && beton_onay_aktif()) ? 'beklemede' : 'onaylandi';
+    $gun   = fat_tarih_norm($tarih ?? '') ?: date('Y-m-d');
+    foreach ($esl['eksik'] as $no) {
+        $ins->execute([$durum, $no, trim((string)$faturaNo) ?: null, $tedId, $gun,
+                       '[FATURADAN] Fatura eşleştirmeden otomatik oluşturuldu — Excel aktarımında gerçek verilerle güncellenir.',
+                       $userId]);
+        $id = (int)$pdo->lastInsertId();
+        $sonuc['ids'][] = $id; $sonuc['acilan']++; $sonuc['acilan_nolar'][] = $no;
+        if (function_exists('audit_log'))
+            audit_log($pdo, 'irsaliyeler', $id, 'INSERT', null, ['fatura_taslak' => true, 'irsaliye_no' => $no], $userId);
+    }
+    return $sonuc;
+}
+
+/**
  * Faturayı kaydeder ve eşleşen irsaliyeleri faturaya bağlar.
  * @param int[] $irsIds Bağlanacak irsaliye id'leri
  * @return array{fatura_id:int, baglanan:int}
