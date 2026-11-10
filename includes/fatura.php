@@ -776,3 +776,38 @@ function fat_cift_kontrol(PDO $pdo): array
     foreach ($grup as $x) foreach ($x as $fid => $_) $fidMap[$fid] ??= 'tutar';
     return ['irs' => $irs, 'tutar' => $grup, 'fid' => $fidMap];
 }
+
+/**
+ * Yüklenen dosya, sistemde kayıtlı bir faturanın dosyasıyla BAYT BAYT aynı mı? (toplu kontrol)
+ * Dosya adı fatura numarası değilse (irsaliye no, "scan_001.pdf"…) ve PDF taranmış olduğundan metni
+ * de okunamıyorsa kontrol faturayı bulamıyor, "ÇÖZÜMLE ve KAYDET" ise AI ile okuyup "zaten kayıtlı"
+ * diyordu → dosya her kontrolde yeniden "işlenmemiş" çıkıyordu. Aynı baytlar aynı belgedir.
+ * Önce BOYUT karşılaştırılır, md5 yalnız boyutu tutan adaylarda hesaplanır (istek başına önbellekli).
+ * @param array  $kayitlar id => dosya_url (göreli, $kok'e göre)
+ * @return int|null eşleşen kaydın id'si
+ */
+function fat_ayni_dosya(array $kayitlar, string $kok, string $dosya): ?int
+{
+    static $dizin = [], $md5 = [];
+    $anahtar = $kok . '|' . md5(json_encode($kayitlar));
+    if (!isset($dizin[$anahtar])) {
+        $dizin[$anahtar] = [];
+        $kokGercek = realpath($kok);
+        foreach ($kayitlar as $id => $url) {
+            $url = trim((string)$url);
+            if ($url === '' || str_contains($url, '..') || !$kokGercek) continue;
+            $p = $kokGercek . '/' . ltrim($url, '/');
+            if (!is_file($p)) continue;
+            $dizin[$anahtar][(int)filesize($p)][] = [(int)$id, $p];
+        }
+    }
+    $boy = @filesize($dosya);
+    if (!$boy || empty($dizin[$anahtar][$boy])) return null;
+    $m = @md5_file($dosya);
+    if (!$m) return null;
+    foreach ($dizin[$anahtar][$boy] as [$id, $p]) {
+        $md5[$p] ??= (string)@md5_file($p);
+        if ($md5[$p] === $m) return $id;
+    }
+    return null;
+}

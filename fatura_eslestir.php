@@ -308,13 +308,26 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
     foreach ((array)@glob($KONT_BEKLEME . '/fk_*') as $eskiF) {          // 2 günden eski artıklar temizlenir
         if (@filemtime($eskiF) < time() - 2*86400) @unlink($eskiF);
     }
-    $noIdx = []; $ettnIdx = [];
-    foreach ($pdo->query("SELECT f.id, f.fatura_no, f.ettn, f.tarih, f.eksik_adet,
+    $noIdx = []; $ettnIdx = []; $idIdx = []; $irsIdx = []; $dosyaIdx = [];
+    foreach ($pdo->query("SELECT f.id, f.fatura_no, f.ettn, f.tarih, f.eksik_adet, f.dosya_url, f.irsaliye_liste, f.eksik_liste,
                                  (SELECT COUNT(*) FROM irsaliyeler i WHERE i.fatura_id = f.id) bagli
                           FROM faturalar f") as $fr) {
+        $idIdx[(int)$fr['id']] = $fr;
         $k = fat_irs_norm((string)$fr['fatura_no']); if ($k !== '') $noIdx[$k] = $fr;
         $e0 = strtoupper(trim((string)$fr['ettn'])); if ($e0 !== '') $ettnIdx[$e0] = $fr;
+        if (!empty($fr['dosya_url'])) $dosyaIdx[(int)$fr['id']] = (string)$fr['dosya_url'];
+        // Dosya İRSALİYE numarasıyla adlandırılmış olabilir → o irsaliyeyi taşıyan fatura
+        foreach (array_merge((array)(json_decode((string)$fr['irsaliye_liste'], true) ?: []),
+                             (array)(json_decode((string)$fr['eksik_liste'], true) ?: [])) as $irsN) {
+            $k = fat_irs_norm((string)$irsN); if ($k !== '') $irsIdx[$k] ??= $fr;
+        }
     }
+    try {
+        foreach ($pdo->query("SELECT irsaliye_no, fatura_id FROM irsaliyeler WHERE fatura_id IS NOT NULL") as $sv) {
+            $k = fat_irs_norm((string)$sv['irsaliye_no']);
+            if ($k !== '' && isset($idIdx[(int)$sv['fatura_id']])) $irsIdx[$k] ??= $idIdx[(int)$sv['fatura_id']];
+        }
+    } catch (Throwable $eS) {}
     $kSonuc = [];
     foreach ($_FILES['dosyalar']['tmp_name'] as $i => $tmp) {
         $ad = (string)$_FILES['dosyalar']['name'][$i];
@@ -330,40 +343,63 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
                 $no = $v0['fatura_no']; $ettn = $v0['ettn']; $kaynak = 'PDF içeriği';
             }
         }
-        if ($no === null && $ettn === null) { $kSonuc[] = ['ad'=>$ad, 'durum'=>'okunamadi', 'kaynak'=>null]; continue; }
-        $fr = $no !== null ? ($noIdx[fat_irs_norm($no)] ?? null) : null;
-        if (!$fr && $ettn !== null) $fr = $ettnIdx[$ettn] ?? null;
-        // Dosya adındaki numara kayıtlı bir fatura değilse (çoğu zaman dosya İRSALİYE no'suyla
-        // adlandırılmıştır) PDF İÇERİĞİNE bakılır — kayıtlı fatura "işlenmemiş" görünmesin.
-        $v0 = null;
-        if (!$fr && $kaynak === 'dosya adı' && guess_mime($tmp, $ad) === 'application/pdf') {
+        // Eşleşme sırası: dosya adındaki fatura no → ETTN → dosya adındaki İRSALİYE no (PDF metni okunabiliyorsa
+        // içerikteki fatura no ile doğrulanır) → PDF içeriği → sistemdeki fatura dosyasıyla BAYT BAYT aynılık.
+        $fr = null; $irsYolu = false; $uyari = null; $v0 = null;
+        if ($no !== null) $fr = $noIdx[fat_irs_norm($no)] ?? null;
+        if (!$fr && $ettn !== null) $fr = $ettnIdx[strtoupper((string)$ettn)] ?? null;
+        if (!$fr && $no !== null && $kaynak === 'dosya adı' && isset($irsIdx[fat_irs_norm($no)])) {
+            $fr = $irsIdx[fat_irs_norm($no)]; $irsYolu = true; $kaynak = 'dosya adı (irsaliye no)';
+        }
+        $pdfMi = guess_mime($tmp, $ad) === 'application/pdf';
+        if ((!$fr || $irsYolu) && str_starts_with($kaynak, 'dosya adı') && $pdfMi) {
             $t0 = fat_pdftotext($tmp);
             if ($t0 !== null && $t0 !== '') $v0 = fat_metinden_cikar($t0);
-            if ($v0) {
-                $fr = ($v0['fatura_no'] ? ($noIdx[fat_irs_norm($v0['fatura_no'])] ?? null) : null)
-                   ?: ($v0['ettn'] ? ($ettnIdx[strtoupper((string)$v0['ettn'])] ?? null) : null);
-                if ($fr || $v0['fatura_no']) { $kaynak = 'PDF içeriği'; if ($v0['fatura_no']) $no = $v0['fatura_no']; }
-                // ETTN ile bulundu ama numara farklı → aynı fatura başka numarayla kayıtlı (ya da ETTN yanlış girilmiş)
-                if ($fr && $v0['fatura_no'] && fat_irs_norm((string)$fr['fatura_no']) !== fat_irs_norm((string)$v0['fatura_no'])) {
-                    $kaynak = 'PDF içeriği (ETTN) · ⚠ PDF\'teki no ' . $v0['fatura_no'] . ', kayıtta farklı numara';
+            if ($v0 && ($v0['fatura_no'] || $v0['ettn'])) {
+                $frIc = ($v0['fatura_no'] ? ($noIdx[fat_irs_norm($v0['fatura_no'])] ?? null) : null)
+                     ?: ($v0['ettn'] ? ($ettnIdx[strtoupper((string)$v0['ettn'])] ?? null) : null);
+                if ($irsYolu) {
+                    if ($frIc) {
+                        $kaynak = (int)$frIc['id'] === (int)$fr['id'] ? 'dosya adı (irsaliye no) · PDF ile doğrulandı' : 'PDF içeriği';
+                        $fr = $frIc;
+                    } else {
+                        // Aynı irsaliye kayıtlı başka faturada, bu PDF ise sistemde olmayan bir fatura
+                        $uyari = 'İrsaliye ' . $no . ' sistemde ' . $fr['fatura_no'] . ' faturasında kayıtlı, bu PDF ise BAŞKA bir fatura ('
+                               . ($v0['fatura_no'] ?: 'ETTN ' . $v0['ettn']) . ') — aynı irsaliye iki faturada: ÇİFT FATURALAMA ŞÜPHESİ, ödemeden önce kontrol edin';
+                        $fr = null; $no = $v0['fatura_no'] ?: $no; $ettn = $v0['ettn']; $kaynak = 'PDF içeriği';
+                    }
+                } else {
+                    $fr = $frIc;
+                    if ($fr || $v0['fatura_no']) { $kaynak = 'PDF içeriği'; if ($v0['fatura_no']) $no = $v0['fatura_no']; }
+                    // ETTN ile bulundu ama numara farklı → aynı fatura başka numarayla kayıtlı (ya da ETTN yanlış girilmiş)
+                    if ($fr && $v0['fatura_no'] && fat_irs_norm((string)$fr['fatura_no']) !== fat_irs_norm((string)$v0['fatura_no'])) {
+                        $kaynak = 'PDF içeriği (ETTN) · ⚠ PDF\'teki no ' . $v0['fatura_no'] . ', kayıtta farklı numara';
+                    }
                 }
+            } elseif ($irsYolu) {
+                $kaynak .= ' · içerik doğrulanamadı';
             }
         } elseif (!$fr && $kaynak === 'PDF içeriği' && $t0) {
             $v0 = fat_metinden_cikar($t0);
+        }
+        // Son çare: sistemdeki fatura dosyalarından biriyle bayt bayt aynı mı (taranmış PDF, anlamsız dosya adı)
+        if (!$fr && !$uyari && ($fidA = fat_ayni_dosya($dosyaIdx, __DIR__, $tmp)) && isset($idIdx[$fidA])) {
+            $fr = $idIdx[$fidA]; $kaynak = 'dosya içeriği (kayıtlı fatura dosyasıyla birebir aynı)';
         }
         if ($fr) $kSonuc[] = ['ad'=>$ad, 'no'=>$fr['fatura_no'] ?: $no, 'durum'=>'islenmis', 'kaynak'=>$kaynak, 'id'=>(int)$fr['id'],
                               'tarih'=>$fr['tarih'], 'bagli'=>(int)$fr['bagli'], 'eksik'=>(int)$fr['eksik_adet']];
         else {
             // Sistemde olmayan faturanın irsaliyeleri BAŞKA bir faturaya bağlıysa: çift faturalama şüphesi
-            $uyari = null;
-            if ($v0 && !empty($v0['irsaliyeler'])) {
+            if (!$uyari && $v0 && !empty($v0['irsaliyeler'])) {
                 $esl0 = fat_eslestir($pdo, $v0['irsaliyeler']);
                 $bsk0 = fat_baskaya_bagli($pdo, array_map(fn($r) => (int)$r['id'], $esl0['eslesen']), 0);
                 if ($bsk0) $uyari = count($bsk0) . ' irsaliyesi sistemde BAŞKA faturaya bağlı ('
                     . implode(', ', array_map(fn($b) => $b['irsaliye_no'] . ' → ' . $b['fatura_no'], array_slice($bsk0, 0, 5)))
                     . (count($bsk0) > 5 ? ' …' : '') . ') — aynı irsaliye iki faturada: ÇİFT FATURALAMA ŞÜPHESİ, ödemeden önce kontrol edin';
             }
-            $satir = ['ad'=>$ad, 'no'=>$no, 'durum'=>'islenmemis', 'kaynak'=>$kaynak, 'uyari'=>$uyari];
+            // Numarası okunamayan dosya da bekletilir — "ÇÖZÜMLE ve KAYDET" içeriği AI ile okuyabilir
+            $satir = ['ad'=>$ad, 'no'=>$no, 'durum'=>($no === null && $ettn === null) ? 'okunamadi' : 'islenmemis',
+                      'kaynak'=>($no === null && $ettn === null) ? null : $kaynak, 'uyari'=>$uyari];
             $ext = guvenli_uzanti($ad, '', 'pdf');
             if (preg_match('/^[a-z0-9]{1,6}$/', $ext)) {
                 $pid = uniqid('fk_', true) . '.' . $ext;
@@ -424,7 +460,7 @@ if (in_array($_POST['action'] ?? '', ['ettn_no_duzelt', 'ettn_ayir'], true) && c
     if (!$tamB || !is_file($tamB)) { flash('error', 'Bekleyen dosya bulunamadı (süresi dolmuş olabilir) — Toplu Fatura Kontrolü\'nü yeniden çalıştırın.'); redirect('fatura_eslestir.php'); }
     $pdo->prepare("UPDATE faturalar SET ettn = NULL WHERE id = ?")->execute([$fid]);
     audit_log($pdo, 'faturalar', $fid, 'UPDATE', ['ettn' => $f['ettn']], ['ettn' => null, 'sebep' => 'ETTN çakışması — farklı fatura, ETTN temizlendi'], current_user_id());
-    $_POST = ['action' => 'fatura_isle', 'dosya' => [$pid], 'taslak' => '1', '_yonlendir' => '1'];
+    $_POST = ['action' => 'fatura_isle', 'dosya' => [$pid], 'ad' => [(string)($_POST['dosya_adi'] ?? $pid)], 'taslak' => '1', '_yonlendir' => '1'];
 }
 
 if (($_POST['action'] ?? '') === 'fatura_isle' && !empty($_POST['dosya'])) {
@@ -432,18 +468,21 @@ if (($_POST['action'] ?? '') === 'fatura_isle' && !empty($_POST['dosya'])) {
     $KONT_BEKLEME = __DIR__ . '/uploads/fatura_kontrol_bekleyen';
     $taslakAc = !empty($_POST['taslak']);   // faturadaki eksik irsaliyeleri taslak olarak aç
     $iSonuc = [];
-    foreach ((array)$_POST['dosya'] as $pid) {
+    $adlar = array_values((array)($_POST['ad'] ?? []));
+    foreach (array_values((array)$_POST['dosya']) as $iA => $pid) {
         $pid = basename((string)$pid);
         if (!preg_match('/^fk_[\w.]+$/', $pid)) continue;
         $tam = $KONT_BEKLEME . '/' . $pid;
         $ad  = $pid;
-        if (!is_file($tam)) { $iSonuc[] = ['ad'=>$pid, 'durum'=>'hata', 'mesaj'=>'dosya bulunamadı (süresi dolmuş olabilir — kontrolü yeniden çalıştırın)']; continue; }
+        // Raporda BİLGİSAYARDAKİ dosya adı görünsün (hangi dosyada sorun var anlaşılsın); yalnız gösterim içindir
+        $orjAd = mb_substr(basename(str_replace('\\', '/', (string)($adlar[$iA] ?? ''))), 0, 200) ?: $pid;
+        if (!is_file($tam)) { $iSonuc[] = ['ad'=>$orjAd, 'durum'=>'hata', 'mesaj'=>'dosya bulunamadı (süresi dolmuş olabilir — kontrolü yeniden çalıştırın)']; continue; }
         try {
             $mime  = guess_mime($tam, $ad);
             $metin = fat_dosyadan_metin($tam, $mime);
             $veri  = ($metin !== null && $metin !== '') ? fat_metinden_cikar($metin) : null;
             if (!$veri || !$veri['fatura_no']) {
-                $iSonuc[] = ['ad'=>$pid, 'durum'=>'hata', 'mesaj'=>'fatura no çözülemedi — tekil "Fatura Yükle" ile elle işleyin']; continue;
+                $iSonuc[] = ['ad'=>$orjAd, 'durum'=>'hata', 'mesaj'=>'fatura no çözülemedi — tekil "Fatura Yükle" ile elle işleyin']; continue;
             }
             // Mükerrer (bu arada işlenmiş olabilir)
             // ⚠ fat_mevcut fatura no VEYA ETTN ile eşleşir. Toplu kontrol dosya adındaki NUMARAYA bakar;
@@ -454,7 +493,7 @@ if (($_POST['action'] ?? '') === 'fatura_isle' && !empty($_POST['dosya'])) {
                 $cakisma = ($mv['eslesme_alani'] ?? '') === 'ettn'
                         && fat_irs_norm((string)$mv['fatura_no']) !== fat_irs_norm((string)$veri['fatura_no']);
                 if (!$cakisma) @unlink($tam);
-                $iSonuc[] = ['ad'=>$pid, 'no'=>$veri['fatura_no'], 'durum'=>'zaten',
+                $iSonuc[] = ['ad'=>$orjAd, 'no'=>$veri['fatura_no'], 'durum'=>'zaten',
                              'mesaj'=>$cakisma ? 'aynı ETTN başka numarayla kayıtlı' : 'zaten işlenmiş',
                              'kayit'=>['id'=>(int)$mv['id'], 'no'=>(string)$mv['fatura_no'], 'tarih'=>$mv['tarih'],
                                        'tutar'=>$mv['tutar'] !== null ? (float)$mv['tutar'] : null, 'ted'=>$mv['tedarikci'] ?? null,
@@ -522,13 +561,13 @@ if (($_POST['action'] ?? '') === 'fatura_isle' && !empty($_POST['dosya'])) {
                     $belgeEk++;
                 }
             }
-            $iSonuc[] = ['ad'=>$pid, 'no'=>$veri['fatura_no'], 'durum'=>'kaydedildi',
+            $iSonuc[] = ['ad'=>$orjAd, 'no'=>$veri['fatura_no'], 'durum'=>'kaydedildi',
                          'bagli'=>count($ids), 'eksik'=>count($esl['eksik']), 'belge'=>$belgeEk,
                          'taslak'=>$taslakAcilan, 'taslak_uyari'=>$taslakUyari, 'baskada'=>array_values($baskada),
                          'ted'=>($ted['ad'] ?? null), 'ted_yeni'=>$tedYeni,
                          'm3'=>$veri['miktar'], 'tutar'=>$veri['tutar']];
         } catch (Throwable $eI) {
-            $iSonuc[] = ['ad'=>$pid, 'durum'=>'hata', 'mesaj'=>$eI->getMessage()];
+            $iSonuc[] = ['ad'=>$orjAd, 'durum'=>'hata', 'mesaj'=>$eI->getMessage()];
         }
     }
     $_SESSION['fat_islem'] = array_merge($_SESSION['fat_islem'] ?? [], $iSonuc);
@@ -845,7 +884,7 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
                         <?php if ($r['durum'] === 'islenmis'): ?><span class="badge bg-success">✓ işlenmiş</span>
                             <?php if (isset($kTekrar[$kI])): ?><span class="badge bg-info text-dark" title="Listede daha önce geçen <?= h($kTekrar[$kI]) ?> ile AYNI fatura — ayrı kayıt sayılmaz">tekrar: <?= h($kTekrar[$kI]) ?></span><?php endif; ?>
                         <?php elseif ($r['durum'] === 'islenmemis'): ?><span class="badge bg-danger">✗ işlenmemiş</span>
-                        <?php elseif ($r['durum'] === 'okunamadi'): ?><span class="badge bg-secondary" title="Ne dosya adından ne içerikten numara çıkarılamadı — elle bakın">okunamadı</span>
+                        <?php elseif ($r['durum'] === 'okunamadi'): ?><span class="badge bg-danger" title="Dosya adında ve PDF metninde numara bulunamadı (taranmış PDF olabilir) — ÇÖZÜMLE ve KAYDET içeriği AI ile okur">✗ numara okunamadı</span>
                         <?php else: ?><span class="badge bg-secondary"><?= h($r['mesaj'] ?? 'hata') ?></span><?php endif; ?>
                     </td>
                     <td class="small">
@@ -864,15 +903,15 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
             </tbody>
         </table>
     </div></div>
-    <?php if ($kIslenmemis): ?>
-    <?php $islenebilir = array_values(array_filter($kIslenmemis, fn($r) => !empty($r['dosya']))); ?>
+    <?php if ($kIslenmemis || array_filter($kontrolSonuc, fn($r) => $r['durum'] === 'okunamadi')): ?>
+    <?php $islenebilir = array_values(array_filter($kontrolSonuc, fn($r) => in_array($r['durum'], ['islenmemis', 'okunamadi'], true) && !empty($r['dosya']))); ?>
     <div class="card-footer bg-white small">
         <strong class="text-danger">İşlenmemiş numaralar (kopyalanabilir):</strong>
         <code><?= h(implode(', ', array_map(fn($r) => (string)($r['no'] ?? $r['ad']), $kIslenmemis))) ?></code>
         <?php if ($islenebilir): ?>
         <div class="mt-2 pt-2 border-top">
             <button type="button" class="btn btn-success btn-sm" id="isleBtn"
-                    data-dosyalar="<?= h(json_encode(array_map(fn($r) => $r['dosya'], $islenebilir))) ?>">
+                    data-dosyalar="<?= h(json_encode(array_map(fn($r) => ['d' => $r['dosya'], 'a' => $r['ad']], $islenebilir), JSON_UNESCAPED_UNICODE)) ?>">
                 <i class="bi bi-cpu me-1"></i>İşlenmemiş <?= count($islenebilir) ?> faturayı ÇÖZÜMLE ve KAYDET
             </button>
             <span class="text-muted ms-2">Her fatura otomatik okunur, tedarikçisi bulunur/oluşturulur, irsaliyeleri bağlanır.</span>
@@ -912,7 +951,10 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
             var tk = document.getElementById('isleTaslak');
             if (tk && tk.checked) fd.append('taslak', '1');
             if (csrfEl) fd.append('csrf', csrfEl.value);
-            dosyalar.slice(i, i + BATCH).forEach(function (d) { fd.append('dosya[]', d); });
+            dosyalar.slice(i, i + BATCH).forEach(function (d) {
+                if (typeof d === 'string') d = {d: d, a: d};
+                fd.append('dosya[]', d.d); fd.append('ad[]', d.a || d.d);   // ad: rapor bilgisayardaki dosya adını göstersin
+            });
             try {
                 var j = await (await fetch('fatura_eslestir.php', { method: 'POST', body: fd })).json();
                 oz.kaydedilen += j.kaydedilen || 0; oz.zaten += j.zaten || 0; oz.hata += j.hata || 0;
@@ -942,13 +984,14 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
     <div class="card-body p-0"><div class="table-responsive" style="max-height:60vh">
         <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
             <thead class="table-light" style="position:sticky;top:0"><tr>
-                <th>Fatura No</th><th>Durum</th><th>Tedarikçi</th><th class="text-end">m³</th><th class="text-end">Tutar</th>
+                <th>Dosya</th><th>Fatura No</th><th>Durum</th><th>Tedarikçi</th><th class="text-end">m³</th><th class="text-end">Tutar</th>
                 <th class="text-end">Bağlanan İrs.</th><th class="text-end">Taslak açılan</th><th class="text-end">Eksik</th><th></th>
             </tr></thead>
             <tbody>
             <?php foreach ($islemSonuc as $r): ?>
                 <tr class="<?= $r['durum'] === 'hata' ? 'table-danger' : ($r['durum'] === 'zaten' ? 'table-secondary' : '') ?>">
-                    <td class="font-monospace small"><?= h((string)($r['no'] ?? $r['ad'])) ?></td>
+                    <td class="small text-break" style="max-width:220px" title="Bilgisayarınızdaki dosya adı"><i class="bi bi-file-earmark-pdf text-muted me-1"></i><?= h((string)($r['ad'] ?? '')) ?></td>
+                    <td class="font-monospace small"><?= h((string)($r['no'] ?? '—')) ?></td>
                     <td>
                         <?php if ($r['durum'] === 'kaydedildi'): ?><span class="badge bg-success">✓ kaydedildi</span>
                         <?php elseif ($r['durum'] === 'zaten'): ?><span class="badge bg-secondary">zaten işlenmiş</span>
@@ -970,6 +1013,7 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
                                     </form>
                                     <form method="post" class="d-inline" onsubmit="return confirm('<?= h($k['no']) ?> kaydının ETTN\'i silinecek ve bu PDF ayrı fatura olarak kaydedilecek. Devam edilsin mi?')">
                                         <input type="hidden" name="action" value="ettn_ayir"><input type="hidden" name="fatura_id" value="<?= (int)$k['id'] ?>">
+                                        <input type="hidden" name="dosya_adi" value="<?= h((string)($r['ad'] ?? '')) ?>">
                                         <input type="hidden" name="dosya" value="<?= h((string)$r['dosya']) ?>">
                                         <button class="btn btn-sm btn-outline-danger py-0"><i class="bi bi-files me-1"></i>Farklı fatura — ayrı kaydet</button>
                                     </form>

@@ -637,10 +637,12 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
     //    CKE…'dir). Eskiden dosya adındaki numara yalnız fatura no'larında arandığından bu dosyalar
     //    kaydedildikten sonra da her kontrolde "işlenmemiş" çıkıyordu. Artık faturaların irsaliye
     //    listesinde de aranır ve bulunamazsa PDF İÇERİĞİ (fatura no / ETTN) ayrıca denenir.
-    $noIdx = []; $ettnIdx = []; $irsIdx = [];
-    foreach ($pdoDemir->query("SELECT f.id, f.fatura_no, f.ettn, f.tarih, f.tedarikci, f.irsaliye_liste,
+    $noIdx = []; $ettnIdx = []; $irsIdx = []; $idIdx = []; $dosyaIdx = [];
+    foreach ($pdoDemir->query("SELECT f.id, f.fatura_no, f.ettn, f.tarih, f.tedarikci, f.irsaliye_liste, f.dosya_url,
                                       (SELECT COUNT(*) FROM demir_sevkiyatlar s WHERE s.fatura_id = f.id) bagli
                                FROM demir_faturalar f") as $fr) {
+        $idIdx[(int)$fr['id']] = $fr;
+        if (!empty($fr['dosya_url'])) $dosyaIdx[(int)$fr['id']] = (string)$fr['dosya_url'];
         $k = fat_irs_norm((string)$fr['fatura_no']); if ($k !== '') $noIdx[$k] = $fr;
         $e0 = strtoupper(trim((string)$fr['ettn'])); if ($e0 !== '') $ettnIdx[$e0] = $fr;
         foreach ((array)(json_decode((string)$fr['irsaliye_liste'], true) ?: []) as $irsN) {
@@ -675,7 +677,10 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
             }
         }
         $fr = $no !== null ? ($noIdx[fat_irs_norm($no)] ?? null) : null;
-        if (!$fr && $ettn !== null) $fr = $ettnIdx[$ettn] ?? null;
+        if (!$fr && $ettn !== null && ($fr = $ettnIdx[$ettn] ?? null) && $no !== null
+            && fat_irs_norm((string)$fr['fatura_no']) !== fat_irs_norm($no)) {
+            $kaynak .= ' · ⚠ PDF\'teki no ' . $no . ', kayıtta farklı numara (ETTN aynı) — ÇÖZÜMLE ve KAYDET ile karar verin';
+        }
         // Dosya adındaki numara bir İRSALİYE no'su olabilir → o irsaliyeyi taşıyan fatura
         if (!$fr && $no !== null && ($fr = $irsIdx[fat_irs_norm($no)] ?? null)) $kaynak = 'dosya adı (irsaliye no)';
         // ⚠ İrsaliye no'su üzerinden bulunan fatura PDF İÇERİĞİYLE DOĞRULANIR: aynı irsaliye BAŞKA bir
@@ -712,6 +717,10 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
                 elseif ($v0['ettn'] && ($fr = $ettnIdx[$v0['ettn']] ?? null)) $kaynak = 'PDF içeriği (ETTN)';
                 if (!$fr && $v0['fatura_no']) { $no = $v0['fatura_no']; $kaynak = 'PDF içeriği'; }
             }
+        }
+        // Son çare: sistemdeki fatura dosyalarından biriyle BAYT BAYT aynı mı (taranmış PDF, anlamsız dosya adı)
+        if (!$fr && empty($ciftUyari) && ($fidA = fat_ayni_dosya($dosyaIdx, __DIR__ . '/..', $tmp)) && isset($idIdx[$fidA])) {
+            $fr = $idIdx[$fidA]; $kaynak = 'dosya içeriği (kayıtlı fatura dosyasıyla birebir aynı)';
         }
         if ($fr) {
             $kSonuc[] = ['ad'=>$ad, 'no'=>$fr['fatura_no'] ?: $no, 'durum'=>'islenmis', 'kaynak'=>$kaynak, 'id'=>(int)$fr['id'],
@@ -751,6 +760,35 @@ if (isset($_GET['kontrol']) && !empty($_SESSION['dfat_kontrol'])) {
 // ── 2d) İŞLENMEMİŞLERİ ÇÖZÜMLE ve KAYDET (kontrol raporundan, 2'şerli parti AJAX) ──
 // metin (pdftotext→AI) → dfat_cikar → tedarikçi VKN/unvandan bul-yoksa oluştur → eşleşen
 // sevkiyatları bağla (başka faturadakiler TAŞINMAZ) → isteğe bağlı eksikleri taslak sevkiyat aç.
+// ── ETTN ÇAKIŞMASI KARARI (işlem raporundan; beton fatura_eslestir.php ile aynı desen) ──────────
+//  (a) ettn_no_duzelt: aynı fatura, kayıtlı numara yanlış → kaydın numarası PDF'tekine çevrilir.
+//  (b) ettn_ayir: farklı fatura → eski kaydın ETTN'i temizlenir, bekleyen dosya yeni fatura olarak işlenir.
+if (in_array($_POST['action'] ?? '', ['ettn_no_duzelt', 'ettn_ayir'], true) && ctype_digit((string)($_POST['fatura_id'] ?? ''))) {
+    if (!can_edit()) { flash('error', 'Bu işlem için yetkiniz yok.'); redirect('faturalar.php'); }
+    require_once __DIR__ . '/../includes/db.php';   // audit_log ana veritabanında ($pdo)
+    $fid  = (int)$_POST['fatura_id'];
+    $pid  = basename((string)($_POST['dosya'] ?? ''));
+    $tamB = preg_match('/^dfk_[\w.]+$/', $pid) ? $DFAT_BEKLEME . '/' . $pid : '';
+    $st = $pdoDemir->prepare("SELECT * FROM demir_faturalar WHERE id = ?"); $st->execute([$fid]);
+    $f = $st->fetch(PDO::FETCH_ASSOC);
+    if (!$f) { flash('error', 'Fatura bulunamadı.'); redirect('faturalar.php'); }
+    if ($_POST['action'] === 'ettn_no_duzelt') {
+        $yeni = strtoupper(trim((string)($_POST['yeni_no'] ?? '')));
+        if (!preg_match('/^[A-Z0-9][A-Z0-9-]{4,49}$/', $yeni)) { flash('error', 'Geçersiz fatura numarası.'); redirect('faturalar.php'); }
+        $c = $pdoDemir->prepare("SELECT COUNT(*) FROM demir_faturalar WHERE fatura_no = ? AND id <> ?"); $c->execute([$yeni, $fid]);
+        if ((int)$c->fetchColumn() > 0) { flash('error', "{$yeni} numaralı başka bir fatura zaten kayıtlı — numara değiştirilmedi."); redirect('faturalar.php?fatura_ara=' . urlencode($yeni)); }
+        $pdoDemir->prepare("UPDATE demir_faturalar SET fatura_no = ? WHERE id = ?")->execute([$yeni, $fid]);
+        audit_log($pdo, 'demir_faturalar', $fid, 'UPDATE', ['fatura_no' => $f['fatura_no']], ['fatura_no' => $yeni, 'sebep' => 'ETTN çakışması — aynı fatura'], current_user_id());
+        if ($tamB && is_file($tamB)) @unlink($tamB);
+        flash('success', "Fatura numarası düzeltildi: {$f['fatura_no']} → {$yeni}. Bu dosya bir sonraki kontrolde \"işlenmiş\" görünecek.");
+        redirect('faturalar.php?fatura_ara=' . urlencode($yeni));
+    }
+    if (!$tamB || !is_file($tamB)) { flash('error', 'Bekleyen dosya bulunamadı (süresi dolmuş olabilir) — Toplu Fatura Kontrolü\'nü yeniden çalıştırın.'); redirect('faturalar.php'); }
+    $pdoDemir->prepare("UPDATE demir_faturalar SET ettn = NULL WHERE id = ?")->execute([$fid]);
+    audit_log($pdo, 'demir_faturalar', $fid, 'UPDATE', ['ettn' => $f['ettn']], ['ettn' => null, 'sebep' => 'ETTN çakışması — farklı fatura, ETTN temizlendi'], current_user_id());
+    $_POST = ['action' => 'fatura_isle', 'dosya' => [$pid], 'ad' => [(string)($_POST['dosya_adi'] ?? $pid)], 'taslak' => '1', '_yonlendir' => '1'];
+}
+
 if (($_POST['action'] ?? '') === 'fatura_isle' && !empty($_POST['dosya'])) {
     @set_time_limit(600);
     $taslakAc = !empty($_POST['taslak']);
@@ -770,11 +808,24 @@ if (($_POST['action'] ?? '') === 'fatura_isle' && !empty($_POST['dosya'])) {
             if (!$v || !$v['fatura_no']) {
                 $iSonuc[] = ['ad'=>$orjAd, 'durum'=>'hata', 'mesaj'=>'fatura no çözülemedi — yukarıdaki "Fatura Yükle" ile tekil işleyin']; continue;
             }
-            $mq = $pdoDemir->prepare("SELECT id FROM demir_faturalar WHERE fatura_no = ? OR (ettn IS NOT NULL AND ettn <> '' AND ? <> '' AND ettn = ?) LIMIT 1");
-            $mq->execute([$v['fatura_no'], (string)$v['ettn'], (string)$v['ettn']]);
-            if ($mq->fetchColumn()) {
-                @unlink($tam);
-                $iSonuc[] = ['ad'=>$orjAd, 'no'=>$v['fatura_no'], 'durum'=>'zaten', 'mesaj'=>'zaten işlenmiş']; continue;
+            // ⚠ Numara VEYA ETTN ile eşleşir. ETTN aynı ama numara farklıysa (ETTN ÇAKIŞMASI) eskiden "zaten" deyip
+            //    dosyayı siliyordu; dfat_kaydet ise tekil akışta o kaydın ÜSTÜNE yazardı. Artık karar kullanıcıda:
+            //    iki tarafın künyesi raporda yan yana, dosya bekleme klasöründe kalır (beton ile aynı desen).
+            $mq = $pdoDemir->prepare("SELECT id, fatura_no, ettn, tarih, tutar, tedarikci FROM demir_faturalar
+                                      WHERE fatura_no = ? OR (ettn IS NOT NULL AND ettn <> '' AND ? <> '' AND ettn = ?)
+                                      ORDER BY (fatura_no = ?) DESC LIMIT 1");
+            $mq->execute([$v['fatura_no'], (string)$v['ettn'], (string)$v['ettn'], $v['fatura_no']]);
+            if ($mv = $mq->fetch(PDO::FETCH_ASSOC)) {
+                $alan = ($mv['fatura_no'] === $v['fatura_no']) ? 'fatura_no' : 'ettn';
+                $cakisma = $alan === 'ettn' && fat_irs_norm((string)$mv['fatura_no']) !== fat_irs_norm((string)$v['fatura_no']);
+                if (!$cakisma) @unlink($tam);
+                $iSonuc[] = ['ad'=>$orjAd, 'no'=>$v['fatura_no'], 'durum'=>'zaten',
+                             'mesaj'=>$cakisma ? 'aynı ETTN başka numarayla kayıtlı' : 'zaten işlenmiş',
+                             'kayit'=>['id'=>(int)$mv['id'], 'no'=>(string)$mv['fatura_no'], 'tarih'=>$mv['tarih'],
+                                       'tutar'=>$mv['tutar'] !== null ? (float)$mv['tutar'] : null, 'ted'=>$mv['tedarikci'], 'alan'=>$alan],
+                             'pdf'=>['tarih'=>$v['tarih'], 'tutar'=>$v['tutar'], 'ettn'=>$v['ettn']],
+                             'cakisma'=>$cakisma, 'dosya'=>$cakisma ? $pid : null];
+                continue;
             }
             $e = dfat_eslestir($pdoDemir, $v['irsaliyeler'], $v['belge_nolar']);
             [$ids, $baska] = dfat_bagla_ayir($e['eslesen']);
@@ -799,6 +850,7 @@ if (($_POST['action'] ?? '') === 'fatura_isle' && !empty($_POST['dosya'])) {
         }
     }
     $_SESSION['dfat_islem'] = array_merge($_SESSION['dfat_islem'] ?? [], $iSonuc);
+    if (!empty($_POST['_yonlendir'])) redirect('faturalar.php?islem=1');   // ETTN çakışması "ayrı kaydet" akışı
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
         'islenen'    => count($iSonuc),
@@ -1166,16 +1218,43 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="card-body p-0"><div class="table-responsive" style="max-height:60vh">
         <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
             <thead class="table-light" style="position:sticky;top:0"><tr>
-                <th>Fatura No</th><th>Durum</th><th>Tedarikçi</th><th class="text-end">Ton</th><th class="text-end">Tutar</th>
+                <th>Dosya</th><th>Fatura No</th><th>Durum</th><th>Tedarikçi</th><th class="text-end">Ton</th><th class="text-end">Tutar</th>
                 <th class="text-end">İrsaliye</th><th class="text-end">Bağlanan Svk.</th><th>Bulunamayan / not</th><th></th>
             </tr></thead>
             <tbody>
             <?php foreach ($islemSonuc as $r): ?>
                 <tr class="<?= $r['durum'] === 'hata' ? 'table-danger' : ($r['durum'] === 'zaten' ? 'table-secondary' : '') ?>">
-                    <td class="font-monospace small"><?= h((string)($r['no'] ?? $r['ad'])) ?></td>
+                    <td class="small text-break" style="max-width:220px" title="Bilgisayarınızdaki dosya adı"><i class="bi bi-file-earmark-pdf text-muted me-1"></i><?= h((string)($r['ad'] ?? '')) ?></td>
+                    <td class="font-monospace small"><?= h((string)($r['no'] ?? '—')) ?></td>
                     <td>
                         <?php if ($r['durum'] === 'kaydedildi'): ?><span class="badge bg-success">✓ kaydedildi</span>
                         <?php elseif ($r['durum'] === 'zaten'): ?><span class="badge bg-secondary">zaten işlenmiş</span>
+                            <?php if (!empty($r['kayit']) && empty($r['cakisma'])): ?><span class="small text-muted">kayıt: <?= h($r['kayit']['no']) ?><?= ($r['kayit']['alan'] ?? '') === 'ettn' ? ' (ETTN ile)' : '' ?></span><?php endif; ?>
+                            <?php if (!empty($r['cakisma'])): $k = $r['kayit']; $pd = $r['pdf']; ?>
+                            <div class="alert alert-warning small py-2 px-2 mt-1 mb-0" style="min-width:420px">
+                                <div class="fw-semibold mb-1"><i class="bi bi-exclamation-triangle me-1"></i>ETTN çakışması — aynı ETTN başka numarayla kayıtlı</div>
+                                <table class="table table-sm table-borderless mb-1 small">
+                                    <tr><td class="text-muted">Bu PDF</td><td class="font-monospace"><?= h((string)$r['no']) ?></td><td><?= h(format_date($pd['tarih'] ?? null)) ?></td><td class="text-end"><?= isset($pd['tutar']) && $pd['tutar'] !== null ? $fmt($pd['tutar']) . ' ₺' : '—' ?></td></tr>
+                                    <tr><td class="text-muted">Sistemdeki kayıt</td><td class="font-monospace"><a href="faturalar.php?fatura_ara=<?= urlencode($k['no']) ?>"><?= h($k['no']) ?></a></td><td><?= h(format_date($k['tarih'] ?? null)) ?></td><td class="text-end"><?= $k['tutar'] !== null ? $fmt($k['tutar']) . ' ₺' : '—' ?></td></tr>
+                                </table>
+                                <div class="text-muted mb-1">Tarih ve tutar aynıysa aynı faturadır, kayıttaki numara yanlış yazılmıştır. Farklıysa eski kayda yanlış ETTN girilmiştir.</div>
+                                <?php if (can_edit()): ?>
+                                <div class="d-flex flex-wrap gap-1">
+                                    <form method="post" class="d-inline" onsubmit="return confirm('Kayıtlı <?= h($k['no']) ?> faturasının numarası <?= h((string)$r['no']) ?> olarak değiştirilsin mi?')">
+                                        <input type="hidden" name="action" value="ettn_no_duzelt"><input type="hidden" name="fatura_id" value="<?= (int)$k['id'] ?>">
+                                        <input type="hidden" name="yeni_no" value="<?= h((string)$r['no']) ?>"><input type="hidden" name="dosya" value="<?= h((string)$r['dosya']) ?>">
+                                        <button class="btn btn-sm btn-outline-success py-0"><i class="bi bi-check2 me-1"></i>Aynı fatura — numarayı <?= h((string)$r['no']) ?> yap</button>
+                                    </form>
+                                    <form method="post" class="d-inline" onsubmit="return confirm('<?= h($k['no']) ?> kaydının ETTN\'i silinecek ve bu PDF ayrı fatura olarak kaydedilecek. Devam edilsin mi?')">
+                                        <input type="hidden" name="action" value="ettn_ayir"><input type="hidden" name="fatura_id" value="<?= (int)$k['id'] ?>">
+                                        <input type="hidden" name="dosya_adi" value="<?= h((string)($r['ad'] ?? '')) ?>">
+                                        <input type="hidden" name="dosya" value="<?= h((string)$r['dosya']) ?>">
+                                        <button class="btn btn-sm btn-outline-danger py-0"><i class="bi bi-files me-1"></i>Farklı fatura — ayrı kaydet</button>
+                                    </form>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                            <?php endif; ?>
                         <?php else: ?><span class="badge bg-danger">✗ işlenemedi</span> <span class="small text-danger"><?= h((string)($r['mesaj'] ?? '')) ?></span><?php endif; ?>
                     </td>
                     <td class="small"><?= h((string)($r['ted'] ?? '')) ?><?= !empty($r['ted_yeni']) ? ' <span class="badge bg-info text-dark">yeni oluşturuldu</span>' : '' ?></td>
@@ -1190,7 +1269,7 @@ require_once __DIR__ . '/../includes/header.php';
                         <?php if ($r['durum'] === 'kaydedildi' && (int)($r['irs'] ?? 0) === 0): ?><span class="text-danger">irsaliye no okunamadı</span><?php endif; ?>
                         <?php if (!empty($r['uyari'])): ?><div class="text-warning-emphasis"><?= h($r['uyari']) ?></div><?php endif; ?>
                     </td>
-                    <td><?php if (!empty($r['no'])): ?><a href="faturalar.php?fatura_ara=<?= urlencode((string)$r['no']) ?>" class="small">kaydı aç</a><?php endif; ?></td>
+                    <td><?php $acNo = (string)($r['kayit']['no'] ?? $r['no'] ?? ''); if ($acNo !== ''): ?><a href="faturalar.php?fatura_ara=<?= urlencode($acNo) ?>" class="small">kaydı aç</a><?php endif; ?></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>
