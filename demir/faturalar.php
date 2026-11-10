@@ -852,6 +852,34 @@ foreach ($bagliSvk as $fidX => $liste) foreach ($liste as $r) {
     if ($k !== '') $irsSvkMap[$fidX . '|' . $k] = (int)$r['id'];
 }
 
+// ── ÇİFT FATURALAMA KONTROLÜ (aramadan ÖNCE, TÜM kayıtlar üzerinde) ─────────────
+//  (1) KESİN: aynı irsaliye iki FARKLI fatura numarasında geçiyor → aynı teslimat iki kez faturalanmış
+//      (irsaliye_liste + faturaya bağlı sevkiyatların irsaliye no'su, normalize).
+//  (2) ŞÜPHE: aynı tedarikçi + aynı tarih + aynı ödenecek tutar, farklı fatura no (irsaliyesi okunamamış
+//      faturalarda tek ipucu). Dosya adı farkı (CKE…/CKI…) burada SAYILMAZ — kayıt fatura no'dan tektir.
+$ciftIrs = [];   // irs_norm => ['ham'=>…, 'f'=>[fid=>fatura_no]]
+foreach ($kayitli as $f) {
+    $fid0 = (int)$f['id'];
+    $ad0 = (array)(json_decode((string)($f['irsaliye_liste'] ?? ''), true) ?: []);
+    foreach ($bagliSvk[$fid0] ?? [] as $sv) $ad0[] = (string)$sv['irsaliye_no'];
+    foreach ($ad0 as $no0) {
+        $k0 = fat_irs_norm((string)$no0); if ($k0 === '') continue;
+        $ciftIrs[$k0]['ham'] ??= strtoupper(trim((string)$no0));
+        $ciftIrs[$k0]['f'][$fid0] = (string)$f['fatura_no'];
+    }
+}
+$ciftIrs = array_filter($ciftIrs, fn($x) => count($x['f']) > 1);
+$ciftTutar = [];
+foreach ($kayitli as $f) {
+    if ($f['tutar'] === null || (float)$f['tutar'] <= 0 || !$f['tarih']) continue;
+    $k0 = fat_unvan_norm((string)$f['tedarikci']) . '|' . $f['tarih'] . '|' . number_format((float)$f['tutar'], 2, '.', '');
+    $ciftTutar[$k0][(int)$f['id']] = $f;
+}
+$ciftTutar = array_filter($ciftTutar, fn($x) => count($x) > 1);
+$ciftFid = [];   // fid => 'irs' | 'tutar' (satır rozeti)
+foreach ($ciftIrs as $x) foreach ($x['f'] as $fid0 => $_) $ciftFid[$fid0] = 'irs';
+foreach ($ciftTutar as $x) foreach ($x as $fid0 => $_) $ciftFid[$fid0] ??= 'tutar';
+
 // ── Fatura arama: no / ETTN / tedarikçi / sipariş no / irsaliye no (NORMALİZE —
 //    "3302" ya da "CKI2026-3302" yazınca CKI2026000003302'li faturayı da bulur) ─────────
 $fatAra = trim((string)($_GET['fatura_ara'] ?? ''));
@@ -1293,6 +1321,31 @@ document.getElementById('kontrolForm').addEventListener('submit', async function
 </form>
 <?php endif; ?>
 
+<?php if ($ciftIrs || $ciftTutar): ?>
+<div class="alert <?= $ciftIrs ? 'alert-danger' : 'alert-warning' ?> mb-3">
+    <div class="fw-semibold mb-1"><i class="bi bi-exclamation-octagon me-1"></i>Çift faturalama kontrolü</div>
+    <?php if ($ciftIrs): ?>
+    <div class="small mb-1"><strong><?= count($ciftIrs) ?> irsaliye birden fazla FARKLI faturada geçiyor</strong> — aynı teslimat iki kez faturalanmış olabilir, ödemeden önce tedarikçiyle kontrol edin:</div>
+    <ul class="small mb-2">
+        <?php foreach ($ciftIrs as $x): ?>
+        <li><code><?= h($x['ham']) ?></code> →
+            <?php foreach ($x['f'] as $fno): ?><a href="faturalar.php?fatura_ara=<?= urlencode($fno) ?>" class="badge bg-danger text-decoration-none me-1"><?= h($fno) ?></a><?php endforeach; ?></li>
+        <?php endforeach; ?>
+    </ul>
+    <?php endif; ?>
+    <?php if ($ciftTutar): ?>
+    <div class="small mb-1"><strong><?= count($ciftTutar) ?> grup</strong> aynı tedarikçi · aynı gün · aynı tutarlı farklı fatura (şüphe — kalemleri karşılaştırın):</div>
+    <ul class="small mb-0">
+        <?php foreach ($ciftTutar as $x): $f0 = reset($x); ?>
+        <li><?= h((string)$f0['tedarikci']) ?> · <?= h(format_date($f0['tarih'])) ?> · <?= $fmt((float)$f0['tutar']) ?> ₺ →
+            <?php foreach ($x as $f1): ?><a href="faturalar.php?fatura_ara=<?= urlencode((string)$f1['fatura_no']) ?>" class="badge bg-warning text-dark text-decoration-none me-1"><?= h((string)$f1['fatura_no']) ?></a><?php endforeach; ?></li>
+        <?php endforeach; ?>
+    </ul>
+    <?php endif; ?>
+</div>
+<?php elseif ($kayitli && $fatAra === ''): ?>
+<div class="small text-success mb-2"><i class="bi bi-shield-check me-1"></i>Çift faturalama kontrolü: hiçbir irsaliye iki farklı faturada geçmiyor; aynı gün aynı tutarlı fatura yok.</div>
+<?php endif; ?>
 <div class="card">
     <div class="card-header bg-white fw-semibold d-flex align-items-center justify-content-between flex-wrap gap-2">
         <span><i class="bi bi-archive me-1"></i> Kayıtlı Faturalar</span>
@@ -1332,7 +1385,9 @@ document.getElementById('kontrolForm').addEventListener('submit', async function
                 $fSvk = $bagliSvk[(int)$f['id']] ?? []; ?>
                 <tr>
                     <td class="text-center text-muted"><?= $sira-- ?></td>
-                    <td><code><?= h($f['fatura_no']) ?></code></td>
+                    <td><code><?= h($f['fatura_no']) ?></code>
+                        <?php if (($ciftFid[(int)$f['id']] ?? '') === 'irs'): ?><span class="badge bg-danger ms-1" title="Bu faturadaki bir irsaliye başka bir faturada da geçiyor — çift faturalama şüphesi">çift irsaliye</span>
+                        <?php elseif (($ciftFid[(int)$f['id']] ?? '') === 'tutar'): ?><span class="badge bg-warning text-dark ms-1" title="Aynı tedarikçi, aynı gün, aynı tutarlı başka fatura var">aynı tutar</span><?php endif; ?></td>
                     <td class="text-nowrap"><?= h(format_date($f['tarih'])) ?></td>
                     <td class="small"><?= h((string)$f['tedarikci']) ?></td>
                     <td class="small text-nowrap">
