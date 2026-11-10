@@ -567,10 +567,22 @@ $fatAra = trim((string)($_GET['fatura_ara'] ?? ''));
 $fatTur = (string)($_GET['tur'] ?? '');
 $fatTur = isset(FAT_TUR[$fatTur]) ? $fatTur : '';
 $sqlTur = $fatTur !== '' ? " WHERE f.tur = " . $pdo->quote($fatTur) : "";
+// ⚠ Liste eskiden aramasızken sabit "LIMIT 100" ile kesiliyordu: 233 kayıtlı faturanın yalnız son 100'ü
+//    görünüyor, başlıktaki adet/m³/₺ rozeti de yalnız o 100 satırdan toplanıyordu ("100 fatura" yazıyordu).
+//    Artık 100'erli SAYFALANIR (?s=) ve rozet TÜM faturalardan (tür süzgecine uyarak) SQL ile toplanır.
+$FAT_SAYFA = 100;
+$fatOzet = $pdo->query("SELECT COUNT(*) adet, COALESCE(SUM(f.tutar),0) tutar,
+                               COALESCE(SUM(CASE WHEN f.tur NOT IN ('" . implode("','", FAT_TUR_IRSALIYESIZ) . "') THEN f.miktar_m3 END),0) m3,
+                               SUM(f.tur IN ('" . implode("','", FAT_TUR_IRSALIYESIZ) . "')) irsaliyesiz
+                        FROM faturalar f" . $sqlTur)->fetch();
+$fatToplam   = (int)$fatOzet['adet'];
+$fatSayfaSay = max(1, (int)ceil($fatToplam / $FAT_SAYFA));
+$fatSayfa    = min($fatSayfaSay, max(1, (int)($_GET['s'] ?? 1)));
+$fatOfset    = ($fatSayfa - 1) * $FAT_SAYFA;
 $kayitli = $pdo->query("SELECT f.*, t.ad AS tedarikci,
                                (SELECT COUNT(*) FROM irsaliyeler i WHERE i.fatura_id = f.id) AS bagli
                         FROM faturalar f LEFT JOIN tedarikciler t ON t.id = f.tedarikci_id" . $sqlTur . "
-                        ORDER BY f.tarih DESC, f.id DESC" . ($fatAra === '' ? " LIMIT 100" : ""))->fetchAll();
+                        ORDER BY f.tarih DESC, f.id DESC" . ($fatAra === '' ? " LIMIT $FAT_SAYFA OFFSET $fatOfset" : ""))->fetchAll();
 // Tür bazlı sayaçlar (süzgeçten BAĞIMSIZ — her zaman tüm faturalar)
 $turSayac = [];
 foreach ($pdo->query("SELECT tur, COUNT(*) adet FROM faturalar GROUP BY tur") as $__ts) {
@@ -1421,7 +1433,7 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
 <?php elseif ($kayitli && $fatAra === ''): ?>
 <div class="small text-success mb-2"><i class="bi bi-shield-check me-1"></i>Çift faturalama kontrolü: hiçbir irsaliye iki farklı faturada geçmiyor; aynı gün aynı tutarlı fatura yok.</div>
 <?php endif; ?>
-<div class="card">
+<div class="card" id="kayitli-faturalar">
     <div class="card-header bg-white fw-semibold d-flex align-items-center justify-content-between flex-wrap gap-2">
         <span><i class="bi bi-archive me-1"></i> Kayıtlı Faturalar</span>
         <form method="get" class="d-flex align-items-center gap-1">
@@ -1441,9 +1453,15 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
         $betonFat = array_values(array_filter($kayitli, fn($x) => fat_tur_irsaliyeli($x['tur'] ?? 'beton')));
         $digerFat = count($kayitli) - count($betonFat);
         ?>
-        <span class="badge bg-primary" title="<?= $fatAra !== '' ? 'Arama sonucu' : 'Toplam fatura sayısı' ?>"><?= count($kayitli) ?> fatura
-            · <?= $fmt(array_sum(array_map(fn($x)=>(float)$x['miktar_m3'], $betonFat))) ?> m³
-            · <?= $fmt(array_sum(array_map(fn($x)=>(float)$x['tutar'], $kayitli))) ?> ₺
+        <?php if ($fatAra === '') {   // aramasız: TÜM faturalar (sayfadaki 100 satır değil)
+            $rzAdet = $fatToplam; $rzM3 = (float)$fatOzet['m3']; $rzTutar = (float)$fatOzet['tutar']; $digerFat = (int)$fatOzet['irsaliyesiz'];
+        } else {
+            $rzAdet = count($kayitli); $rzM3 = array_sum(array_map(fn($x)=>(float)$x['miktar_m3'], $betonFat));
+            $rzTutar = array_sum(array_map(fn($x)=>(float)$x['tutar'], $kayitli));
+        } ?>
+        <span class="badge bg-primary" title="<?= $fatAra !== '' ? 'Arama sonucu' : 'Kayıtlı faturaların TAMAMI' . ($fatTur !== '' ? ' (seçili tür)' : '') ?>"><?= $rzAdet ?> fatura
+            · <?= $fmt($rzM3) ?> m³
+            · <?= $fmt($rzTutar) ?> ₺
             <?= $digerFat ? '· ' . $digerFat . ' irsaliyesiz (pompa/fiyat farkı/hizmet)' : '' ?></span>
     </div>
     <div class="card-body p-0">
@@ -1458,7 +1476,7 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                 <th class="text-end">m³</th><th class="text-end">Bağlı İrs.</th><th class="text-end">Eksik</th><th>Dosya</th><th></th>
             </tr></thead>
             <tbody>
-            <?php $sira = count($kayitli); foreach ($kayitli as $f): $fIrs = $kayitliIrs[(int)$f['id']] ?? [];
+            <?php $sira = $fatAra === '' ? $fatToplam - $fatOfset : count($kayitli); foreach ($kayitli as $f): $fIrs = $kayitliIrs[(int)$f['id']] ?? [];
                   $fTur = fat_tur_norm($f['tur'] ?? 'beton'); $fBeton = fat_tur_irsaliyeli($fTur); ?>
                 <tr class="<?= $fBeton ? '' : 'table-light' ?>">
                     <td class="text-center text-muted"><?= $sira-- ?></td>
@@ -1582,6 +1600,19 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
             </tbody>
         </table>
         </div>
+        <?php if ($fatAra === '' && $fatSayfaSay > 1):
+            $sfUrl = fn(int $n) => 'fatura_eslestir.php?' . http_build_query(array_filter(['tur' => $fatTur, 's' => $n > 1 ? $n : null])) . '#kayitli-faturalar'; ?>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 p-2 border-top small">
+            <span class="text-muted"><?= $fatOfset + 1 ?>–<?= $fatOfset + count($kayitli) ?> / <?= $fatToplam ?> fatura · sayfa <?= $fatSayfa ?> / <?= $fatSayfaSay ?></span>
+            <nav><ul class="pagination pagination-sm mb-0">
+                <li class="page-item <?= $fatSayfa <= 1 ? 'disabled' : '' ?>"><a class="page-link" href="<?= h($sfUrl($fatSayfa - 1)) ?>">‹ Önceki</a></li>
+                <?php for ($sn = 1; $sn <= $fatSayfaSay; $sn++): ?>
+                <li class="page-item <?= $sn === $fatSayfa ? 'active' : '' ?>"><a class="page-link" href="<?= h($sfUrl($sn)) ?>"><?= $sn ?></a></li>
+                <?php endfor; ?>
+                <li class="page-item <?= $fatSayfa >= $fatSayfaSay ? 'disabled' : '' ?>"><a class="page-link" href="<?= h($sfUrl($fatSayfa + 1)) ?>">Sonraki ›</a></li>
+            </ul></nav>
+        </div>
+        <?php endif; ?>
     <?php endif; ?>
     </div>
 </div>
