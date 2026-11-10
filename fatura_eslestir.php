@@ -329,8 +329,11 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
             if ($k !== '' && isset($idIdx[(int)$sv['fatura_id']])) $irsIdx[$k] ??= $idIdx[(int)$sv['fatura_id']];
         }
     } catch (Throwable $eS) {}
-    $kSonuc = [];
+    $kSonuc = []; $kN = 0; $kMd5 = null;
     foreach ($_FILES['dosyalar']['tmp_name'] as $i => $tmp) {
+        // Bir önceki dosyanın satır(lar)ına içerik özeti (rapor içeriği BİREBİR aynı dosyaları bulur)
+        for ($q = $kN; $q < count($kSonuc); $q++) $kSonuc[$q]['md5'] ??= $kMd5;
+        $kN = count($kSonuc); $kMd5 = is_file($tmp) ? (md5_file($tmp) ?: null) : null;
         $ad = (string)$_FILES['dosyalar']['name'][$i];
         try {   // tek bir sorunlu dosya partinin geri kalanını götürmesin
         if ((int)$_FILES['dosyalar']['error'][$i] !== UPLOAD_ERR_OK) {
@@ -347,8 +350,22 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
         }
         // Eşleşme sırası: dosya adındaki fatura no → ETTN → dosya adındaki İRSALİYE no (PDF metni okunabiliyorsa
         // içerikteki fatura no ile doğrulanır) → PDF içeriği → sistemdeki fatura dosyasıyla BAYT BAYT aynılık.
-        $fr = null; $irsYolu = false; $uyari = null; $v0 = null;
+        $fr = null; $irsYolu = false; $uyari = null; $v0 = null; $adUyusmaz = null;
         if ($no !== null) $fr = $noIdx[fat_irs_norm($no)] ?? null;
+        // ⚠ Dosya ADI kayıtlı bir faturayı gösteriyor ama İÇİNDE başka fatura olabilir (yanlış adlandırılmış /
+        //    üzerine kaydedilmiş dosya). Ada güvenip "işlenmiş" demek, sistemde olmayan faturayı gizlerdi.
+        if ($fr && $kaynak === 'dosya adı' && guess_mime($tmp, $ad) === 'application/pdf') {
+            $t0 = fat_pdftotext($tmp);
+            $vA = ($t0 !== null && $t0 !== '') ? fat_metinden_cikar($t0) : null;
+            if ($vA && $vA['fatura_no'] && fat_irs_norm($vA['fatura_no']) !== fat_irs_norm($no)) {
+                $adUyusmaz = 'Dosya adı ' . $no . ' ama içindeki fatura ' . $vA['fatura_no'];
+                $fr = $noIdx[fat_irs_norm($vA['fatura_no'])] ?? ($vA['ettn'] ? ($ettnIdx[strtoupper((string)$vA['ettn'])] ?? null) : null);
+                $no = $vA['fatura_no']; $ettn = $vA['ettn']; $kaynak = 'PDF içeriği · ⚠ dosya adı içerikle uyuşmuyor';
+                if (!$fr) $v0 = $vA;
+            } elseif ($vA && $vA['fatura_no']) {
+                $kaynak = 'dosya adı · PDF ile doğrulandı';
+            }
+        }
         if (!$fr && $ettn !== null) $fr = $ettnIdx[strtoupper((string)$ettn)] ?? null;
         if (!$fr && $no !== null && $kaynak === 'dosya adı' && isset($irsIdx[fat_irs_norm($no)])) {
             $fr = $irsIdx[fat_irs_norm($no)]; $irsYolu = true; $kaynak = 'dosya adı (irsaliye no)';
@@ -389,7 +406,7 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
             $fr = $idIdx[$fidA]; $kaynak = 'dosya içeriği (kayıtlı fatura dosyasıyla birebir aynı)';
         }
         if ($fr) $kSonuc[] = ['ad'=>$ad, 'no'=>$fr['fatura_no'] ?: $no, 'durum'=>'islenmis', 'kaynak'=>$kaynak, 'id'=>(int)$fr['id'],
-                              'tarih'=>$fr['tarih'], 'bagli'=>(int)$fr['bagli'], 'eksik'=>(int)$fr['eksik_adet']];
+                              'tarih'=>$fr['tarih'], 'bagli'=>(int)$fr['bagli'], 'eksik'=>(int)$fr['eksik_adet'], 'ad_uyusmaz'=>$adUyusmaz];
         else {
             // Sistemde olmayan faturanın irsaliyeleri BAŞKA bir faturaya bağlıysa: çift faturalama şüphesi
             if (!$uyari && $v0 && !empty($v0['irsaliyeler'])) {
@@ -401,7 +418,7 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
             }
             // Numarası okunamayan dosya da bekletilir — "ÇÖZÜMLE ve KAYDET" içeriği AI ile okuyabilir
             $satir = ['ad'=>$ad, 'no'=>$no, 'durum'=>($no === null && $ettn === null) ? 'okunamadi' : 'islenmemis',
-                      'kaynak'=>($no === null && $ettn === null) ? null : $kaynak, 'uyari'=>$uyari];
+                      'kaynak'=>($no === null && $ettn === null) ? null : $kaynak, 'uyari'=>$uyari, 'ad_uyusmaz'=>$adUyusmaz];
             $ext = guvenli_uzanti($ad, '', 'pdf');
             if (preg_match('/^[a-z0-9]{1,6}$/', $ext)) {
                 $pid = uniqid('fk_', true) . '.' . $ext;
@@ -413,6 +430,7 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
             $kSonuc[] = ['ad'=>$ad, 'durum'=>'hata', 'mesaj'=>'kontrol edilemedi — ' . mb_substr($eF->getMessage(), 0, 200)];
         }
     }
+    for ($q = $kN; $q < count($kSonuc); $q++) $kSonuc[$q]['md5'] ??= $kMd5;
     $_SESSION['fat_kontrol'] = array_merge($_SESSION['fat_kontrol'] ?? [], $kSonuc);
     if (($_POST['ajax'] ?? '') === '1') {
         header('Content-Type: application/json; charset=utf-8');
@@ -862,6 +880,13 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
     $kDiger      = array_filter($kontrolSonuc, fn($r) => !in_array($r['durum'], ['islenmis','islenmemis'], true));
     $kCift       = array_filter($kontrolSonuc, fn($r) => !empty($r['uyari']));
     // Aynı kayıtlı faturaya düşen dosyalar (biri fatura no'suyla, biri irsaliye no'suyla adlandırılmış olabilir)
+    // İçeriği BİREBİR aynı dosyalar (adları farklı olsa da aynı bayt = aynı belge) — ilk görülen esas
+    $kAyni = []; $kMd5Ilk = [];
+    foreach ($kontrolSonuc as $i => $r) {
+        $m5 = (string)($r['md5'] ?? ''); if ($m5 === '') continue;
+        if (isset($kMd5Ilk[$m5])) $kAyni[$i] = $kMd5Ilk[$m5]; else $kMd5Ilk[$m5] = (string)$r['ad'];
+    }
+    $kAdUyusmaz = array_filter($kontrolSonuc, fn($r) => !empty($r['ad_uyusmaz']));
     $kIlkDosya = []; $kTekrar = [];
     foreach ($kontrolSonuc as $i => $r) {
         if ($r['durum'] !== 'islenmis' || empty($r['id'])) continue;
@@ -876,6 +901,8 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
         <span class="badge bg-success"><?= count($kIslenmis) ?> işlenmiş</span>
         <?php if ($kTekrar): ?><span class="badge bg-info text-dark" title="Birden çok dosya aynı kayıtlı faturaya düşüyor"><?= count($kIlkDosya) ?> farklı fatura · <?= count($kTekrar) ?> tekrar dosya</span><?php endif; ?>
         <span class="badge bg-danger"><?= count($kIslenmemis) ?> işlenmemiş</span>
+        <?php if ($kAyni): ?><span class="badge bg-warning text-dark" title="Adı farklı ama içeriği birebir aynı dosyalar"><i class="bi bi-files me-1"></i><?= count($kAyni) ?> dosya içerik olarak aynı</span><?php endif; ?>
+        <?php if ($kAdUyusmaz): ?><span class="badge bg-danger" title="Dosya adındaki fatura no ile PDF içindeki fatura no farklı"><i class="bi bi-exclamation-triangle me-1"></i><?= count($kAdUyusmaz) ?> dosyanın adı içeriğiyle uyuşmuyor</span><?php endif; ?>
         <?php if ($kCift): ?><span class="badge bg-dark" title="Dosyadaki irsaliyeler sistemde BAŞKA bir faturaya bağlı"><i class="bi bi-exclamation-octagon me-1"></i><?= count($kCift) ?> çift faturalama şüphesi</span><?php endif; ?>
         <?php $kOkunamadi = array_filter($kontrolSonuc, fn($r) => $r['durum'] === 'okunamadi'); if ($kOkunamadi): ?><span class="badge bg-secondary"><?= count($kOkunamadi) ?> numara okunamadı</span><?php endif; ?></div>
     <?php if (!empty($kSecilen) && $kSecilen !== count($kontrolSonuc)): ?>
@@ -904,6 +931,8 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
                         <?php elseif ($r['durum'] === 'islenmemis'): ?><span class="badge bg-danger">✗ işlenmemiş</span>
                         <?php elseif ($r['durum'] === 'okunamadi'): ?><span class="badge bg-danger" title="Dosya adında ve PDF metninde numara bulunamadı (taranmış PDF olabilir) — ÇÖZÜMLE ve KAYDET içeriği AI ile okur">✗ numara okunamadı</span>
                         <?php else: ?><span class="badge bg-secondary text-wrap text-start" style="max-width:420px"><?= h($r['mesaj'] ?? 'hata') ?></span><?php endif; ?>
+                        <?php if (isset($kAyni[$kI])): ?><span class="badge bg-warning text-dark" title="Bu dosyanın içeriği listede daha önce geçen dosyayla BAYT BAYT aynı — aynı belgenin kopyası">içerik aynı: <?= h($kAyni[$kI]) ?></span><?php endif; ?>
+                        <?php if (!empty($r['ad_uyusmaz'])): ?><div class="text-danger fw-semibold small mt-1"><i class="bi bi-exclamation-triangle me-1"></i><?= h($r['ad_uyusmaz']) ?> — dosya yanlış adlandırılmış</div><?php endif; ?>
                     </td>
                     <td class="small">
                         <?php if ($r['durum'] === 'islenmis'): ?>
@@ -922,7 +951,7 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
         </table>
     </div></div>
     <?php if ($kIslenmemis || array_filter($kontrolSonuc, fn($r) => $r['durum'] === 'okunamadi')): ?>
-    <?php $islenebilir = array_values(array_filter($kontrolSonuc, fn($r) => in_array($r['durum'], ['islenmemis', 'okunamadi'], true) && !empty($r['dosya']))); ?>
+    <?php $islenebilir = array_values(array_filter($kontrolSonuc, fn($r, $iK) => in_array($r['durum'], ['islenmemis', 'okunamadi'], true) && !empty($r['dosya']) && !isset($kAyni[$iK]), ARRAY_FILTER_USE_BOTH)); ?>
     <div class="card-footer bg-white small">
         <strong class="text-danger">İşlenmemiş numaralar (kopyalanabilir):</strong>
         <code><?= h(implode(', ', array_map(fn($r) => (string)($r['no'] ?? $r['ad']), $kIslenmemis))) ?></code>
