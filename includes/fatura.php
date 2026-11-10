@@ -507,6 +507,12 @@ function fat_semasi_kur(PDO $pdo): void
     $var = $pdo->query("SHOW COLUMNS FROM faturalar LIKE 'eksik_liste'")->fetch();
     if (!$var) $pdo->exec("ALTER TABLE faturalar ADD COLUMN eksik_liste TEXT NULL AFTER eksik_adet");
 
+    // faturalar.irsaliye_liste — faturada OKUNAN irsaliye numaralarının TAMAMI (JSON). Bağ tek yönlüdür
+    // (irsaliyeler.fatura_id): aynı irsaliye ikinci bir faturada geçtiğinde ya bağ sessizce taşınıyor ya da
+    // hiç bağlanmıyordu — çift faturalama iz bırakmıyordu. Liste saklanınca iki faturada geçen irsaliye görünür.
+    $var = $pdo->query("SHOW COLUMNS FROM faturalar LIKE 'irsaliye_liste'")->fetch();
+    if (!$var) $pdo->exec("ALTER TABLE faturalar ADD COLUMN irsaliye_liste TEXT NULL AFTER eksik_liste");
+
     // faturalar.tur — fatura türü (beton | pompa | hizmet). Her tedarikçi faturası beton
     // teslimi değildir; pompa kirası/hizmet faturasının irsaliyesi ve m³'ü yoktur, mutabakata girmez.
     $var = $pdo->query("SHOW COLUMNS FROM faturalar LIKE 'tur'")->fetch();
@@ -681,15 +687,18 @@ function fat_kaydet(PDO $pdo, array $fatura, array $irsIds, ?int $userId = null,
                 ? json_encode(array_values($fatura['eksik_liste']), JSON_UNESCAPED_UNICODE) : null,
             $dosyaUrl,
             $fatura['notlar'] ?? null,
+            !empty($fatura['irsaliye_liste']) && is_array($fatura['irsaliye_liste'])
+                ? json_encode(array_values(array_unique(array_map(fn($x) => strtoupper(trim((string)$x)), $fatura['irsaliye_liste']))), JSON_UNESCAPED_UNICODE) : null,
         ];
         if ($fid) {
             $u = $pdo->prepare("UPDATE faturalar SET tur=?, tarih=?, tedarikci_id=?, tutar=?, miktar_m3=?, ettn=?,
-                                irsaliye_adet=?, eksik_adet=?, eksik_liste=?, dosya_url=COALESCE(?, dosya_url), notlar=? WHERE id=?");
+                                irsaliye_adet=?, eksik_adet=?, eksik_liste=?, dosya_url=COALESCE(?, dosya_url), notlar=?,
+                                irsaliye_liste=COALESCE(?, irsaliye_liste) WHERE id=?");
             $u->execute(array_merge($alan, [$fid]));
         } else {
             $i = $pdo->prepare("INSERT INTO faturalar (fatura_no, tur, tarih, tedarikci_id, tutar, miktar_m3, ettn,
-                                irsaliye_adet, eksik_adet, eksik_liste, dosya_url, notlar, created_by)
-                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)");
+                                irsaliye_adet, eksik_adet, eksik_liste, dosya_url, notlar, irsaliye_liste, created_by)
+                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
             $i->execute(array_merge([$no], $alan, [$userId]));
             $fid = (int)$pdo->lastInsertId();
         }
@@ -714,4 +723,56 @@ function fat_kaydet(PDO $pdo, array $fatura, array $irsIds, ?int $userId = null,
         if ($pdo->inTransaction()) $pdo->rollBack();
         throw $e;
     }
+}
+
+/**
+ * ÇİFT FATURALAMA KONTROLÜ (TÜM faturalar üzerinde; liste LIMIT'inden bağımsız).
+ *  (1) KESİN: aynı irsaliye iki FARKLI faturada geçiyor. Bir faturanın irsaliyeleri =
+ *      irsaliye_liste (okunan tamamı) ∪ bağlı irsaliyeler ∪ eksik_liste ∪ notlardaki
+ *      "başka faturaya bağlı olduğu için bağlanmayan: X → Y" kayıtları (eski toplu işlemeler).
+ *  (2) ŞÜPHE: aynı tedarikçi + aynı tarih + aynı tutar, farklı fatura no.
+ * Dönüş: ['irs' => [norm => ['ham'=>…, 'f'=>[id=>fatura_no]]], 'tutar' => [[satır…]…], 'fid' => [id=>'irs'|'tutar']]
+ */
+function fat_cift_kontrol(PDO $pdo): array
+{
+    $fat = []; $irs = [];
+    try {
+        foreach ($pdo->query("SELECT f.id, f.fatura_no, f.tarih, f.tutar, f.tedarikci_id, f.eksik_liste, f.irsaliye_liste, f.notlar,
+                                     t.ad AS tedarikci
+                              FROM faturalar f LEFT JOIN tedarikciler t ON t.id = f.tedarikci_id") as $f) $fat[(int)$f['id']] = $f;
+        $bagli = [];
+        foreach ($pdo->query("SELECT fatura_id, irsaliye_no FROM irsaliyeler WHERE fatura_id IS NOT NULL") as $r)
+            $bagli[(int)$r['fatura_id']][] = (string)$r['irsaliye_no'];
+    } catch (Throwable $e) { return ['irs' => [], 'tutar' => [], 'fid' => []]; }
+
+    foreach ($fat as $fid => $f) {
+        $nolar = array_merge(
+            (array)(json_decode((string)($f['irsaliye_liste'] ?? ''), true) ?: []),
+            (array)(json_decode((string)($f['eksik_liste'] ?? ''), true) ?: []),
+            $bagli[$fid] ?? []);
+        if (preg_match('/bağlanmayan:\s*(.+)$/um', (string)$f['notlar'], $m)) {
+            foreach (explode(',', $m[1]) as $parca) {
+                if (preg_match('/^\s*(\S+)\s*→/u', $parca, $m2)) $nolar[] = $m2[1];
+            }
+        }
+        foreach ($nolar as $no) {
+            $k = fat_irs_norm((string)$no); if ($k === '') continue;
+            $irs[$k]['ham'] ??= strtoupper(trim((string)$no));
+            $irs[$k]['f'][$fid] = (string)$f['fatura_no'];
+        }
+    }
+    $irs = array_filter($irs, fn($x) => count($x['f']) > 1);
+
+    $grup = [];
+    foreach ($fat as $fid => $f) {
+        if ($f['tutar'] === null || (float)$f['tutar'] <= 0 || !$f['tarih']) continue;
+        $k = ((int)$f['tedarikci_id'] ?: fat_unvan_norm((string)$f['tedarikci'])) . '|' . $f['tarih'] . '|' . number_format((float)$f['tutar'], 2, '.', '');
+        $grup[$k][$fid] = $f;
+    }
+    $grup = array_values(array_filter($grup, fn($x) => count($x) > 1));
+
+    $fidMap = [];
+    foreach ($irs as $x) foreach ($x['f'] as $fid => $_) $fidMap[$fid] = 'irs';
+    foreach ($grup as $x) foreach ($x as $fid => $_) $fidMap[$fid] ??= 'tutar';
+    return ['irs' => $irs, 'tutar' => $grup, 'fid' => $fidMap];
 }

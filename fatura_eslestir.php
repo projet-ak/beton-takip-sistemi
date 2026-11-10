@@ -152,6 +152,8 @@ if (($_POST['action'] ?? '') === 'kaydet') {
             'eksik_liste'  => is_array($el = json_decode((string)($_POST['eksik_liste'] ?? ''), true))
                               ? array_slice(array_map('strval', $el), 0, 500) : [],
             'notlar'       => trim((string)($_POST['notlar'] ?? '')) ?: null,
+            'irsaliye_liste' => is_array($il = json_decode((string)($_POST['irsaliye_liste'] ?? ''), true))
+                              ? array_slice(array_map('strval', $il), 0, 500) : [],
         ], $ids, current_user_id(), trim((string)($_POST['dosya_url'] ?? '')) ?: null);
 
         // Fatura dosyasını eşleşen her irsaliyenin belgelerine de ekle (irsaliye ekranından görünsün)
@@ -319,7 +321,7 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
         if ((int)$_FILES['dosyalar']['error'][$i] !== UPLOAD_ERR_OK) {
             $kSonuc[] = ['ad'=>$ad, 'durum'=>'hata', 'mesaj'=>'yükleme hatası']; continue;
         }
-        $no = null; $ettn = null; $kaynak = 'dosya adı';
+        $no = null; $ettn = null; $kaynak = 'dosya adı'; $t0 = null;
         if (preg_match('/([A-Z][A-Z0-9]{2}\d{13})/i', $ad, $m)) $no = strtoupper($m[1]);
         if ($no === null && guess_mime($tmp, $ad) === 'application/pdf') {
             $t0 = fat_pdftotext($tmp);
@@ -331,10 +333,33 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
         if ($no === null && $ettn === null) { $kSonuc[] = ['ad'=>$ad, 'durum'=>'okunamadi', 'kaynak'=>null]; continue; }
         $fr = $no !== null ? ($noIdx[fat_irs_norm($no)] ?? null) : null;
         if (!$fr && $ettn !== null) $fr = $ettnIdx[$ettn] ?? null;
-        if ($fr) $kSonuc[] = ['ad'=>$ad, 'no'=>$no ?: $fr['fatura_no'], 'durum'=>'islenmis', 'kaynak'=>$kaynak,
+        // Dosya adındaki numara kayıtlı bir fatura değilse (çoğu zaman dosya İRSALİYE no'suyla
+        // adlandırılmıştır) PDF İÇERİĞİNE bakılır — kayıtlı fatura "işlenmemiş" görünmesin.
+        $v0 = null;
+        if (!$fr && $kaynak === 'dosya adı' && guess_mime($tmp, $ad) === 'application/pdf') {
+            $t0 = fat_pdftotext($tmp);
+            if ($t0 !== null && $t0 !== '') $v0 = fat_metinden_cikar($t0);
+            if ($v0) {
+                $fr = ($v0['fatura_no'] ? ($noIdx[fat_irs_norm($v0['fatura_no'])] ?? null) : null)
+                   ?: ($v0['ettn'] ? ($ettnIdx[strtoupper((string)$v0['ettn'])] ?? null) : null);
+                if ($fr || $v0['fatura_no']) { $kaynak = 'PDF içeriği'; if ($v0['fatura_no']) $no = $v0['fatura_no']; }
+            }
+        } elseif (!$fr && $kaynak === 'PDF içeriği' && $t0) {
+            $v0 = fat_metinden_cikar($t0);
+        }
+        if ($fr) $kSonuc[] = ['ad'=>$ad, 'no'=>$fr['fatura_no'] ?: $no, 'durum'=>'islenmis', 'kaynak'=>$kaynak, 'id'=>(int)$fr['id'],
                               'tarih'=>$fr['tarih'], 'bagli'=>(int)$fr['bagli'], 'eksik'=>(int)$fr['eksik_adet']];
         else {
-            $satir = ['ad'=>$ad, 'no'=>$no, 'durum'=>'islenmemis', 'kaynak'=>$kaynak];
+            // Sistemde olmayan faturanın irsaliyeleri BAŞKA bir faturaya bağlıysa: çift faturalama şüphesi
+            $uyari = null;
+            if ($v0 && !empty($v0['irsaliyeler'])) {
+                $esl0 = fat_eslestir($pdo, $v0['irsaliyeler']);
+                $bsk0 = fat_baskaya_bagli($pdo, array_map(fn($r) => (int)$r['id'], $esl0['eslesen']), 0);
+                if ($bsk0) $uyari = count($bsk0) . ' irsaliyesi sistemde BAŞKA faturaya bağlı ('
+                    . implode(', ', array_map(fn($b) => $b['irsaliye_no'] . ' → ' . $b['fatura_no'], array_slice($bsk0, 0, 5)))
+                    . (count($bsk0) > 5 ? ' …' : '') . ') — aynı irsaliye iki faturada: ÇİFT FATURALAMA ŞÜPHESİ, ödemeden önce kontrol edin';
+            }
+            $satir = ['ad'=>$ad, 'no'=>$no, 'durum'=>'islenmemis', 'kaynak'=>$kaynak, 'uyari'=>$uyari];
             $ext = guvenli_uzanti($ad, '', 'pdf');
             if (preg_match('/^[a-z0-9]{1,6}$/', $ext)) {
                 $pid = uniqid('fk_', true) . '.' . $ext;
@@ -432,6 +457,7 @@ if (($_POST['action'] ?? '') === 'fatura_isle' && !empty($_POST['dosya'])) {
                 'tedarikci_id'=> (int)($ted['id'] ?? 0) ?: null,
                 'tutar'       => $veri['tutar'], 'miktar' => $veri['miktar'], 'ettn' => $veri['ettn'],
                 'eksik_adet'  => count($esl['eksik']), 'eksik_liste' => $esl['eksik'],
+                'irsaliye_liste' => (array)($veri['irsaliyeler'] ?? []),
                 'notlar'      => 'Toplu kontrolden otomatik işlendi'
                                  . ($taslakAcilan ? ' — ' . $taslakAcilan . ' eksik irsaliye TASLAK açıldı' : '')
                                  . ($baskada ? ' — başka faturaya bağlı olduğu için bağlanmayan: ' . implode(', ', $baskada) : '')
@@ -552,6 +578,8 @@ foreach ($pdo->query("SELECT tur, COUNT(*) adet FROM faturalar GROUP BY tur") as
 }
 // Her faturanın bağlı irsaliyeleri — listede satır açılınca gösterilir
 $kayitliIrs = $kayitli ? fat_bagli_irsaliyeler($pdo, array_column($kayitli, 'id')) : [];
+// Çift faturalama kontrolü — TÜM faturalar (listenin LIMIT 100'ünden ve aramadan bağımsız)
+$cift = fat_cift_kontrol($pdo);
 
 // ── Fatura arama: no / ETTN / tedarikçi / bağlı-eksik irsaliye no (NORMALİZE — "12047"
 //    yazınca SKB2026000012047'yi de bulur; biçim farkı aramayı kaçırmaz) ────────────────
@@ -689,12 +717,22 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
 <?php if ($kontrolSonuc !== null):
     $kIslenmis   = array_filter($kontrolSonuc, fn($r) => $r['durum'] === 'islenmis');
     $kIslenmemis = array_filter($kontrolSonuc, fn($r) => $r['durum'] === 'islenmemis');
-    $kDiger      = array_filter($kontrolSonuc, fn($r) => !in_array($r['durum'], ['islenmis','islenmemis'], true)); ?>
+    $kDiger      = array_filter($kontrolSonuc, fn($r) => !in_array($r['durum'], ['islenmis','islenmemis'], true));
+    $kCift       = array_filter($kontrolSonuc, fn($r) => !empty($r['uyari']));
+    // Aynı kayıtlı faturaya düşen dosyalar (biri fatura no'suyla, biri irsaliye no'suyla adlandırılmış olabilir)
+    $kIlkDosya = []; $kTekrar = [];
+    foreach ($kontrolSonuc as $i => $r) {
+        if ($r['durum'] !== 'islenmis' || empty($r['id'])) continue;
+        if (isset($kIlkDosya[(int)$r['id']])) $kTekrar[$i] = $kIlkDosya[(int)$r['id']];
+        else $kIlkDosya[(int)$r['id']] = (string)$r['ad'];
+    } ?>
 <div class="card mb-4 border-info">
     <div class="card-header bg-white fw-semibold"><i class="bi bi-clipboard-data me-1 text-info"></i> Kontrol Raporu
         <span class="badge bg-primary ms-1"><?= count($kontrolSonuc) ?> dosya</span>
         <span class="badge bg-success"><?= count($kIslenmis) ?> işlenmiş</span>
+        <?php if ($kTekrar): ?><span class="badge bg-info text-dark" title="Birden çok dosya aynı kayıtlı faturaya düşüyor"><?= count($kIlkDosya) ?> farklı fatura · <?= count($kTekrar) ?> tekrar dosya</span><?php endif; ?>
         <span class="badge bg-danger"><?= count($kIslenmemis) ?> işlenmemiş</span>
+        <?php if ($kCift): ?><span class="badge bg-dark" title="Dosyadaki irsaliyeler sistemde BAŞKA bir faturaya bağlı"><i class="bi bi-exclamation-octagon me-1"></i><?= count($kCift) ?> çift faturalama şüphesi</span><?php endif; ?>
         <?php if ($kDiger): ?><span class="badge bg-secondary"><?= count($kDiger) ?> okunamadı</span><?php endif; ?></div>
     <div class="card-body p-0"><div class="table-responsive" style="max-height:60vh">
         <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
@@ -702,12 +740,13 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
                 <th>Dosya</th><th>Fatura No</th><th>Durum</th><th>Sistemdeki Kayıt</th><th>Numara Kaynağı</th>
             </tr></thead>
             <tbody>
-            <?php foreach ($kontrolSonuc as $r): ?>
-                <tr class="<?= $r['durum'] === 'islenmemis' ? 'table-danger' : ($r['durum'] === 'islenmis' ? '' : 'table-secondary') ?>">
+            <?php foreach ($kontrolSonuc as $kI => $r): ?>
+                <tr class="<?= $r['durum'] === 'islenmemis' ? 'table-danger' : ($r['durum'] === 'islenmis' ? (isset($kTekrar[$kI]) ? 'table-info' : '') : 'table-secondary') ?>">
                     <td class="small"><?= h($r['ad']) ?></td>
                     <td class="font-monospace small"><?= h((string)($r['no'] ?? '—')) ?></td>
                     <td>
                         <?php if ($r['durum'] === 'islenmis'): ?><span class="badge bg-success">✓ işlenmiş</span>
+                            <?php if (isset($kTekrar[$kI])): ?><span class="badge bg-info text-dark" title="Listede daha önce geçen <?= h($kTekrar[$kI]) ?> ile AYNI fatura — ayrı kayıt sayılmaz">tekrar: <?= h($kTekrar[$kI]) ?></span><?php endif; ?>
                         <?php elseif ($r['durum'] === 'islenmemis'): ?><span class="badge bg-danger">✗ işlenmemiş</span>
                         <?php elseif ($r['durum'] === 'okunamadi'): ?><span class="badge bg-secondary" title="Ne dosya adından ne içerikten numara çıkarılamadı — elle bakın">okunamadı</span>
                         <?php else: ?><span class="badge bg-secondary"><?= h($r['mesaj'] ?? 'hata') ?></span><?php endif; ?>
@@ -719,6 +758,7 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
                             · <a href="fatura_eslestir.php?fatura_ara=<?= urlencode((string)$r['no']) ?>">kaydı aç</a>
                         <?php elseif ($r['durum'] === 'islenmemis'): ?>
                             <span class="text-danger">sistemde yok — yukarıdaki "Fatura Yükle" ile işleyin</span>
+                            <?php if (!empty($r['uyari'])): ?><div class="text-danger fw-semibold"><i class="bi bi-exclamation-octagon me-1"></i><?= h($r['uyari']) ?></div><?php endif; ?>
                         <?php endif; ?>
                     </td>
                     <td class="small text-muted"><?= h((string)($r['kaynak'] ?? '')) ?></td>
@@ -1033,6 +1073,7 @@ document.getElementById('kontrolForm').addEventListener('submit', async function
 <input type="hidden" name="dosya_url" value="<?= h((string)$sonuc['dosya_url']) ?>">
 <input type="hidden" name="eksik_adet" value="<?= $eksikAdet ?>">
 <input type="hidden" name="eksik_liste" value="<?= h(json_encode($e['eksik'], JSON_UNESCAPED_UNICODE)) ?>">
+<input type="hidden" name="irsaliye_liste" value="<?= h(json_encode(array_values((array)($v['irsaliyeler'] ?? [])), JSON_UNESCAPED_UNICODE)) ?>">
 
 <?php
 $mevcut    = $sonuc['mevcut']  ?? null;
@@ -1355,6 +1396,31 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
 </script>
 <?php endif; ?>
 
+<?php if ($cift['irs'] || $cift['tutar']): ?>
+<div class="alert <?= $cift['irs'] ? 'alert-danger' : 'alert-warning' ?> mb-3">
+    <div class="fw-semibold mb-1"><i class="bi bi-exclamation-octagon me-1"></i>Çift faturalama kontrolü</div>
+    <?php if ($cift['irs']): ?>
+    <div class="small mb-1"><strong><?= count($cift['irs']) ?> irsaliye birden fazla FARKLI faturada geçiyor</strong> — aynı teslimat iki kez faturalanmış olabilir, ödemeden önce tedarikçiyle kontrol edin:</div>
+    <ul class="small mb-2">
+        <?php foreach ($cift['irs'] as $x): ?>
+        <li><code><?= h($x['ham']) ?></code> →
+            <?php foreach ($x['f'] as $fno): ?><a href="fatura_eslestir.php?fatura_ara=<?= urlencode($fno) ?>" class="badge bg-danger text-decoration-none me-1"><?= h($fno) ?></a><?php endforeach; ?></li>
+        <?php endforeach; ?>
+    </ul>
+    <?php endif; ?>
+    <?php if ($cift['tutar']): ?>
+    <div class="small mb-1"><strong><?= count($cift['tutar']) ?> grup</strong> aynı tedarikçi · aynı gün · aynı tutarlı farklı fatura (şüphe — kalemleri karşılaştırın; sabit bedelli pompa kirası olabilir):</div>
+    <ul class="small mb-0">
+        <?php foreach ($cift['tutar'] as $x): $f0 = reset($x); ?>
+        <li><?= h((string)$f0['tedarikci']) ?> · <?= h(format_date($f0['tarih'])) ?> · <?= $fmt((float)$f0['tutar']) ?> ₺ →
+            <?php foreach ($x as $f1): ?><a href="fatura_eslestir.php?fatura_ara=<?= urlencode((string)$f1['fatura_no']) ?>" class="badge bg-warning text-dark text-decoration-none me-1"><?= h((string)$f1['fatura_no']) ?></a><?php endforeach; ?></li>
+        <?php endforeach; ?>
+    </ul>
+    <?php endif; ?>
+</div>
+<?php elseif ($kayitli && $fatAra === ''): ?>
+<div class="small text-success mb-2"><i class="bi bi-shield-check me-1"></i>Çift faturalama kontrolü: hiçbir irsaliye iki farklı faturada geçmiyor; aynı gün aynı tutarlı fatura yok.</div>
+<?php endif; ?>
 <div class="card">
     <div class="card-header bg-white fw-semibold d-flex align-items-center justify-content-between flex-wrap gap-2">
         <span><i class="bi bi-archive me-1"></i> Kayıtlı Faturalar</span>
@@ -1396,7 +1462,9 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                   $fTur = fat_tur_norm($f['tur'] ?? 'beton'); $fBeton = fat_tur_irsaliyeli($fTur); ?>
                 <tr class="<?= $fBeton ? '' : 'table-light' ?>">
                     <td class="text-center text-muted"><?= $sira-- ?></td>
-                    <td><code><?= h($f['fatura_no']) ?></code></td>
+                    <td><code><?= h($f['fatura_no']) ?></code>
+                        <?php if (($cift['fid'][(int)$f['id']] ?? '') === 'irs'): ?><span class="badge bg-danger ms-1" title="Bu faturadaki bir irsaliye başka bir faturada da geçiyor — çift faturalama şüphesi">çift irsaliye</span>
+                        <?php elseif (($cift['fid'][(int)$f['id']] ?? '') === 'tutar'): ?><span class="badge bg-warning text-dark ms-1" title="Aynı tedarikçi, aynı gün, aynı tutarlı başka fatura var">aynı tutar</span><?php endif; ?></td>
                     <td>
                         <div class="dropdown">
                             <a class="badge bg-<?= h(FAT_TUR[$fTur][1]) ?> text-decoration-none" href="#" role="button"
