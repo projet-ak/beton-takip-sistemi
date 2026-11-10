@@ -932,11 +932,21 @@ require_once __DIR__ . '/../includes/header.php';
     $kIslenmis   = array_filter($kontrolSonuc, fn($r) => $r['durum'] === 'islenmis');
     $kBagsiz     = array_filter($kIslenmis, fn($r) => (int)$r['bagli'] === 0);
     $kIslenmemis = array_filter($kontrolSonuc, fn($r) => in_array($r['durum'], ['islenmemis','okunamadi'], true));
-    $kHata       = array_filter($kontrolSonuc, fn($r) => $r['durum'] === 'hata'); ?>
+    $kHata       = array_filter($kontrolSonuc, fn($r) => $r['durum'] === 'hata');
+    // Aynı faturaya düşen dosyalar: bir fatura hem fatura no'suyla (CKE…) hem irsaliye no'suyla (CKI…)
+    // adlandırılmış iki dosya olarak gelebilir → "55 dosya" ≠ "55 fatura". İlk görülen dosya esas, sonrakiler tekrar.
+    $kIlkDosya = []; $kTekrar = [];
+    foreach ($kontrolSonuc as $i => $r) {
+        if ($r['durum'] !== 'islenmis' || empty($r['id'])) continue;
+        $fid0 = (int)$r['id'];
+        if (isset($kIlkDosya[$fid0])) $kTekrar[$i] = $kIlkDosya[$fid0];
+        else $kIlkDosya[$fid0] = (string)$r['ad'];
+    } ?>
 <div class="card mb-4 border-info">
     <div class="card-header bg-white fw-semibold"><i class="bi bi-clipboard-data me-1 text-info"></i> Kontrol Raporu
         <span class="badge bg-primary ms-1"><?= count($kontrolSonuc) ?> dosya</span>
         <span class="badge bg-success"><?= count($kIslenmis) ?> işlenmiş</span>
+        <?php if ($kTekrar): ?><span class="badge bg-info text-dark" title="Birden çok dosya aynı kayıtlı faturaya düşüyor (ör. biri fatura no'suyla, biri irsaliye no'suyla adlandırılmış)"><?= count($kIlkDosya) ?> farklı fatura · <?= count($kTekrar) ?> tekrar dosya</span><?php endif; ?>
         <?php if ($kBagsiz): ?><span class="badge bg-warning text-dark" title="Kayıtlı ama hiçbir sevkiyata bağlı değil"><?= count($kBagsiz) ?> bağsız</span><?php endif; ?>
         <span class="badge bg-danger"><?= count($kIslenmemis) ?> işlenmemiş</span>
         <?php if ($kHata): ?><span class="badge bg-secondary"><?= count($kHata) ?> hata</span><?php endif; ?></div>
@@ -946,12 +956,13 @@ require_once __DIR__ . '/../includes/header.php';
                 <th>Dosya</th><th>Fatura No</th><th>Durum</th><th>Sistemdeki Kayıt</th><th>Numara Kaynağı</th>
             </tr></thead>
             <tbody>
-            <?php foreach ($kontrolSonuc as $r): ?>
-                <tr class="<?= in_array($r['durum'], ['islenmemis','okunamadi'], true) ? 'table-danger' : ($r['durum'] === 'islenmis' ? ((int)$r['bagli'] === 0 ? 'table-warning' : '') : 'table-secondary') ?>">
+            <?php foreach ($kontrolSonuc as $kI => $r): ?>
+                <tr class="<?= in_array($r['durum'], ['islenmemis','okunamadi'], true) ? 'table-danger' : ($r['durum'] === 'islenmis' ? (isset($kTekrar[$kI]) ? 'table-info' : ((int)$r['bagli'] === 0 ? 'table-warning' : '')) : 'table-secondary') ?>">
                     <td class="small"><?= h($r['ad']) ?></td>
                     <td class="font-monospace small"><?= h((string)($r['no'] ?? '—')) ?></td>
                     <td>
                         <?php if ($r['durum'] === 'islenmis'): ?><span class="badge bg-success">✓ işlenmiş</span>
+                            <?php if (isset($kTekrar[$kI])): ?><span class="badge bg-info text-dark" title="Bu dosya, listede daha önce geçen <?= h($kTekrar[$kI]) ?> ile AYNI faturadır — ayrı kayıt sayılmaz">tekrar: <?= h($kTekrar[$kI]) ?></span><?php endif; ?>
                         <?php elseif ($r['durum'] === 'islenmemis'): ?><span class="badge bg-danger">✗ işlenmemiş</span>
                         <?php elseif ($r['durum'] === 'okunamadi'): ?><span class="badge bg-danger" title="Dosya adında ve PDF metninde numara bulunamadı — ÇÖZÜMLE ve KAYDET içeriği AI ile okur">✗ numara okunamadı</span>
                         <?php else: ?><span class="badge bg-secondary"><?= h($r['mesaj'] ?? 'hata') ?></span><?php endif; ?>
