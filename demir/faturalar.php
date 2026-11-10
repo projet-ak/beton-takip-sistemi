@@ -678,6 +678,31 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
         if (!$fr && $ettn !== null) $fr = $ettnIdx[$ettn] ?? null;
         // Dosya adındaki numara bir İRSALİYE no'su olabilir → o irsaliyeyi taşıyan fatura
         if (!$fr && $no !== null && ($fr = $irsIdx[fat_irs_norm($no)] ?? null)) $kaynak = 'dosya adı (irsaliye no)';
+        // ⚠ İrsaliye no'su üzerinden bulunan fatura PDF İÇERİĞİYLE DOĞRULANIR: aynı irsaliye BAŞKA bir
+        //    faturada da geçiyorsa (çift faturalama!) dosya yanlışlıkla "işlenmiş" sayılıyordu — 55 dosya
+        //    "hepsi işlenmiş" görünürken sistemde 50 fatura kalabiliyordu.
+        $ciftUyari = null;
+        if ($fr && $kaynak === 'dosya adı (irsaliye no)' && $mime === 'application/pdf') {
+            $t0 = fat_pdftotext($tmp);
+            $v0 = ($t0 !== null && $t0 !== '') ? dfat_cikar($t0) : null;
+            if (!$v0 || (!$v0['fatura_no'] && !$v0['ettn'])) {
+                $kaynak .= ' · içerik doğrulanamadı';
+            } elseif (($v0['fatura_no'] && fat_irs_norm($v0['fatura_no']) === fat_irs_norm((string)$fr['fatura_no']))
+                   || ($v0['ettn'] && strtoupper((string)$fr['ettn']) === $v0['ettn'])) {
+                $kaynak .= ' · PDF ile doğrulandı';
+            } else {
+                $frEski = $fr; $dosyaIrs = (string)$no;
+                $fr = ($v0['fatura_no'] ? ($noIdx[fat_irs_norm($v0['fatura_no'])] ?? null) : null)
+                   ?: ($v0['ettn'] ? ($ettnIdx[$v0['ettn']] ?? null) : null);
+                if ($fr) { $kaynak = 'PDF içeriği'; }
+                else {
+                    $no = $v0['fatura_no'] ?: $no; $ettn = $v0['ettn']; $kaynak = 'PDF içeriği';
+                    $ciftUyari = 'İrsaliye ' . $dosyaIrs . ' sistemde ' . $frEski['fatura_no']
+                               . ' faturasında kayıtlı, bu PDF ise BAŞKA bir fatura (' . ($v0['fatura_no'] ?: 'ETTN ' . $v0['ettn'])
+                               . ') — aynı irsaliye iki faturada: ÇİFT FATURALAMA ŞÜPHESİ, ödemeden önce kontrol edin';
+                }
+            }
+        }
         // Hâlâ yoksa ve numara dosya adından geldiyse PDF içeriğine de bak (fatura no / ETTN)
         if (!$fr && $kaynak === 'dosya adı' && $mime === 'application/pdf') {
             $t0 = fat_pdftotext($tmp);
@@ -695,7 +720,8 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
             continue;
         }
         // Numara okunamasa da dosya bekletilir — "ÇÖZÜMLE ve KAYDET" AI ile içeriği okuyabilir
-        $satir = ['ad'=>$ad, 'no'=>$no, 'durum'=>($no === null && $ettn === null) ? 'okunamadi' : 'islenmemis', 'kaynak'=>$no ? $kaynak : null];
+        $satir = ['ad'=>$ad, 'no'=>$no, 'durum'=>($no === null && $ettn === null) ? 'okunamadi' : 'islenmemis', 'kaynak'=>$no ? $kaynak : null,
+                  'uyari'=>$ciftUyari];
         $ext = guvenli_uzanti($ad, '', 'pdf');
         if (preg_match('/^[a-z0-9]{1,6}$/', $ext)) {
             $pid = uniqid('dfk_', true) . '.' . $ext;
@@ -977,6 +1003,7 @@ require_once __DIR__ . '/../includes/header.php';
         <?php if ($kTekrar): ?><span class="badge bg-info text-dark" title="Birden çok dosya aynı kayıtlı faturaya düşüyor (ör. biri fatura no'suyla, biri irsaliye no'suyla adlandırılmış)"><?= count($kIlkDosya) ?> farklı fatura · <?= count($kTekrar) ?> tekrar dosya</span><?php endif; ?>
         <?php if ($kBagsiz): ?><span class="badge bg-warning text-dark" title="Kayıtlı ama hiçbir sevkiyata bağlı değil"><?= count($kBagsiz) ?> bağsız</span><?php endif; ?>
         <span class="badge bg-danger"><?= count($kIslenmemis) ?> işlenmemiş</span>
+        <?php $kCift = array_filter($kontrolSonuc, fn($r) => !empty($r['uyari'])); if ($kCift): ?><span class="badge bg-dark" title="Dosyanın irsaliyesi sistemde BAŞKA bir faturada kayıtlı"><i class="bi bi-exclamation-octagon me-1"></i><?= count($kCift) ?> çift faturalama şüphesi</span><?php endif; ?>
         <?php if ($kHata): ?><span class="badge bg-secondary"><?= count($kHata) ?> hata</span><?php endif; ?></div>
     <div class="card-body p-0"><div class="table-responsive" style="max-height:60vh">
         <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
@@ -1003,6 +1030,7 @@ require_once __DIR__ . '/../includes/header.php';
                             · <a href="faturalar.php?fatura_ara=<?= urlencode((string)$r['no']) ?>">kaydı aç</a>
                         <?php elseif (in_array($r['durum'], ['islenmemis','okunamadi'], true)): ?>
                             <span class="text-danger">sistemde yok</span>
+                            <?php if (!empty($r['uyari'])): ?><div class="text-danger fw-semibold"><i class="bi bi-exclamation-octagon me-1"></i><?= h($r['uyari']) ?></div><?php endif; ?>
                         <?php endif; ?>
                     </td>
                     <td class="small text-muted"><?= h((string)($r['kaynak'] ?? '')) ?></td>
