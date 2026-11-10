@@ -811,3 +811,49 @@ function fat_ayni_dosya(array $kayitlar, string $kok, string $dosya): ?int
     }
     return null;
 }
+
+/**
+ * Toplu kontrol gönderimi için sunucunun yükleme sınırları (assets/js/toplu_kontrol.js'e verilir).
+ * parti = bir isteğin gövdesi (post_max_size'ın %80'i, en çok 8 MB — Nginx client_max_body_size
+ * çoğu kurulumda bunun üstündedir ama bilinemez); dosya = upload_max_filesize ile parti'nin küçüğü;
+ * adet = max_file_uploads − 1 (en çok 15).
+ */
+function fat_yukleme_sinir(): array {
+    $bayt = static function ($v): int {
+        $v = trim((string)$v); if ($v === '') return 0;
+        $n = (float)$v; $s = strtolower(substr($v, -1));
+        return (int)($s === 'g' ? $n * 1073741824 : ($s === 'm' ? $n * 1048576 : ($s === 'k' ? $n * 1024 : $n)));
+    };
+    $post  = $bayt(ini_get('post_max_size')) ?: 8388608;
+    $dosya = $bayt(ini_get('upload_max_filesize')) ?: 2097152;
+    $parti = (int)min($post * 0.8, 8388608);
+    $adet  = max(1, min(15, (int)ini_get('max_file_uploads') - 1 ?: 15));
+    return ['parti' => max(1048576, $parti), 'dosya' => min($dosya, max(1048576, $parti)), 'adet' => $adet];
+}
+
+/**
+ * Toplu kontrolün iki küçük ucu (beton + demir aynı): rapor oturum anahtarında birikir.
+ *  - kontrol_basla: eski yarım raporu siler, seçilen dosya sayısını saklar
+ *  - kontrol_hata : tarayıcının gönderemediği dosyaları SEBEBİYLE rapora ekler
+ * İstek bu iki eylemden biriyse JSON yazıp çıkar.
+ */
+function fat_kontrol_uc(string $anahtar): void {
+    $a = $_POST['action'] ?? '';
+    if ($a !== 'kontrol_basla' && $a !== 'kontrol_hata') return;
+    if ($a === 'kontrol_basla') {
+        $_SESSION[$anahtar] = [];
+        $_SESSION[$anahtar . '_secilen'] = max(0, (int)($_POST['toplam'] ?? 0));
+    } else {
+        $liste = json_decode((string)($_POST['hatalar'] ?? '[]'), true);
+        $ek = [];
+        foreach (is_array($liste) ? array_slice($liste, 0, 2000) : [] as $h) {
+            if (!is_array($h)) continue;
+            $ek[] = ['ad' => mb_substr((string)($h['ad'] ?? ''), 0, 200), 'durum' => 'hata',
+                     'mesaj' => 'gönderilemedi — ' . mb_substr((string)($h['mesaj'] ?? ''), 0, 300)];
+        }
+        $_SESSION[$anahtar] = array_merge($_SESSION[$anahtar] ?? [], $ek);
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['ok' => true]);
+    exit;
+}

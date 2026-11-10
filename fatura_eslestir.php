@@ -299,6 +299,7 @@ if (($_POST['action'] ?? '') === 'eksik_taslak') {
 // çoğunlukla numarayla adlandırılır), olmazsa PDF içeriğinden/karekodundan
 // çıkarılıp kayıtlı faturalarla (no VEYA ETTN, normalize) karşılaştırılır.
 // Büyük seçimler tarayıcıda partilenir (belge_dagit ile aynı desen).
+fat_kontrol_uc('fat_kontrol');   // kontrol_basla / kontrol_hata (assets/js/toplu_kontrol.js)
 if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar']['tmp_name'])) {
     @set_time_limit(300);
     // İşlenmemiş çıkan dosyalar bekleme klasöründe tutulur ki rapordaki
@@ -331,6 +332,7 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
     $kSonuc = [];
     foreach ($_FILES['dosyalar']['tmp_name'] as $i => $tmp) {
         $ad = (string)$_FILES['dosyalar']['name'][$i];
+        try {   // tek bir sorunlu dosya partinin geri kalanını götürmesin
         if ((int)$_FILES['dosyalar']['error'][$i] !== UPLOAD_ERR_OK) {
             $kSonuc[] = ['ad'=>$ad, 'durum'=>'hata', 'mesaj'=>'yükleme hatası']; continue;
         }
@@ -407,6 +409,9 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
             }
             $kSonuc[] = $satir;
         }
+        } catch (Throwable $eF) {
+            $kSonuc[] = ['ad'=>$ad, 'durum'=>'hata', 'mesaj'=>'kontrol edilemedi — ' . mb_substr($eF->getMessage(), 0, 200)];
+        }
     }
     $_SESSION['fat_kontrol'] = array_merge($_SESSION['fat_kontrol'] ?? [], $kSonuc);
     if (($_POST['ajax'] ?? '') === '1') {
@@ -424,7 +429,8 @@ if (($_POST['action'] ?? '') === 'fatura_kontrol' && !empty($_FILES['dosyalar'][
 $kontrolSonuc = null;
 if (isset($_GET['kontrol']) && !empty($_SESSION['fat_kontrol'])) {
     $kontrolSonuc = $_SESSION['fat_kontrol'];
-    unset($_SESSION['fat_kontrol']);
+    $kSecilen = (int)($_SESSION['fat_kontrol_secilen'] ?? 0);
+    unset($_SESSION['fat_kontrol'], $_SESSION['fat_kontrol_secilen']);
 }
 
 // ── 2e) İŞLENMEMİŞLERİ ÇÖZÜMLE ve KAYDET (kontrol raporundan, parti AJAX) ────
@@ -865,11 +871,23 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
 <div class="card mb-4 border-info">
     <div class="card-header bg-white fw-semibold"><i class="bi bi-clipboard-data me-1 text-info"></i> Kontrol Raporu
         <span class="badge bg-primary ms-1"><?= count($kontrolSonuc) ?> dosya</span>
+        <?php if (!empty($kSecilen)): ?><span class="badge <?= $kSecilen === count($kontrolSonuc) ? 'bg-light text-dark border' : 'bg-danger' ?>" title="Bilgisayarda seçilen dosya sayısı"><?= $kSecilen ?> seçildi</span><?php endif; ?>
+        <?php $kHataS = array_filter($kontrolSonuc, fn($r) => $r['durum'] === 'hata'); if ($kHataS): ?><span class="badge bg-dark"><i class="bi bi-exclamation-triangle me-1"></i><?= count($kHataS) ?> gönderilemedi / hata</span><?php endif; ?>
         <span class="badge bg-success"><?= count($kIslenmis) ?> işlenmiş</span>
         <?php if ($kTekrar): ?><span class="badge bg-info text-dark" title="Birden çok dosya aynı kayıtlı faturaya düşüyor"><?= count($kIlkDosya) ?> farklı fatura · <?= count($kTekrar) ?> tekrar dosya</span><?php endif; ?>
         <span class="badge bg-danger"><?= count($kIslenmemis) ?> işlenmemiş</span>
         <?php if ($kCift): ?><span class="badge bg-dark" title="Dosyadaki irsaliyeler sistemde BAŞKA bir faturaya bağlı"><i class="bi bi-exclamation-octagon me-1"></i><?= count($kCift) ?> çift faturalama şüphesi</span><?php endif; ?>
-        <?php if ($kDiger): ?><span class="badge bg-secondary"><?= count($kDiger) ?> okunamadı</span><?php endif; ?></div>
+        <?php $kOkunamadi = array_filter($kontrolSonuc, fn($r) => $r['durum'] === 'okunamadi'); if ($kOkunamadi): ?><span class="badge bg-secondary"><?= count($kOkunamadi) ?> numara okunamadı</span><?php endif; ?></div>
+    <?php if (!empty($kSecilen) && $kSecilen !== count($kontrolSonuc)): ?>
+    <div class="alert alert-danger small m-2 mb-0 py-2"><i class="bi bi-exclamation-octagon me-1"></i>
+        <strong><?= $kSecilen ?> dosya seçildi, raporda <?= count($kontrolSonuc) ?> dosya var.</strong>
+        Aradaki <?= abs($kSecilen - count($kontrolSonuc)) ?> dosya sunucudan cevap gelmeden kayboldu (sayfa kapatıldı ya da bağlantı koptu) — kontrolü yeniden çalıştırın.</div>
+    <?php endif; ?>
+    <?php if ($kHataS): ?>
+    <div class="alert alert-warning small m-2 mb-0 py-2"><i class="bi bi-exclamation-triangle me-1"></i>
+        <strong><?= count($kHataS) ?> dosya kontrol edilemedi</strong> — adları ve sebepleri tabloda koyu gri satırlarda. Bu dosyaları ayrıca (az sayıda) seçip yeniden kontrol edin;
+        "sunucu boyut sınırı" diyorsa dosya çok büyüktür (sıkıştırın ya da tek tek "Fatura Yükle" ile işleyin).</div>
+    <?php endif; ?>
     <div class="card-body p-0"><div class="table-responsive" style="max-height:60vh">
         <table class="table table-sm table-hover mb-0" style="font-size:.82rem">
             <thead class="table-light" style="position:sticky;top:0"><tr>
@@ -877,7 +895,7 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
             </tr></thead>
             <tbody>
             <?php foreach ($kontrolSonuc as $kI => $r): ?>
-                <tr class="<?= $r['durum'] === 'islenmemis' ? 'table-danger' : ($r['durum'] === 'islenmis' ? (isset($kTekrar[$kI]) ? 'table-info' : '') : 'table-secondary') ?>">
+                <tr class="<?= $r['durum'] === 'islenmemis' ? 'table-danger' : ($r['durum'] === 'islenmis' ? (isset($kTekrar[$kI]) ? 'table-info' : '') : ($r['durum'] === 'hata' ? 'table-dark' : 'table-secondary')) ?>">
                     <td class="small"><?= h($r['ad']) ?></td>
                     <td class="font-monospace small"><?= h((string)($r['no'] ?? '—')) ?></td>
                     <td>
@@ -885,7 +903,7 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
                             <?php if (isset($kTekrar[$kI])): ?><span class="badge bg-info text-dark" title="Listede daha önce geçen <?= h($kTekrar[$kI]) ?> ile AYNI fatura — ayrı kayıt sayılmaz">tekrar: <?= h($kTekrar[$kI]) ?></span><?php endif; ?>
                         <?php elseif ($r['durum'] === 'islenmemis'): ?><span class="badge bg-danger">✗ işlenmemiş</span>
                         <?php elseif ($r['durum'] === 'okunamadi'): ?><span class="badge bg-danger" title="Dosya adında ve PDF metninde numara bulunamadı (taranmış PDF olabilir) — ÇÖZÜMLE ve KAYDET içeriği AI ile okur">✗ numara okunamadı</span>
-                        <?php else: ?><span class="badge bg-secondary"><?= h($r['mesaj'] ?? 'hata') ?></span><?php endif; ?>
+                        <?php else: ?><span class="badge bg-secondary text-wrap text-start" style="max-width:420px"><?= h($r['mesaj'] ?? 'hata') ?></span><?php endif; ?>
                     </td>
                     <td class="small">
                         <?php if ($r['durum'] === 'islenmis'): ?>
@@ -1046,33 +1064,12 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
 </div>
 <?php endif; ?>
 
+<script src="<?= h(($rootPath ?? '') . 'assets/js/toplu_kontrol.js') ?>?v=1"></script>
 <script>
-// Toplu kontrol: büyük seçimler 15'erli partilerle gönderilir (PHP max_file_uploads sınırına takılmasın)
-document.getElementById('kontrolForm').addEventListener('submit', async function (e) {
-    var form = this;
-    var files = Array.from(form.querySelector('input[type=file]').files || []);
-    if (files.length <= 15) return;
-    e.preventDefault();
-    var BATCH = 15;
-    document.getElementById('kontrolBtn').disabled = true;
-    document.getElementById('kntKutu').classList.remove('d-none');
-    var bar = document.getElementById('kntBar'), durum = document.getElementById('kntDurum');
-    var toplam = files.length, oz = {islenmis:0, islenmemis:0, diger:0};
-    for (var i = 0; i < toplam; i += BATCH) {
-        var fd = new FormData();
-        fd.append('action', 'fatura_kontrol'); fd.append('ajax', '1');
-        var csrf = form.querySelector('input[name=csrf]'); if (csrf) fd.append('csrf', csrf.value);
-        files.slice(i, i + BATCH).forEach(function (f) { fd.append('dosyalar[]', f); });
-        try {
-            var j = await (await fetch('fatura_eslestir.php', { method: 'POST', body: fd })).json();
-            oz.islenmis += j.islenmis || 0; oz.islenmemis += j.islenmemis || 0; oz.diger += j.diger || 0;
-        } catch (err) { oz.diger += Math.min(BATCH, toplam - i); }
-        var y = Math.round(100 * Math.min(i + BATCH, toplam) / toplam);
-        bar.style.width = y + '%'; bar.textContent = y + '%';
-        durum.textContent = Math.min(i + BATCH, toplam) + '/' + toplam + ' kontrol edildi — işlenmiş ' + oz.islenmis + ', işlenmemiş ' + oz.islenmemis + (oz.diger ? ', okunamadı ' + oz.diger : '');
-    }
-    location.href = 'fatura_eslestir.php?kontrol=1';
-});
+// Toplu kontrol: partiler adet + BOYUT sınırıyla kurulur, düşen parti dosya dosya yeniden denenir,
+// gönderilemeyen dosya sebebiyle rapora yazılır (seçilen = rapordaki dosya sayısı).
+ERN_TOPLU_KONTROL.kur({form: document.getElementById('kontrolForm'), url: 'fatura_eslestir.php',
+    sinir: <?= json_encode(fat_yukleme_sinir()) ?>});
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
