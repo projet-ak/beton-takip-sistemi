@@ -1324,21 +1324,24 @@ document.getElementById('kontrolForm').addEventListener('submit', async function
                     <td><code><?= h($f['fatura_no']) ?></code></td>
                     <td class="text-nowrap"><?= h(format_date($f['tarih'])) ?></td>
                     <td class="small"><?= h((string)$f['tedarikci']) ?></td>
-                    <td class="small">
-                        <?php foreach ($irsL as $n): $svkId = $irsSvkMap[(int)$f['id'] . '|' . fat_irs_norm($n)] ?? 0; ?>
+                    <td class="small text-nowrap">
+                        <?php // Satır tek satır kalsın: yalnız İLK irsaliye görünür, tamamı "içerik" açılımında listelenir
+                        $irsIlk = $irsL[0] ?? null; $irsDiger = max(0, count($irsL) - 1); ?>
+                        <?php if ($irsIlk !== null): $svkId = $irsSvkMap[(int)$f['id'] . '|' . fat_irs_norm($irsIlk)] ?? 0; ?>
                             <?php if ($svkId): ?>
-                            <a href="sevkiyat_form.php?id=<?= $svkId ?>" target="_blank" class="text-decoration-none" title="Sevkiyatı aç"><code class="me-1"><?= h($n) ?></code></a>
-                            <?php else: ?><code class="me-1 text-muted" title="Sevkiyat bağlı değil"><?= h($n) ?></code><?php endif; ?>
-                        <?php endforeach; ?>
-                        <?php if ($fSvk || $fKalem): ?>
-                        <button class="btn btn-sm btn-link p-0 text-decoration-none align-baseline" type="button"
-                                data-bs-toggle="collapse" data-bs-target="#df<?= (int)$f['id'] ?>" title="Fatura içeriği + bağlı sevkiyatlar">
+                            <a href="sevkiyat_form.php?id=<?= $svkId ?>" target="_blank" class="text-decoration-none" title="Sevkiyatı aç"><code><?= h($irsIlk) ?></code></a>
+                            <?php else: ?><code class="text-muted" title="Sevkiyat bağlı değil"><?= h($irsIlk) ?></code><?php endif; ?>
+                            <?php if ($irsDiger): ?><span class="badge bg-secondary-subtle text-secondary-emphasis border ms-1" title="<?= h(implode(', ', array_slice($irsL, 1))) ?>">+<?= $irsDiger ?></span><?php endif; ?>
+                        <?php endif; ?>
+                        <?php if ($fSvk || $fKalem || $irsDiger): ?>
+                        <button class="btn btn-sm btn-link p-0 ms-1 text-decoration-none align-baseline" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#df<?= (int)$f['id'] ?>" title="Fatura içeriği + tüm irsaliyeler + bağlı sevkiyatlar">
                             <i class="bi bi-chevron-down small"></i> içerik
                         </button>
                         <?php endif; ?>
                     </td>
-                    <td class="text-end font-monospace">
-                        <?php if ($f['tutar'] !== null): ?><?= $fmt($f['tutar']) ?> ₺
+                    <td class="text-end font-monospace text-nowrap">
+                        <?php if ($f['tutar'] !== null): ?><?= $fmt($f['tutar']) ?>&nbsp;₺
                         <?php else: ?>
                         <form method="post" class="d-inline-flex align-items-center gap-1" title="Ödenecek tutarı elle girin">
                             <input type="hidden" name="action" value="alan_duzelt"><input type="hidden" name="alan" value="tutar">
@@ -1379,10 +1382,22 @@ document.getElementById('kontrolForm').addEventListener('submit', async function
                         <a class="btn btn-sm btn-outline-danger py-0" href="?sil=<?= (int)$f['id'] ?>" onclick="return confirm('Fatura kaydı silinsin, sevkiyat bağları çözülsün mü?')"><i class="bi bi-trash"></i></a>
                     <?php endif; ?></td>
                 </tr>
-                <?php if ($fSvk || $fKalem): ?>
+                <?php if ($fSvk || $fKalem || $irsDiger): ?>
                 <tr class="collapse" id="df<?= (int)$f['id'] ?>">
                     <td colspan="12" class="bg-body-tertiary">
                         <div class="row g-3 p-2">
+                            <?php if (count($irsL) > 1): ?>
+                            <div class="col-12">
+                                <div class="small fw-semibold mb-1"><i class="bi bi-truck me-1"></i>Faturadaki irsaliyeler (<?= count($irsL) ?>)</div>
+                                <div class="d-flex flex-wrap gap-1">
+                                <?php foreach ($irsL as $n): $svkId = $irsSvkMap[(int)$f['id'] . '|' . fat_irs_norm($n)] ?? 0; ?>
+                                    <?php if ($svkId): ?>
+                                    <a href="sevkiyat_form.php?id=<?= $svkId ?>" target="_blank" class="text-decoration-none" title="Sevkiyatı aç"><code><?= h($n) ?></code></a>
+                                    <?php else: ?><code class="text-muted" title="Sevkiyat bağlı değil"><?= h($n) ?></code><?php endif; ?>
+                                <?php endforeach; ?>
+                                </div>
+                            </div>
+                            <?php endif; ?>
                             <?php if ($fKalem): ?>
                             <div class="col-lg-4">
                                 <div class="small fw-semibold mb-1"><i class="bi bi-list-ul me-1"></i>Fatura kalemleri</div>
