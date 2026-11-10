@@ -162,9 +162,10 @@ function dfat_cikar(string $metin): array {
         foreach ($mm[1] as $v) { $f = fat_sayi($v); if ($f !== null) { $top += $f; $var = true; } }
         if ($var) $d['miktar_kg'] = $top;
     }
-    // Çakıroğlu: "10.800\n Kg." · Karadeniz: "26.400 KG" (ondalıksız binlik → dfat_kg).
-    // Büyük harfli KG için boşluk şart: "10MM-26,550KG" özet tekrarları toplamı ikiye katlamasın.
-    if ($d['miktar_kg'] === null && preg_match_all('/([\d.,]+)(?:\s*Kg\.?|\s+KG)\b/u', $t, $mm)) {
+    // Çakıroğlu: "10.800\n Kg." · Karadeniz: "26.400 KG" · Tokal: "4.750 kg" (ondalıksız binlik → dfat_kg).
+    // KG/kg için boşluk şart: "10MM-26,550KG" özet tekrarları toplamı ikiye katlamasın.
+    // ⚠ Tokal faturası küçük harf + ondalıksız yazıyordu ("4.750 kg") — hiçbir desene uymuyor, tonaj BOŞ kalıyordu.
+    if ($d['miktar_kg'] === null && preg_match_all('/([\d.,]+)(?:\s*Kg\.?|\s+(?:KG|kg)\.?)(?![A-Za-z])/u', $t, $mm)) {
         $top = 0.0; $var = false;
         foreach ($mm[1] as $v) { $f = dfat_kg($v); if ($f !== null) { $top += $f; $var = true; } }
         if ($var) $d['miktar_kg'] = $top;
@@ -205,6 +206,12 @@ function dfat_cikar(string $metin): array {
     } elseif ($kgListe && count($kgListe) === count($d['irsaliyeler'])) {
         // Cangül düzeni: kalemlerde çap yok; kalem sırası dipnottaki e-irsaliye sırasıyla eşleşir
         foreach ($kgListe as $i => $kg) $d['kalemler'][] = ['cap' => null, 'kg' => $kg, 'irs' => $d['irsaliyeler'][$i]];
+    } elseif (preg_match_all('/\bQ\s?(\d{3})\b[^\n]{0,40}?HASIR[^\n]{0,40}?\s([\d.]+(?:,\d+)?)\s*kg\b/iu', $t, $mm, PREG_SET_ORDER)) {
+        // Tokal düzeni: "Q188 - ÇELİK HASIR   4.750 kg" — hasır kalemi (çap = Q numarası, demir_caplar'da "Çelik Hasır Q188")
+        foreach ($mm as $g) {
+            $f = dfat_kg($g[2]);
+            if ($f !== null && $f > 0) $d['kalemler'][] = ['cap' => (int)$g[1], 'kg' => $f, 'irs' => null];
+        }
     } elseif (preg_match_all('/(?:Ø\s*|\bN\s*-?\s*)?(\d{1,2})\s*MM\b[^\n]{0,100}?\s([\d.]+(?:,\d+)?)\s*KG\b/iu', $t, $mm, PREG_SET_ORDER)) {
         // Karadeniz düzeni: "N-12mm 12mt İnş.Demiri 26.400 KG" — satırda çap + kg (irsaliye tek)
         foreach ($mm as $g) {
@@ -245,7 +252,8 @@ function dfat_cikar(string $metin): array {
                 && !preg_match('/SAYIN|VKN|ETTN|TEL|FAX|MAH|CAD|SOKAK|NO:|E-FATURA|SEVK/iu', $ust)) {
                 $unvan = $ust . ' ' . $unvan;
             }
-            $d['satici_unvan'] = $unvan;
+            // Unvan iki satıra bölünmüş olabilir ("…ANONİM\nŞİRKETİ") — tedarikçi adına satır sonu girmesin
+            $d['satici_unvan'] = trim(preg_replace('/\s+/u', ' ', $unvan));
         }
     }
 
@@ -1191,7 +1199,7 @@ document.getElementById('kontrolForm').addEventListener('submit', async function
                 <thead class="table-light"><tr><th>Çap</th><th class="text-end">Miktar (t)</th><th>İrsaliye</th></tr></thead>
                 <tbody>
                 <?php foreach ($v['kalemler'] as $kl): ?>
-                    <tr><td><?= $kl['cap'] !== null ? 'Ø'.(int)$kl['cap'] : '<span class="text-muted">?</span>' ?></td>
+                    <tr><td><?= $kl['cap'] !== null ? ((int)$kl['cap'] >= 100 ? 'Q' : 'Ø').(int)$kl['cap'] : '<span class="text-muted">?</span>' ?></td>
                         <td class="text-end font-monospace"><?= $fmt(((float)$kl['kg'])/1000) ?></td>
                         <td class="small"><code><?= h((string)($kl['irs'] ?? '')) ?></code></td></tr>
                 <?php endforeach; ?>
@@ -1382,7 +1390,7 @@ document.getElementById('kontrolForm').addEventListener('submit', async function
                                     <thead class="table-light"><tr><th>Çap</th><th class="text-end">Miktar (t)</th><th>İrsaliye</th></tr></thead>
                                     <tbody>
                                     <?php foreach ($fKalem as $kl): ?>
-                                        <tr><td><?= $kl['cap'] !== null ? 'Ø'.(int)$kl['cap'] : '<span class="text-muted">—</span>' ?></td>
+                                        <tr><td><?= $kl['cap'] !== null ? ((int)$kl['cap'] >= 100 ? 'Q' : 'Ø').(int)$kl['cap'] : '<span class="text-muted">—</span>' ?></td>
                                             <td class="text-end font-monospace"><?= $fmt(((float)($kl['kg'] ?? 0))/1000) ?></td>
                                             <td class="small"><code><?= h((string)($kl['irs'] ?? '')) ?></code></td></tr>
                                     <?php endforeach; ?>
