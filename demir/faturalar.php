@@ -618,7 +618,7 @@ if (($_POST['action'] ?? '') === 'yeniden_oku' && ctype_digit((string)($_POST['f
             flash(($e['eksik'] || $baska || !$v['irsaliyeler']) ? 'warning' : 'success', $msj);
         } catch (Throwable $eY) { flash('error', 'Yeniden okuma hatası: ' . $eY->getMessage()); }
     }
-    redirect('faturalar.php' . (($_POST['fatura_ara'] ?? '') !== '' ? '?fatura_ara=' . urlencode((string)$_POST['fatura_ara']) : ''));
+    redirect(dfat_liste_geri());
 }
 
 // ── 2c) TOPLU FATURA KONTROLÜ: "bu 100 dosyadan hangisi işlenmiş?" (beton deseni) ──
@@ -814,6 +814,14 @@ if (isset($_GET['islem']) && !empty($_SESSION['dfat_islem'])) {
     unset($_SESSION['dfat_islem']);
 }
 
+/** Listeden yapılan işlemden sonra Kayıtlı Faturalar'a SÜZGEÇ korunarak dönülür (yalnız bilinen anahtarlar). */
+function dfat_liste_geri(): string {
+    parse_str((string)parse_url((string)($_SERVER['HTTP_REFERER'] ?? ''), PHP_URL_QUERY), $q);
+    $q = array_intersect_key((array)$q, array_flip(['ted', 'bas', 'bit', 'durum', 'fatura_ara']));
+    $q = array_filter(array_map(fn($v) => is_string($v) ? $v : '', $q), fn($v) => $v !== '');
+    return 'faturalar.php' . ($q ? '?' . http_build_query($q) : '') . '#kayitli-faturalar';
+}
+
 // ── 2b) Eksik alanı elle düzelt (Kayıtlı Faturalar listesinden) ──────────────
 if (($_POST['action'] ?? '') === 'alan_duzelt' && ctype_digit((string)($_POST['fatura_id'] ?? ''))) {
     $fid = (int)$_POST['fatura_id'];
@@ -827,7 +835,7 @@ if (($_POST['action'] ?? '') === 'alan_duzelt' && ctype_digit((string)($_POST['f
         $pdoDemir->prepare("UPDATE demir_faturalar SET {$alan} = ? WHERE id = ?")->execute([$deger, $fid]);
         flash('success', ($alan === 'miktar_kg' ? 'Miktar (kg)' : 'Tutar') . ' elle kaydedildi: ' . number_format($deger, 2, ',', '.'));
     }
-    redirect('faturalar.php');
+    redirect(dfat_liste_geri());
 }
 
 // ── 3) Sil ───────────────────────────────────────────────────────────────────
@@ -836,7 +844,7 @@ if (is_admin() && isset($_GET['sil']) && ctype_digit((string)$_GET['sil'])) {
     $pdoDemir->prepare("UPDATE demir_sevkiyatlar SET fatura_id = NULL WHERE fatura_id = ?")->execute([$fid]);
     $pdoDemir->prepare("DELETE FROM demir_faturalar WHERE id = ?")->execute([$fid]);
     flash('success', 'Fatura kaydı silindi, sevkiyat bağları çözüldü.');
-    redirect('faturalar.php');
+    redirect(dfat_liste_geri());
 }
 
 // ── Liste verisi ─────────────────────────────────────────────────────────────
@@ -908,6 +916,7 @@ foreach ($ciftTutar as $x) foreach ($x as $fid0 => $_) $ciftFid[$fid0] ??= 'tuta
 
 // ── Fatura arama: no / ETTN / tedarikçi / sipariş no / irsaliye no (NORMALİZE —
 //    "3302" ya da "CKI2026-3302" yazınca CKI2026000003302'li faturayı da bulur) ─────────
+$kayitliTum = $kayitli;   // süzgeç sayaçları ve tedarikçi listesi TÜM kayıtlardan
 $fatAra = trim((string)($_GET['fatura_ara'] ?? ''));
 if ($fatAra !== '') {
     $araU = mb_strtoupper($fatAra, 'UTF-8');
@@ -927,6 +936,47 @@ if ($fatAra !== '') {
             if ($araS !== '' && strlen($araS) >= 3 && str_contains(preg_replace('/\D/', '', $no), $araS)) return true;
         }
         return false;
+    }));
+}
+
+// ── SÜZGEÇLER (2026-11-10, kullanıcı: "tüm faturaları görmek istiyorum, firma / tarih arası filtreleme")
+//    Liste TÜM faturaları gösterir; süzgeçler (tedarikçi · tarih aralığı · durum) arama gibi PHP'de uygulanır,
+//    rozet süzülen kümenin toplamını verir. Çift faturalama kontrolü yukarıda TÜM kayıtlar üzerinde yapıldı.
+//    ⚠ Tedarikçi süzgeci NORMALİZE ADA göre: eski kayıtlarda tedarikci_id boş olabilir.
+$DFAT_DURUM = ['bagli' => 'Sevkiyata bağlı', 'bagsiz' => 'Hiç sevkiyata bağlı değil',
+               'tartilmadi' => 'Tartılmamış kalemi var', 'kgsiz' => 'Tonajı okunmamış', 'cift' => 'Çift faturalama şüpheli'];
+$fatTumAdet = count($kayitliTum ?? $kayitli);
+$fatTedler = [];
+foreach (($kayitliTum ?? $kayitli) as $__f) {
+    $__k = fat_unvan_norm((string)$__f['tedarikci']);
+    if ($__k === '') continue;
+    $__ad = trim(preg_replace('/\s+/u', ' ', (string)$__f['tedarikci']));
+    $fatTedler[$__k] ??= ['ad' => $__ad, 'adet' => 0];
+    // aynı firmanın farklı yazımları tek seçenekte toplanır; görünen ad BÜYÜK HARFLİ yazım tercih edilir
+    if ($__ad === mb_strtoupper($__ad, 'UTF-8') && $fatTedler[$__k]['ad'] !== mb_strtoupper($fatTedler[$__k]['ad'], 'UTF-8')) $fatTedler[$__k]['ad'] = $__ad;
+    $fatTedler[$__k]['adet']++;
+}
+uasort($fatTedler, fn($x, $y) => strcmp($x['ad'], $y['ad']));
+$fatTed   = (string)($_GET['ted'] ?? '');
+$fatTed   = isset($fatTedler[$fatTed]) ? $fatTed : '';
+$fatBas   = fat_tarih_norm((string)($_GET['bas'] ?? '')) ?: '';
+$fatBit   = fat_tarih_norm((string)($_GET['bit'] ?? '')) ?: '';
+$fatDurum = isset($DFAT_DURUM[$_GET['durum'] ?? '']) ? (string)$_GET['durum'] : '';
+$fatSuzgec = ($fatAra !== '' || $fatTed !== '' || $fatBas !== '' || $fatBit !== '' || $fatDurum !== '');
+if ($fatTed !== '' || $fatBas !== '' || $fatBit !== '' || $fatDurum !== '') {
+    $kayitli = array_values(array_filter($kayitli, function ($f) use ($fatTed, $fatBas, $fatBit, $fatDurum, $ciftFid) {
+        if ($fatTed !== '' && fat_unvan_norm((string)$f['tedarikci']) !== $fatTed) return false;
+        $t = (string)($f['tarih'] ?? '');
+        if ($fatBas !== '' && ($t === '' || $t < $fatBas)) return false;
+        if ($fatBit !== '' && ($t === '' || $t > $fatBit)) return false;
+        return match ($fatDurum) {
+            'bagli'      => (int)$f['bagli'] > 0,
+            'bagsiz'     => (int)$f['bagli'] === 0,
+            'tartilmadi' => (int)$f['bagli'] > 0 && (int)$f['kantar_satir'] < (int)$f['kalem_satir'],
+            'kgsiz'      => (float)$f['miktar_kg'] <= 0,
+            'cift'       => isset($ciftFid[(int)$f['id']]),
+            default      => true,
+        };
     }));
 }
 
@@ -1371,26 +1421,56 @@ document.getElementById('kontrolForm').addEventListener('submit', async function
     </ul>
     <?php endif; ?>
 </div>
-<?php elseif ($kayitli && $fatAra === ''): ?>
+<?php elseif ($fatTumAdet): ?>
 <div class="small text-success mb-2"><i class="bi bi-shield-check me-1"></i>Çift faturalama kontrolü: hiçbir irsaliye iki farklı faturada geçmiyor; aynı gün aynı tutarlı fatura yok.</div>
 <?php endif; ?>
-<div class="card">
+<div class="card" id="kayitli-faturalar">
     <div class="card-header bg-white fw-semibold d-flex align-items-center justify-content-between flex-wrap gap-2">
         <span><i class="bi bi-archive me-1"></i> Kayıtlı Faturalar</span>
-        <form method="get" class="d-flex align-items-center gap-1">
-            <input type="text" name="fatura_ara" value="<?= h($fatAra) ?>" class="form-control form-control-sm" style="width:230px"
-                   placeholder="Fatura no / irsaliye no / tedarikçi">
-            <button class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i></button>
-            <?php if ($fatAra !== ''): ?><a href="faturalar.php" class="btn btn-sm btn-outline-secondary" title="Aramayı temizle"><i class="bi bi-x-lg"></i></a><?php endif; ?>
-        </form>
-        <span class="badge bg-primary" title="<?= $fatAra !== '' ? 'Arama sonucu' : 'Toplam fatura sayısı' ?>"><?= count($kayitli) ?> fatura
+        <span class="badge bg-primary" title="<?= $fatSuzgec ? 'Süzgeçle eşleşen faturaların toplamı' : 'Kayıtlı faturaların TAMAMI' ?>"><?= count($kayitli) ?><?= $fatSuzgec ? ' / ' . $fatTumAdet : '' ?> fatura
             <?php $topKg = array_sum(array_map(fn($x)=>(float)$x['miktar_kg'], $kayitli)); ?>
             · <?= $fmt($topKg/1000) ?> t
             · <?= $fmt(array_sum(array_map(fn($x)=>(float)$x['tutar'], $kayitli))) ?> ₺</span>
     </div>
+    <form method="get" action="faturalar.php#kayitli-faturalar" class="row g-2 align-items-end px-3 py-2 border-bottom bg-light-subtle small">
+        <div class="col-6 col-md-3">
+            <label class="form-label small mb-0">Tedarikçi</label>
+            <select name="ted" class="form-select form-select-sm">
+                <option value="">Tümü</option>
+                <?php foreach ($fatTedler as $tk => $ti): ?>
+                <option value="<?= h($tk) ?>" <?= $fatTed === $tk ? 'selected' : '' ?>><?= h($ti['ad']) ?> (<?= (int)$ti['adet'] ?>)</option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label small mb-0">Tarih (başlangıç)</label>
+            <input type="date" name="bas" value="<?= h($fatBas) ?>" class="form-control form-control-sm">
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label small mb-0">Tarih (bitiş)</label>
+            <input type="date" name="bit" value="<?= h($fatBit) ?>" class="form-control form-control-sm">
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label small mb-0">Durum</label>
+            <select name="durum" class="form-select form-select-sm">
+                <option value="">Hepsi</option>
+                <?php foreach ($DFAT_DURUM as $dk => $da): ?>
+                <option value="<?= h($dk) ?>" <?= $fatDurum === $dk ? 'selected' : '' ?>><?= h($da) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="col-12 col-md-3">
+            <label class="form-label small mb-0">Ara</label>
+            <input type="text" name="fatura_ara" value="<?= h($fatAra) ?>" class="form-control form-control-sm" placeholder="Fatura no / irsaliye no / sipariş no / ETTN">
+        </div>
+        <div class="col-12 d-flex gap-1 justify-content-end">
+            <button class="btn btn-sm btn-primary"><i class="bi bi-funnel me-1"></i>Süz</button>
+            <?php if ($fatSuzgec): ?><a href="faturalar.php#kayitli-faturalar" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-lg me-1"></i>Süzgeci temizle</a><?php endif; ?>
+        </div>
+    </form>
     <div class="card-body p-0">
     <?php if (!$kayitli): ?>
-        <div class="p-3 text-muted"><?= $fatAra !== '' ? '"' . h($fatAra) . '" ile eşleşen fatura bulunamadı.' : 'Henüz kayıtlı demir faturası yok.' ?></div>
+        <div class="p-3 text-muted"><?= $fatSuzgec ? 'Süzgeçle eşleşen fatura bulunamadı.' : 'Henüz kayıtlı demir faturası yok.' ?></div>
     <?php else: ?>
         <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
             <thead class="table-light"><tr>
