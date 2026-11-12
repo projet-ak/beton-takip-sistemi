@@ -210,6 +210,7 @@ function parseTarih(?string $tarih): ?string {
 
 $error = null;
 $success = null;
+$bosRapor = null;   // dosyada yeni irsaliye yoksa önizleme yerine gösterilen sonuç raporu
 
 // CSRF token (küresel — merkezi doğrulama auth.php'de)
 $csrfImport = csrf_token();
@@ -304,6 +305,63 @@ function detectSheetMapping(array $rows): ?array {
     return ['header_row' => $headerRowIndex, 'mapping' => $colMapping];
 }
 
+/**
+ * Önizleme ÖN ANALİZİ — her veri satırının durumu AKTARIMLA AYNI kuralla belirlenir
+ * (fat_irs_norm normalize: SKB2026-12047 ↔ SKB2026000012047; [FATURADAN] taslağı güncellenir;
+ * aynı dosyada ikinci kez geçen no atlanır). Durumlar: yeni · taslak · kayitli · tekrar · hatali.
+ * Eskiden önizleme UPPER(TRIM()) ile ayrı bir sorgu yapıyordu: biçim farklı no "Hazır" görünüp
+ * aktarımda mükerrer düşüyor, taslağı güncelleyecek satır ise "Zaten Kayıtlı" diye kilitleniyordu.
+ * Kayıtlı satırlarda Excel ↔ sistem miktar/tarih farkı bilgi olarak toplanır (kayıt DEĞİŞTİRİLMEZ).
+ */
+function importOnAnaliz(PDO $pdo, $xlsx, array $sheets): array {
+    $mevcut = [];
+    foreach ($pdo->query("SELECT id, irsaliye_no, aciklama, miktar, tarih FROM irsaliyeler
+                          WHERE irsaliye_no IS NOT NULL AND TRIM(irsaliye_no) <> ''") as $mr) {
+        $k = fat_irs_norm((string)$mr['irsaliye_no']);
+        if ($k !== '' && !isset($mevcut[$k])) $mevcut[$k] = $mr;
+    }
+    $a = ['durum' => [], 'say' => ['okunan' => 0, 'yeni' => 0, 'taslak' => 0, 'kayitli' => 0, 'tekrar' => 0, 'hatali' => 0],
+          'hatali' => [], 'farkli' => []];
+    $dosyada = [];
+    foreach ($sheets as $si => $S) {
+        $rows = $xlsx->rows($si, 20000);
+        $cm = $S['mapping'];
+        for ($i = $S['header_row'] + 1, $n = count($rows); $i < $n; $i++) {
+            $r = $rows[$i];
+            if (!satirVeriMi($r, $cm)) continue;
+            $g = fn($k) => isset($cm[$k], $r[$cm[$k]]) ? trim((string)$r[$cm[$k]]) : '';
+            $a['say']['okunan']++;
+            $no = $g('irsaliye_no'); $tarih = parseTarih($g('tarih'));
+            $etiket = 'Satır ' . ($i + 1) . ($S['name'] ? ' · ' . $S['name'] : '') . ' (' . ($no ?: 'no yok') . ', ' . ($g('miktar') ?: '0') . ' m³)';
+            if (!$tarih || $g('tedarikci') === '') {
+                $d = 'hatali';
+                $a['hatali'][] = $etiket . ': ' . (!$tarih ? 'geçersiz/boş tarih "' . $g('tarih') . '"' : 'tedarikçi boş');
+            } else {
+                $k = $no !== '' ? fat_irs_norm($no) : '';
+                if ($k !== '' && isset($dosyada[$k])) {
+                    $d = 'tekrar';
+                } elseif ($k !== '' && isset($mevcut[$k])) {
+                    $m = $mevcut[$k];
+                    $d = str_contains((string)$m['aciklama'], '[FATURADAN]') ? 'taslak' : 'kayitli';
+                    if ($d === 'kayitli') {
+                        $mEx = parseMiktar($g('miktar')); $mDb = (float)$m['miktar'];
+                        $fark = [];
+                        if (abs($mEx - $mDb) > 0.001) $fark[] = 'miktar Excel ' . number_format($mEx, 2, ',', '.') . ' · sistem ' . number_format($mDb, 2, ',', '.');
+                        if (substr((string)$tarih, 0, 10) !== substr((string)$m['tarih'], 0, 10)) $fark[] = 'tarih Excel ' . substr((string)$tarih, 0, 10) . ' · sistem ' . substr((string)$m['tarih'], 0, 10);
+                        if ($fark) $a['farkli'][] = ['id' => (int)$m['id'], 'metin' => $etiket . ': ' . implode(' — ', $fark)];
+                    }
+                } else {
+                    $d = 'yeni';
+                }
+                if ($k !== '') $dosyada[$k] = true;
+            }
+            $a['durum']["$si:$i"] = $d;
+            $a['say'][$d]++;
+        }
+    }
+    return $a;
+}
+
 // CSRF doğrulama (tüm POST'lar için)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_ok()) {
@@ -352,6 +410,15 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_fil
                         unset($_SESSION['import_file']);
                     } else {
                         $_SESSION['import_sheets'] = $sheets;
+                        // Dosyada aktarılacak YENİ satır yoksa önizlemede "0 / 0" ile bekletme —
+                        // diğer modüllerdeki gibi sonuç raporu göster ve dosyayı kapat.
+                        // (Yönetici "önizlemeyi yine de aç" derse — tam yenileme için — önizleme açılır.)
+                        $an = importOnAnaliz($pdo, $xlsx, $sheets);
+                        if ($an['say']['yeni'] + $an['say']['taslak'] === 0 && !(is_admin() && !empty($_POST['onizle_zorla']))) {
+                            $bosRapor = $an + ['dosya' => (string)$file['name'], 'imalat' => (int)($_SESSION['import_imalat_sayi'] ?? 0)];
+                            @unlink($tempPath);
+                            unset($_SESSION['import_file'], $_SESSION['import_sheets'], $_SESSION['import_imalat_sayi']);
+                        }
                     }
                 } else {
                     $error = "Excel dosyası okunamadı: " . SimpleXLSX::parseError();
@@ -658,6 +725,45 @@ require_once __DIR__ . '/includes/header.php';
     <?php endif; ?>
 <?php endif; ?>
 
+<?php if (!empty($bosRapor)): $bs = $bosRapor['say']; ?>
+    <!-- Dosyada yeni irsaliye yok: önizleme yerine sonuç raporu -->
+    <div class="card shadow-sm border-0 mb-4 border-start border-4 border-success">
+        <div class="card-header bg-white border-0 py-3">
+            <h5 class="card-title mb-1 fw-semibold"><i class="bi bi-clipboard-check text-success me-1"></i>Aktarım Sonucu — <span class="text-muted fw-normal"><?= h($bosRapor['dosya']) ?></span></h5>
+            <div class="text-success fw-semibold"><i class="bi bi-check-circle-fill me-1"></i>Dosyada yeni irsaliye yok — <strong>0 kayıt aktarıldı</strong>, sistem bu dosyayla zaten güncel.</div>
+        </div>
+        <div class="card-body pt-0">
+            <div class="d-flex flex-wrap gap-2 mb-2">
+                <span class="badge bg-primary fs-6 fw-normal">Okunan satır <strong><?= number_format($bs['okunan'], 0, ',', '.') ?></strong></span>
+                <span class="badge bg-success fs-6 fw-normal">Aktarılan <strong>0</strong></span>
+                <span class="badge bg-success-subtle text-success border border-success-subtle fs-6 fw-normal">Zaten kayıtlı <strong><?= number_format($bs['kayitli'], 0, ',', '.') ?></strong></span>
+                <?php if ($bs['tekrar']): ?><span class="badge bg-info-subtle text-info-emphasis border fs-6 fw-normal">Dosyada tekrar eden no <strong><?= $bs['tekrar'] ?></strong></span><?php endif; ?>
+                <?php if ($bs['hatali']): ?><span class="badge bg-danger fs-6 fw-normal">Hatalı (tarih/tedarikçi yok) <strong><?= $bs['hatali'] ?></strong></span><?php endif; ?>
+            </div>
+            <div class="small text-muted">Hesap: okunan = aktarılan + zaten kayıtlı + dosyada tekrar + hatalı
+                (<?= $bs['okunan'] ?> = 0 + <?= $bs['kayitli'] ?> + <?= $bs['tekrar'] ?> + <?= $bs['hatali'] ?>)</div>
+            <?php if (!empty($bosRapor['imalat'])): ?>
+            <div class="small text-success mt-2"><i class="bi bi-check-circle me-1"></i><strong><?= (int)$bosRapor['imalat'] ?></strong> imalat/metraj sayfası güncellendi — <a href="prp_ustyapi.php">Bina Üstyapı</a> · <a href="temel_kazik.php">Temel & Kazık</a> · <a href="istinat.php">İstinat</a> · <a href="icmal_beton.php">İcmal</a> · <a href="metraj_sayfasi.php">Metraj</a> · <a href="mobilizasyon.php">Mobilizasyon</a></div>
+            <?php endif; ?>
+            <?php if ($bosRapor['farkli']): ?>
+            <details class="mt-3"><summary class="text-warning-emphasis fw-semibold"><i class="bi bi-exclamation-triangle me-1"></i><?= count($bosRapor['farkli']) ?> kayıtlı irsaliyede Excel ile sistem farklı (miktar/tarih) — kayıtlar değiştirilmedi</summary>
+                <ul class="small mt-2 mb-0">
+                <?php foreach (array_slice($bosRapor['farkli'], 0, 100) as $f): ?><li><?= h($f['metin']) ?> · <a href="irsaliye_form.php?id=<?= (int)$f['id'] ?>">kaydı aç</a></li><?php endforeach; ?>
+                <?php if (count($bosRapor['farkli']) > 100): ?><li>… ve <?= count($bosRapor['farkli']) - 100 ?> satır daha</li><?php endif; ?>
+                </ul></details>
+            <?php endif; ?>
+            <?php if ($bosRapor['hatali']): ?>
+            <details class="mt-2"><summary class="text-danger fw-semibold"><i class="bi bi-x-circle me-1"></i>Hatalı satırlar (<?= count($bosRapor['hatali']) ?>)</summary>
+                <ul class="small mt-2 mb-0">
+                <?php foreach (array_slice($bosRapor['hatali'], 0, 100) as $hs): ?><li><?= h($hs) ?></li><?php endforeach; ?>
+                <?php if (count($bosRapor['hatali']) > 100): ?><li>… ve <?= count($bosRapor['hatali']) - 100 ?> satır daha</li><?php endif; ?>
+                </ul></details>
+            <?php endif; ?>
+            <div class="mt-3"><a href="irsaliyeler.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-list-ul me-1"></i>İrsaliyelere Git</a></div>
+        </div>
+    </div>
+<?php endif; ?>
+
 <?php if (!isset($_SESSION['import_file'])): ?>
     <!-- ADIM 0: Dosya Yükleme Formu -->
     <div class="card shadow-sm border-0 mb-4">
@@ -679,6 +785,14 @@ require_once __DIR__ . '/includes/header.php';
                             <i class="bi bi-eye me-1"></i> Yükle &amp; İncele
                         </button>
                     </div>
+                    <?php if (is_admin()): ?>
+                    <div class="col-12">
+                        <div class="form-check small">
+                            <input class="form-check-input" type="checkbox" name="onizle_zorla" value="1" id="onizleZorla">
+                            <label class="form-check-label text-muted" for="onizleZorla">Yeni irsaliye olmasa da önizlemeyi aç (yalnız <strong>tam yenileme</strong> yapacaksanız gerekir)</label>
+                        </div>
+                    </div>
+                    <?php endif; ?>
                 </div>
             </form>
             <div class="mt-4">
@@ -699,7 +813,7 @@ require_once __DIR__ . '/includes/header.php';
     $xlsx = SimpleXLSX::parse($_SESSION['import_file']);
     $sheets = $_SESSION['import_sheets'] ?? [];
     if ($xlsx && $sheets):
-        $dupQ = $pdo->prepare("SELECT COUNT(*) FROM irsaliyeler WHERE UPPER(TRIM(irsaliye_no)) = UPPER(TRIM(?))");
+        $onAn = importOnAnaliz($pdo, $xlsx, $sheets);   // aktarımla AYNI kural (normalize no + taslak)
         $sayfaOzet = [];
         foreach ($sheets as $si => $S) { $sayfaOzet[] = h($S['name']) . ($S['tip']==='iade' ? ' (iade)' : ''); }
     ?>
@@ -783,16 +897,11 @@ require_once __DIR__ . '/includes/header.php';
                                 $kot = $getVal('kot');
                                 $aciklama = $getVal('aciklama');
 
+                                $onD = $onAn['durum']["$si:$i"] ?? 'yeni';
                                 $dupColor = ''; $dupText = 'Hazır'; $canImport = true;
-                                if ($irsaliyeNo) {
-                                    $dupQ->execute([$irsaliyeNo]);
-                                    if ($dupQ->fetchColumn() > 0) {
-                                        $dupColor = 'table-success'; $dupText = 'Zaten Kayıtlı'; $canImport = false;
-                                    }
-                                }
-                                if (!$tarih || !$tedarikci) {
-                                    $dupColor = 'table-danger'; $dupText = 'Hatalı (Tarih/Tedarikçi Yok)'; $canImport = false;
-                                }
+                                if ($onD === 'taslak') { $dupText = 'Taslak'; }
+                                elseif ($onD === 'kayitli' || $onD === 'tekrar') { $dupColor = 'table-success'; $dupText = 'Zaten Kayıtlı'; $canImport = false; }
+                                elseif ($onD === 'hatali') { $dupColor = 'table-danger'; $dupText = 'Hatalı (Tarih/Tedarikçi Yok)'; $canImport = false; }
                             ?>
                             <tr class="<?= $dupColor ?>">
                                 <td class="text-center">
@@ -818,8 +927,10 @@ require_once __DIR__ . '/includes/header.php';
                                 <td>
                                     <?php if ($dupText === 'Hazır'): ?>
                                         <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i> Hazır</span>
+                                    <?php elseif ($dupText === 'Taslak'): ?>
+                                        <span class="badge bg-warning text-dark" title="Faturadan açılmış [FATURADAN] taslak kayıt Excel verisiyle güncellenecek (fatura bağı ve belgeler korunur)"><i class="bi bi-arrow-repeat me-1"></i> Taslağı günceller</span>
                                     <?php elseif ($dupText === 'Zaten Kayıtlı'): ?>
-                                        <span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check2-circle me-1"></i> Zaten Kayıtlı</span>
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check2-circle me-1"></i> <?= $onD === 'tekrar' ? 'Dosyada tekrar' : 'Zaten Kayıtlı' ?></span>
                                     <?php else: ?>
                                         <span class="badge bg-danger"><i class="bi bi-x-circle me-1"></i> Hatalı</span>
                                     <?php endif; ?>
