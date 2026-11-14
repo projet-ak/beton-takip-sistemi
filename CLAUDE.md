@@ -2533,6 +2533,33 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
   `ERN-Sistem-Yedek-eski` yap → sunucuda `rclone config` → `e` → `ernyedek` → id/secret → token yenile
   (Windows'ta sunucunun verdiği YENİ `rclone authorize` satırı; "doğrulanmamış uygulama" → Gelişmiş → devam).
 
+### A3) Kamp gece güvenliği + Kamera İzleme modülü (BEKLEMEDE — kullanıcı bilgi verecek, 2026-11-14)
+- **Neden:** staff binasına gece ~03:00'te kamp dışından izinsiz bir kişi alınmış, kimin aldığı tespit
+  edilememiş; polis çağrılarak kayıt altına alındı. Olay sırasında bir sağlık sorunu, yangın ya da taciz
+  iddiası olsaydı herkes zan altında kalırdı. **Hedef:** gece kampa/staff'a giren-çıkan her kişi
+  (kim, saat kaçta, kimin misafiri) **kanıtlanabilir** olsun ve izinsiz giriş **anında** fark edilsin.
+- **Önerilen sıra** (kullanıcı onayı olmadan başlanmaz; aşağıdaki 5 soru cevaplanınca):
+  1. **Kamp modülüne ZİYARETÇİ / MİSAFİR DEFTERİ** (kamera gerekmez, hemen yapılabilir): giriş saati · çıkış
+     saati · ziyaretçi ad/kimlik · kimin misafiri (kamp kişisi) · onaylayan · gece kalış izni. Gece kuralı:
+     belirli saatten sonra (ör. 23:00–06:00) misafir girişi yalnız onaylı; açık kalan (çıkışı yazılmamış)
+     ziyaretçi dashboard'da kırmızı.
+  2. **Staff giriş kapısına kart okutma** — PTS kiosk/ArUco altyapısı hazır; kamp için ayrı geçiş noktası
+     (yön sabit), gece geçişleri raporu. Kart okutmayan giriş = kamera olayıyla karşılaştırılır.
+  3. **Ayrı "Kamera İzleme" modülü** (§0: kendi DB `KAMERA_DB_NAME`, kendi uploads): Dahua NVR + kanal
+     tanımları (IT Envanter'den tek yönlü "aktar" köprüsü), canlı izleme (RTSP → go2rtc/MediaMTX → WebRTC;
+     şantiyede sürekli açık mini PC + WireGuard/Tailscale, **NVR'ye port açılmaz**), olay defteri (fotoğraf ·
+     kamera · saat · "görüldü/işlendi" · not).
+  4. **Uyarı kuralları**: ilk adım **insan algılama + saat kuralı** ("gece staff kapısında insan → uyarı",
+     yüz tanımaz, biyometrik değil); NVR WizSense/WizMind ise **yabancı yüz (stranger)** olayı da alınır
+     (⚠ KVKK: biyometrik veri — açık rıza + aydınlatma, hukuk onayı olmadan yüz veritabanı kurulmaz).
+     Uyarı kanalı: sistem ekranı + Telegram (bot altyapısı `whatsapp/api/telegram_al.php`'de var).
+  5. **Kanıt saklama**: NVR kayıt süresi (en az 30 gün) kontrol edilir; olay fotoğrafları silinmez, olay
+     defteri ziyaretçi defteri + kart geçişleriyle aynı zaman çizelgesinde gösterilir.
+- **Kullanıcıdan beklenen bilgiler:** (1) NVR ve kamera modelleri (yapay zekâ/yüz tanıma var mı) ·
+  (2) kanal sayısı, staff kapısı/koridor kamerası var mı · (3) şantiyede sürekli açık bilgisayar konabilir mi,
+  NVR internete nasıl çıkıyor · (4) uyarı nereye (ekran/Telegram/e-posta), gece kime gitsin ·
+  (5) yüz tanıma için KVKK onayı alınabilir mi, yoksa insan algılama + saat kuralıyla mı başlansın.
+
 ### B) Beton — açık işler
 - **PRP Bina Üstyapı canlı zayiat:** `prp_ustyapi.php`'de SAHADA DÖKÜLEN'i gerçek irsaliyelerden (blok/kot/imalat)
   otomatik çekip ZAİYAT ORANI'nı canlı hesaplamak; %5 (fore kazık %15) limit aşımını kırmızı göstermek.
