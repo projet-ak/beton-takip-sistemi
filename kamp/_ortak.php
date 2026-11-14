@@ -126,6 +126,21 @@ function kamp_dbRozet(?string $d): string
     return '<span class="badge bg-' . $x[1] . '">' . htmlspecialchars($x[0]) . '</span>';
 }
 
+/**
+ * Kategori sezgisi: açık kategori metni (Mühendis / Staff, Formen…) ya da görev/unvandan.
+ * Kelime BAŞI eşleşir (Türkçe ek alır: "MÜHENDİSİ", "FORMENİ", "ŞEFİ"). İçe aktarma ve
+ * Personel Takip köprüsü ortak kullanır.
+ */
+function kamp_kategori_sez(string $kat, string $gorev): string
+{
+    $n = kamp_norm($kat . ' ' . $gorev);
+    foreach (KAMP_KATEGORI as $k => [$ad]) if ($kat !== '' && kamp_norm($kat) === kamp_norm($ad)) return $k;
+    if (preg_match('/\b(FORMEN|USTABASI|USTA BASI|EKIPBASI|EKIP BASI)/', $n)) return 'formen';
+    if (preg_match('/\b(MUHENDIS|MUH\b|MIMAR|STAFF|TEKNIK|SEF\b|SEFI\b|MUDUR|UZMAN|ISG\b|IDARI|OFIS)/', $n)) return 'staff';
+    if (preg_match('/\b(MISAFIR|ZIYARETCI|DENETCI)/', $n)) return 'misafir';
+    return 'isci';
+}
+
 /** Tarih normalize: Y-m-d · d.m.Y · d/m/Y · Excel seri → Y-m-d, geçersizse null. */
 function kamp_tarih($v): ?string
 {
@@ -303,6 +318,13 @@ function kamp_semasi_kur(PDO $pdo): void
         kullanici_id INT NULL,
         KEY ix_kamp_dbh (demirbas_id)
     ) $E");
+
+    // Personel Takip köprüsü: kişinin PTS'deki kaydının id'si (yalnız EŞLEŞME anahtarı — FK değil,
+    // başka DB'dedir). Runtime ALTER: eski kurulumlar da alır.
+    try {
+        $kol = array_column($pdo->query("SHOW COLUMNS FROM kamp_kisiler")->fetchAll(), 'Field');
+        if (!in_array('pts_id', $kol, true)) $pdo->exec("ALTER TABLE kamp_kisiler ADD COLUMN pts_id INT NULL COMMENT 'Personel Takip pts_personel.id (köprü eşleşmesi)', ADD KEY ix_kamp_kisi_pts (pts_id)");
+    } catch (Throwable $e) { /* yetki yoksa köprü sicil/ad ile eşleşmeye devam eder */ }
 
     $kuruldu = true;
 }
@@ -546,6 +568,21 @@ function kamp_kisi_ara(PDO $pdo, string $q): array
             'yer'    => $r['konaklama_id'] ? kamp_yatak_etiket($r) : '',
             'giris'  => $r['acik_giris'] ? kamp_tarih_yaz($r['acik_giris']) : '',
         ];
+    }
+    // Kamp listesinde olmayan Personel Takip çalışanları da önerilir — seçilince aktarılıp yerleştirilir
+    if (count($o) < 25 && kamp_pts_var()) {
+        $kel = array_values(array_filter(explode(' ', $nq)));
+        $d = kamp_pts_dizin($pdo);
+        foreach (kamp_pts_liste(false) as $p) {
+            if (count($o) >= 25 || !$kel) break;
+            $hay = ' ' . kamp_norm($p['ad'] . ' ' . $p['soyad'] . ' ' . $p['sicil_no'] . ' ' . $p['unvan'] . ' ' . $p['birim']) . ' ';
+            foreach ($kel as $k) if (!str_contains($hay, $k)) continue 2;
+            if (kamp_pts_esle($p, $d)[0]) continue;   // zaten kamp listesinde — yukarıda çıktı
+            $o[] = ['id' => 0, 'pts_id' => (int)$p['id'], 'ad' => kamp_buyuk($p['ad'] . ' ' . $p['soyad']),
+                    'firma' => (string)($p['birim'] ?? ''), 'gorev' => kamp_buyuk($p['unvan'] ?? ''),
+                    'kat' => KAMP_KATEGORI[kamp_kategori_sez('', (string)$p['unvan'])][0], 'yer' => '', 'giris' => '',
+                    'kaynak' => 'pts', 'sicil' => (string)($p['sicil_no'] ?? '')];
+        }
     }
     return $o;
 }
@@ -965,4 +1002,136 @@ function kamp_geri(?string $u, string $varsayilan = 'index.php'): string
 {
     $u = (string)$u;
     return preg_match('/^[a-z_]+\.php(\?[A-Za-z0-9_=&%.\-+:#]*)?(#[a-z0-9_-]+)?$/', $u) ? $u : $varsayilan;
+}
+
+// ─────────────────────────────────────────────────────────────── Personel Takip köprüsü
+/*
+ * ⭐ §0 — KÖPRÜ, BAĞ DEĞİL: kamp kişileri Personel Takip (PTS) modülünün personel listesinden
+ * TEK YÖNLÜ KOPYALANIR. Kamp, PTS'nin çekirdeğini require etmez, tablolarına JOIN atmaz; yalnız
+ * aktarma anında pts_personel'i OKUR (kendi bağlantısıyla, yazmaz). PTS kurulu değilse ya da
+ * erişilemezse köprü sessizce kapanır, kamp eksiksiz çalışır.
+ * Eşleşme: kamp_kisiler.pts_id → sicil no → normalize ad soyad (tek kayıtsa). Mevcut kişide
+ * yalnız BOŞ alanlar dolar (kampta elle düzeltilen veri ezilmez). Kopyalama anlıktır: sonrasında
+ * iki liste bağımsız yaşar.
+ */
+
+/** PTS veritabanına okuma bağlantısı (istek başına bir kez); yoksa null. */
+function kamp_pts_pdo(): ?PDO
+{
+    static $p = false;
+    if ($p !== false) return $p;
+    $p = null;
+    if (!defined('DB_HOST')) return null;
+    $db   = defined('PTS_DB_NAME') && PTS_DB_NAME !== '' ? PTS_DB_NAME : DB_NAME;
+    $user = defined('PTS_DB_USER') && PTS_DB_USER !== '' ? PTS_DB_USER : DB_USER;
+    $pass = defined('PTS_DB_PASS') ? PTS_DB_PASS : DB_PASS;
+    try {
+        $c = new PDO('mysql:host=' . DB_HOST . ';dbname=' . $db . ';charset=utf8mb4', $user, $pass,
+                     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
+        $c->query("SELECT 1 FROM pts_personel LIMIT 1");   // tablo yoksa köprü kapalı
+        $p = $c;
+    } catch (Throwable $e) { $p = null; }
+    return $p;
+}
+function kamp_pts_var(): bool { return kamp_pts_pdo() !== null; }
+
+/** PTS personeli (varsayılan yalnız çalışanlar). */
+function kamp_pts_liste(bool $ayrilanDahil = false): array
+{
+    $c = kamp_pts_pdo();
+    if (!$c) return [];
+    try {
+        return $c->query("SELECT id, sicil_no, ad, soyad, unvan, birim, lokasyon, telefon, eposta, ise_giris, isten_cikis
+                            FROM pts_personel" . ($ayrilanDahil ? '' : ' WHERE isten_cikis IS NULL') . " ORDER BY ad, soyad")->fetchAll();
+    } catch (Throwable $e) { return []; }
+}
+
+/** Kamp kişilerinin eşleşme dizini: pts_id · sicil · normalize ad (ad için kişi listesi). */
+function kamp_pts_dizin(PDO $pdo): array
+{
+    $d = ['pts' => [], 'sicil' => [], 'ad' => [], 'kisi' => []];
+    foreach ($pdo->query("SELECT * FROM kamp_kisiler") as $k) {
+        $id = (int)$k['id']; $d['kisi'][$id] = $k;
+        if (!empty($k['pts_id'])) $d['pts'][(int)$k['pts_id']] = $id;
+        if (($k['sicil_no'] ?? '') !== '' && $k['sicil_no'] !== null) $d['sicil'][kamp_norm($k['sicil_no'])] = $id;
+        $d['ad'][kamp_norm($k['ad'] . ' ' . $k['soyad'])][] = $id;
+    }
+    return $d;
+}
+
+/** Bir PTS kaydının kamptaki karşılığı: [kisi_id|null, nasıl|'cok'|null]. */
+function kamp_pts_esle(array $p, array $d): array
+{
+    if (isset($d['pts'][(int)$p['id']])) return [$d['pts'][(int)$p['id']], 'bağ'];
+    if (($p['sicil_no'] ?? '') !== '' && isset($d['sicil'][kamp_norm($p['sicil_no'])])) return [$d['sicil'][kamp_norm($p['sicil_no'])], 'sicil no'];
+    $ad = $d['ad'][kamp_norm($p['ad'] . ' ' . $p['soyad'])] ?? [];
+    if (count($ad) === 1) {
+        $k = $d['kisi'][$ad[0]];
+        // Kamptaki kartın sicili dolu ve farklıysa başka biridir; başka bir PTS kaydına bağlıysa da
+        if ((($k['sicil_no'] ?? '') !== '' && ($p['sicil_no'] ?? '') !== '' && kamp_norm($k['sicil_no']) !== kamp_norm($p['sicil_no']))
+            || (!empty($k['pts_id']) && (int)$k['pts_id'] !== (int)$p['id'])) return [null, null];
+        return [$ad[0], 'ad soyad'];
+    }
+    return [null, count($ad) > 1 ? 'cok' : null];
+}
+
+/**
+ * PTS personelini kamp kişi listesine aktarır.
+ *  $ptsIds: aktarılacak PTS id'leri (null = verilen listenin tamamı)
+ *  $opt: firma_id (yeni kişilere ve firması boş olanlara), kategori ('' = görevden sez), ayrilan (bool)
+ * Dönüş: yeni · guncellenen · degismeyen · atlanan + liste_* + esle [pts_id => kisi_id]
+ */
+function kamp_pts_aktar(PDO $pdo, ?array $ptsIds, array $opt = []): array
+{
+    $r = ['okunan' => 0, 'yeni' => 0, 'guncellenen' => 0, 'degismeyen' => 0, 'atlanan' => 0,
+          'liste_yeni' => [], 'liste_guncellenen' => [], 'liste_atlanan' => [], 'esle' => []];
+    if (!kamp_pts_var()) throw new RuntimeException('Personel Takip modülüne erişilemiyor (kurulu değil ya da veritabanı bağlantısı yok).');
+    $liste = kamp_pts_liste(true);
+    if ($ptsIds !== null) { $s = array_flip(array_map('intval', $ptsIds)); $liste = array_values(array_filter($liste, fn($p) => isset($s[(int)$p['id']]))); }
+    elseif (empty($opt['ayrilan'])) $liste = array_values(array_filter($liste, fn($p) => empty($p['isten_cikis'])));
+    $firma = ((int)($opt['firma_id'] ?? 0)) ?: null;
+    $katSabit = isset(KAMP_KATEGORI[$opt['kategori'] ?? '']) ? $opt['kategori'] : '';
+    $d = kamp_pts_dizin($pdo);
+    $ins = $pdo->prepare("INSERT INTO kamp_kisiler (ad, soyad, sicil_no, firma_id, gorev, kategori, telefon, notlar, pts_id)
+                          VALUES (?,?,?,?,?,?,?,?,?)");
+    foreach ($liste as $p) {
+        $r['okunan']++;
+        $ad = kamp_buyuk(trim($p['ad'] . ' ' . $p['soyad']));
+        [$kid, $nasil] = kamp_pts_esle($p, $d);
+        if ($nasil === 'cok') { $r['atlanan']++; $r['liste_atlanan'][] = "$ad — kampta aynı adlı birden çok kişi var, sicil no girerek ayırın"; continue; }
+        $sicil = trim((string)($p['sicil_no'] ?? ''));
+        // İşten ayrılmış personel için YENİ kamp kartı açılmaz (kampta kalmayacak); zaten kamp listesindeyse bağı tamamlanır
+        if (!$kid && !empty($p['isten_cikis']) && empty($opt['ayrilan'])) {
+            $r['atlanan']++; $r['liste_atlanan'][] = "$ad — Personel Takip'te işten ayrılmış (" . kamp_tarih_yaz($p['isten_cikis']) . ')'; continue;
+        }
+        if ($kid) {
+            $k = $d['kisi'][$kid]; $deg = [];
+            foreach (['pts_id' => (int)$p['id'], 'sicil_no' => $sicil, 'gorev' => kamp_buyuk($p['unvan'] ?? ''),
+                      'telefon' => trim((string)($p['telefon'] ?? '')), 'firma_id' => $firma] as $f => $v)
+                if ($v !== '' && $v !== null && $v !== 0 && ($k[$f] === null || $k[$f] === '' || ($f === 'pts_id' && (int)$k[$f] === 0))) $deg[$f] = $v;
+            // Sicil başka bir kamp kişisinde kullanılıyorsa yazılmaz (UNIQUE değil ama mükerrer olmasın)
+            if (isset($deg['sicil_no']) && isset($d['sicil'][kamp_norm($sicil)]) && $d['sicil'][kamp_norm($sicil)] !== $kid) unset($deg['sicil_no']);
+            if ($deg) {
+                $pdo->prepare("UPDATE kamp_kisiler SET " . implode(', ', array_map(fn($f) => "$f=?", array_keys($deg))) . ", updated_at=NOW() WHERE id=?")
+                    ->execute([...array_values($deg), $kid]);
+                $d['kisi'][$kid] = array_merge($k, $deg);
+                $r['guncellenen']++;
+                $r['liste_guncellenen'][] = $ad . ' (' . $nasil . ') — ' . implode(', ', array_map(fn($f) => ['pts_id'=>'bağ','sicil_no'=>'sicil','gorev'=>'görev','telefon'=>'telefon','firma_id'=>'firma'][$f], array_keys($deg)));
+            } else $r['degismeyen']++;
+            $r['esle'][(int)$p['id']] = $kid;
+            continue;
+        }
+        $not = trim("Personel Takip'ten aktarıldı (" . date('d.m.Y') . ")"
+             . (!empty($p['birim']) ? "\nBirim: " . $p['birim'] : '') . (!empty($p['lokasyon']) ? "\nLokasyon: " . $p['lokasyon'] : ''));
+        $ins->execute([kamp_buyuk($p['ad']), kamp_buyuk($p['soyad']), $sicil ?: null, $firma, kamp_buyuk($p['unvan'] ?? '') ?: null,
+                       $katSabit ?: kamp_kategori_sez('', (string)($p['unvan'] ?? '') . ' ' . (string)($p['birim'] ?? '')),
+                       trim((string)($p['telefon'] ?? '')) ?: null, $not, (int)$p['id']]);
+        $nid = (int)$pdo->lastInsertId();
+        $d['pts'][(int)$p['id']] = $nid;
+        if ($sicil !== '') $d['sicil'][kamp_norm($sicil)] = $nid;
+        $d['ad'][kamp_norm($p['ad'] . ' ' . $p['soyad'])][] = $nid;
+        $d['kisi'][$nid] = ['id' => $nid, 'sicil_no' => $sicil, 'pts_id' => (int)$p['id']];
+        $r['yeni']++; $r['liste_yeni'][] = $ad; $r['esle'][(int)$p['id']] = $nid;
+    }
+    return $r;
 }

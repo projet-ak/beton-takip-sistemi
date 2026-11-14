@@ -1918,6 +1918,22 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   kategori görevden sezilir [MÜHENDİS/ŞEF/TEKNİK → staff, FORMEN/USTABAŞI → formen; kelime BAŞI eşleşir — "MÜHENDİSİ"], yer: bina
   (tek bina varsa boş olabilir) → oda → yatak (boşsa ilk boş yatak), çıkış doluysa geçmiş kayıt; okunan = yeni + güncellenen +
   değişmeyen + atlanan; tekrar yükleme mükerrer açmaz; dosya `uploads/kamp/bekleyen/` 2 gün) · **kurulum_kamp** (şema + DB rozeti).
+  ⭐ **PERSONEL TAKİP KÖPRÜSÜ (2026-11-14, kullanıcı: "personelleri personel modülünden alalım")** — §0 gereği BAĞ DEĞİL,
+  tek yönlü KOPYA: `kamp_pts_pdo()` PTS veritabanına (`PTS_DB_NAME`, yoksa ana DB) kendi OKUMA bağlantısını açar, `pts_personel`
+  yoksa köprü sessizce kapanır (düğmeler görünmez); PTS çekirdeği require edilmez, PTS'ye hiçbir şey YAZILMAZ.
+  Yeni kolon **`kamp_kisiler.pts_id`** (runtime ALTER; yalnız eşleşme anahtarı, FK değil). Eşleşme `kamp_pts_esle()`:
+  pts_id → sicil no → normalize ad soyad (tek kayıtsa; kamp kartının sicili farklıysa ya da başka PTS kaydına bağlıysa eşleşmez,
+  aynı adlı 2+ kişi → atlanır). `kamp_pts_aktar($pdo, $ptsIds, ['firma_id','kategori','ayrilan'])`: yeni kişi BÜYÜK HARF,
+  görev = unvan, kategori unvandan sezilir (`kamp_kategori_sez` — içe aktarmayla ortak, `kim_kategori` buna devreder),
+  nota "Personel Takip'ten aktarıldı · Birim · Lokasyon"; mevcut kişide yalnız BOŞ alanlar (pts_id, sicil, görev, telefon,
+  firma) dolar; ⚠ **işten ayrılmış personele YENİ kart açılmaz** (zaten kamptaysa bağı tamamlanır). İki giriş noktası:
+  ① **`personel_aktar.php`** (Kişiler ekranında "Personel Takip'ten Al"): sekmeler kamp listesinde olmayan / olan / tüm
+  çalışanlar / işten ayrılmış, arama + birim süzgeci, seçerek ya da listedekilerin tümü, firma ve kategori seçimi, rapor;
+  üstte **"PTS'de işten ayrılmış ama kampta kalıyor"** kırmızı bandı (çıkış OTOMATİK yapılmaz — karar kamp sorumlusunun).
+  ② **Yerleştir penceresi**: `kamp_kisi_ara` kamp listesinde olmayan PTS çalışanlarını da döndürür (`kaynak:'pts'`, `pts_id`),
+  seçilince `konaklama.php` önce aktarır sonra yerleştirir. ⚠ Pencere gizli `sekme` alanı taşır — yeni kişi alanları yalnız
+  "Yeni kişi" sekmesindeyken kullanılır (önceki sekmeden kalan yazı istenmeyen kart açmasın). Test `t6.py` 16 sağlama
+  (MariaDB `ptstest`; PTS tablosunun CHECKSUM'u değişmedi, tekrar aktarımda 0 yeni) + Playwright: ara → seç → aktar+yerleştir.
   İşlem günlüğü `kamp_audit()` → ANA DB `audit_log` (kamp DB'sinde audit_log yok). Menüde "Kamp Yapısı" yalnız `duzenle`.
   Mükerrer merkezi: `MK_KURAL['kamp']` firmalar + kişiler. Test (scratchpad `kt/`, gerçek MariaDB `kamptest` + `php -S` router
   `srv.php` [X-U başlığıyla kullanıcı] + Playwright [CDN npm paketlerinden]): `t2.py` yapı 10 · `t3.py` konaklama/yetki/icmal 23 ·

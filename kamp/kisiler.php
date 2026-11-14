@@ -83,6 +83,7 @@ require __DIR__ . '/../includes/header.php';
   <div class="ms-auto d-flex gap-2">
     <a href="<?= h($qs(['export'=>'xlsx'])) ?>" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Excel</a>
     <?php if (yetki_var('giris') || yetki_var('duzenle')): ?>
+    <?php if (kamp_pts_var()): ?><a href="personel_aktar.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-person-badge me-1"></i>Personel Takip'ten Al</a><?php endif; ?>
     <a href="import.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-cloud-arrow-up me-1"></i>Excel'den Aktar</a>
     <a href="kisi_form.php" class="btn btn-primary btn-sm"><i class="bi bi-person-plus me-1"></i>Yeni Kişi</a>
     <?php endif; ?>

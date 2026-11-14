@@ -91,16 +91,7 @@ function kim_harita(array $baslik): array
     return $h;
 }
 
-function kim_kategori(string $kat, string $gorev): string
-{
-    $n = kamp_norm($kat . ' ' . $gorev);
-    foreach (KAMP_KATEGORI as $k => [$ad]) if ($kat !== '' && kamp_norm($kat) === kamp_norm($ad)) return $k;
-    // Kelime BAŞI eşleşir (Türkçe ek alır: "MÜHENDİSİ", "FORMENİ", "ŞEFİ")
-    if (preg_match('/\b(FORMEN|USTABASI|USTA BASI|EKIPBASI|EKIP BASI)/', $n)) return 'formen';
-    if (preg_match('/\b(MUHENDIS|MUH\b|MIMAR|STAFF|TEKNIK|SEF\b|SEFI\b|MUDUR|UZMAN|ISG\b|IDARI|OFIS)/', $n)) return 'staff';
-    if (preg_match('/\b(MISAFIR|ZIYARETCI|DENETCI)/', $n)) return 'misafir';
-    return 'isci';
-}
+function kim_kategori(string $kat, string $gorev): string { return kamp_kategori_sez($kat, $gorev); }
 
 /** Satırı alanlara çözer. */
 function kim_satir(array $r, array $harita): array

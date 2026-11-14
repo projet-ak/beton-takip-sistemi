@@ -238,6 +238,8 @@ require __DIR__ . '/../includes/header.php';
       <input type="hidden" name="geri" value="<?= h($geri) ?>">
       <input type="hidden" name="yatak_id" id="yerYatak">
       <input type="hidden" name="kisi_id" id="yerKisi">
+      <input type="hidden" name="pts_id" id="yerPts">
+      <input type="hidden" name="sekme" id="yerSekme" value="kayitli">
       <div class="modal-header"><h5 class="modal-title"><i class="bi bi-person-plus me-2"></i>Yerleştir — <span id="yerEt"></span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
@@ -385,11 +387,13 @@ require __DIR__ . '/../includes/header.php';
     fYer.querySelectorAll('[data-sekme]').forEach(function(t){ t.classList.toggle('active', t.dataset.sekme===s); });
     fYer.querySelectorAll('[data-panel]').forEach(function(p){ p.classList.toggle('d-none', p.dataset.panel!==s); });
     fYer.dataset.sekme = s;
+    document.getElementById('yerSekme').value = s;
     if (s === 'yeni') secKisi(null);
   }
   fYer.querySelectorAll('[data-sekme]').forEach(function(t){ t.addEventListener('click', function(){ sekme(t.dataset.sekme); }); });
   function secKisi(k){
-    document.getElementById('yerKisi').value = k ? k.id : '';
+    document.getElementById('yerKisi').value = k && k.id ? k.id : '';
+    document.getElementById('yerPts').value = k && k.pts_id ? k.pts_id : '';
     var s = document.getElementById('yerSecili');
     if (!k) { s.classList.add('d-none'); return; }
     s.classList.remove('d-none');
@@ -397,6 +401,7 @@ require __DIR__ . '/../includes/header.php';
     s.innerHTML = '<strong></strong> <span class="small"></span>' + (k.yer ? '<div class="small mt-1"><i class="bi bi-arrow-left-right me-1"></i>Şu an <b class="js-yer"></b> yatağında (giriş <span class="js-gir"></span>) — kaydedince <u>TAŞINACAK</u>.</div>' : '');
     s.querySelector('strong').textContent = k.ad;
     s.querySelector('span.small').textContent = [k.firma, k.gorev].filter(Boolean).join(' · ');
+    if (k.kaynak === 'pts') { var n = document.createElement('div'); n.className = 'small mt-1'; n.innerHTML = '<i class="bi bi-person-badge me-1"></i>Personel Takip\'ten — kaydedince kamp listesine <u>aktarılıp</u> yerleştirilecek.'; s.appendChild(n); }
     if (k.yer) { s.querySelector('.js-yer').textContent = k.yer; s.querySelector('.js-gir').textContent = k.giris; }
   }
   var ara = document.getElementById('yerAra'), sonuc = document.getElementById('yerSonuc'), zam;
@@ -413,8 +418,8 @@ require __DIR__ . '/../includes/header.php';
           a.querySelector('strong').textContent = k.ad;
           a.querySelector('span').textContent = [k.firma, k.kat].filter(Boolean).join(' · ');
           var alt = a.querySelector('div.small');
-          alt.textContent = k.yer ? ('📍 ' + k.yer) : 'kampta değil';
-          alt.className = 'small ' + (k.yer ? 'text-warning-emphasis' : 'text-success');
+          alt.textContent = k.kaynak === 'pts' ? ('👤 Personel Takip' + (k.sicil ? ' · sicil ' + k.sicil : '') + ' — kamp listesine aktarılacak') : (k.yer ? ('📍 ' + k.yer) : 'kampta değil');
+          alt.className = 'small ' + (k.kaynak === 'pts' ? 'text-primary' : (k.yer ? 'text-warning-emphasis' : 'text-success'));
           a.addEventListener('click', function(){ secKisi(k); sonuc.innerHTML=''; ara.value = k.ad; });
           sonuc.appendChild(a);
         });
@@ -424,7 +429,7 @@ require __DIR__ . '/../includes/header.php';
   fYer.addEventListener('submit', function(e){
     if (fYer.dataset.sekme === 'yeni') {
       if (!document.getElementById('yeniAd').value.trim()) { e.preventDefault(); alert('Yeni kişinin adını yazın.'); }
-    } else if (!document.getElementById('yerKisi').value) {
+    } else if (!document.getElementById('yerKisi').value && !document.getElementById('yerPts').value) {
       e.preventDefault(); alert(ara.value.trim() ? 'Listeden bir kişi seçin (ya da "Yeni kişi" sekmesini kullanın).' : 'Kişi seçin.');
     }
   });

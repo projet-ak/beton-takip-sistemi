@@ -28,7 +28,7 @@ try {
             if (!$yaz) throw new RuntimeException('Yerleştirme için yetkiniz yok.');
             $yatakId = (int)($_POST['yatak_id'] ?? 0);
             $kisiId  = (int)($_POST['kisi_id'] ?? 0);
-            if (!$kisiId && $islem === 'yerlestir' && trim((string)($_POST['yeni_ad'] ?? '')) !== '') {
+            if (!$kisiId && $islem === 'yerlestir' && ($_POST['sekme'] ?? 'yeni') === 'yeni' && trim((string)($_POST['yeni_ad'] ?? '')) !== '') {
                 // Pencereden yeni kişi — firma listede yoksa açılır
                 $firmaId = (int)($_POST['yeni_firma_id'] ?? 0);
                 if (!$firmaId && trim((string)($_POST['yeni_firma'] ?? '')) !== '')
@@ -41,6 +41,13 @@ try {
                 $kisiId = $r['id'];
                 if ($r['yeni']) kamp_audit('kamp_kisiler', $kisiId, 'INSERT', null, ['ad' => $_POST['yeni_ad'], 'soyad' => $_POST['yeni_soyad'] ?? '']);
                 elseif (!empty($r['neden'])) flash('info', 'Bu ' . $r['neden'] . ' ile kayıtlı kişi zaten vardı — yeni kart açılmadı, mevcut kayıt kullanıldı.');
+            }
+            if (!$kisiId && ($ptsId = (int)($_POST['pts_id'] ?? 0))) {
+                // Personel Takip'ten seçildi: önce kamp listesine KOPYALANIR (köprü), sonra yerleştirilir
+                $ak = kamp_pts_aktar($pdoKamp, [$ptsId], []);
+                $kisiId = (int)($ak['esle'][$ptsId] ?? 0);
+                if (!$kisiId) throw new RuntimeException('Personel Takip kaydı aktarılamadı' . ($ak['liste_atlanan'] ? ': ' . $ak['liste_atlanan'][0] : '.'));
+                if ($ak['yeni']) kamp_audit('kamp_kisiler', $kisiId, 'INSERT', null, ['pts_id' => $ptsId, 'kaynak' => 'Personel Takip']);
             }
             if (!$kisiId)  throw new RuntimeException('Kişi seçin ya da yeni kişi bilgisi girin.');
             if (!$yatakId) throw new RuntimeException('Yatak seçin.');

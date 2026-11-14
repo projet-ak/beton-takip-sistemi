@@ -622,7 +622,7 @@ if ($__user) {
         <a class="sidebar-nav-link <?= __isActive('yerlesim.php').__isActive('oda.php') ?>" href="<?= $__rootPath ?>kamp/yerlesim.php" data-label="Yerleşim"><i class="bi bi-grid-3x3-gap"></i><span>Yerleşim Krokisi</span></a>
       </li>
       <li class="sidebar-nav-item">
-        <a class="sidebar-nav-link <?= __isActive('kisiler.php').__isActive('kisi_form.php').__isActive('kisi_detay.php') ?>" href="<?= $__rootPath ?>kamp/kisiler.php" data-label="Kişiler"><i class="bi bi-people"></i><span>Kişiler</span></a>
+        <a class="sidebar-nav-link <?= __isActive('kisiler.php').__isActive('kisi_form.php').__isActive('kisi_detay.php').__isActive('personel_aktar.php') ?>" href="<?= $__rootPath ?>kamp/kisiler.php" data-label="Kişiler"><i class="bi bi-people"></i><span>Kişiler</span></a>
       </li>
       <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('hareketler.php') ?>" href="<?= $__rootPath ?>kamp/hareketler.php" data-label="Giriş / Çıkış"><i class="bi bi-journal-text"></i><span>Giriş / Çıkış Defteri</span></a>
