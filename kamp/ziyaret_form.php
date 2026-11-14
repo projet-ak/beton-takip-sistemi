@@ -7,6 +7,9 @@
  *  • "Kimin misafiri": kamp kişisi aranır (?kisi_ara=, Türkçe harf duyarsız) ya da serbest metin yazılır.
  *  • Gece penceresinde giriş: gece izni + onaylayan zorunlu; izinsiz bir giriş TESPİT edildiyse
  *    "İzinsiz giriş tespit edildi" ile yine kaydedilir (olay kaydı, kırmızı işaretli).
+ *  • OLAY BİLGİSİ (tutanak için): "İzinsiz giriş" işaretlenince ya da "Olay tutanağı bilgisi gir" açılınca
+ *    görünür — tespit zamanı/eden/yeri, içeri alan, yapılan işlemler, kolluk, tanık, beyan, sonuç
+ *    (kamp_ziyaretler.olay JSON). Kaydedince ihlal kaydında doğrudan olay_tutanak.php açılır.
  *  • Kural denetimi çekirdekte (kamp_ziyaret_kaydet) — form yalnız yardımcıdır.
  */
 $rootPath = '../';
@@ -41,12 +44,16 @@ if ($id ? !yetki_var('duzenle') : !(yetki_var('giris') || yetki_var('duzenle')))
 $hata = '';
 $v = $z ?: ['ad_soyad' => '', 'kimlik_tur' => 'tc', 'kimlik_no' => '', 'uyruk' => '', 'telefon' => '', 'kurum' => '', 'plaka' => '',
             'kisi_id' => (int)($_GET['kisi_id'] ?? 0) ?: null, 'ziyaret_edilen' => '', 'bina_id' => null, 'amac' => '',
-            'giris' => date('Y-m-d H:i:00'), 'cikis' => null, 'gece_izin' => 0, 'onaylayan' => '', 'ihlal' => 0, 'aciklama' => '', 'foto_url' => null];
+            'giris' => date('Y-m-d H:i:00'), 'cikis' => null, 'gece_izin' => 0, 'onaylayan' => '', 'ihlal' => 0, 'aciklama' => '', 'foto_url' => null, 'olay' => null];
+$olay    = kamp_olay($z);                                         // form gösterimi (POST hatasında gönderilenle değişir)
+$olayVar = $z && ((int)$z['ihlal'] === 1 || kamp_olay_dolu($olay));
 if (!$z && $v['kisi_id'] && ($k = kamp_kisi_bul($pdoKamp, (int)$v['kisi_id']))) $v['ziyaret_edilen'] = kamp_kisi_ad($k);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
+        $olayYeni = (!empty($_POST['olay_var']) || !empty($_POST['ihlal'])) ? kamp_olay_coz($_POST) : null;   // önce doğrula
         $kayit = kamp_ziyaret_kaydet($pdoKamp, $_POST, $id, current_user_id());
+        kamp_olay_kaydet($pdoKamp, $kayit, $olayYeni);
         $fotoNot = '';
         if (!empty($_FILES['foto']) && ($_FILES['foto']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
             try { kamp_ziyaret_foto_kaydet($pdoKamp, $kayit, $_FILES['foto']); }
@@ -58,13 +65,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $i = kamp_ziyaret_isaret($yeni);
         flash($i['uyari'] ? 'warning' : 'success', $yeni['ad_soyad'] . ($id ? ' — kayıt düzeltildi.' : ' — giriş kaydedildi (' . kamp_zaman_yaz($yeni['giris']) . ').')
               . ($i['ihlal'] ? ' İZİNSİZ GİRİŞ olarak işaretlendi.' : '') . $fotoNot);
-        redirect(($_POST['sonra'] ?? '') === 'yeni' ? 'ziyaret_form.php' : ($id ? 'ziyaretler.php?durum=hepsi' : 'ziyaretler.php?durum=iceride'));
+        $sonra = (string)($_POST['sonra'] ?? '');
+        redirect($sonra === 'yeni' ? 'ziyaret_form.php'
+               : ($sonra === 'tutanak' || ($i['ihlal'] && !$id) ? 'olay_tutanak.php?id=' . $kayit
+               : ($id ? 'ziyaretler.php?durum=hepsi' : 'ziyaretler.php?durum=iceride')));
     } catch (Throwable $e) {
         $hata = $e->getMessage();
         $v = array_merge($v, array_intersect_key($_POST, $v));
         $v['gece_izin'] = !empty($_POST['gece_izin']); $v['ihlal'] = !empty($_POST['ihlal']);
         $v['giris'] = kamp_zaman($_POST['giris'] ?? '') ?? $v['giris'];
         $v['cikis'] = kamp_zaman($_POST['cikis'] ?? '');
+        foreach (KAMP_OLAY_ALAN as $k => $n) $olay[$k] = trim((string)($_POST['olay_' . $k] ?? ''));
+        $olay['islem'] = array_values(array_intersect(array_keys(KAMP_OLAY_ISLEM), (array)($_POST['olay_islem'] ?? [])));
+        $olayVar = !empty($_POST['olay_var']) || !empty($_POST['ihlal']);
     }
 }
 
@@ -79,7 +92,8 @@ require __DIR__ . '/../includes/header.php';
 </style>
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
   <h4 class="mb-0"><i class="bi bi-person-badge text-primary me-2"></i><?= $id ? 'Ziyaret Kaydını Düzelt' : 'Ziyaretçi Girişi' ?></h4>
-  <a href="ziyaretler.php" class="btn btn-light btn-sm ms-auto">Deftere dön</a>
+  <?php if ($id): ?><a href="olay_tutanak.php?id=<?= (int)$id ?>" class="btn btn-<?= $z['ihlal'] ? 'danger' : 'outline-secondary' ?> btn-sm ms-auto"><i class="bi bi-file-earmark-text me-1"></i>Olay tutanağı</a><?php endif; ?>
+  <a href="ziyaretler.php" class="btn btn-light btn-sm<?= $id ? '' : ' ms-auto' ?>">Deftere dön</a>
 </div>
 <?php if ($hata): ?><div class="alert alert-danger"><i class="bi bi-x-octagon me-1"></i><?= h($hata) ?></div><?php endif; ?>
 
@@ -148,15 +162,55 @@ require __DIR__ . '/../includes/header.php';
         <label class="form-check-label fw-semibold text-danger-emphasis" for="ihlal">İzinsiz giriş tespit edildi (olay kaydı)</label>
         <div class="small text-body-secondary ms-4">İzin verilmeden kampa giren bir kişi bulunduysa işaretleyin: kayıt onaysız açılır, kalıcı olarak kırmızı işaretlenir.
           Kimin içeri aldığını ve olayı açıklamaya yazın.</div></div>
-      <label class="form-label small mb-0 mt-2">Açıklama / olay notu</label>
-      <textarea name="aciklama" class="form-control" rows="3"><?= h($v['aciklama']) ?></textarea>
+      <div class="form-check form-switch mt-2"><input class="form-check-input" type="checkbox" name="olay_var" value="1" id="olayVar"<?= $olayVar ? ' checked' : '' ?>>
+        <label class="form-check-label" for="olayVar">Olay tutanağı bilgisi gir <span class="text-muted small">(tespit, içeri alan, yapılan işlemler, kolluk…)</span></label></div>
+      <label class="form-label small mb-0 mt-2">Açıklama / olayın anlatımı</label>
+      <textarea name="aciklama" class="form-control" rows="3" placeholder="ne oldu, nasıl fark edildi, kim ne dedi — tutanakta OLAYIN ANLATIMI olarak basılır"><?= h($v['aciklama']) ?></textarea>
     </div></div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap">
       <button class="btn btn-primary flex-fill" name="sonra" value="liste"><i class="bi bi-check2 me-1"></i>Kaydet</button>
+      <button class="btn btn-outline-danger d-none" name="sonra" value="tutanak" id="btnTutanak" title="Kaydet ve olay tutanağını aç"><i class="bi bi-printer me-1"></i>Kaydet + tutanak</button>
       <?php if (!$id): ?><button class="btn btn-outline-primary" name="sonra" value="yeni" title="Kaydet ve bir sonraki ziyaretçiyi gir"><i class="bi bi-plus-lg me-1"></i>Kaydet + yeni</button><?php endif; ?>
     </div>
   </div>
+
+  <div class="col-12<?= $olayVar ? '' : ' d-none' ?>" id="olayKart">
+    <div class="card border-0 shadow-sm border-start border-danger border-4"><div class="card-body">
+      <div class="zy-bolum text-danger" style="border-color:var(--bs-danger)">Olay bilgisi — olay tutanağı (<?= $id ? h(kamp_olay_no($id)) : 'kayıtta numara alır' ?>)</div>
+      <div class="small text-muted mb-2">Boş bıraktığınız alanlar tutanakta <strong>el ile doldurulacak noktalı satır</strong> olarak basılır.</div>
+      <div class="row g-2">
+        <div class="col-md-3"><label class="form-label small mb-0">Tespit zamanı</label>
+          <input type="datetime-local" name="olay_tespit_zaman" id="olayZaman" class="form-control" value="<?= h(($t = kamp_zaman($olay['tespit_zaman'])) ? kamp_zaman_input($t) : $olay['tespit_zaman']) ?>"></div>
+        <div class="col-md-3"><label class="form-label small mb-0">Tespit eden</label>
+          <input name="olay_tespit_eden" class="form-control" maxlength="120" value="<?= h($olay['tespit_eden']) ?>" placeholder="ad soyad — güvenlik, kamp sorumlusu…"></div>
+        <div class="col-md-3"><label class="form-label small mb-0">Tespit yeri</label>
+          <input name="olay_tespit_yeri" class="form-control" maxlength="160" value="<?= h($olay['tespit_yeri']) ?>" placeholder="ör. staff 1. kat koridor, Z-03A odası"></div>
+        <div class="col-md-3"><label class="form-label small mb-0">Nasıl fark edildi</label>
+          <input name="olay_nasil" class="form-control" list="dlNasil" maxlength="80" value="<?= h($olay['nasil']) ?>"></div>
+        <div class="col-md-6"><label class="form-label small mb-0">İçeri alan / getiren kişi</label>
+          <input name="olay_iceri_alan" class="form-control" maxlength="160" value="<?= h($olay['iceri_alan']) ?>" placeholder="bilinmiyorsa boş bırakın — tutanakta “TESPİT EDİLEMEDİ” yazar">
+          <div class="form-text">"Kimin misafiri" alanından ayrıdır: kapıdan kimin soktuğu biliniyorsa yazın.</div></div>
+        <div class="col-md-3"><label class="form-label small mb-0">Kolluk birimi</label>
+          <input name="olay_kolluk_birim" class="form-control" maxlength="120" value="<?= h($olay['kolluk_birim']) ?>" placeholder="ör. … Polis Merkezi"></div>
+        <div class="col-md-3"><label class="form-label small mb-0">Kolluk tutanak / olay no</label>
+          <input name="olay_kolluk_no" class="form-control" maxlength="60" value="<?= h($olay['kolluk_no']) ?>"></div>
+        <div class="col-12"><label class="form-label small mb-1">Yapılan işlemler</label>
+          <div class="row row-cols-1 row-cols-md-2 row-cols-xl-4 g-1">
+          <?php foreach (KAMP_OLAY_ISLEM as $k => $ad): ?>
+            <div class="col"><div class="form-check"><input class="form-check-input" type="checkbox" name="olay_islem[]" value="<?= $k ?>" id="oi_<?= $k ?>"<?= in_array($k, $olay['islem'], true) ? ' checked' : '' ?>>
+              <label class="form-check-label small" for="oi_<?= $k ?>"><?= h($ad) ?></label></div></div>
+          <?php endforeach; ?></div></div>
+        <div class="col-md-4"><label class="form-label small mb-0">Tanıklar</label>
+          <textarea name="olay_taniklar" class="form-control" rows="3" maxlength="600" placeholder="ad soyad · görevi — her satıra bir kişi"><?= h($olay['taniklar']) ?></textarea></div>
+        <div class="col-md-4"><label class="form-label small mb-0">Kampa giren kişinin beyanı</label>
+          <textarea name="olay_beyan" class="form-control" rows="3" maxlength="2000" placeholder="kişinin kendi ifadesi (boşsa tutanakta el ile yazılır)"><?= h($olay['beyan']) ?></textarea></div>
+        <div class="col-md-4"><label class="form-label small mb-0">Sonuç / alınan karar</label>
+          <textarea name="olay_sonuc" class="form-control" rows="3" maxlength="2000" placeholder="ör. kişi kamptan çıkarıldı, ilgili personele yazılı uyarı…"><?= h($olay['sonuc']) ?></textarea></div>
+      </div>
+    </div></div>
+  </div>
 </form>
+<datalist id="dlNasil"><?php foreach (KAMP_OLAY_NASIL as $a): ?><option value="<?= h($a) ?>"><?php endforeach; ?></datalist>
 <datalist id="dlAmac"><?php foreach (KAMP_ZIYARET_AMAC as $a): ?><option value="<?= h($a) ?>"><?php endforeach; ?></datalist>
 
 <script>
@@ -173,6 +227,21 @@ require __DIR__ . '/../includes/header.php';
   }
   [giris, izin, ihlal].forEach(function(e){ e.addEventListener('change', geceGuncelle); e.addEventListener('input', geceGuncelle); });
   geceGuncelle();
+
+  // Olay bilgisi kartı: ihlal işaretliyse her zaman açık (anahtar kilitli), değilse anahtara bağlı
+  var olayVar = document.getElementById('olayVar'), olayKart = document.getElementById('olayKart'), btnT = document.getElementById('btnTutanak');
+  function olayGuncelle(){
+    if (ihlal.checked) olayVar.checked = true;
+    olayVar.disabled = ihlal.checked;
+    var acik = olayVar.checked;
+    olayKart.classList.toggle('d-none', !acik);
+    btnT.classList.toggle('d-none', !acik);
+    var oz = document.getElementById('olayZaman');
+    if (acik && !oz.value) oz.value = giris.value;
+  }
+  // disabled kutu gönderilmez — ihlalde sunucu zaten olayı alır
+  ihlal.addEventListener('change', olayGuncelle); olayVar.addEventListener('change', olayGuncelle);
+  olayGuncelle();
 
   // Arama kutusu yardımcısı: kutu, sonuç listesi, JSON adresi, satır çizici, seçim
   function arama(kutu, liste, url, ciz, sec, kosul){
@@ -230,7 +299,7 @@ require __DIR__ . '/../includes/header.php';
 
   // Giriş/çıkış ileri zaman olamaz
   function simdi(){ var d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0,16); }
-  giris.max = simdi(); document.getElementById('cikis').max = simdi();
+  giris.max = simdi(); document.getElementById('cikis').max = simdi(); document.getElementById('olayZaman').max = simdi();
 })();
 </script>
 <?php require __DIR__ . '/../includes/footer.php'; ?>

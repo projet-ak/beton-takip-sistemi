@@ -1964,6 +1964,30 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   sorguları · önceki ziyaretçi · çıkış kuralları · foto akıtma + php dosyası reddi · dashboard/kişi kartı/tarihte · Excel · audit ·
   izleyici yetkisi · silmede dosya) + Playwright (öneri seçimi, kişi bağlama/kopma, gece bandı, ihlalde onay zorunluluğu kalkar,
   çıkış penceresi; JS hatası yok); t2–t6 regresyon yeşil.
+  ⭐ **OLAY TUTANAĞI (2026-11-14, kullanıcı: "olay tutanağını da ekleyelim")** — ziyaret kaydına bağlı yazdırılabilir A4 belge
+  **`kamp/olay_tutanak.php?id=`** (ERN Taahhüt logolu, no **`KMP-O-00001`** = `kamp_olay_no`). Başlık kayda göre (`kamp_olay_baslik`):
+  ihlal → **İZİNSİZ GİRİŞ OLAY TUTANAĞI** · gece izinsiz → **GECE KURALI İHLALİ TUTANAĞI** · olay bilgisi girilmiş → ZİYARETÇİ OLAY
+  TUTANAĞI · diğer → ZİYARETÇİ GİRİŞ-ÇIKIŞ TUTANAĞI. Bölümler: olay bilgisi (giriş/çıkış + süre, bina, gece izni VAR/YOK, tespit
+  zamanı/eden/yeri, nasıl fark edildi, kayıt durumu) · kampa giren kişi (+ kimlik görseli `ziyaretler.php?foto=`) · kimin misafiri /
+  içeri alan (boşsa kırmızı **"TESPİT EDİLEMEDİ"** — unutulmuş sanılmasın; ziyaret edilen kamp kişisinin firması ve **o gece kaldığı
+  yatak** `kamp_kisi_tarihteki_yer($pdo,$kisi,kamp_gece_tarihi(giris))`) · olayın anlatımı (= `aciklama`) · yapılan işlemler
+  (`KAMP_OLAY_ISLEM` 8 kutucuk, seçilenler X) + kolluk birimi / tutanak no · **o gece kampta bulunan diğer ziyaretçiler** (gece değilse
+  aynı gün gelenler, en çok 8) · tanıklar · kişinin beyanı · sonuç · kapanış cümlesi + imzalar (tespit eden · kamp sorumlusu · tanık ·
+  [ziyaret edilen kamp kişisi] · kampa giren kişi). **Boş alan noktalı satır** basılır → sahada elle doldurulup imzalanır.
+  Olay ayrıntısı **`kamp_ziyaretler.olay`** (TEXT JSON, runtime ALTER): tespit_zaman · tespit_eden · tespit_yeri · nasil · iceri_alan ·
+  islem[] · kolluk_birim · kolluk_no · taniklar · beyan · sonuc (`kamp_olay` okur, `kamp_olay_coz` POST'tan üretir — adlar BÜYÜK HARF,
+  ileri tespit zamanı reddi, bilinmeyen işlem anahtarı atılır; `kamp_olay_kaydet` JSON_UNESCAPED_SLASHES). Giriş: **`ziyaret_form.php`**
+  "Olay bilgisi" kartı — "İzinsiz giriş" işaretlenince AÇILIR ve anahtar kilitlenir, değilse **"Olay tutanağı bilgisi gir"** anahtarı;
+  anahtar kapalıyken kaydedilirse olay bilgisi SİLİNİR; olay doğrulaması kayıttan ÖNCE yapılır (kayıt yarım kalmaz); **yeni ihlal kaydı
+  kaydedilince doğrudan tutanak açılır**, "Kaydet + tutanak" düğmesi. **İmzalı tarama geri yüklenir**: tutanak sayfasındaki panel
+  (yazdırmada gizli; giriş VEYA değiştirme yükler, değiştirme kaldırır) → **`kamp_ziyaretler.tutanak_url`**, aynı KVKK klasörü/ad kuralı
+  (`kamp_ziyaret_dosya_kaydet($pdo,$id,$f,'foto_url'|'tutanak_url')`, eskisi silinir), açma `ziyaretler.php?foto=ID&tur=tutanak`; kayıt
+  silinince foto + tutanak + klasör gider. Bağlantılar: defter satırı (olaylı kayıtta kırmızı "Tutanak", imzalı yüklüyse yeşil ✓) ·
+  kişi kartı Ziyaretçileri · dashboard uyarı bandı · Excel'e "Olay Tutanağı" + "İmzalı Tutanak" sütunları. Yazdırma tek A4'e sığar
+  (Chromium PDF ile doğrulandı, diğer ziyaretçi tablosu dahil). ⚠ İmza kutusu CSS'i `.imza > div` — `.imza div` iç "Ad Soyad" satırını
+  da kutuya çeviriyordu (kamp/tutanak.php'de de düzeltildi). Test `kt/t9.py` **48 sağlama** (runtime ALTER · doğrulama · 4 başlık ·
+  TESPİT EDİLEMEDİ · X kutular · yatak · 4/5 imza · anahtar aç/kapa · diğer ziyaretçiler · PDF yükle/değiştir/php reddi/akıtma/404 ·
+  izleyici yükleyemez · bağlantılar · Excel · audit · silmede dosyalar) + Playwright `pw7.js` (kart açılışı, kilit, yönlendirme, 1 sayfa).
   ⭐ **KROKİDE DEMİRBAŞ + PERİYODİK DEĞİŞİM (2026-11-14, kullanıcı: "odadaki demirbaşları krokide görebiliyor muyum; periyodik
   olarak yatak yorgan değişimleri oluyor, buna da çözüm bulalım")** — eskiden krokide yalnız ARIZALI demirbaş sayısı rozet olarak
   vardı, tam liste oda kartındaydı. **Kroki** (`yerlesim.php`): her oda başlığında **🪔 düğmesi** (toplam demirbaş adedi + değişimi
@@ -2505,7 +2529,7 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 - **IT form aktarımı (geçici)**: `uploads/it_form_bekleyen/` — yüklenen tahsis formları ön izleme adımı
   boyunca burada bekler; aktarımda cihaza belge olarak kopyalanır ve silinir (2 günden eski artıklar
   bir sonraki yüklemede temizlenir). `.gitignore`'da.
-- **Kamp**: `uploads/kamp/ziyaret/{id}/<24 hex>.<ext>` (ziyaretçi kimlik görüntüsü — doğrudan bağlantı verilmez, `kamp/ziyaretler.php?foto=` ile oturum açmış kullanıcıya) · `uploads/kamp/bekleyen/` (Excel aktarımı, 2 gün).
+- **Kamp**: `uploads/kamp/ziyaret/{id}/<24 hex>.<ext>` (ziyaretçi kimlik görüntüsü + imzalı olay tutanağı taraması — doğrudan bağlantı verilmez, `kamp/ziyaretler.php?foto=` [`&tur=tutanak`] ile oturum açmış kullanıcıya) · `uploads/kamp/bekleyen/` (Excel aktarımı, 2 gün).
 - **PTS**: `uploads/pts/gecis/{Y-m-d}/{hareket_id}.jpg` (kart okutma anındaki kamera görüntüsü; DB'de yalnız
   göreli yol durur, `uploads/pts/` `.gitignore`'da — yazılamazsa geçiş yine kaydedilir).
 - `uploads/.htaccess` PHP çalıştırmayı engeller (alt klasörlere de uygulanır).

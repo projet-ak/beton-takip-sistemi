@@ -68,7 +68,8 @@ require __DIR__ . '/../includes/header.php';
   <ul class="mb-0 small">
     <?php foreach (array_slice($zo['uyari'], 0, 6) as $z): ?>
     <li><strong><?= h($z['ad_soyad']) ?></strong> · giriş <?= h(kamp_zaman_yaz($z['giris'])) ?> · <?= h($z['ziyaret_edilen'] ? $z['ziyaret_edilen'] . ' misafiri' : 'kimin misafiri yazılmamış') ?>
-      · <?= h(kamp_ziyaret_uyari_metin($z['i'])) ?></li>
+      · <?= h(kamp_ziyaret_uyari_metin($z['i'])) ?>
+      <?php if ($z['i']['ihlal'] || $z['i']['izinsiz']): ?> · <a href="olay_tutanak.php?id=<?= (int)$z['id'] ?>" class="link-danger fw-semibold"><i class="bi bi-printer me-1"></i>olay tutanağı</a><?php endif; ?></li>
     <?php endforeach; ?>
   </ul>
 </div>

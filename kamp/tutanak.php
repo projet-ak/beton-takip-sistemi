@@ -66,7 +66,7 @@ th{background:#f1f3f5;text-align:left;font-size:10.5px}
 td.k{width:22%;background:#f8f9fa;font-weight:600}
 .kutu{display:inline-block;width:11px;height:11px;border:1px solid #333;margin-right:3px;vertical-align:-1px}
 ol{margin:4px 0 0 16px;padding:0} ol li{margin-bottom:3px;text-align:justify}
-.imza{display:flex;gap:16px;margin-top:22px} .imza div{flex:1;border:1px solid #888;padding:6px;min-height:28mm;text-align:center}
+.imza{display:flex;gap:16px;margin-top:22px} .imza > div{flex:1;border:1px solid #888;padding:6px;min-height:28mm;text-align:center}
 .imza b{display:block;margin-bottom:4px} .imza .ad{margin-top:14mm;border-top:1px dotted #555;padding-top:3px}
 .not{font-size:10px;color:#555;margin-top:8px}
 @media print{body{background:#fff}.toolbar{display:none}.sheet{margin:0;box-shadow:none;min-height:0}tr,.imza{break-inside:avoid}}

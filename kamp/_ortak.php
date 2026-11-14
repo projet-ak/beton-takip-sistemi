@@ -341,6 +341,8 @@ function kamp_semasi_kur(PDO $pdo): void
         ihlal TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'izinsiz giriş tespit edildi (olay kaydı)',
         foto_url VARCHAR(255) NULL,
         aciklama TEXT NULL,
+        olay TEXT NULL COMMENT 'olay tutanağı bilgisi (JSON: tespit, içeri alan, yapılan işlemler, kolluk, tanık, sonuç)',
+        tutanak_url VARCHAR(255) NULL COMMENT 'imzalı olay tutanağının taraması',
         kaydeden INT NULL,
         cikis_kaydeden INT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -392,6 +394,13 @@ function kamp_semasi_kur(PDO $pdo): void
         $kol = array_column($pdo->query("SHOW COLUMNS FROM kamp_kisiler")->fetchAll(), 'Field');
         if (!in_array('pts_id', $kol, true)) $pdo->exec("ALTER TABLE kamp_kisiler ADD COLUMN pts_id INT NULL COMMENT 'Personel Takip pts_personel.id (köprü eşleşmesi)', ADD KEY ix_kamp_kisi_pts (pts_id)");
     } catch (Throwable $e) { /* yetki yoksa köprü sicil/ad ile eşleşmeye devam eder */ }
+
+    // Olay tutanağı (2026-11-14): eski kurulumlarda kamp_ziyaretler bu iki kolonu almadan açılmıştı
+    try {
+        $kol = array_column($pdo->query("SHOW COLUMNS FROM kamp_ziyaretler")->fetchAll(), 'Field');
+        if (!in_array('olay', $kol, true)) $pdo->exec("ALTER TABLE kamp_ziyaretler ADD COLUMN olay TEXT NULL COMMENT 'olay tutanağı bilgisi (JSON)' AFTER aciklama");
+        if (!in_array('tutanak_url', $kol, true)) $pdo->exec("ALTER TABLE kamp_ziyaretler ADD COLUMN tutanak_url VARCHAR(255) NULL COMMENT 'imzalı olay tutanağı' AFTER olay");
+    } catch (Throwable $e) { /* yetki yoksa tutanak yine basılır, olay bilgisi kaydedilemez */ }
 
     $kuruldu = true;
 }
@@ -1348,26 +1357,33 @@ function kamp_ziyaretci_ara(PDO $pdo, string $q): array
     return array_values($o);
 }
 
-/** Kimlik / kişi görüntüsü: uploads/kamp/ziyaret/{id}/ altında, tahmin edilemeyen adla. Döner: göreli yol. */
-function kamp_ziyaret_foto_kaydet(PDO $pdo, int $id, array $f): string
+/**
+ * Ziyarete bağlı dosya: kimlik / kişi görüntüsü (foto_url) ya da imzalı olay tutanağı (tutanak_url).
+ * uploads/kamp/ziyaret/{id}/ altında, TAHMİN EDİLEMEYEN adla saklanır (KVKK — doğrudan bağlantı verilmez,
+ * ziyaretler.php?foto= üzerinden oturum açmış kullanıcıya akıtılır). Eski dosya silinir. Döner: göreli yol.
+ */
+function kamp_ziyaret_dosya_kaydet(PDO $pdo, int $id, array $f, string $kolon = 'foto_url'): string
 {
-    if (($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) throw new RuntimeException('Görsel yüklenemedi (kod ' . (int)($f['error'] ?? -1) . ').');
-    if (($f['size'] ?? 0) > 12 * 1024 * 1024) throw new RuntimeException('Görsel 12 MB\'ı geçemez.');
+    if (!in_array($kolon, ['foto_url', 'tutanak_url'], true)) throw new InvalidArgumentException('Geçersiz dosya alanı.');
+    $ne = $kolon === 'tutanak_url' ? 'Tutanak' : 'Görsel';
+    if (($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) throw new RuntimeException($ne . ' yüklenemedi (kod ' . (int)($f['error'] ?? -1) . ').');
+    if (($f['size'] ?? 0) > 12 * 1024 * 1024) throw new RuntimeException($ne . ' 12 MB\'ı geçemez.');
     $mime = function_exists('guess_mime') ? guess_mime($f['tmp_name'], (string)$f['name']) : '';
     if (!preg_match('#^(image/|application/pdf)#', $mime)) throw new RuntimeException('Yalnız fotoğraf ya da PDF yüklenebilir.');
     $ext = function_exists('guvenli_uzanti') ? guvenli_uzanti((string)$f['name'], $mime, 'jpg') : 'jpg';
     if (!in_array($ext, KAMP_ZIYARET_DOSYA, true)) throw new RuntimeException('Desteklenmeyen dosya türü (.' . $ext . ').');
     $kok = dirname(__DIR__) . '/uploads/kamp/ziyaret/' . $id;
-    if (!is_dir($kok) && !@mkdir($kok, 0775, true)) throw new RuntimeException('Görsel klasörü oluşturulamadı.');
+    if (!is_dir($kok) && !@mkdir($kok, 0775, true)) throw new RuntimeException($ne . ' klasörü oluşturulamadı.');
     $ad = bin2hex(random_bytes(12)) . '.' . $ext;
     if (!move_uploaded_file($f['tmp_name'], $kok . '/' . $ad))
-        throw new RuntimeException('Görsel kaydedilemedi.');
-    $eski = kamp_ziyaret_bul($pdo, $id)['foto_url'] ?? null;
+        throw new RuntimeException($ne . ' kaydedilemedi.');
+    $eski = kamp_ziyaret_bul($pdo, $id)[$kolon] ?? null;
     $url = 'uploads/kamp/ziyaret/' . $id . '/' . $ad;
-    $pdo->prepare("UPDATE kamp_ziyaretler SET foto_url=? WHERE id=?")->execute([$url, $id]);
+    $pdo->prepare("UPDATE kamp_ziyaretler SET $kolon=? WHERE id=?")->execute([$url, $id]);
     if ($eski && $eski !== $url) kamp_ziyaret_dosya_sil($eski);
     return $url;
 }
+function kamp_ziyaret_foto_kaydet(PDO $pdo, int $id, array $f): string { return kamp_ziyaret_dosya_kaydet($pdo, $id, $f, 'foto_url'); }
 
 /** Yalnız uploads/kamp/ziyaret/ altındaki dosyayı siler (yol doğrulamalı). */
 function kamp_ziyaret_dosya_sil(?string $url): void
@@ -1376,6 +1392,102 @@ function kamp_ziyaret_dosya_sil(?string $url): void
     $yol = dirname(__DIR__) . '/' . $url;
     if (is_file($yol)) @unlink($yol);
     @rmdir(dirname($yol));
+}
+
+// ─────────────────────────────────────────────────────────────── olay tutanağı
+/*
+ * Ziyaret kaydına bağlı OLAY TUTANAĞI (kamp/olay_tutanak.php, KMP-O-00001). Olayın ayrıntısı
+ * kamp_ziyaretler.olay kolonunda JSON tutulur — kayıt yine TEK satırdır (defter + tutanak aynı olay).
+ *  tespit_zaman · tespit_eden · tespit_yeri · nasil (nasıl fark edildi) · iceri_alan (boş = TESPİT EDİLEMEDİ)
+ *  · islem[] (KAMP_OLAY_ISLEM) · kolluk_birim · kolluk_no · taniklar · beyan (kişinin beyanı) · sonuc
+ * Boş bırakılan alanlar tutanakta EL İLE DOLDURULACAK noktalı satır olarak basılır.
+ */
+const KAMP_OLAY_ISLEM = [
+    'kimlik'   => 'Kimlik tespiti yapıldı',
+    'cikarildi'=> 'Kişi kamptan çıkarıldı',
+    'kolluk'   => 'Kolluğa (polis / jandarma) haber verildi',
+    'kolluk_geldi' => 'Kolluk olay yerine geldi, tutanak tuttu',
+    'saglik'   => 'Sağlık ekibi / 112 çağrıldı',
+    'kamera'   => 'Kamera kayıtları incelendi ve korumaya alındı',
+    'ifade'    => 'İçeri alan / ziyaret edilen kamp kişisinin ifadesi alındı',
+    'firma'    => 'Kişinin firmasına / işverene bilgi verildi',
+];
+const KAMP_OLAY_NASIL = ['Güvenlik turu', 'Kamera kaydı', 'İhbar / şikâyet', 'Kamp sorumlusu fark etti', 'Kapı / turnike kontrolü', 'Kolluk bildirimi', 'Diğer'];
+const KAMP_OLAY_ALAN = ['tespit_zaman' => 19, 'tespit_eden' => 120, 'tespit_yeri' => 160, 'nasil' => 80, 'iceri_alan' => 160,
+                        'kolluk_birim' => 120, 'kolluk_no' => 60, 'taniklar' => 600, 'beyan' => 2000, 'sonuc' => 2000];
+
+/** Kayıttaki olay JSON'u → tüm anahtarları olan dizi. */
+function kamp_olay(?array $z): array
+{
+    $o = json_decode((string)($z['olay'] ?? ''), true);
+    $o = is_array($o) ? $o : [];
+    $r = [];
+    foreach (KAMP_OLAY_ALAN as $k => $n) $r[$k] = is_scalar($o[$k] ?? null) ? (string)$o[$k] : '';
+    $r['islem'] = array_values(array_intersect(array_keys(KAMP_OLAY_ISLEM), is_array($o['islem'] ?? null) ? $o['islem'] : []));
+    return $r;
+}
+
+/** Olay bilgisi girilmiş mi (en az bir alan dolu)? */
+function kamp_olay_dolu(array $o): bool
+{
+    foreach (KAMP_OLAY_ALAN as $k => $n) if (($o[$k] ?? '') !== '') return true;
+    return !empty($o['islem']);
+}
+
+/**
+ * Formdan (olay_* alanları) olay dizisi üretir; hiçbir alan dolu değilse null.
+ * Kurallar: tespit zamanı geçerli ve ileri bir zaman değil; adlar BÜYÜK HARF; metinler kırpılır.
+ */
+function kamp_olay_coz(array $v): ?array
+{
+    $kes = fn($s, int $n) => mb_substr(trim(str_replace("\r", '', (string)$s)), 0, $n, 'UTF-8');
+    $o = [];
+    $tz = trim((string)($v['olay_tespit_zaman'] ?? ''));
+    if ($tz !== '') {
+        $t = kamp_zaman($tz);
+        if (!$t) throw new RuntimeException('Olayın tespit zamanı geçersiz.');
+        if (strtotime($t) > time() + 300) throw new RuntimeException('Olayın tespit zamanı ileri bir zaman olamaz.');
+        $o['tespit_zaman'] = $t;
+    }
+    foreach (['tespit_eden', 'iceri_alan'] as $k) $o[$k] = $kes(kamp_buyuk($v['olay_' . $k] ?? ''), KAMP_OLAY_ALAN[$k]);
+    foreach (['tespit_yeri', 'nasil', 'kolluk_birim', 'kolluk_no', 'taniklar', 'beyan', 'sonuc'] as $k)
+        $o[$k] = $kes($v['olay_' . $k] ?? '', KAMP_OLAY_ALAN[$k]);
+    $o['islem'] = array_values(array_intersect(array_keys(KAMP_OLAY_ISLEM), array_map('strval', (array)($v['olay_islem'] ?? []))));
+    $o = array_filter($o, fn($x) => $x !== '' && $x !== []);
+    return $o ?: null;
+}
+
+/** Olay bilgisini yazar ($o null → siler). */
+function kamp_olay_kaydet(PDO $pdo, int $id, ?array $o): void
+{
+    $pdo->prepare("UPDATE kamp_ziyaretler SET olay=?, updated_at=NOW() WHERE id=?")
+        ->execute([$o ? json_encode($o, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null, $id]);
+}
+
+function kamp_olay_no(int $id): string { return 'KMP-O-' . str_pad((string)$id, 5, '0', STR_PAD_LEFT); }
+
+/** Tutanak başlığı: ihlal → izinsiz giriş · gece izinsiz → gece kuralı ihlali · diğer → ziyaretçi olay / giriş kaydı */
+function kamp_olay_baslik(array $z): string
+{
+    $i = $z['i'] ?? kamp_ziyaret_isaret($z);
+    if ($i['ihlal'])   return 'İZİNSİZ GİRİŞ OLAY TUTANAĞI';
+    if ($i['izinsiz']) return 'GECE KURALI İHLALİ TUTANAĞI';
+    return kamp_olay_dolu(kamp_olay($z)) ? 'ZİYARETÇİ OLAY TUTANAĞI' : 'ZİYARETÇİ GİRİŞ-ÇIKIŞ TUTANAĞI';
+}
+
+/** Kamp kişisinin o tarihte kaldığı yer (yoksa null): bina · kat · oda · yatak · firma. */
+function kamp_kisi_tarihteki_yer(PDO $pdo, int $kisiId, string $tarih): ?array
+{
+    $st = $pdo->prepare("SELECT k.giris, k.cikis, y.no AS yatak_no, o.ad AS oda_ad, o.kat, b.ad AS bina_ad, f.ad AS firma_ad
+                           FROM kamp_konaklama k
+                           LEFT JOIN kamp_yataklar y ON y.id = k.yatak_id
+                           LEFT JOIN kamp_odalar o ON o.id = COALESCE(y.oda_id, k.oda_id)
+                           LEFT JOIN kamp_binalar b ON b.id = o.bina_id
+                           LEFT JOIN kamp_firmalar f ON f.id = k.firma_id
+                          WHERE k.kisi_id = ? AND k.giris <= ? AND (k.cikis IS NULL OR k.cikis > ?)
+                          ORDER BY k.giris DESC LIMIT 1");
+    $st->execute([$kisiId, $tarih, $tarih]);
+    return $st->fetch() ?: null;
 }
 
 // ─────────────────────────────────────────────────────────────── periyodik değişim

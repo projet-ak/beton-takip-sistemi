@@ -149,7 +149,8 @@ require __DIR__ . '/../includes/header.php';
         <?php if (!$ziyaret): ?><tr><td colspan="4" class="text-muted text-center py-3">Bu kişiye kayıtlı ziyaretçi yok.</td></tr><?php endif; ?>
         <?php foreach ($ziyaret as $zz): ?>
           <tr class="<?= $zz['i']['ihlal'] || $zz['i']['izinsiz'] ? 'table-danger' : '' ?>">
-            <td><strong><?= h($zz['ad_soyad']) ?></strong> <?= kamp_ziyaret_rozet($zz['i']) ?><div class="small text-muted"><?= h(trim(($zz['kurum'] ?? '') . ($zz['amac'] ? ' · ' . $zz['amac'] : ''), ' ·')) ?></div></td>
+            <td><strong><?= h($zz['ad_soyad']) ?></strong> <?= kamp_ziyaret_rozet($zz['i']) ?><div class="small text-muted"><?= h(trim(($zz['kurum'] ?? '') . ($zz['amac'] ? ' · ' . $zz['amac'] : ''), ' ·')) ?></div>
+              <?php if ($zz['i']['ihlal'] || $zz['i']['izinsiz'] || $zz['tutanak_url'] || kamp_olay_dolu(kamp_olay($zz))): ?><a href="olay_tutanak.php?id=<?= (int)$zz['id'] ?>" class="small text-danger"><i class="bi <?= $zz['tutanak_url'] ? 'bi-file-earmark-check' : 'bi-printer' ?> me-1"></i>Olay tutanağı <?= h(kamp_olay_no((int)$zz['id'])) ?></a><?php endif; ?></td>
             <td class="text-nowrap small"><?= h(kamp_zaman_yaz($zz['giris'])) ?></td>
             <td class="text-nowrap small"><?= $zz['cikis'] ? h(kamp_zaman_yaz($zz['cikis'])) : '<span class="badge bg-primary">içeride</span>' ?></td>
             <td class="small"><?= $zz['gece_izin'] ? '<span class="badge bg-dark">gece izni</span> ' : '' ?><?= h($zz['onaylayan'] ?: '—') ?></td>

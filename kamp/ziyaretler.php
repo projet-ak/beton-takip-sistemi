@@ -7,7 +7,8 @@
  *  Olay sorgusu: ?gece=Y-m-d → o GECE (gece penceresi) kampta bulunan ziyaretçiler ·
  *                ?an=Y-m-dTH:i → o ANDA kampta olanlar ("gece 03:00'te kampta kim vardı?")
  *  POST: cikis (giriş VEYA değiştirme) · sil (değiştirme — yalnız yanlış kayıt)
- *  ?foto=<id> → kimlik görüntüsü (yalnız oturum açmış kullanıcıya; dosya tahmin edilemeyen adla saklanır)
+ *  ?foto=<id> → kimlik görüntüsü · ?foto=<id>&tur=tutanak → imzalı olay tutanağı (yalnız oturum açmış
+ *  kullanıcıya; dosya tahmin edilemeyen adla saklanır) · satırdaki yazıcı → olay_tutanak.php
  *  Excel: ?export=xlsx
  */
 $rootPath = '../';
@@ -25,14 +26,15 @@ $duz = yetki_var('duzenle');
 // Kimlik / kişi görüntüsü — oturum açmış kullanıcıya akıtılır
 if (isset($_GET['foto'])) {
     $z = kamp_ziyaret_bul($pdoKamp, (int)$_GET['foto']);
-    $url = (string)($z['foto_url'] ?? '');
+    $tut = ($_GET['tur'] ?? '') === 'tutanak';
+    $url = (string)($z[$tut ? 'tutanak_url' : 'foto_url'] ?? '');
     $yol = __DIR__ . '/../' . $url;
     if (!$z || !preg_match('#^uploads/kamp/ziyaret/\d+/[a-f0-9]{24}\.[a-z]{3,4}$#', $url) || !is_file($yol)) { http_response_code(404); exit('Görsel bulunamadı.'); }
     $mime = guess_mime($yol, basename($yol));
     if (!preg_match('#^(image/|application/pdf)#', $mime)) $mime = 'application/octet-stream';
     header('Content-Type: ' . $mime);
     header('Content-Length: ' . filesize($yol));
-    header('Content-Disposition: inline; filename="ziyaretci_' . (int)$z['id'] . '.' . pathinfo($yol, PATHINFO_EXTENSION) . '"');
+    header('Content-Disposition: inline; filename="' . ($tut ? kamp_olay_no((int)$z['id']) : 'ziyaretci_' . (int)$z['id']) . '.' . pathinfo($yol, PATHINFO_EXTENSION) . '"');
     header('X-Content-Type-Options: nosniff');
     header('Cache-Control: private, max-age=600');
     readfile($yol);
@@ -55,6 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $z = kamp_ziyaret_bul($pdoKamp, $id) ?: throw new RuntimeException('Kayıt bulunamadı.');
                 $pdoKamp->prepare("DELETE FROM kamp_ziyaretler WHERE id=?")->execute([$id]);
                 kamp_ziyaret_dosya_sil($z['foto_url']);
+                kamp_ziyaret_dosya_sil($z['tutanak_url']);
                 unset($z['kisi_ad'], $z['kisi_soyad'], $z['bina_ad']);
                 kamp_audit('kamp_ziyaretler', $id, 'DELETE', $z, null);
                 flash('success', 'Ziyaret kaydı silindi (yanlış giriş).');
@@ -110,13 +113,14 @@ if (($_GET['export'] ?? '') === 'xlsx') {
     require_once __DIR__ . '/../includes/XlsxWriter.php';
     $xl = new \XlsxWriter('Ziyaretci Defteri');
     $xl->header(['Giriş','Çıkış','Süre','Ad Soyad','Belge Türü','Kimlik / Belge No','Uyruk','Telefon','Kurum / Firma','Plaka',
-                 'Ziyaret Edilen','Bina','Amaç','Gece İzni','Onaylayan','İzinsiz Giriş','Uyarı','Açıklama']);
+                 'Ziyaret Edilen','Bina','Amaç','Gece İzni','Onaylayan','İzinsiz Giriş','Uyarı','Açıklama','Olay Tutanağı','İmzalı Tutanak']);
     foreach ($liste as $z) $xl->row([
         ['v'=>kamp_zaman_yaz($z['giris'])], ['v'=>$z['cikis'] ? kamp_zaman_yaz($z['cikis']) : 'İÇERİDE'], ['v'=>$sure($z)],
         ['v'=>$z['ad_soyad']], ['v'=>KAMP_KIMLIK_TUR[$z['kimlik_tur']] ?? ''], ['v'=>$z['kimlik_no']], ['v'=>$z['uyruk']], ['v'=>$z['telefon']],
         ['v'=>$z['kurum']], ['v'=>$z['plaka']], ['v'=>$z['ziyaret_edilen']], ['v'=>$z['bina_ad']], ['v'=>$z['amac']],
         ['v'=>$z['gece_izin'] ? 'Evet' : ''], ['v'=>$z['onaylayan']], ['v'=>$z['ihlal'] ? 'EVET' : ''],
         ['v'=>kamp_ziyaret_uyari_metin($z['i'])], ['v'=>$z['aciklama']],
+        ['v'=>$z['i']['ihlal'] || $z['i']['izinsiz'] || kamp_olay_dolu(kamp_olay($z)) ? kamp_olay_no((int)$z['id']) : ''], ['v'=>$z['tutanak_url'] ? 'Var' : ''],
     ]);
     $xl->download('kamp_ziyaretci_' . ($anQ ? date('Ymd_Hi', strtotime($anQ)) : ($geceQ ?: $bas . '_' . $bit)) . '.xlsx');
 }
@@ -211,6 +215,9 @@ require __DIR__ . '/../includes/header.php';
           <?= $z['aciklama'] ? '<div class="text-muted fst-italic">' . h(mb_strimwidth($z['aciklama'], 0, 90, '…', 'UTF-8')) . '</div>' : '' ?></td>
         <td class="small"><?= $z['gece_izin'] ? '<span class="badge bg-dark">gece izni</span> ' : '' ?><?= h($z['onaylayan'] ?: '—') ?></td>
         <td class="text-end text-nowrap">
+          <?php $olayli = $i['ihlal'] || $i['izinsiz'] || kamp_olay_dolu(kamp_olay($z)); ?>
+          <a href="olay_tutanak.php?id=<?= (int)$z['id'] ?>" class="btn btn-sm py-0 <?= $olayli ? ($z['tutanak_url'] ? 'btn-outline-success' : 'btn-outline-danger') : 'btn-outline-secondary' ?>"
+             title="<?= $olayli ? 'Olay tutanağı ' . kamp_olay_no((int)$z['id']) . ($z['tutanak_url'] ? ' — imzalı kopya yüklü' : ' — imzalı kopya yüklenmedi') : 'Tutanak yazdır' ?>"><i class="bi <?= $z['tutanak_url'] ? 'bi-file-earmark-check' : 'bi-printer' ?>"></i><?= $olayli ? '<span class="ms-1 small">Tutanak</span>' : '' ?></a>
           <?php if ($yaz && !$z['cikis']): ?><button type="button" class="btn btn-danger btn-sm py-0 js-cikis" data-id="<?= (int)$z['id'] ?>" data-ad="<?= h($z['ad_soyad']) ?>" data-giris="<?= h(kamp_zaman_input($z['giris'])) ?>"><i class="bi bi-box-arrow-right me-1"></i>Çıkış</button><?php endif; ?>
           <?php if ($duz): ?><a href="ziyaret_form.php?id=<?= (int)$z['id'] ?>" class="btn btn-outline-secondary btn-sm py-0" title="Düzenle"><i class="bi bi-pencil"></i></a>
           <form method="post" class="d-inline" onsubmit="return confirm('Bu ziyaret kaydı SİLİNSİN mi? Yalnız yanlış girilen kayıt için kullanın.')">
