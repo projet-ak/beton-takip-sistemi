@@ -31,6 +31,7 @@ $gecmis = $st->fetchAll();
 $topGece = 0; foreach ($gecmis as $g) $topGece += kamp_sure($g['giris'], $g['cikis']);
 $bos = $yaz ? kamp_bos_yataklar($pdoKamp) : [];
 $geri = 'kisi_detay.php?id=' . $id;
+$ziyaret = kamp_ziyaret_liste($pdoKamp, ['kisi_id' => $id]);
 
 $pageTitle = kamp_kisi_ad($k) . ' — Kamp Takip';
 require __DIR__ . '/../includes/header.php';
@@ -135,6 +136,24 @@ require __DIR__ . '/../includes/header.php';
             </form>
           </td></tr>
           <?php endif; ?>
+        <?php endforeach; ?>
+        </tbody></table></div>
+    </div>
+
+    <div class="card border-0 shadow-sm mt-3">
+      <div class="card-header bg-white d-flex align-items-center"><strong><i class="bi bi-person-badge me-1"></i>Ziyaretçileri</strong>
+        <span class="badge bg-secondary ms-2"><?= count($ziyaret) ?></span>
+        <?php if ($yaz): ?><a href="ziyaret_form.php?kisi_id=<?= $id ?>" class="btn btn-outline-primary btn-sm ms-auto py-0"><i class="bi bi-plus-lg me-1"></i>Misafir girişi</a><?php endif; ?></div>
+      <div class="table-responsive" style="max-height:320px;overflow:auto"><table class="table table-sm align-middle mb-0" style="font-size:.86rem">
+        <thead class="table-light"><tr><th>Ziyaretçi</th><th>Giriş</th><th>Çıkış</th><th>Onay</th></tr></thead><tbody>
+        <?php if (!$ziyaret): ?><tr><td colspan="4" class="text-muted text-center py-3">Bu kişiye kayıtlı ziyaretçi yok.</td></tr><?php endif; ?>
+        <?php foreach ($ziyaret as $zz): ?>
+          <tr class="<?= $zz['i']['ihlal'] || $zz['i']['izinsiz'] ? 'table-danger' : '' ?>">
+            <td><strong><?= h($zz['ad_soyad']) ?></strong> <?= kamp_ziyaret_rozet($zz['i']) ?><div class="small text-muted"><?= h(trim(($zz['kurum'] ?? '') . ($zz['amac'] ? ' · ' . $zz['amac'] : ''), ' ·')) ?></div></td>
+            <td class="text-nowrap small"><?= h(kamp_zaman_yaz($zz['giris'])) ?></td>
+            <td class="text-nowrap small"><?= $zz['cikis'] ? h(kamp_zaman_yaz($zz['cikis'])) : '<span class="badge bg-primary">içeride</span>' ?></td>
+            <td class="small"><?= $zz['gece_izin'] ? '<span class="badge bg-dark">gece izni</span> ' : '' ?><?= h($zz['onaylayan'] ?: '—') ?></td>
+          </tr>
         <?php endforeach; ?>
         </tbody></table></div>
     </div>

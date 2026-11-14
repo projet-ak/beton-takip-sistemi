@@ -319,6 +319,37 @@ function kamp_semasi_kur(PDO $pdo): void
         KEY ix_kamp_dbh (demirbas_id)
     ) $E");
 
+    // Ziyaretçi / misafir defteri — kampa dışarıdan gelen herkes (giriş-çıkış SAATİYLE).
+    // Kayıt silinmez (yalnız yanlış giriş, değiştirme yetkisiyle); çıkış saatiyle kapanır.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS kamp_ziyaretler (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ad_soyad VARCHAR(160) NOT NULL,
+        kimlik_tur VARCHAR(10) NOT NULL DEFAULT 'tc',
+        kimlik_no VARCHAR(40) NULL,
+        uyruk VARCHAR(60) NULL,
+        telefon VARCHAR(30) NULL,
+        kurum VARCHAR(150) NULL COMMENT 'geldiği firma / kurum',
+        plaka VARCHAR(20) NULL,
+        kisi_id INT NULL COMMENT 'ziyaret edilen kamp kişisi (kamp_kisiler.id)',
+        ziyaret_edilen VARCHAR(160) NULL COMMENT 'ziyaret edilen kişinin adı (kayıt anındaki kopya ya da serbest metin)',
+        bina_id INT NULL,
+        amac VARCHAR(150) NULL,
+        giris DATETIME NOT NULL,
+        cikis DATETIME NULL COMMENT 'NULL = hâlâ kampta',
+        gece_izin TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'gece saatlerinde kampta bulunma izni',
+        onaylayan VARCHAR(120) NULL,
+        ihlal TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'izinsiz giriş tespit edildi (olay kaydı)',
+        foto_url VARCHAR(255) NULL,
+        aciklama TEXT NULL,
+        kaydeden INT NULL,
+        cikis_kaydeden INT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NULL,
+        KEY ix_kamp_zy_giris (giris),
+        KEY ix_kamp_zy_cikis (cikis),
+        KEY ix_kamp_zy_kisi (kisi_id)
+    ) $E");
+
     // Personel Takip köprüsü: kişinin PTS'deki kaydının id'si (yalnız EŞLEŞME anahtarı — FK değil,
     // başka DB'dedir). Runtime ALTER: eski kurulumlar da alır.
     try {
@@ -1002,6 +1033,312 @@ function kamp_geri(?string $u, string $varsayilan = 'index.php'): string
 {
     $u = (string)$u;
     return preg_match('/^[a-z_]+\.php(\?[A-Za-z0-9_=&%.\-+:#]*)?(#[a-z0-9_-]+)?$/', $u) ? $u : $varsayilan;
+}
+
+// ─────────────────────────────────────────────────────────────── ziyaretçi / misafir defteri
+/*
+ * Kampa DIŞARIDAN gelen herkes (misafir, aile, teslimat, servis, denetçi…) saatiyle kaydedilir:
+ * kim · kimlik · kimi ziyaret etti · kim onayladı · giriş-çıkış saati. Amaç "o gece kampta kim
+ * vardı, kimin misafiriydi" sorusunun yazılı ve kanıtlanabilir cevabı.
+ *  • GECE KURALI: gece penceresinde (varsayılan 23:00–06:00; config KAMP_GECE_BAS / KAMP_GECE_BIT)
+ *    giriş ancak "gece izni" + onaylayan ile kaydedilir. İzinsiz bir giriş TESPİT edildiyse kayıt
+ *    yine açılır ama `ihlal=1` ile işaretlenir (olay kaydı) — kanıt kaybolmasın.
+ *  • UYARI: gece penceresine değen ziyaret izin yoksa · ihlal kaydı · çıkışı KAMP_ZIYARET_UZUN_SAAT
+ *    saatten uzun süredir yazılmamış açık ziyaret → kırmızı (liste + dashboard).
+ *  • Kimlik görüntüsü KVKK gereği herkese açık klasörde durmaz: tahmin edilemeyen adla saklanır ve
+ *    yalnız oturum açmış kullanıcıya ziyaretler.php?foto= üzerinden verilir.
+ */
+const KAMP_KIMLIK_TUR = ['tc' => 'T.C. Kimlik', 'pasaport' => 'Pasaport', 'ehliyet' => 'Ehliyet', 'diger' => 'Diğer belge'];
+const KAMP_ZIYARET_AMAC = ['Personel ziyareti', 'Aile ziyareti', 'Teslimat / kargo', 'Servis / tamir', 'Denetim / kontrol',
+                           'Toplantı', 'İş görüşmesi', 'Diğer'];
+const KAMP_ZIYARET_UZUN_SAAT = 12;
+const KAMP_ZIYARET_DOSYA = ['jpg','jpeg','png','webp','heic','heif','pdf'];
+
+/** Gece penceresi [başlangıç, bitiş] 'HH:MM' — config ile değiştirilebilir. */
+function kamp_gece_saat(): array
+{
+    $ok = fn($x) => (bool)preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $x);
+    $b = defined('KAMP_GECE_BAS') ? (string)KAMP_GECE_BAS : '23:00';
+    $s = defined('KAMP_GECE_BIT') ? (string)KAMP_GECE_BIT : '06:00';
+    return [$ok($b) ? $b : '23:00', $ok($s) ? $s : '06:00'];
+}
+function kamp_gece_etiket(): string { [$b, $s] = kamp_gece_saat(); return $b . '–' . $s; }
+
+/** Tarih-saat → 'Y-m-d H:i:s' ya da null. Kabul: 2026-11-14T03:10 · 2026-11-14 03:10[:ss] · 14.11.2026 03:10 */
+function kamp_zaman($v): ?string
+{
+    $s = trim((string)$v);
+    if ($s === '') return null;
+    if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})[T ](\d{1,2}):(\d{2})(?::(\d{2}))?$/', $s, $m))
+        [$y, $a, $g, $sa, $dk, $sn] = [(int)$m[1], (int)$m[2], (int)$m[3], (int)$m[4], (int)$m[5], (int)($m[6] ?? 0)];
+    elseif (preg_match('/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/', $s, $m))
+        [$g, $a, $y, $sa, $dk, $sn] = [(int)$m[1], (int)$m[2], (int)$m[3], (int)$m[4], (int)$m[5], (int)($m[6] ?? 0)];
+    else return null;
+    if (!checkdate($a, $g, $y) || $sa > 23 || $dk > 59 || $sn > 59 || $y < 2000 || $y > 2100) return null;
+    return sprintf('%04d-%02d-%02d %02d:%02d:%02d', $y, $a, $g, $sa, $dk, $sn);
+}
+function kamp_zaman_yaz(?string $t): string { return $t ? date('d.m.Y H:i', strtotime($t)) : '—'; }
+function kamp_zaman_input(?string $t): string { return $t ? date('Y-m-d\TH:i', strtotime($t)) : ''; }
+
+/** Bu an gece penceresinde mi? */
+function kamp_gece_saatte(string $dt): bool
+{
+    [$b, $s] = kamp_gece_saat();
+    $h = date('H:i', strtotime($dt));
+    return $b > $s ? ($h >= $b || $h < $s) : ($h >= $b && $h < $s);
+}
+
+/** [giriş, çıkış | şimdi] aralığı herhangi bir gece penceresine değiyor mu? */
+function kamp_gece_ortusur(string $giris, ?string $cikis): bool
+{
+    [$b, $s] = kamp_gece_saat();
+    $g = strtotime($giris);
+    $c = $cikis ? strtotime($cikis) : time();
+    if ($c <= $g) return kamp_gece_saatte($giris);
+    if ($c - $g >= 86400) return true;                          // bir günden uzun → mutlaka bir geceye değer
+    for ($d = strtotime(date('Y-m-d', $g) . ' -1 day'); $d <= $c; $d = strtotime('+1 day', $d)) {
+        $gb = strtotime(date('Y-m-d', $d) . ' ' . $b);
+        $ge = strtotime(date('Y-m-d', $b > $s ? strtotime('+1 day', $d) : $d) . ' ' . $s);
+        if ($g < $ge && $c > $gb) return true;
+    }
+    return false;
+}
+
+/** Ziyaret işaretleri: acik · gece · gece_giris · izinsiz · ihlal · uzun · uyari */
+function kamp_ziyaret_isaret(array $z): array
+{
+    $acik = empty($z['cikis']);
+    $gece = kamp_gece_ortusur($z['giris'], $z['cikis'] ?: null);
+    $o = [
+        'acik'       => $acik,
+        'gece'       => $gece,
+        'gece_giris' => kamp_gece_saatte($z['giris']),
+        'izinsiz'    => $gece && !(int)$z['gece_izin'],
+        'ihlal'      => (int)$z['ihlal'] === 1,
+        'uzun'       => $acik && strtotime($z['giris']) < time() - KAMP_ZIYARET_UZUN_SAAT * 3600,
+    ];
+    $o['uyari'] = $o['izinsiz'] || $o['ihlal'] || $o['uzun'];
+    return $o;
+}
+
+function kamp_ziyaret_uyari_metin(array $i): string
+{
+    return implode(' · ', array_filter([$i['ihlal'] ? 'İzinsiz giriş' : '', $i['izinsiz'] && !$i['ihlal'] ? 'Gece izni yok' : '',
+                                        $i['uzun'] ? 'Çıkışı yazılmamış' : '']));
+}
+
+/** Bu an hangi gecenin içinde? (gece 03:00 → bir önceki günün gecesi) */
+function kamp_gece_tarihi(string $dt): string
+{
+    [$b, $s] = kamp_gece_saat();
+    $t = strtotime($dt);
+    return date('Y-m-d', $b > $s && date('H:i', $t) < $s ? strtotime('-1 day', $t) : $t);
+}
+
+function kamp_ziyaret_rozet(array $i): string
+{
+    $o = '';
+    if ($i['ihlal'])   $o .= '<span class="badge bg-danger me-1"><i class="bi bi-exclamation-octagon me-1"></i>İzinsiz giriş</span>';
+    if ($i['izinsiz'] && !$i['ihlal']) $o .= '<span class="badge bg-danger me-1"><i class="bi bi-moon me-1"></i>Gece izni yok</span>';
+    if ($i['uzun'])    $o .= '<span class="badge bg-warning text-dark me-1"><i class="bi bi-hourglass-split me-1"></i>Çıkışı yazılmamış</span>';
+    if ($i['gece'] && !$i['izinsiz']) $o .= '<span class="badge bg-dark me-1"><i class="bi bi-moon-stars me-1"></i>Gece (izinli)</span>';
+    return $o;
+}
+
+function kamp_ziyaret_bul(PDO $pdo, int $id): ?array
+{
+    $st = $pdo->prepare("SELECT z.*, p.ad AS kisi_ad, p.soyad AS kisi_soyad, b.ad AS bina_ad
+                           FROM kamp_ziyaretler z
+                           LEFT JOIN kamp_kisiler p ON p.id = z.kisi_id
+                           LEFT JOIN kamp_binalar b ON b.id = z.bina_id
+                          WHERE z.id = ?");
+    $st->execute([$id]);
+    return $st->fetch() ?: null;
+}
+
+/**
+ * Ziyaret kaydı (yeni / düzenle). Kuralları burada uygular — form tek kaynak değildir.
+ * Döner: kayıt id.
+ */
+function kamp_ziyaret_kaydet(PDO $pdo, array $v, int $id = 0, ?int $uid = null): int
+{
+    $kes = fn($s, int $n) => mb_substr(trim((string)$s), 0, $n, 'UTF-8');
+    $ad = $kes(kamp_buyuk($v['ad_soyad'] ?? ''), 160);
+    if ($ad === '') throw new RuntimeException('Ziyaretçinin adı soyadı zorunlu.');
+    $kt = isset(KAMP_KIMLIK_TUR[$v['kimlik_tur'] ?? '']) ? $v['kimlik_tur'] : 'tc';
+    $kn = strtoupper(preg_replace('/\s+/', '', (string)($v['kimlik_no'] ?? '')));
+    if ($kt === 'tc' && $kn !== '') {
+        $kn = preg_replace('/\D+/', '', $kn);
+        if (strlen($kn) !== 11) throw new RuntimeException('T.C. kimlik no 11 hane olmalı (yabancı uyruklu için belge türünü "Pasaport" seçin).');
+    }
+    $giris = kamp_zaman($v['giris'] ?? '');
+    if (!$giris) throw new RuntimeException('Giriş tarihi / saati geçersiz.');
+    if (strtotime($giris) > time() + 300) throw new RuntimeException('Giriş saati ileri bir zaman olamaz.');
+    $cikisHam = trim((string)($v['cikis'] ?? ''));
+    $cikis = kamp_zaman($cikisHam);
+    if ($cikisHam !== '' && !$cikis) throw new RuntimeException('Çıkış tarihi / saati geçersiz.');
+    if ($cikis && $cikis < $giris) throw new RuntimeException('Çıkış saati girişten önce olamaz.');
+    if ($cikis && strtotime($cikis) > time() + 300) throw new RuntimeException('Çıkış saati ileri bir zaman olamaz.');
+
+    $kisiId = (int)($v['kisi_id'] ?? 0) ?: null;
+    $ze = $kes(kamp_buyuk($v['ziyaret_edilen'] ?? ''), 160);
+    if ($kisiId) {
+        $k = kamp_kisi_bul($pdo, $kisiId);
+        if (!$k) throw new RuntimeException('Ziyaret edilen kişi bulunamadı.');
+        $ze = $kes(kamp_kisi_ad($k), 160);
+    }
+    $ihlal = !empty($v['ihlal']) ? 1 : 0;
+    if (!$kisiId && $ze === '' && !$ihlal) throw new RuntimeException('Kimi ziyaret ettiğini yazın — kamp kişisini seçin ya da adını yazın.');
+    $izin = !empty($v['gece_izin']) && !$ihlal ? 1 : 0;
+    $onay = $kes(kamp_buyuk($v['onaylayan'] ?? ''), 120);
+    if ($izin && $onay === '') throw new RuntimeException('Gece izni işaretlendiyse izni veren kişi (onaylayan) yazılmalı.');
+    if (!$ihlal && kamp_gece_saatte($giris) && !$izin)
+        throw new RuntimeException('Gece saatlerinde (' . kamp_gece_etiket() . ') giriş için "gece izni" ve onaylayan zorunlu. '
+                                 . 'İzinsiz bir girişi kayda geçiriyorsanız "İzinsiz giriş tespit edildi" kutusunu işaretleyin.');
+    $bina = (int)($v['bina_id'] ?? 0);
+    if ($bina && !isset(kamp_binalar($pdo, true)[$bina])) $bina = 0;
+    $tel = $kes($v['telefon'] ?? '', 30);
+    $vals = [$ad, $kt, $kn !== '' ? $kes($kn, 40) : null, $kes(kamp_buyuk($v['uyruk'] ?? ''), 60) ?: null, $tel ?: null,
+             $kes(kamp_buyuk($v['kurum'] ?? ''), 150) ?: null, $kes(strtoupper(preg_replace('/\s+/', '', (string)($v['plaka'] ?? ''))), 20) ?: null,
+             $kisiId, $ze ?: null, $bina ?: null, $kes($v['amac'] ?? '', 150) ?: null, $giris, $cikis, $izin, $onay ?: null, $ihlal,
+             trim((string)($v['aciklama'] ?? '')) ?: null];
+    if ($id > 0) {
+        $eski = kamp_ziyaret_bul($pdo, $id);
+        if (!$eski) throw new RuntimeException('Ziyaret kaydı bulunamadı.');
+        $pdo->prepare("UPDATE kamp_ziyaretler SET ad_soyad=?, kimlik_tur=?, kimlik_no=?, uyruk=?, telefon=?, kurum=?, plaka=?, kisi_id=?,
+                         ziyaret_edilen=?, bina_id=?, amac=?, giris=?, cikis=?, gece_izin=?, onaylayan=?, ihlal=?, aciklama=?,
+                         cikis_kaydeden = CASE WHEN ? IS NOT NULL AND cikis IS NULL THEN ? ELSE cikis_kaydeden END, updated_at=NOW()
+                       WHERE id=?")
+            ->execute(array_merge($vals, [$cikis, $uid, $id]));
+        return $id;
+    }
+    $pdo->prepare("INSERT INTO kamp_ziyaretler (ad_soyad, kimlik_tur, kimlik_no, uyruk, telefon, kurum, plaka, kisi_id, ziyaret_edilen, bina_id,
+                     amac, giris, cikis, gece_izin, onaylayan, ihlal, aciklama, kaydeden, cikis_kaydeden)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        ->execute(array_merge($vals, [$uid, $cikis ? $uid : null]));
+    return (int)$pdo->lastInsertId();
+}
+
+/** Çıkış saatini yazar. Döner: güncellenen kayıt. */
+function kamp_ziyaret_cikis(PDO $pdo, int $id, string $zaman, ?int $uid = null): array
+{
+    $z = kamp_ziyaret_bul($pdo, $id);
+    if (!$z) throw new RuntimeException('Ziyaret kaydı bulunamadı.');
+    if ($z['cikis']) throw new RuntimeException('Bu ziyaretçinin çıkışı zaten yazılmış (' . kamp_zaman_yaz($z['cikis']) . ').');
+    $c = kamp_zaman($zaman);
+    if (!$c) throw new RuntimeException('Çıkış saati geçersiz.');
+    if ($c < $z['giris']) throw new RuntimeException('Çıkış saati girişten (' . kamp_zaman_yaz($z['giris']) . ') önce olamaz.');
+    if (strtotime($c) > time() + 300) throw new RuntimeException('Çıkış saati ileri bir zaman olamaz.');
+    $pdo->prepare("UPDATE kamp_ziyaretler SET cikis=?, cikis_kaydeden=?, updated_at=NOW() WHERE id=? AND cikis IS NULL")->execute([$c, $uid, $id]);
+    return kamp_ziyaret_bul($pdo, $id);
+}
+
+/**
+ * Ziyaret listesi. $f: bas/bit (Y-m-d — aralığa DEĞEN ziyaretler; açık olanlar da) · an (Y-m-d H:i:s —
+ * o anda kampta olanlar) · gece (Y-m-d — o gecenin penceresine değenler) · kisi_id. Her satıra 'i' işaretleri eklenir.
+ */
+function kamp_ziyaret_liste(PDO $pdo, array $f = []): array
+{
+    $w = []; $p = [];
+    if (!empty($f['an'])) { $w[] = 'z.giris <= ? AND (z.cikis IS NULL OR z.cikis > ?)'; array_push($p, $f['an'], $f['an']); }
+    if (!empty($f['gece'])) {
+        [$b, $s] = kamp_gece_saat();
+        $gb = $f['gece'] . ' ' . $b . ':00';
+        $ge = date('Y-m-d', strtotime($f['gece'] . ($b > $s ? ' +1 day' : ''))) . ' ' . $s . ':00';
+        $w[] = 'z.giris < ? AND (z.cikis IS NULL OR z.cikis > ?)'; array_push($p, $ge, $gb);
+    }
+    if (!empty($f['bas'])) { $w[] = '(z.cikis IS NULL OR z.cikis >= ?)'; $p[] = $f['bas'] . ' 00:00:00'; }
+    if (!empty($f['bit'])) { $w[] = 'z.giris <= ?'; $p[] = $f['bit'] . ' 23:59:59'; }
+    if (!empty($f['kisi_id'])) { $w[] = 'z.kisi_id = ?'; $p[] = (int)$f['kisi_id']; }
+    if (!empty($f['acik'])) $w[] = 'z.cikis IS NULL';
+    $st = $pdo->prepare("SELECT z.*, p.ad AS kisi_ad, p.soyad AS kisi_soyad, b.ad AS bina_ad
+                           FROM kamp_ziyaretler z
+                           LEFT JOIN kamp_kisiler p ON p.id = z.kisi_id
+                           LEFT JOIN kamp_binalar b ON b.id = z.bina_id"
+                       . ($w ? ' WHERE ' . implode(' AND ', $w) : '') . " ORDER BY z.giris DESC, z.id DESC");
+    $st->execute($p);
+    $o = [];
+    foreach ($st->fetchAll() as $r) { $r['i'] = kamp_ziyaret_isaret($r); $o[] = $r; }
+    return $o;
+}
+
+/** Türkçe harf duyarsız, kelime sırası serbest süzme. */
+function kamp_ziyaret_suz(array $liste, string $q): array
+{
+    $kel = array_values(array_filter(explode(' ', kamp_norm($q))));
+    if (!$kel) return $liste;
+    return array_values(array_filter($liste, function ($z) use ($kel) {
+        $hay = ' ' . kamp_norm(implode(' ', [$z['ad_soyad'], $z['kimlik_no'], $z['uyruk'], $z['telefon'], $z['kurum'], $z['plaka'],
+                                              $z['ziyaret_edilen'], $z['amac'], $z['onaylayan'], $z['bina_ad'] ?? ''])) . ' ';
+        foreach ($kel as $k) if (!str_contains($hay, $k)) return false;
+        return true;
+    }));
+}
+
+/** Dashboard özeti: şu an içeride · bugün gelen · aktif uyarılar · son 7 gün ihlal/izinsiz gece. */
+function kamp_ziyaret_ozet(PDO $pdo): array
+{
+    $o = ['iceride' => 0, 'bugun' => 0, 'uyari' => [], 'son7' => 0];
+    try {
+        foreach (kamp_ziyaret_liste($pdo, ['bas' => date('Y-m-d', strtotime('-7 day'))]) as $z) {
+            if ($z['i']['acik']) $o['iceride']++;
+            if ($z['giris'] >= date('Y-m-d 00:00:00')) $o['bugun']++;
+            if ($z['i']['acik'] && $z['i']['uyari']) $o['uyari'][] = $z;
+            elseif ($z['i']['ihlal'] || $z['i']['izinsiz']) $o['son7']++;
+        }
+        // ⚠ 'bas' süzgeci açık kayıtları yaşına bakmadan getirir — günlerdir çıkışı yazılmamış ziyaret de burada
+    } catch (Throwable $e) { /* tablo yoksa dashboard yine açılır */ }
+    return $o;
+}
+
+/** Önceki ziyaretçiler (form otomatik doldurma) — aynı kişi/kimlik tek satır, en son ziyaret bilgisiyle. */
+function kamp_ziyaretci_ara(PDO $pdo, string $q): array
+{
+    $kel = array_values(array_filter(explode(' ', kamp_norm($q))));
+    if (!$kel) return [];
+    $o = [];
+    foreach ($pdo->query("SELECT * FROM kamp_ziyaretler ORDER BY giris DESC, id DESC LIMIT 3000") as $z) {
+        $hay = ' ' . kamp_norm($z['ad_soyad'] . ' ' . $z['kimlik_no'] . ' ' . $z['plaka'] . ' ' . $z['kurum']) . ' ';
+        foreach ($kel as $k) if (!str_contains($hay, $k)) continue 2;
+        $an = kamp_norm($z['ad_soyad']) . '|' . kamp_norm($z['kimlik_no']);
+        if (isset($o[$an])) { $o[$an]['adet']++; continue; }
+        if (count($o) >= 10) continue;
+        $o[$an] = ['ad_soyad' => $z['ad_soyad'], 'kimlik_tur' => $z['kimlik_tur'], 'kimlik_no' => (string)$z['kimlik_no'],
+                   'uyruk' => (string)$z['uyruk'], 'telefon' => (string)$z['telefon'], 'kurum' => (string)$z['kurum'],
+                   'plaka' => (string)$z['plaka'], 'son' => kamp_zaman_yaz($z['giris']), 'adet' => 1,
+                   'ihlal' => (int)$z['ihlal'] === 1];
+    }
+    return array_values($o);
+}
+
+/** Kimlik / kişi görüntüsü: uploads/kamp/ziyaret/{id}/ altında, tahmin edilemeyen adla. Döner: göreli yol. */
+function kamp_ziyaret_foto_kaydet(PDO $pdo, int $id, array $f): string
+{
+    if (($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) throw new RuntimeException('Görsel yüklenemedi (kod ' . (int)($f['error'] ?? -1) . ').');
+    if (($f['size'] ?? 0) > 12 * 1024 * 1024) throw new RuntimeException('Görsel 12 MB\'ı geçemez.');
+    $mime = function_exists('guess_mime') ? guess_mime($f['tmp_name'], (string)$f['name']) : '';
+    if (!preg_match('#^(image/|application/pdf)#', $mime)) throw new RuntimeException('Yalnız fotoğraf ya da PDF yüklenebilir.');
+    $ext = function_exists('guvenli_uzanti') ? guvenli_uzanti((string)$f['name'], $mime, 'jpg') : 'jpg';
+    if (!in_array($ext, KAMP_ZIYARET_DOSYA, true)) throw new RuntimeException('Desteklenmeyen dosya türü (.' . $ext . ').');
+    $kok = dirname(__DIR__) . '/uploads/kamp/ziyaret/' . $id;
+    if (!is_dir($kok) && !@mkdir($kok, 0775, true)) throw new RuntimeException('Görsel klasörü oluşturulamadı.');
+    $ad = bin2hex(random_bytes(12)) . '.' . $ext;
+    if (!move_uploaded_file($f['tmp_name'], $kok . '/' . $ad))
+        throw new RuntimeException('Görsel kaydedilemedi.');
+    $eski = kamp_ziyaret_bul($pdo, $id)['foto_url'] ?? null;
+    $url = 'uploads/kamp/ziyaret/' . $id . '/' . $ad;
+    $pdo->prepare("UPDATE kamp_ziyaretler SET foto_url=? WHERE id=?")->execute([$url, $id]);
+    if ($eski && $eski !== $url) kamp_ziyaret_dosya_sil($eski);
+    return $url;
+}
+
+/** Yalnız uploads/kamp/ziyaret/ altındaki dosyayı siler (yol doğrulamalı). */
+function kamp_ziyaret_dosya_sil(?string $url): void
+{
+    if (!$url || !preg_match('#^uploads/kamp/ziyaret/\d+/[a-f0-9]{24}\.[a-z]{3,4}$#', $url)) return;
+    $yol = dirname(__DIR__) . '/' . $url;
+    if (is_file($yol)) @unlink($yol);
+    @rmdir(dirname($yol));
 }
 
 // ─────────────────────────────────────────────────────────────── Personel Takip köprüsü

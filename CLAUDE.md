@@ -1934,6 +1934,36 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   seçilince `konaklama.php` önce aktarır sonra yerleştirir. ⚠ Pencere gizli `sekme` alanı taşır — yeni kişi alanları yalnız
   "Yeni kişi" sekmesindeyken kullanılır (önceki sekmeden kalan yazı istenmeyen kart açmasın). Test `t6.py` 16 sağlama
   (MariaDB `ptstest`; PTS tablosunun CHECKSUM'u değişmedi, tekrar aktarımda 0 yeni) + Playwright: ara → seç → aktar+yerleştir.
+  ⭐ **ZİYARETÇİ / MİSAFİR DEFTERİ (2026-11-14, kullanıcı: staff'a gece ~03:00'te dışarıdan bir kişi alınmış, kimin aldığı
+  tespit edilemedi; polis çağrılarak kayıt altına alındı — "ziyaretçi defterini şimdi yapalım")** — tablo **`kamp_ziyaretler`**
+  (ad_soyad · kimlik_tur [`KAMP_KIMLIK_TUR` tc/pasaport/ehliyet/diğer] · kimlik_no · uyruk · telefon · kurum · plaka · **kisi_id**
+  [ziyaret edilen kamp kişisi] + **ziyaret_edilen** [adın kopyası / serbest metin] · bina_id · amac · **giris/cikis DATETIME**
+  [cikis NULL = içeride] · **gece_izin** + **onaylayan** · **ihlal** [izinsiz giriş olay kaydı] · foto_url · aciklama · kaydeden ·
+  cikis_kaydeden). ⭐ **GECE KURALI**: gece penceresi `kamp_gece_saat()` (varsayılan **23:00–06:00**, config `KAMP_GECE_BAS` /
+  `KAMP_GECE_BIT`); gece saatinde giriş ancak **gece izni + onaylayan** ile kaydedilir — izinsiz bir giriş TESPİT edildiyse
+  **"İzinsiz giriş tespit edildi"** kutusuyla onaysız yine kaydedilir (`ihlal=1`, gece izni düşer, kalıcı kırmızı) → kanıt kaybolmaz.
+  Kurallar çekirdekte `kamp_ziyaret_kaydet()` (TC 11 hane — yabancı uyruklu için "Pasaport"; ileri tarih / çıkış<giriş reddi;
+  kimin misafiri zorunlu [ihlal hariç]; kişi seçilirse ad kişi kartından). **İşaretler** `kamp_ziyaret_isaret()`: `gece`
+  (`kamp_gece_ortusur` — ziyaret aralığı herhangi bir gece penceresine değiyor mu; açık ziyaret ŞİMDİYE kadar sayılır →
+  gündüz gelip çıkışı yazılmayan misafir gece 23:00'te kendiliğinden kırmızıya döner) · `izinsiz` (gece && !gece_izin) · `ihlal` ·
+  `uzun` (`KAMP_ZIYARET_UZUN_SAAT`=12 saattir çıkışı yazılmamış) → `uyari`. Sayfalar: **`ziyaretler.php`** (sekmeler şu an içeride
+  [tarih aralığından BAĞIMSIZ — açık kayıtlar ayrıca eklenir] · bugün · uyarılar · gece · hepsi; KPI kartları kendi sekmesini açar;
+  Türkçe harf duyarsız arama `kamp_ziyaret_suz`; ⭐ **OLAY SORGUSU** `?gece=Y-m-d` (o gecenin penceresinde kampta bulunanlar) ·
+  `?an=Y-m-dTH:i` ("03:00'te kampta hangi ziyaretçi vardı") + "o gece kampta yatanlar" bağlantısı [`kamp_gece_tarihi`: 03:00 →
+  önceki günün gecesi]; satırda **Çıkış** penceresi [`kamp_ziyaret_cikis`, giriş VEYA değiştirme], düzenle/sil [değiştirme, yalnız
+  yanlış kayıt]; Excel) · **`ziyaret_form.php`** (yeni / `?id=` düzelt [değiştirme]; ad yazılınca **önceki ziyaretçiler** önerilir
+  `?ziyaretci_ara=` → kimlik/telefon/kurum/plaka dolar, önceki ziyaretinde ihlal varsa kırmızı uyarı; "kimin misafiri" kamp kişisi
+  araması `?kisi_ara=` [yalnız kamp kişileri, PTS adayları hariç] ya da serbest metin; gece saati seçilince bant + onaylayan
+  zorunlu [JS yardımcı, kural sunucuda]; "Kaydet + yeni"). **Kimlik görüntüsü KVKK gereği** `uploads/kamp/ziyaret/{id}/<24 hex>.<ext>`
+  (tahmin edilemez ad, `guess_mime` + `guvenli_uzanti`, yalnız görsel/PDF, 12 MB) ve **yalnız `ziyaretler.php?foto=` üzerinden
+  oturum açmış kullanıcıya** akıtılır; değiştirilince/silinince eski dosya `kamp_ziyaret_dosya_sil` ile kalkar. Bağlantılar: dashboard
+  **"Ziyaretçi (içeride)"** KPI + **kırmızı uyarı bandı** (`kamp_ziyaret_ozet`) · kişi kartında **"Ziyaretçileri"** + "Misafir
+  girişi" · hareketler `?mod=tarihte` → **"O gece kampta bulunan ziyaretçiler"** kartı · sidebar "Ziyaretçi Defteri" · kurulum
+  listesi · mükerrer merkezinde kişi birleştirmesi `kamp_ziyaretler.kisi_id`'yi taşır · kişi silinince `kisi_id` NULL (ad kopyası kalır).
+  Test (`kt/t7.py`, MariaDB + php -S, **45 sağlama**: 6 doğrulama reddi · gece izni/ihlal · Türkçe büyük harf · uyarı/içeride/gece/an
+  sorguları · önceki ziyaretçi · çıkış kuralları · foto akıtma + php dosyası reddi · dashboard/kişi kartı/tarihte · Excel · audit ·
+  izleyici yetkisi · silmede dosya) + Playwright (öneri seçimi, kişi bağlama/kopma, gece bandı, ihlalde onay zorunluluğu kalkar,
+  çıkış penceresi; JS hatası yok); t2–t6 regresyon yeşil.
   İşlem günlüğü `kamp_audit()` → ANA DB `audit_log` (kamp DB'sinde audit_log yok). Menüde "Kamp Yapısı" yalnız `duzenle`.
   Mükerrer merkezi: `MK_KURAL['kamp']` firmalar + kişiler. Test (scratchpad `kt/`, gerçek MariaDB `kamptest` + `php -S` router
   `srv.php` [X-U başlığıyla kullanıcı] + Playwright [CDN npm paketlerinden]): `t2.py` yapı 10 · `t3.py` konaklama/yetki/icmal 23 ·
@@ -2443,6 +2473,7 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
 - **IT form aktarımı (geçici)**: `uploads/it_form_bekleyen/` — yüklenen tahsis formları ön izleme adımı
   boyunca burada bekler; aktarımda cihaza belge olarak kopyalanır ve silinir (2 günden eski artıklar
   bir sonraki yüklemede temizlenir). `.gitignore`'da.
+- **Kamp**: `uploads/kamp/ziyaret/{id}/<24 hex>.<ext>` (ziyaretçi kimlik görüntüsü — doğrudan bağlantı verilmez, `kamp/ziyaretler.php?foto=` ile oturum açmış kullanıcıya) · `uploads/kamp/bekleyen/` (Excel aktarımı, 2 gün).
 - **PTS**: `uploads/pts/gecis/{Y-m-d}/{hareket_id}.jpg` (kart okutma anındaki kamera görüntüsü; DB'de yalnız
   göreli yol durur, `uploads/pts/` `.gitignore`'da — yazılamazsa geçiş yine kaydedilir).
 - `uploads/.htaccess` PHP çalıştırmayı engeller (alt klasörlere de uygulanır).
@@ -2539,7 +2570,7 @@ zorunlu, **teslim alan** opsiyonel (boş=depoya/şirkete iade). Ayrıca teslim e
   iddiası olsaydı herkes zan altında kalırdı. **Hedef:** gece kampa/staff'a giren-çıkan her kişi
   (kim, saat kaçta, kimin misafiri) **kanıtlanabilir** olsun ve izinsiz giriş **anında** fark edilsin.
 - **Önerilen sıra** (kullanıcı onayı olmadan başlanmaz; aşağıdaki 5 soru cevaplanınca):
-  1. **Kamp modülüne ZİYARETÇİ / MİSAFİR DEFTERİ** (kamera gerekmez, hemen yapılabilir): giriş saati · çıkış
+  1. ✅ **YAPILDI (2026-11-14)** — Kamp modülüne ZİYARETÇİ / MİSAFİR DEFTERİ (bkz. §1 Kamp Takip). Plan: giriş saati · çıkış
      saati · ziyaretçi ad/kimlik · kimin misafiri (kamp kişisi) · onaylayan · gece kalış izni. Gece kuralı:
      belirli saatten sonra (ör. 23:00–06:00) misafir girişi yalnız onaylı; açık kalan (çıkışı yazılmamış)
      ziyaretçi dashboard'da kırmızı.

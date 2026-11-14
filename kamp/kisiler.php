@@ -21,6 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['islem'] ?? '') === 'sil') 
         if ($n = (int)$c->fetchColumn()) throw new RuntimeException("Bu kişinin $n konaklama kaydı var — silinmez (kamp geçmişi kopmasın).");
         $k = kamp_kisi_bul($pdoKamp, $id);
         $pdoKamp->prepare("DELETE FROM kamp_kisiler WHERE id=?")->execute([$id]);
+        $pdoKamp->prepare("UPDATE kamp_ziyaretler SET kisi_id=NULL WHERE kisi_id=?")->execute([$id]);   // ad kopyası ziyaret kaydında kalır
         kamp_audit('kamp_kisiler', $id, 'DELETE', $k);
         flash('success', 'Kişi silindi.');
     } catch (Throwable $e) { flash('error', $e->getMessage()); }

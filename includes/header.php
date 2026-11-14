@@ -628,6 +628,9 @@ if ($__user) {
         <a class="sidebar-nav-link <?= __isActive('hareketler.php') ?>" href="<?= $__rootPath ?>kamp/hareketler.php" data-label="Giriş / Çıkış"><i class="bi bi-journal-text"></i><span>Giriş / Çıkış Defteri</span></a>
       </li>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('ziyaretler.php').__isActive('ziyaret_form.php') ?>" href="<?= $__rootPath ?>kamp/ziyaretler.php" data-label="Ziyaretçiler"><i class="bi bi-person-badge"></i><span>Ziyaretçi Defteri</span></a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('demirbas.php') ?>" href="<?= $__rootPath ?>kamp/demirbas.php" data-label="Demirbaş"><i class="bi bi-lamp"></i><span>Demirbaşlar</span></a>
       </li>
       <li class="sidebar-nav-item">

@@ -52,6 +52,7 @@ if ($mod === 'defter') {
     usort($satir, fn($a, $b) => strcmp($b['olay_tarih'], $a['olay_tarih']) ?: ($b['id'] <=> $a['id']));
 } else {
     foreach (kamp_tarihte($pdoKamp, $tarih) as $r) { $satir[] = $r + ['olay' => 'kaliyor', 'olay_tarih' => $tarih]; }
+    $geceZiyaret = kamp_ziyaret_liste($pdoKamp, ['gece' => $tarih]);   // o gecenin penceresinde kampta bulunan ziyaretçiler
 }
 // süzgeçler
 if ($firma) $satir = array_values(array_filter($satir, fn($r) => (int)$r['fid'] === $firma));
@@ -120,6 +121,19 @@ require __DIR__ . '/../includes/header.php';
 <?php else: ?>
 <div class="alert alert-primary py-2"><strong><?= count($satir) ?> kişi</strong> <?= h(kamp_tarih_yaz($tarih)) ?> gecesi kampta kalıyordu
   <span class="small text-muted">(giriş ≤ tarih ve çıkış tarihten sonra ya da hâlâ kalıyor)</span>.</div>
+<div class="card border-0 shadow-sm mb-3 border-start border-4 <?= array_filter($geceZiyaret, fn($z) => $z['i']['ihlal'] || $z['i']['izinsiz']) ? 'border-danger' : 'border-dark' ?>">
+  <div class="card-header bg-white d-flex align-items-center"><strong><i class="bi bi-person-badge me-1"></i>O gece kampta bulunan ziyaretçiler</strong>
+    <span class="small text-muted ms-2"><?= h(kamp_tarih_yaz($tarih)) ?> <?= h(kamp_gece_saat()[0]) ?> → ertesi gün <?= h(kamp_gece_saat()[1]) ?></span>
+    <a href="ziyaretler.php?gece=<?= h($tarih) ?>" class="ms-auto small">defterde aç →</a></div>
+  <?php if (!$geceZiyaret): ?><div class="card-body py-2 small text-muted">Bu gecede ziyaretçi kaydı yok.</div>
+  <?php else: ?><div class="table-responsive"><table class="table table-sm mb-0" style="font-size:.85rem"><tbody>
+    <?php foreach ($geceZiyaret as $z): ?><tr class="<?= $z['i']['ihlal'] || $z['i']['izinsiz'] ? 'table-danger' : '' ?>">
+      <td><strong><?= h($z['ad_soyad']) ?></strong> <?= kamp_ziyaret_rozet($z['i']) ?></td>
+      <td class="small"><?= h($z['ziyaret_edilen'] ? $z['ziyaret_edilen'] . ' misafiri' : '—') ?></td>
+      <td class="small text-nowrap"><?= h(kamp_zaman_yaz($z['giris'])) ?> → <?= $z['cikis'] ? h(kamp_zaman_yaz($z['cikis'])) : '<span class="badge bg-primary">içeride</span>' ?></td>
+      <td class="small"><?= h($z['onaylayan'] ?: '') ?></td></tr><?php endforeach; ?>
+  </tbody></table></div><?php endif; ?>
+</div>
 <?php endif; ?>
 
 <div class="card border-0 shadow-sm">

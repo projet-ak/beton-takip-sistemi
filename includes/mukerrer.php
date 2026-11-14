@@ -179,7 +179,7 @@ const MK_KURAL = [
         // İki kartın da AÇIK konaklaması varsa birleştirme DB kuralına (tek açık konaklama) takılır ve geri alınır
         'kamp_kisiler'  => ['ad'=>'Kişiler', 'tablo'=>'kamp_kisiler', 'etiket'=>['ad','soyad','tc_no'],
                             'anahtar'=>[['TC No',['tc_no']], ['Sicil No',['sicil_no']], ['Ad + Soyad + Firma',['ad','soyad','firma_id']]],
-                            'bagli'=>[['kamp_konaklama','kisi_id']]],
+                            'bagli'=>[['kamp_konaklama','kisi_id'], ['kamp_ziyaretler','kisi_id']]],
     ],
 ];
 

@@ -18,6 +18,7 @@ $o = kamp_ozet($pdoKamp);
 $doluluk = kamp_doluluk($pdoKamp);
 $bugun = date('Y-m-d'); $ayBas = date('Y-m-01');
 $ic = kamp_icmal($pdoKamp, date('Y-m'));
+$zo = kamp_ziyaret_ozet($pdoKamp);
 
 // Son 30 gün: gece gece kampta kalan kişi sayısı
 $seri = [];
@@ -47,6 +48,7 @@ require __DIR__ . '/../includes/header.php';
   <span class="text-muted small"><?= h(kamp_tarih_yaz($bugun)) ?></span>
   <div class="ms-auto d-flex gap-2">
     <a href="hareketler.php?mod=tarihte" class="btn btn-outline-secondary btn-sm"><i class="bi bi-calendar-check me-1"></i>Tarihte kim vardı?</a>
+    <?php if (yetki_var('giris') || yetki_var('duzenle')): ?><a href="ziyaret_form.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-person-badge me-1"></i>Ziyaretçi Girişi</a><?php endif; ?>
     <a href="yerlesim.php" class="btn btn-primary btn-sm"><i class="bi bi-grid-3x3-gap me-1"></i>Yerleşim Krokisi</a>
   </div>
 </div>
@@ -55,6 +57,20 @@ require __DIR__ . '/../includes/header.php';
 <div class="alert alert-warning d-flex flex-wrap align-items-center gap-2"><i class="bi bi-exclamation-triangle"></i>
   <span><strong>Kamp yapısı henüz tanımlanmadı.</strong> Önce binaları, konteynerleri, odaları ve yatakları oluşturun.</span>
   <a href="yapi.php" class="btn btn-warning btn-sm ms-auto">Kamp yapısını oluştur</a></div>
+<?php endif; ?>
+
+<?php if ($zo['uyari']): ?>
+<div class="alert alert-danger mb-3">
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-1"><i class="bi bi-exclamation-octagon-fill"></i>
+    <strong><?= count($zo['uyari']) ?> ziyaretçi uyarısı</strong> — gece izni olmadan kampta bulunan, izinsiz giriş kaydı ya da çıkışı yazılmamış ziyaretçi.
+    <a href="ziyaretler.php?durum=uyari" class="btn btn-danger btn-sm ms-auto">Ziyaretçi defteri →</a></div>
+  <ul class="mb-0 small">
+    <?php foreach (array_slice($zo['uyari'], 0, 6) as $z): ?>
+    <li><strong><?= h($z['ad_soyad']) ?></strong> · giriş <?= h(kamp_zaman_yaz($z['giris'])) ?> · <?= h($z['ziyaret_edilen'] ? $z['ziyaret_edilen'] . ' misafiri' : 'kimin misafiri yazılmamış') ?>
+      · <?= h(kamp_ziyaret_uyari_metin($z['i'])) ?></li>
+    <?php endforeach; ?>
+  </ul>
+</div>
 <?php endif; ?>
 
 <div class="row g-2 mb-3">
@@ -66,6 +82,7 @@ require __DIR__ . '/../includes/header.php';
     ['Bu ay çıkan',      $o['ay_cikis'],    'bi-calendar-minus',    'danger',    'hareketler.php?bas=' . $ayBas . '&bit=' . $bugun . '&tur=cikis', 'kamptan ayrılan'],
     ['Bu ay kişi-gece',  $ic['toplam']['gece'], 'bi-moon-stars',    'dark',      'icmal.php',                                        'firma icmali →'],
     ['Sorunlu demirbaş', $o['db_sorun'] + $o['db_kayip'], 'bi-tools', $o['db_sorun'] + $o['db_kayip'] ? 'danger' : 'secondary', 'demirbas.php?durum=sorun', $f0($o['db_sorun']) . ' arızalı/bakımda · ' . $f0($o['db_kayip']) . ' kayıp'],
+    ['Ziyaretçi (içeride)', $zo['iceride'], 'bi-person-badge',     $zo['uyari'] ? 'danger' : 'primary', 'ziyaretler.php?durum=iceride', $f0($zo['bugun']) . ' bugün geldi' . ($zo['son7'] ? ' · son 7 günde ' . $f0($zo['son7']) . ' izinsiz' : '')],
     ['Kullanım dışı yatak', $o['disi'],     'bi-slash-circle',      'secondary', 'yapi.php',                                         'kırık / kaldırılmış'],
   ] as [$ad, $deger, $ikon, $renk, $link, $alt]): ?>
   <div class="col-6 col-xl-3">
