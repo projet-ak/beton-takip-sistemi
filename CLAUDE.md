@@ -1964,6 +1964,38 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   sorguları · önceki ziyaretçi · çıkış kuralları · foto akıtma + php dosyası reddi · dashboard/kişi kartı/tarihte · Excel · audit ·
   izleyici yetkisi · silmede dosya) + Playwright (öneri seçimi, kişi bağlama/kopma, gece bandı, ihlalde onay zorunluluğu kalkar,
   çıkış penceresi; JS hatası yok); t2–t6 regresyon yeşil.
+  ⭐ **KROKİDE DEMİRBAŞ + PERİYODİK DEĞİŞİM (2026-11-14, kullanıcı: "odadaki demirbaşları krokide görebiliyor muyum; periyodik
+  olarak yatak yorgan değişimleri oluyor, buna da çözüm bulalım")** — eskiden krokide yalnız ARIZALI demirbaş sayısı rozet olarak
+  vardı, tam liste oda kartındaydı. **Kroki** (`yerlesim.php`): her oda başlığında **🪔 düğmesi** (toplam demirbaş adedi + değişimi
+  geciken yatak varsa kırmızı/sarı ↻) → **oda penceresi** (`#mOda`, veri sayfaya gömülü `ODA` JSON'u: demirbaş tablosu · yatak ×
+  değişim türü durum matrisi · oda kapsamlı türler · "değişim yapıldı" formu [türe göre yatak kutuları, geciken/kaydı olmayanlar
+  önceden işaretli; hiç işaretsizse gönderilmez]); araç çubuğunda **"Demirbaşlar" anahtarı** (her odanın listesi krokiye basılır —
+  yazdırılabilir; arızalı kırmızı) ve **"Değişim durumu" seçici** (seçilen türün kısa etiketi her yatağa yazılır: "yeni gelen!" ·
+  "5 g. gecikti" · "3 g. kaldı" · "kayıt yok"; boş yatakta yazılmaz) — ikisi de `localStorage`'da hatırlanır. Her yatakta en kötü
+  durumun **noktası** (kırmızı = gecikmiş / yeni gelene yapılmamış, sarı = yaklaşıyor); dolu yatak penceresinde o yatağın tüm
+  değişim durumları + "Oda demirbaşı / değişim" düğmesi.
+  **Periyodik değişim** — tablolar **`kamp_periyot`** (ad · kapsam `yatak`|`oda` · **gun** kaç günde bir · **uyari_gun** · **yeni_giriste**
+  · oda_tur [oda kapsamında hangi oda türleri, boş = yatak odaları] · sira · aktif) + **`kamp_periyot_kayit`** (periyot · yatak_id ·
+  oda_id · **tarih** · **kisi_id** [o gün yatakta kalan, anlık kopya] · yapan · aciklama · kullanici_id). Varsayılan 4 tür
+  (`KAMP_PERIYOT_SEED`) tablo **ilk kez** açılırken eklenir: nevresim 7 gün (yeni gelene de) · yorgan/battaniye 90 · yastık 365 ·
+  yatak (şilte) 730. **Durum KAYITTAN HESAPLANIR, saklanmaz** (`kamp_per_hesap`): `yeni` (yeni_giriste türünde yatağa kişi geldi,
+  gelişinden sonra değişim yazılmadı — önceki kişinin nevresimi kalmasın) · `gecikti` · `yaklasiyor` · `tamam` · `yok` (hiç kaydı yok
+  — ilk kullanımda bir kez toplu işaretlenince oturur; KIRMIZI sayılmaz) · `bos` (yeni_giriste türünde boş yatak: kimse yatmıyor).
+  Çekirdek: `kamp_periyot_durum($pdo, $bina, $periyot, $oda)` (tüm hedefler + son kayıt, tek GROUP BY) · `kamp_periyot_ozet` ·
+  `kamp_periyot_kaydet` (transaction; aynı tür + hedef + tarih varsa ATLANIR; ileri tarih reddi) · `kamp_per_rozet`.
+  ⚠ Değişim kaydı demirbaş ADEDİNİ değiştirmez. ⚠ `kamp_yatak_sayisi_ayarla` değişim kaydı olan yatağı SİLMEZ, kullanım dışı yapar.
+  Sayfa **`periyodik.php`** (menü "Periyodik Değişim"): **Durum & toplu kayıt** (tür kartları gecikmiş/yaklaşan/kaydı yok/tamam
+  sayılarıyla · bina süzgeci · durum düğmeleri [kırmızı varsa varsayılan "Gecikmiş / yeni gelen"] · oda başlığı satırı = o odanın
+  tümünü seç · altta yapışkan form: tarih + yapan [önceki yapanlar önerilir] + açıklama → "Seçilenlere değişim yapıldı (N)" ·
+  **kontrol listesi Excel'i** [boş "Yapıldı ✓" sütunlu — temizlik ekibine basılır] · yazdır) · **Değişim geçmişi** (tarih/tür/bina/
+  arama, yanlış kayıt silme [değiştirme], Excel) · **Değişim türleri** (ekle/düzenle `_periyot_form.php` [doğrudan açılırsa 404];
+  1–3650 gün, mükerrer ad engeli; kaydı olan tür silinmez PASİFE alınır). Oda kartında (`oda.php`) "Periyodik değişim" kartı
+  (yatak × tür matrisi + kayıt formu + son 15 değişim). Pano KPI **"Değişimi gecikmiş"**. Yetki: kayıt giriş VEYA değiştirme;
+  tanım ve silme değiştirme. Mükerrer merkezi / kişi silme `kamp_periyot_kayit.kisi_id`'yi taşır / NULL yapar.
+  Test (`kt/t8.py` 38 sağlama: seed bir kez · yeni gelen 20 gün · boş yatak · gecikti 8 gün · yaklaşıyor 5 gün · kişi kopyası
+  yalnız o gün yatan · tekrar atlandı · ileri tarih / boş seçim / izleyici reddi · oda kapsamı ve tür süzgeci · tanım doğrulama ·
+  pasife alma · geçmiş/Excel/silme · kroki/oda kartı/pano) + Playwright (`pw5.js`/`pw6.js`: anahtar ve seçici kalıcı, oda penceresi
+  boş gönderim uyarısı → 2 yatak kaydı, dolu yatak penceresi, grup seçimi 16; JS hatası yok); t2–t7 regresyon yeşil, 58 betik temiz.
   İşlem günlüğü `kamp_audit()` → ANA DB `audit_log` (kamp DB'sinde audit_log yok). Menüde "Kamp Yapısı" yalnız `duzenle`.
   Mükerrer merkezi: `MK_KURAL['kamp']` firmalar + kişiler. Test (scratchpad `kt/`, gerçek MariaDB `kamptest` + `php -S` router
   `srv.php` [X-U başlığıyla kullanıcı] + Playwright [CDN npm paketlerinden]): `t2.py` yapı 10 · `t3.py` konaklama/yetki/icmal 23 ·

@@ -350,6 +350,42 @@ function kamp_semasi_kur(PDO $pdo): void
         KEY ix_kamp_zy_kisi (kisi_id)
     ) $E");
 
+    // Periyodik değişim (nevresim, yorgan, yastık, şilte…): tanım + yapılan değişim defteri.
+    // Varsayılan tanımlar tablo İLK KEZ açılırken bir kez eklenir (kullanıcı silerse geri gelmez).
+    $perVardi = (bool)$pdo->query("SHOW TABLES LIKE 'kamp_periyot'")->fetchColumn();
+    $pdo->exec("CREATE TABLE IF NOT EXISTS kamp_periyot (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ad VARCHAR(120) NOT NULL,
+        kapsam VARCHAR(10) NOT NULL DEFAULT 'yatak' COMMENT 'yatak | oda',
+        gun INT NOT NULL DEFAULT 7 COMMENT 'kaç günde bir',
+        uyari_gun INT NOT NULL DEFAULT 2 COMMENT 'son kaç gün kala yaklaşıyor sayılır',
+        yeni_giriste TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'yatağa yeni kişi gelince de yenilenmeli',
+        oda_tur VARCHAR(120) NULL COMMENT 'oda kapsamında hangi oda türleri (virgüllü; boş = yatak odaları)',
+        aciklama VARCHAR(255) NULL,
+        sira INT NOT NULL DEFAULT 0,
+        aktif TINYINT(1) NOT NULL DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) $E");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS kamp_periyot_kayit (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        periyot_id INT NOT NULL,
+        yatak_id INT NULL,
+        oda_id INT NULL,
+        tarih DATE NOT NULL,
+        kisi_id INT NULL COMMENT 'o gün yatakta kalan kişi (anlık kopya)',
+        yapan VARCHAR(120) NULL,
+        aciklama VARCHAR(255) NULL,
+        kullanici_id INT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        KEY ix_kamp_pk_yatak (periyot_id, yatak_id, tarih),
+        KEY ix_kamp_pk_oda (periyot_id, oda_id, tarih),
+        KEY ix_kamp_pk_tarih (tarih)
+    ) $E");
+    if (!$perVardi) {
+        $ins = $pdo->prepare("INSERT INTO kamp_periyot (ad, kapsam, gun, uyari_gun, yeni_giriste, sira) VALUES (?,?,?,?,?,?)");
+        foreach (KAMP_PERIYOT_SEED as $i => $r) $ins->execute([$r[0], $r[1], $r[2], $r[3], $r[4], $i + 1]);
+    }
+
     // Personel Takip köprüsü: kişinin PTS'deki kaydının id'si (yalnız EŞLEŞME anahtarı — FK değil,
     // başka DB'dedir). Runtime ALTER: eski kurulumlar da alır.
     try {
@@ -970,7 +1006,8 @@ function kamp_yatak_ekle(PDO $pdo, int $odaId, int $adet, string $tur = 'tek'): 
 function kamp_yatak_sayisi_ayarla(PDO $pdo, int $odaId, int $hedef, string $tur = 'tek'): array
 {
     $hedef = max(0, min(60, $hedef));
-    $st = $pdo->prepare("SELECT y.*, (SELECT COUNT(*) FROM kamp_konaklama k WHERE k.yatak_id=y.id) AS gecmis,
+    $st = $pdo->prepare("SELECT y.*, (SELECT COUNT(*) FROM kamp_konaklama k WHERE k.yatak_id=y.id)
+                                     + (SELECT COUNT(*) FROM kamp_periyot_kayit pk WHERE pk.yatak_id=y.id) AS gecmis,
                                 (SELECT COUNT(*) FROM kamp_konaklama k WHERE k.yatak_id=y.id AND k.cikis IS NULL) AS dolu
                            FROM kamp_yataklar y WHERE y.oda_id=? AND y.aktif=1 ORDER BY y.sira DESC, y.id DESC");
     $st->execute([$odaId]);
@@ -1339,6 +1376,194 @@ function kamp_ziyaret_dosya_sil(?string $url): void
     $yol = dirname(__DIR__) . '/' . $url;
     if (is_file($yol)) @unlink($yol);
     @rmdir(dirname($yol));
+}
+
+// ─────────────────────────────────────────────────────────────── periyodik değişim
+/*
+ * Nevresim, yorgan, yastık, şilte gibi kalemlerin belirli aralıkla değişimi / yıkanması.
+ *  • TANIM (kamp_periyot): ad · kapsam (her yatak / her oda) · kaç günde bir · kaç gün kala "yaklaşıyor" ·
+ *    "yeni gelen kişiye de yenilenmeli" (nevresim: yatağa biri yerleşince önceki kişinin nevresimi kalmasın).
+ *  • KAYIT (kamp_periyot_kayit): hangi yatağa / odaya, hangi tarihte, kim yaptı; o gün yatakta kalan kişi kopyalanır.
+ *  • DURUM her yatak için son kayıttan HESAPLANIR (saklanmaz):
+ *      yeni       — yeni_giriste tanımında yatağa kişi geldi ama gelişinden sonra değişim yazılmadı (kırmızı)
+ *      gecikti    — son değişim + gün < bugün (kırmızı)
+ *      yaklasiyor — uyarı günü içinde (sarı) · tamam (yeşil)
+ *      yok        — bu yatak için hiç kayıt yok (gri; ilk turda bir kez "yapıldı" işaretlenince oturur)
+ *      bos        — yeni_giriste tanımında boş yatak: kimse yatmıyor, gelene yapılacak
+ *  ⚠ Değişim kaydı demirbaş ADEDİNİ değiştirmez — yeni yorgan alındıysa demirbaş kaydı ayrıca düzeltilir.
+ */
+const KAMP_PERIYOT_KAPSAM = ['yatak' => 'Her yatak için', 'oda' => 'Her oda için'];
+/** Varsayılan tanımlar: [ad, kapsam, gün, uyarı günü, yeni gelende] */
+const KAMP_PERIYOT_SEED = [
+    ['Nevresim takımı (çarşaf, yastık kılıfı) değişimi', 'yatak', 7,   2,  1],
+    ['Yorgan / battaniye yıkama-değişim',                 'yatak', 90,  7,  0],
+    ['Yastık değişimi',                                    'yatak', 365, 15, 0],
+    ['Yatak (şilte) değişimi',                             'yatak', 730, 30, 0],
+];
+/** Durum: anahtar => [ad, renk, ağırlık (büyük = daha kötü)] */
+const KAMP_PER_DURUM = [
+    'yeni'       => ['Yeni gelene yapılmadı', 'danger',            5],
+    'gecikti'    => ['Gecikti',               'danger',            4],
+    'yaklasiyor' => ['Yaklaşıyor',            'warning text-dark', 3],
+    'yok'        => ['Kaydı yok',             'secondary',         2],
+    'tamam'      => ['Zamanında',             'success',           1],
+    'bos'        => ['Boş yatak',             'light text-dark border', 0],
+];
+
+function kamp_per_rozet(string $durum, ?int $kalan = null): string
+{
+    $d = KAMP_PER_DURUM[$durum] ?? [$durum, 'secondary'];
+    $ek = '';
+    if ($kalan !== null && in_array($durum, ['gecikti', 'yeni'], true)) $ek = ' · ' . abs($kalan) . ' gün';
+    elseif ($kalan !== null && in_array($durum, ['yaklasiyor', 'tamam'], true)) $ek = ' · ' . $kalan . ' gün kaldı';
+    return '<span class="badge bg-' . $d[1] . '">' . htmlspecialchars($d[0] . $ek) . '</span>';
+}
+
+function kamp_periyotlar(PDO $pdo, bool $pasifDahil = false): array
+{
+    $o = [];
+    foreach ($pdo->query("SELECT * FROM kamp_periyot" . ($pasifDahil ? '' : ' WHERE aktif=1') . " ORDER BY sira, id") as $r) $o[(int)$r['id']] = $r;
+    return $o;
+}
+
+/** Oda kapsamlı tanımın geçerli olduğu oda türleri. */
+function kamp_per_oda_turleri(array $per): array
+{
+    $t = array_values(array_filter(array_map('trim', explode(',', (string)$per['oda_tur'])), fn($x) => isset(KAMP_ODA_TUR[$x])));
+    return $t ?: array_keys(array_filter(KAMP_ODA_TUR, fn($v) => $v[2]));
+}
+
+/** Tek hedefin durumu → [durum, sonraki tarih|null, kalan gün|null] */
+function kamp_per_hesap(array $per, ?string $son, bool $yatak, bool $dolu, ?string $giris): array
+{
+    $bugun = date('Y-m-d');
+    if ($yatak && (int)$per['yeni_giriste']) {
+        if (!$dolu) return ['bos', null, null];
+        if (!$son || $son < $giris) return ['yeni', $giris, -kamp_gun_fark($giris, $bugun)];
+    }
+    if (!$son) return ['yok', null, null];
+    $sonraki = date('Y-m-d', strtotime($son . ' +' . max(1, (int)$per['gun']) . ' day'));
+    $kalan = kamp_gun_fark($bugun, $sonraki);
+    return [$kalan < 0 ? 'gecikti' : ($kalan <= (int)$per['uyari_gun'] ? 'yaklasiyor' : 'tamam'), $sonraki, $kalan];
+}
+
+/**
+ * Tüm hedeflerin (yatak / oda) periyodik durumu.
+ * Döner: satır listesi — periyot_id, kapsam, yatak_id, oda_id, bina_id, bina_ad, kat, oda_ad, yatak_no, kisi_id, kisi_ad,
+ *        giris, son, sonraki, kalan, durum.
+ */
+function kamp_periyot_durum(PDO $pdo, ?int $binaId = null, ?int $periyotId = null, ?int $odaId = null): array
+{
+    $per = kamp_periyotlar($pdo);
+    if ($periyotId) $per = array_intersect_key($per, [$periyotId => 1]);
+    if (!$per) return [];
+    // son kayıtlar
+    $son = [];
+    foreach ($pdo->query("SELECT periyot_id, yatak_id, oda_id, MAX(tarih) t FROM kamp_periyot_kayit GROUP BY periyot_id, yatak_id, oda_id") as $r) {
+        $pid = (int)$r['periyot_id'];
+        if (!isset($per[$pid])) continue;
+        $k = $per[$pid]['kapsam'] === 'oda' ? 'o' . (int)$r['oda_id'] : 'y' . (int)$r['yatak_id'];
+        if (!isset($son[$pid][$k]) || $r['t'] > $son[$pid][$k]) $son[$pid][$k] = $r['t'];
+    }
+    $w = ['o.aktif=1', 'b.aktif=1']; $p = [];
+    if ($binaId) { $w[] = 'b.id=?'; $p[] = $binaId; }
+    if ($odaId)  { $w[] = 'o.id=?'; $p[] = $odaId; }
+    $yatakVar = (bool)array_filter($per, fn($x) => $x['kapsam'] !== 'oda');
+    $odaVar   = (bool)array_filter($per, fn($x) => $x['kapsam'] === 'oda');
+    $yataklar = $odalar = [];
+    if ($yatakVar) {
+        $st = $pdo->prepare("SELECT y.id AS yatak_id, y.no AS yatak_no, o.id AS oda_id, o.ad AS oda_ad, o.kat, o.unite, b.id AS bina_id, b.ad AS bina_ad,
+                                    k.kisi_id, k.giris, p.ad AS k_ad, p.soyad AS k_soyad
+                               FROM kamp_yataklar y JOIN kamp_odalar o ON o.id=y.oda_id JOIN kamp_binalar b ON b.id=o.bina_id
+                               LEFT JOIN kamp_konaklama k ON k.yatak_id=y.id AND k.cikis IS NULL
+                               LEFT JOIN kamp_kisiler p ON p.id=k.kisi_id
+                              WHERE y.aktif=1 AND " . kamp_yatakli_sql('o') . ' AND ' . implode(' AND ', $w) . "
+                              ORDER BY b.sira, b.ad, o.kat, o.sira, o.ad, y.sira, y.id");
+        $st->execute($p); $yataklar = $st->fetchAll();
+    }
+    if ($odaVar) {
+        $st = $pdo->prepare("SELECT o.id AS oda_id, o.ad AS oda_ad, o.kat, o.unite, o.tur AS oda_tur, b.id AS bina_id, b.ad AS bina_ad
+                               FROM kamp_odalar o JOIN kamp_binalar b ON b.id=o.bina_id WHERE " . implode(' AND ', $w) . "
+                              ORDER BY b.sira, b.ad, o.kat, o.sira, o.ad");
+        $st->execute($p); $odalar = $st->fetchAll();
+    }
+    $out = [];
+    foreach ($per as $pid => $pr) {
+        if ($pr['kapsam'] === 'oda') {
+            $turler = kamp_per_oda_turleri($pr);
+            foreach ($odalar as $o) {
+                if (!in_array($o['oda_tur'], $turler, true)) continue;
+                $s = $son[$pid]['o' . $o['oda_id']] ?? null;
+                [$d, $nx, $kl] = kamp_per_hesap($pr, $s, false, false, null);
+                $out[] = $o + ['periyot_id' => $pid, 'kapsam' => 'oda', 'yatak_id' => null, 'yatak_no' => null, 'kisi_id' => null, 'kisi_ad' => '',
+                               'giris' => null, 'son' => $s, 'sonraki' => $nx, 'kalan' => $kl, 'durum' => $d];
+            }
+        } else {
+            foreach ($yataklar as $y) {
+                $s = $son[$pid]['y' . $y['yatak_id']] ?? null;
+                [$d, $nx, $kl] = kamp_per_hesap($pr, $s, true, (bool)$y['kisi_id'], $y['giris']);
+                $out[] = $y + ['periyot_id' => $pid, 'kapsam' => 'yatak', 'kisi_ad' => trim(($y['k_ad'] ?? '') . ' ' . ($y['k_soyad'] ?? '')),
+                               'son' => $s, 'sonraki' => $nx, 'kalan' => $kl, 'durum' => $d];
+            }
+        }
+    }
+    return $out;
+}
+
+/** Periyot başına durum sayaçları (+ 'toplam_kirmizi' = gecikti + yeni, tüm periyotlar). */
+function kamp_periyot_ozet(PDO $pdo, ?array $durum = null): array
+{
+    $o = ['per' => [], 'toplam_kirmizi' => 0, 'toplam_sari' => 0];
+    try {
+        foreach ($durum ?? kamp_periyot_durum($pdo) as $r) {
+            $pid = (int)$r['periyot_id'];
+            $o['per'][$pid] ??= array_fill_keys(array_keys(KAMP_PER_DURUM), 0);
+            $o['per'][$pid][$r['durum']]++;
+            if (in_array($r['durum'], ['gecikti', 'yeni'], true)) $o['toplam_kirmizi']++;
+            if ($r['durum'] === 'yaklasiyor') $o['toplam_sari']++;
+        }
+    } catch (Throwable $e) { /* tablo yoksa pano yine açılır */ }
+    return $o;
+}
+
+/**
+ * Değişim(ler)i kaydeder. $hedef: kapsam yatak ise yatak id'leri, oda ise oda id'leri.
+ * Aynı periyot + hedef + tarih zaten varsa atlanır (çift tıklama / tekrar gönderim). Döner: [eklenen, atlanan].
+ */
+function kamp_periyot_kaydet(PDO $pdo, int $periyotId, array $hedef, string $tarih, string $yapan = '', string $aciklama = '', ?int $uid = null): array
+{
+    $per = kamp_periyotlar($pdo, true)[$periyotId] ?? null;
+    if (!$per) throw new RuntimeException('Değişim türü bulunamadı.');
+    $t = kamp_tarih($tarih);
+    if (!$t) throw new RuntimeException('Tarih geçersiz.');
+    if ($t > date('Y-m-d')) throw new RuntimeException('İleri tarihli değişim kaydedilemez.');
+    $hedef = array_values(array_unique(array_filter(array_map('intval', $hedef))));
+    if (!$hedef) throw new RuntimeException(($per['kapsam'] === 'oda' ? 'Oda' : 'Yatak') . ' seçin.');
+    $yapan = mb_substr(kamp_buyuk($yapan), 0, 120, 'UTF-8');
+    $aciklama = mb_substr(trim($aciklama), 0, 255, 'UTF-8');
+    $oda = $per['kapsam'] === 'oda';
+    $bul = $oda ? $pdo->prepare("SELECT id AS oda_id FROM kamp_odalar WHERE id=?")
+                : $pdo->prepare("SELECT y.id, y.oda_id FROM kamp_yataklar y WHERE y.id=?");
+    $kisi = $pdo->prepare("SELECT kisi_id FROM kamp_konaklama WHERE yatak_id=? AND giris<=? AND (cikis IS NULL OR cikis>?) ORDER BY giris DESC LIMIT 1");
+    $var = $pdo->prepare($oda ? "SELECT 1 FROM kamp_periyot_kayit WHERE periyot_id=? AND oda_id=? AND tarih=?"
+                               : "SELECT 1 FROM kamp_periyot_kayit WHERE periyot_id=? AND yatak_id=? AND tarih=?");
+    $ins = $pdo->prepare("INSERT INTO kamp_periyot_kayit (periyot_id, yatak_id, oda_id, tarih, kisi_id, yapan, aciklama, kullanici_id) VALUES (?,?,?,?,?,?,?,?)");
+    $e = $a = 0;
+    $pdo->beginTransaction();
+    try {
+        foreach ($hedef as $h) {
+            $bul->execute([$h]); $r = $bul->fetch();
+            if (!$r) { $a++; continue; }
+            $var->execute([$periyotId, $h, $t]);
+            if ($var->fetchColumn()) { $a++; continue; }
+            $kid = null;
+            if (!$oda) { $kisi->execute([$h, $t, $t]); $kid = $kisi->fetchColumn() ?: null; }
+            $ins->execute([$periyotId, $oda ? null : $h, (int)$r['oda_id'], $t, $kid, $yapan ?: null, $aciklama ?: null, $uid]);
+            $e++;
+        }
+        $pdo->commit();
+    } catch (Throwable $ex) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $ex; }
+    return [$e, $a];
 }
 
 // ─────────────────────────────────────────────────────────────── Personel Takip köprüsü

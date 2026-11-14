@@ -22,6 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['islem'] ?? '') === 'sil') 
         $k = kamp_kisi_bul($pdoKamp, $id);
         $pdoKamp->prepare("DELETE FROM kamp_kisiler WHERE id=?")->execute([$id]);
         $pdoKamp->prepare("UPDATE kamp_ziyaretler SET kisi_id=NULL WHERE kisi_id=?")->execute([$id]);   // ad kopyası ziyaret kaydında kalır
+        $pdoKamp->prepare("UPDATE kamp_periyot_kayit SET kisi_id=NULL WHERE kisi_id=?")->execute([$id]);
         kamp_audit('kamp_kisiler', $id, 'DELETE', $k);
         flash('success', 'Kişi silindi.');
     } catch (Throwable $e) { flash('error', $e->getMessage()); }

@@ -51,6 +51,12 @@ $agac = kamp_yapi($pdoKamp, (int)$oda['bina_id'], true);
 $odaY = $agac[(int)$oda['bina_id']][(int)$oda['kat']][$id] ?? ($oda + ['yataklar' => []]);
 $say  = kamp_oda_sayac($odaY);
 $demirbas = kamp_oda_demirbas($pdoKamp, $id);
+$perler = kamp_periyotlar($pdoKamp);
+$perDur = [];   // [periyot_id][yatak_id | 'oda'] => satır
+foreach (kamp_periyot_durum($pdoKamp, null, null, $id) as $r) $perDur[(int)$r['periyot_id']][$r['kapsam'] === 'oda' ? 'oda' : (int)$r['yatak_id']] = $r;
+$perSon = $pdoKamp->prepare("SELECT k.tarih, k.yapan, pr.ad, y.no FROM kamp_periyot_kayit k JOIN kamp_periyot pr ON pr.id=k.periyot_id
+                               LEFT JOIN kamp_yataklar y ON y.id=k.yatak_id WHERE k.oda_id=? ORDER BY k.tarih DESC, k.id DESC LIMIT 15");
+$perSon->execute([$id]); $perSon = $perSon->fetchAll();
 $gecmis = $pdoKamp->prepare("SELECT k.*, p.ad, p.soyad, f.ad AS firma_ad, y.no AS yatak_no
                                FROM kamp_konaklama k JOIN kamp_kisiler p ON p.id=k.kisi_id
                                LEFT JOIN kamp_firmalar f ON f.id=COALESCE(k.firma_id,p.firma_id)
@@ -147,6 +153,42 @@ require __DIR__ . '/../includes/header.php';
         </tbody></table></div>
     </div>
 
+    <?php if ($perDur): $yp = array_filter($perler, fn($x) => $x['kapsam'] !== 'oda' && isset($perDur[$x['id']])); ?>
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-white d-flex align-items-center"><strong><i class="bi bi-arrow-repeat me-1"></i>Periyodik değişim</strong>
+        <a href="periyodik.php" class="ms-auto small">tümü →</a></div>
+      <div class="table-responsive"><table class="table table-sm align-middle mb-0" style="font-size:.82rem">
+        <?php if ($yp): ?>
+        <thead class="table-light"><tr><th>Yatak</th><?php foreach ($yp as $pr): ?><th><?= h($pr['ad']) ?></th><?php endforeach; ?></tr></thead><tbody>
+        <?php foreach ($odaY['yataklar'] as $y): if (!(int)$y['aktif']) continue; ?>
+          <tr><td class="text-nowrap"><strong><?= h($y['no']) ?></strong></td>
+            <?php foreach ($yp as $pr): $r = $perDur[$pr['id']][(int)$y['id']] ?? null; ?>
+            <td title="<?= h($r && $r['son'] ? 'son değişim ' . kamp_tarih_yaz($r['son']) : 'kayıt yok') ?>"><?= $r ? kamp_per_rozet($r['durum'], $r['kalan']) : '—' ?></td><?php endforeach; ?></tr>
+        <?php endforeach; ?></tbody>
+        <?php endif; ?>
+        <?php foreach ($perler as $pr): if ($pr['kapsam'] !== 'oda' || !isset($perDur[$pr['id']]['oda'])) continue; $r = $perDur[$pr['id']]['oda']; ?>
+          <tr><td colspan="<?= count($yp) + 1 ?>"><?= h($pr['ad']) ?> <span class="float-end"><?= kamp_per_rozet($r['durum'], $r['kalan']) ?></span></td></tr>
+        <?php endforeach; ?>
+      </table></div>
+      <?php if ($yaz): ?>
+      <form method="post" action="periyodik.php" class="card-body border-top py-2 row g-2 align-items-end">
+        <input type="hidden" name="islem" value="kaydet"><input type="hidden" name="geri" value="oda.php?id=<?= $id ?>">
+        <div class="col-12 small fw-semibold">Değişim yapıldı olarak kaydet</div>
+        <div class="col-md-5"><select name="periyot_id" class="form-select form-select-sm js-oper"><?php foreach ($perler as $pr): if (!isset($perDur[$pr['id']])) continue; ?>
+          <option value="<?= (int)$pr['id'] ?>" data-kapsam="<?= h($pr['kapsam']) ?>"><?= h($pr['ad']) ?></option><?php endforeach; ?></select></div>
+        <div class="col-md-3"><input type="date" name="tarih" class="form-control form-control-sm" value="<?= date('Y-m-d') ?>" max="<?= date('Y-m-d') ?>" required></div>
+        <div class="col-md-4"><input name="yapan" class="form-control form-control-sm" placeholder="yapan" maxlength="120"></div>
+        <div class="col-12 js-oyatak"><?php foreach ($odaY['yataklar'] as $y): if (!(int)$y['aktif']) continue; ?>
+          <label class="form-check form-check-inline small mb-0"><input class="form-check-input" type="checkbox" name="hedef[]" value="<?= (int)$y['id'] ?>" checked><?= h($y['no']) ?></label><?php endforeach; ?></div>
+        <input type="hidden" name="hedef[]" value="<?= $id ?>" class="js-ooda" disabled>
+        <div class="col-12"><button class="btn btn-success btn-sm"><i class="bi bi-check2 me-1"></i>Kaydet</button></div>
+      </form>
+      <?php endif; ?>
+      <?php if ($perSon): ?><div class="card-body border-top py-2 small"><div class="text-muted mb-1">Son değişimler</div>
+        <?php foreach ($perSon as $k): ?><div><?= h(kamp_tarih_yaz($k['tarih'])) ?> · <?= h($k['ad']) ?><?= $k['no'] ? ' · ' . h($k['no']) : '' ?><?= $k['yapan'] ? ' <span class="text-muted">(' . h($k['yapan']) . ')</span>' : '' ?></div><?php endforeach; ?></div><?php endif; ?>
+    </div>
+    <?php endif; ?>
+
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-header bg-white"><strong>Bu odada kalanlar (geçmiş)</strong></div>
       <div class="table-responsive" style="max-height:420px;overflow:auto"><table class="table table-sm mb-0" style="font-size:.84rem">
@@ -162,4 +204,13 @@ require __DIR__ . '/../includes/header.php';
     </div>
   </div>
 </div>
+<script>
+document.querySelectorAll('.js-oper').forEach(function(s){
+  function f(){ var oda = s.options[s.selectedIndex] && s.options[s.selectedIndex].dataset.kapsam === 'oda', fm = s.form;
+    fm.querySelector('.js-oyatak').classList.toggle('d-none', oda);
+    fm.querySelectorAll('.js-oyatak input').forEach(function(c){ c.disabled = oda; });
+    fm.querySelector('.js-ooda').disabled = !oda; }
+  s.addEventListener('change', f); f();
+});
+</script>
 <?php require __DIR__ . '/../includes/footer.php'; ?>

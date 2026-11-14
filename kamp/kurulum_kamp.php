@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['islem'] ?? '') === 'kur') 
 $ayri = defined('KAMP_DB_NAME') && KAMP_DB_NAME !== '';
 $tablo = [];
 foreach (['kamp_binalar' => 'Binalar', 'kamp_odalar' => 'Odalar', 'kamp_yataklar' => 'Yataklar', 'kamp_firmalar' => 'Firmalar',
-          'kamp_kisiler' => 'Kişiler', 'kamp_konaklama' => 'Konaklama defteri', 'kamp_demirbas' => 'Demirbaşlar', 'kamp_demirbas_hareket' => 'Demirbaş durum geçmişi', 'kamp_ziyaretler' => 'Ziyaretçi defteri'] as $t => $ad) {
+          'kamp_kisiler' => 'Kişiler', 'kamp_konaklama' => 'Konaklama defteri', 'kamp_demirbas' => 'Demirbaşlar', 'kamp_demirbas_hareket' => 'Demirbaş durum geçmişi', 'kamp_ziyaretler' => 'Ziyaretçi defteri', 'kamp_periyot' => 'Periyodik değişim türleri', 'kamp_periyot_kayit' => 'Periyodik değişim kayıtları'] as $t => $ad) {
     try { $n = (int)$pdoKamp->query("SELECT COUNT(*) FROM $t")->fetchColumn(); $var = true; } catch (Throwable $e) { $n = 0; $var = false; }
     $tablo[$t] = [$ad, $var, $n];
 }

@@ -37,6 +37,26 @@ $dbSorun = [];
 foreach ($pdoKamp->query("SELECT oda_id, COUNT(*) n FROM kamp_demirbas WHERE durum IN ('arizali','bakimda','kayip') AND oda_id IS NOT NULL GROUP BY oda_id") as $r)
     $dbSorun[(int)$r['oda_id']] = (int)$r['n'];
 
+// Oda demirbaşları (krokide liste + oda penceresi) ve periyodik değişim durumu (yatak noktası)
+$dbOda = [];
+foreach ($pdoKamp->query("SELECT oda_id, ad, adet, durum FROM kamp_demirbas WHERE oda_id IS NOT NULL ORDER BY ad") as $r)
+    $dbOda[(int)$r['oda_id']][] = [$r['ad'], (int)$r['adet'], $r['durum']];
+$perler = kamp_periyotlar($pdoKamp);
+$perYatak = $perOda = [];
+foreach (kamp_periyot_durum($pdoKamp, $binaSec ?: null) as $r) {
+    $v = [$r['durum'], $r['kalan'], $r['son'] ? kamp_tarih_yaz($r['son']) : ''];
+    if ($r['kapsam'] === 'oda') $perOda[(int)$r['oda_id']][(int)$r['periyot_id']] = $v;
+    else $perYatak[(int)$r['yatak_id']][(int)$r['periyot_id']] = $v;
+}
+/** En kötü durum (nokta rengi): kirmizi | sari | '' */
+function ky_en_kotu(array $per): string
+{
+    $k = '';
+    foreach ($per as [$d]) { if (in_array($d, ['gecikti', 'yeni'], true)) return 'kirmizi'; if ($d === 'yaklasiyor') $k = 'sari'; }
+    return $k;
+}
+$kyOda = [];   // oda penceresi verisi (JS)
+
 $geri = 'yerlesim.php' . ($binaSec ? '?bina=' . $binaSec : '');
 $top  = ['yatak' => 0, 'dolu' => 0];
 foreach ($doluluk as $id => $d) if (!$binaSec || $binaSec === $id) { $top['yatak'] += $d['yatak']; $top['dolu'] += $d['dolu']; }
@@ -44,6 +64,12 @@ foreach ($doluluk as $id => $d) if (!$binaSec || $binaSec === $id) { $top['yatak
 /** Bir odanın kartını çizer. */
 function ky_oda(array $o, array $dbSorun, bool $yaz): string
 {
+    global $dbOda, $perYatak, $perOda, $kyOda, $binalar;
+    $oid = (int)$o['id'];
+    $db  = $dbOda[$oid] ?? [];
+    $kyOda[$oid] = ['ad' => $o['ad'], 'et' => ($binalar[(int)$o['bina_id']]['ad'] ?? '') . ' · ' . kamp_kat_ad((int)$o['kat']), 'db' => $db,
+                    'yatakli' => kamp_oda_yatakli($o['tur']), 'oper' => (object)($perOda[$oid] ?? []), 'yataklar' => []];
+    $odaKotu = ky_en_kotu($perOda[$oid] ?? []);
     $tur = KAMP_ODA_TUR[$o['tur']] ?? KAMP_ODA_TUR['diger'];
     $sy  = kamp_oda_sayac($o);
     $h   = '<div class="ky-oda ky-' . htmlspecialchars($o['tur']) . (kamp_oda_yatakli($o['tur']) ? '' : ' ky-yataksiz') . '">';
@@ -53,9 +79,19 @@ function ky_oda(array $o, array $dbSorun, bool $yaz): string
          . '<i class="bi ' . $tur[1] . ' me-1"></i>' . htmlspecialchars($gor) . '</a>';
     if (!empty($dbSorun[(int)$o['id']]))
         $h .= ' <a href="demirbas.php?oda=' . (int)$o['id'] . '" class="badge bg-danger text-decoration-none" title="Arızalı / bakımda / kayıp demirbaş"><i class="bi bi-tools"></i> ' . $dbSorun[(int)$o['id']] . '</a>';
+    // Demirbaş + periyodik değişim penceresi düğmesi
+    $adet = array_sum(array_column($db, 1));
+    foreach ($o['yataklar'] as $y) if ((int)$y['aktif']) { $k = ky_en_kotu($perYatak[(int)$y['id']] ?? []); if ($k === 'kirmizi' || !$odaKotu) $odaKotu = $k ?: $odaKotu; }
+    $h .= '<button type="button" class="ky-odabtn" data-oda="' . $oid . '" title="Demirbaşlar ve periyodik değişim">'
+        . '<i class="bi bi-lamp"></i>' . ($adet ? '<span>' . $adet . '</span>' : '')
+        . ($odaKotu ? '<i class="bi bi-arrow-repeat ky-pdi-' . $odaKotu . '"></i>' : '') . '</button>';
     if (kamp_oda_yatakli($o['tur']) && $sy['yatak'])
         $h .= '<span class="ky-say ' . ($sy['dolu'] >= $sy['yatak'] ? 'tam' : ($sy['dolu'] ? 'kismi' : 'bos')) . '">' . $sy['dolu'] . '/' . $sy['yatak'] . '</span>';
     $h  .= '</div>';
+    // Krokide demirbaş listesi ("Demirbaşlar" anahtarıyla görünür)
+    $h .= '<div class="ky-dbl">' . ($db ? implode(' · ', array_map(fn($d) => '<span class="' . (KAMP_DB_DURUM[$d[2]][2] ?? true ? '' : 'text-danger fw-semibold') . '">'
+            . htmlspecialchars($d[0]) . ($d[1] > 1 ? ' ×' . $d[1] : '') . (KAMP_DB_DURUM[$d[2]][2] ?? true ? '' : ' (' . htmlspecialchars(KAMP_DB_DURUM[$d[2]][0]) . ')') . '</span>', $db))
+            : '<span class="text-muted">demirbaş kaydı yok</span>') . '</div>';
     if (!kamp_oda_yatakli($o['tur'])) {
         $h .= '<div class="ky-tur"><i class="bi ' . $tur[1] . '"></i> ' . htmlspecialchars($tur[0]) . '</div>';
     } elseif (!$o['yataklar']) {
@@ -73,6 +109,10 @@ function ky_oda(array $o, array $dbSorun, bool $yaz): string
             $h .= $rk[0] === 'r' ? '<div class="ky-ranza-grup" title="Ranza ' . htmlspecialchars(substr($rk, 1)) . '">' : '';
         foreach ($gy as $y) {
             $et = $o['ad'] . ' › ' . $y['no'];
+            $yp = $perYatak[(int)$y['id']] ?? [];
+            if ((int)$y['aktif']) $kyOda[$oid]['yataklar'][] = [(int)$y['id'], $y['no'], trim(($y['kisi_ad'] ?? '') . ' ' . ($y['kisi_soyad'] ?? '')), (object)$yp];
+            $pd = ' data-oda="' . $oid . '" data-yid="' . (int)$y['id'] . '" data-per="' . htmlspecialchars(json_encode((object)$yp)) . '"';
+            $nokta = ($k = ky_en_kotu($yp)) ? '<i class="ky-pd ky-pd-' . $k . '"></i>' : '';
             if (!(int)$y['aktif']) {
                 $h .= '<span class="ky ky-disi" title="Kullanım dışı yatak' . ($y['aciklama'] ? ': ' . htmlspecialchars($y['aciklama']) : '') . '">'
                     . '<b>' . htmlspecialchars($y['no']) . '</b><small>kullanım dışı</small></span>';
@@ -89,14 +129,14 @@ function ky_oda(array $o, array $dbSorun, bool $yaz): string
                     . ' data-gorev="' . htmlspecialchars((string)$y['gorev']) . '" data-tel="' . htmlspecialchars((string)$y['telefon']) . '"'
                     . ' data-giris="' . htmlspecialchars(kamp_tarih_yaz($y['giris'])) . '" data-gun="' . $gun . '"'
                     . ' data-et="' . htmlspecialchars($et) . '" data-ara="' . htmlspecialchars($ara) . '"'
-                    . ' title="' . htmlspecialchars($ad . ' — ' . ($y['firma_ad'] ?: 'firma yok') . ' · ' . kamp_tarih_yaz($y['giris']) . ' (' . $gun . ' gece)') . '">'
-                    . '<b>' . htmlspecialchars($y['no']) . '</b><span class="ky-ad">' . htmlspecialchars($ad) . '</span>'
+                    . $pd . ' title="' . htmlspecialchars($ad . ' — ' . ($y['firma_ad'] ?: 'firma yok') . ' · ' . kamp_tarih_yaz($y['giris']) . ' (' . $gun . ' gece)') . '">'
+                    . $nokta . '<b>' . htmlspecialchars($y['no']) . '</b><span class="ky-ad">' . htmlspecialchars($ad) . '</span>'
                     . '<small>' . htmlspecialchars((string)($y['firma_ad'] ?: '—')) . '</small></button>';
             } else {
                 $h .= '<button type="button" class="ky ky-bos' . $ranza . '"' . ($yaz ? '' : ' disabled')
-                    . ' data-yatak="' . (int)$y['id'] . '" data-et="' . htmlspecialchars($et) . '" data-ara=""'
+                    . ' data-yatak="' . (int)$y['id'] . '" data-et="' . htmlspecialchars($et) . '" data-ara=""' . $pd
                     . ' title="Boş yatak' . ($yaz ? ' — yerleştirmek için tıklayın' : '') . '">'
-                    . '<b>' . htmlspecialchars($y['no']) . '</b><span class="ky-ad">boş</span>'
+                    . $nokta . '<b>' . htmlspecialchars($y['no']) . '</b><span class="ky-ad">boş</span>'
                     . '<small>' . htmlspecialchars(KAMP_YATAK_TUR[$y['tur']] ?? '') . '</small></button>';
             }
         }
@@ -146,6 +186,16 @@ require __DIR__ . '/../includes/header.php';
 .ky-soluk{opacity:.18}
 .ky-vurgu{outline:3px solid var(--bs-danger);outline-offset:1px}
 .ky-ara-sonuc .list-group-item{cursor:pointer}
+.ky{position:relative}
+.ky-pd{position:absolute;top:3px;right:3px;width:8px;height:8px;border-radius:50%}
+.ky-pd-kirmizi{background:var(--bs-danger);box-shadow:0 0 0 2px rgba(var(--bs-danger-rgb),.25)}
+.ky-pd-sari{background:var(--bs-warning)}
+.ky-pdl{font-style:normal;font-size:.64rem;font-weight:700;margin-top:1px;padding:0 .25rem;border-radius:3px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ky-odabtn{border:1px solid var(--bs-border-color);background:var(--bs-body-bg);border-radius:4px;padding:0 .3rem;font-size:.7rem;line-height:1.35;display:inline-flex;gap:.2rem;align-items:center;color:var(--bs-secondary-color)}
+.ky-odabtn:hover{color:var(--bs-emphasis-color);border-color:var(--bs-primary)}
+.ky-pdi-kirmizi{color:var(--bs-danger)} .ky-pdi-sari{color:var(--bs-warning)}
+.ky-dbl{display:none;font-size:.68rem;line-height:1.3;margin:-.1rem 0 .3rem;color:var(--bs-body-color)}
+.ky-db-acik .ky-dbl{display:block}
 @media print{.ky-arac,.sidebar,.ern-topbar{display:none!important}}
 </style>
 
@@ -154,6 +204,10 @@ require __DIR__ . '/../includes/header.php';
   <span class="badge bg-primary-subtle text-primary-emphasis fs-6"><?= $top['dolu'] ?> / <?= $top['yatak'] ?> dolu</span>
   <?php if ($top['yatak']): ?><span class="text-muted small">%<?= (int)round($top['dolu'] * 100 / $top['yatak']) ?> doluluk · <?= $top['yatak'] - $top['dolu'] ?> boş yatak</span><?php endif; ?>
   <div class="ms-auto d-flex gap-2">
+    <div class="form-check form-switch mb-0 align-self-center" title="Her odanın demirbaş listesini krokide göster"><input class="form-check-input" type="checkbox" id="kyDbAc"><label class="form-check-label small" for="kyDbAc">Demirbaşlar</label></div>
+    <?php if ($perler): ?><select id="kyPer" class="form-select form-select-sm" style="width:auto" title="Yataklarda periyodik değişim durumunu göster">
+      <option value="">Değişim durumu: —</option>
+      <?php foreach ($perler as $pid => $pr): ?><option value="<?= $pid ?>"><?= h(mb_strimwidth($pr['ad'], 0, 34, '…', 'UTF-8')) ?></option><?php endforeach; ?></select><?php endif; ?>
     <input type="search" id="kyVurgu" class="form-control form-control-sm" style="width:230px" placeholder="Kişi / firma vurgula…">
     <button class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i class="bi bi-printer"></i></button>
     <?php if (yetki_var('duzenle')): ?><a href="yapi.php" class="btn btn-outline-primary btn-sm"><i class="bi bi-building-gear me-1"></i>Yapı</a><?php endif; ?>
@@ -186,8 +240,12 @@ require __DIR__ . '/../includes/header.php';
   <span><span class="ky ky-dolu ky-k-formen d-inline-flex" style="width:auto;min-height:0;padding:0 .4rem">formen</span></span>
   <span><span class="ky ky-dolu ky-k-isci d-inline-flex" style="width:auto;min-height:0;padding:0 .4rem">işçi</span></span>
   <span>çerçeveli blok = ranza (üst yatak yukarıda)</span>
+  <span><i class="ky-pd ky-pd-kirmizi d-inline-block position-static"></i> değişimi gecikmiş / yeni gelene yapılmamış
+    <i class="ky-pd ky-pd-sari d-inline-block position-static ms-2"></i> yaklaşıyor · <i class="bi bi-lamp"></i> oda demirbaşı ve değişim kaydı
+    <a href="periyodik.php" class="ms-1">periyodik değişim →</a></span>
 </div>
 
+<div id="kyKok">
 <?php foreach ($binalar as $bid => $b): if ($binaSec && $binaSec !== $bid) continue; $katlar = $agac[$bid] ?? []; $d = $doluluk[$bid] ?? null; ?>
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-header bg-white d-flex flex-wrap align-items-center gap-2">
@@ -227,7 +285,41 @@ require __DIR__ . '/../includes/header.php';
   </div>
 </div>
 <?php endforeach; ?>
+</div>
 <?php endif; ?>
+
+<!-- Oda: demirbaş + periyodik değişim -->
+<div class="modal fade" id="mOda" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">
+    <div class="modal-header"><div><h5 class="modal-title mb-0"><i class="bi bi-door-closed me-2"></i><span id="odaAd"></span></h5><div class="small text-muted" id="odaEt"></div></div>
+      <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        <a href="#" id="odaKart" class="btn btn-outline-primary btn-sm"><i class="bi bi-door-open me-1"></i>Oda kartı</a>
+        <a href="#" id="odaDb" class="btn btn-outline-secondary btn-sm"><i class="bi bi-lamp me-1"></i>Demirbaşları düzenle</a>
+        <a href="periyodik.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-repeat me-1"></i>Periyodik değişim</a>
+      </div>
+      <h6 class="small fw-bold text-uppercase text-primary">Demirbaşlar</h6>
+      <div id="odaDbListe" class="mb-3"></div>
+      <h6 class="small fw-bold text-uppercase text-primary">Periyodik değişim</h6>
+      <div id="odaPer" class="mb-3"></div>
+      <?php if ($yaz && $perler): ?>
+      <form method="post" action="periyodik.php" id="fOdaPer" class="border rounded p-2 bg-body-tertiary">
+        <input type="hidden" name="islem" value="kaydet"><input type="hidden" name="geri" value="<?= h($geri) ?>">
+        <div class="fw-semibold small mb-2"><i class="bi bi-check2-all me-1"></i>Değişim yapıldı olarak kaydet</div>
+        <div class="row g-2">
+          <div class="col-md-6"><select name="periyot_id" id="odaPerSec" class="form-select form-select-sm">
+            <?php foreach ($perler as $pid => $pr): ?><option value="<?= $pid ?>" data-kapsam="<?= h($pr['kapsam']) ?>"><?= h($pr['ad']) ?></option><?php endforeach; ?></select></div>
+          <div class="col-md-3"><input type="date" name="tarih" class="form-control form-control-sm" value="<?= date('Y-m-d') ?>" max="<?= date('Y-m-d') ?>" required></div>
+          <div class="col-md-3"><input name="yapan" class="form-control form-control-sm" placeholder="yapan" maxlength="120"></div>
+          <div class="col-12" id="odaPerHedef"></div>
+          <div class="col-12"><button class="btn btn-success btn-sm"><i class="bi bi-check2 me-1"></i>Kaydet</button></div>
+        </div>
+      </form>
+      <?php endif; ?>
+    </div>
+  </div></div>
+</div>
 
 <?php if ($yaz): ?>
 <!-- Yerleştir -->
@@ -294,6 +386,8 @@ require __DIR__ . '/../includes/header.php';
       </table>
       <a href="#" id="doluKart" class="btn btn-outline-primary btn-sm mb-3"><i class="bi bi-person-vcard me-1"></i>Kişi kartı / geçmiş</a>
       <a href="#" id="doluTutanak" target="_blank" class="btn btn-outline-secondary btn-sm mb-3"><i class="bi bi-printer me-1"></i>Oda teslim tutanağı</a>
+      <button type="button" id="doluOda" class="btn btn-outline-secondary btn-sm mb-3"><i class="bi bi-lamp me-1"></i>Oda demirbaşı / değişim</button>
+      <div id="doluPer" class="mb-3"></div>
       <?php if ($yaz): ?>
       <div class="accordion" id="doluAcc">
         <div class="accordion-item">
@@ -361,6 +455,85 @@ require __DIR__ . '/../includes/header.php';
     var ilk = document.querySelector('.ky-vurgu'); if (ilk) ilk.scrollIntoView({block:'center', behavior:'smooth'});
   });
 
+  // ── demirbaş anahtarı + periyodik değişim görünümü ──
+  var KOK = document.getElementById('kyKok'), ODA = <?= json_encode($kyOda, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;
+  var PER = <?= json_encode(array_map(fn($p) => ['ad' => $p['ad'], 'kapsam' => $p['kapsam'],
+      'kisa' => mb_strimwidth(trim(preg_replace('/\s*\(.*?\)|\s+(değişimi|yıkama-değişim)$/u', '', $p['ad'])), 0, 22, '…', 'UTF-8')], $perler), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;
+  var PDUR = <?= json_encode(array_map(fn($d) => [$d[0], $d[1]], KAMP_PER_DURUM), JSON_UNESCAPED_UNICODE) ?>;
+  var DBD = <?= json_encode(array_map(fn($d) => [$d[0], $d[1], $d[2]], KAMP_DB_DURUM), JSON_UNESCAPED_UNICODE) ?>;
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function perMetin(v){ if (!v) return ''; var d = v[0], k = v[1];
+    if (d === 'gecikti' || d === 'yeni') return (d === 'yeni' ? 'yeni gelene · ' : '') + Math.abs(k) + ' gün gecikti';
+    if (d === 'yaklasiyor' || d === 'tamam') return k + ' gün kaldı';
+    return PDUR[d] ? PDUR[d][0] : d; }
+  function perKisa(v){ var d = v[0], k = v[1];   // yatak kutusuna sığan kısa etiket
+    if (d === 'yeni') return 'yeni gelen!'; if (d === 'gecikti') return Math.abs(k) + ' g. gecikti';
+    if (d === 'yaklasiyor' || d === 'tamam') return k + ' g. kaldı'; if (d === 'yok') return 'kayıt yok'; return ''; }
+  function perRozet(v){ if (!v) return '<span class="text-muted small">—</span>'; var p = PDUR[v[0]] || [v[0], 'secondary'];
+    return '<span class="badge bg-' + p[1] + '" title="' + esc(v[2] ? 'son değişim ' + v[2] : 'kayıt yok') + '">' + esc(perMetin(v)) + '</span>'; }
+  var dbAc = document.getElementById('kyDbAc');
+  if (dbAc && KOK) {
+    try { dbAc.checked = localStorage.getItem('kamp_kroki_db') === '1'; } catch(e){}
+    var dbUygula = function(){ KOK.classList.toggle('ky-db-acik', dbAc.checked); try { localStorage.setItem('kamp_kroki_db', dbAc.checked ? '1' : '0'); } catch(e){} };
+    dbAc.addEventListener('change', dbUygula); dbUygula();
+  }
+  var perSec = document.getElementById('kyPer');
+  if (perSec && KOK) {
+    try { var kay = localStorage.getItem('kamp_kroki_per'); if (kay && PER[kay]) perSec.value = kay; } catch(e){}
+    var perUygula = function(){
+      KOK.querySelectorAll('.ky-pdl').forEach(function(e){ e.remove(); });
+      var pid = perSec.value; try { localStorage.setItem('kamp_kroki_per', pid); } catch(e){}
+      if (!pid) return;
+      KOK.querySelectorAll('.ky[data-per]').forEach(function(b){
+        var v = JSON.parse(b.getAttribute('data-per') || '{}')[pid]; if (!v || v[0] === 'bos') return;
+        var p = PDUR[v[0]] || ['', 'secondary'], e = document.createElement('em');
+        e.className = 'ky-pdl bg-' + p[1].split(' ')[0] + (p[1].indexOf('text-dark') >= 0 || v[0] === 'bos' ? ' text-dark' : ' text-white');
+        e.textContent = perKisa(v); e.title = PER[pid].ad + ': ' + perMetin(v) + (v[2] ? ' · son ' + v[2] : ''); b.appendChild(e);
+      });
+    };
+    perSec.addEventListener('change', perUygula); perUygula();
+  }
+  function odaAc(oid){
+    var o = ODA[oid]; if (!o) return;
+    document.getElementById('odaAd').textContent = o.ad; document.getElementById('odaEt').textContent = o.et;
+    document.getElementById('odaKart').href = 'oda.php?id=' + oid; document.getElementById('odaDb').href = 'demirbas.php?oda=' + oid;
+    document.getElementById('odaDbListe').innerHTML = o.db.length
+      ? '<table class="table table-sm mb-0"><tbody>' + o.db.map(function(d){ var x = DBD[d[2]] || [d[2], 'secondary'];
+          return '<tr><td>' + esc(d[0]) + '</td><td class="text-end">' + d[1] + ' adet</td><td class="text-end"><span class="badge bg-' + x[1] + '">' + esc(x[0]) + '</span></td></tr>'; }).join('') + '</tbody></table>'
+      : '<div class="small text-muted">Bu odada demirbaş kaydı yok. <a href="demirbas.php?oda=' + oid + '">Ekle →</a></div>';
+    var yPer = Object.keys(PER).filter(function(p){ return PER[p].kapsam !== 'oda'; }), oPer = Object.keys(PER).filter(function(p){ return PER[p].kapsam === 'oda' && o.oper[p]; });
+    var h = '';
+    if (o.yataklar.length && yPer.length) {
+      h += '<div class="table-responsive"><table class="table table-sm align-middle mb-2" style="font-size:.82rem"><thead class="table-light"><tr><th>Yatak</th>'
+        + yPer.map(function(p){ return '<th class="text-normal" style="text-transform:none;letter-spacing:0" title="' + esc(PER[p].ad) + '">' + esc(PER[p].kisa) + '</th>'; }).join('') + '</tr></thead><tbody>'
+        + o.yataklar.map(function(y){ return '<tr><td class="text-nowrap"><strong>' + esc(y[1]) + '</strong><div class="small text-muted">' + esc(y[2] || 'boş') + '</div></td>'
+          + yPer.map(function(p){ return '<td>' + perRozet(y[3][p]) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div>';
+    }
+    if (oPer.length) h += oPer.map(function(p){ return '<div class="small mb-1">' + esc(PER[p].ad) + ': ' + perRozet(o.oper[p]) + '</div>'; }).join('');
+    document.getElementById('odaPer').innerHTML = h || '<div class="small text-muted">Bu oda için tanımlı periyodik değişim yok.</div>';
+    var f = document.getElementById('fOdaPer');
+    if (f) { f.dataset.oda = oid; odaHedef(); }
+    var m = M('mOda'); if (m) m.show();
+  }
+  function odaHedef(){
+    var f = document.getElementById('fOdaPer'); if (!f) return; var o = ODA[f.dataset.oda]; if (!o) return;
+    var sec = document.getElementById('odaPerSec'), pid = sec.value, kap = sec.options[sec.selectedIndex].dataset.kapsam, hd = document.getElementById('odaPerHedef');
+    if (kap === 'oda') { hd.innerHTML = '<input type="hidden" name="hedef[]" value="' + f.dataset.oda + '"><span class="small text-muted">Oda: ' + esc(o.ad) + '</span>'; return; }
+    if (!o.yataklar.length) { hd.innerHTML = '<span class="small text-muted">Bu odada yatak yok.</span>'; return; }
+    hd.innerHTML = o.yataklar.map(function(y){ var v = y[3][pid], gec = v && (v[0] === 'gecikti' || v[0] === 'yeni' || v[0] === 'yok' || v[0] === 'yaklasiyor');
+      return '<label class="form-check form-check-inline small mb-0"><input class="form-check-input" type="checkbox" name="hedef[]" value="' + y[0] + '"' + (gec ? ' checked' : '') + '>'
+        + esc(y[1]) + (y[2] ? ' <span class="text-muted">(' + esc(y[2]) + ')</span>' : '') + '</label>'; }).join('')
+      + '<button type="button" class="btn btn-link btn-sm p-0 ms-1" onclick="this.parentNode.querySelectorAll(\'input[type=checkbox]\').forEach(function(c){c.checked=true;})">tümü</button>';
+  }
+  var ops = document.getElementById('odaPerSec'); if (ops) ops.addEventListener('change', odaHedef);
+  var fop = document.getElementById('fOdaPer');
+  if (fop) fop.addEventListener('submit', function(e){
+    if (!fop.querySelector('input[name="hedef[]"]:checked, input[type=hidden][name="hedef[]"]')) { e.preventDefault(); alert('Değişim yapılan yatakları işaretleyin.'); }
+  });
+  document.addEventListener('click', function(e){ var b = e.target.closest('.ky-odabtn'); if (b) { e.preventDefault(); odaAc(b.dataset.oda); } });
+  var dOda = document.getElementById('doluOda');
+  if (dOda) dOda.addEventListener('click', function(){ var mm = M('mDolu'); if (mm) mm.hide(); odaAc(dOda.dataset.oda); });
+
   // ── yatak tıklama ──
   document.addEventListener('click', function(e){
     var b = e.target.closest('.ky'); if (!b || b.disabled || b.classList.contains('ky-disi')) return;
@@ -371,6 +544,10 @@ require __DIR__ . '/../includes/header.php';
       document.getElementById('doluTutanak').href = 'tutanak.php?konaklama=' + b.dataset.konaklama;
       document.querySelectorAll('#mDolu .js-kisi').forEach(function(i){ i.value = b.dataset.kisi; });
       document.querySelectorAll('#mDolu .js-kon').forEach(function(i){ i.value = b.dataset.konaklama; });
+      document.getElementById('doluOda').dataset.oda = b.dataset.oda;
+      var yp = JSON.parse(b.getAttribute('data-per') || '{}'), ks = Object.keys(PER).filter(function(p){ return yp[p]; });
+      document.getElementById('doluPer').innerHTML = ks.length ? '<div class="small fw-semibold mb-1"><i class="bi bi-arrow-repeat me-1"></i>Periyodik değişim</div>'
+        + ks.map(function(p){ return '<div class="small d-flex gap-2 mb-1"><span>' + esc(PER[p].ad) + '</span><span class="ms-auto">' + perRozet(yp[p]) + '</span></div>'; }).join('') : '';
       var m = M('mDolu'); if (m) m.show();
     } else if (b.dataset.yatak) {
       document.getElementById('yerYatak').value = b.dataset.yatak;

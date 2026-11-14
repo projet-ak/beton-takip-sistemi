@@ -19,6 +19,7 @@ $doluluk = kamp_doluluk($pdoKamp);
 $bugun = date('Y-m-d'); $ayBas = date('Y-m-01');
 $ic = kamp_icmal($pdoKamp, date('Y-m'));
 $zo = kamp_ziyaret_ozet($pdoKamp);
+$po = kamp_periyot_ozet($pdoKamp);
 
 // Son 30 gün: gece gece kampta kalan kişi sayısı
 $seri = [];
@@ -83,6 +84,7 @@ require __DIR__ . '/../includes/header.php';
     ['Bu ay kişi-gece',  $ic['toplam']['gece'], 'bi-moon-stars',    'dark',      'icmal.php',                                        'firma icmali →'],
     ['Sorunlu demirbaş', $o['db_sorun'] + $o['db_kayip'], 'bi-tools', $o['db_sorun'] + $o['db_kayip'] ? 'danger' : 'secondary', 'demirbas.php?durum=sorun', $f0($o['db_sorun']) . ' arızalı/bakımda · ' . $f0($o['db_kayip']) . ' kayıp'],
     ['Ziyaretçi (içeride)', $zo['iceride'], 'bi-person-badge',     $zo['uyari'] ? 'danger' : 'primary', 'ziyaretler.php?durum=iceride', $f0($zo['bugun']) . ' bugün geldi' . ($zo['son7'] ? ' · son 7 günde ' . $f0($zo['son7']) . ' izinsiz' : '')],
+    ['Değişimi gecikmiş', $po['toplam_kirmizi'], 'bi-arrow-repeat', $po['toplam_kirmizi'] ? 'danger' : 'success', 'periyodik.php', 'nevresim / yorgan… · ' . $f0($po['toplam_sari']) . ' yaklaşıyor'],
     ['Kullanım dışı yatak', $o['disi'],     'bi-slash-circle',      'secondary', 'yapi.php',                                         'kırık / kaldırılmış'],
   ] as [$ad, $deger, $ikon, $renk, $link, $alt]): ?>
   <div class="col-6 col-xl-3">

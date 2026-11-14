@@ -634,6 +634,9 @@ if ($__user) {
         <a class="sidebar-nav-link <?= __isActive('demirbas.php') ?>" href="<?= $__rootPath ?>kamp/demirbas.php" data-label="Demirbaş"><i class="bi bi-lamp"></i><span>Demirbaşlar</span></a>
       </li>
       <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('periyodik.php') ?>" href="<?= $__rootPath ?>kamp/periyodik.php" data-label="Periyodik Değişim"><i class="bi bi-arrow-repeat"></i><span>Periyodik Değişim</span></a>
+      </li>
+      <li class="sidebar-nav-item">
         <a class="sidebar-nav-link <?= __isActive('firmalar.php') ?>" href="<?= $__rootPath ?>kamp/firmalar.php" data-label="Firmalar"><i class="bi bi-building"></i><span>Firmalar</span></a>
       </li>
       <li class="sidebar-nav-item">
