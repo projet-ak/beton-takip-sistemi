@@ -1865,6 +1865,63 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   Gerçekçi kurguda puantaj birebir doğrulandı: 07:45–12:05 + 12:50–17:40 → **9s 10dk**,
   çıkışını unutan personel SARI satır + eksik=1.
   ⚠ `php://input` **CLI'da boştur** — API ucunu `php -r`/include ile değil `php -S` üzerinden test et.
+- **Kamp Takip modülü** = `kamp/` alt klasörü (MODULLER anahtarı `kamp`, şeritte "Kamp Takip", ikon `bi-house-heart`).
+  **Şantiye kampı: kim hangi yatakta, hangi tarihten hangi tarihe kaldı + oda demirbaşları + firma icmali** (2026-11-14,
+  kullanıcı: staff binası 2 kat, katta 8 konteyner, her konteyner ikiye bölünmüş — sol oda · ortak banyo/WC/lavabo/buzdolabı ·
+  sağ oda; zeminde 12, üstte 24 kişi; bazı odalar çamaşırhane ve depo; kamp bölgesinde 3 katlı 16 kişilik ranzalı 3 blok +
+  formen yatakhanesi). **Ayrı veritabanı** (`takbulut_kamp`, `KAMP_DB_NAME`; `includes/db_kamp.php` → `$pdoKamp`), tablolar
+  `kamp_` önekli, kendi kişi/firma listesi (§0 — başka modüle bağ yok). Yeni rol **`kamp_sorumlusu`** (şablon: yalnız kamp, tam yetki).
+  • **Hiyerarşi**: `kamp_binalar` (tur `KAMP_BINA_TUR`: staff · kogus · formen · sosyal · diger) → `kamp_odalar` (bina, **kat** int
+  [0 zemin, -1 bodrum], **unite** = konteyner no, **konum** sol|orta|sag, ad UNIQUE(bina,ad), **tur** `KAMP_ODA_TUR`: yatak · kogus
+  [yatak barındırır] · ortak · camasir · depo · mutfak · ofis · diger) → `kamp_yataklar` (no, tur tek|ranza_alt|ranza_orta|ranza_ust,
+  aktif=0 → kullanım dışı). Kapasite = aktif odaların aktif yatakları, yalnız yatak barındıran türlerde (`kamp_yatakli_sql()`).
+  • **Konaklama defteri** `kamp_konaklama` (kisi, yatak, oda [yatak silinse de geçmiş kalsın], **firma_id = giriş anındaki firma**,
+  giris DATE, **cikis NULL = kalıyor**, cikis_sebep). ⭐ **"Bir yatakta tek açık kayıt / bir kişinin tek açık kaydı" DB'de garanti**:
+  STORED üretilmiş kolonlar `acik_yatak`/`acik_kisi` (= CASE WHEN cikis IS NULL …) + UNIQUE — MySQL'de kısmi index yok, NULL'lar
+  çakışmaz. Bu yüzden konaklamada FK YOK (MySQL üretilmiş kolonun taban kolonunda SET NULL/CASCADE'e izin vermez; dolu yatak/oda
+  silinmez, geçmişli yatak "kullanım dışı" yapılır). **Kayıt silinmez, çıkışla kapanır**; yalnız yanlış girilen kayıt (duzenle) silinir.
+  • **Gece sayımı** `kamp_gece()`: giriş günü gecesi sayılır, çıkış günü sayılmaz (otel mantığı — 01.11→05.11 = 4 gece); açık kayıt
+  BU GECE dahil. Tarih farkı `DateTimeImmutable::diff` ile (yaz saati şaşırtmasın). Gelecek tarihli giriş/çıkış reddedilir.
+  • **Taşıma** = eski kayıt `cikis=tarih`, `cikis_sebep='Yatak değişikliği → …'` ile kapanır + aynı gün yenisi açılır (geçmiş korunur).
+  ⚠ Taşıma **giriş/çıkış SAYILMAZ** — icmal, dashboard ve defter bu öneki tanır (defterde ayrı "Yatak değişikliği" olayı).
+  Çekirdek `kamp_yerlestir()` tek transaction + `SELECT … FOR UPDATE`; `kamp_cakisma()` [giris, cikis) aralık çakışmasını hem kişi
+  hem yatak için denetler (geriye dönük girişte "o tarihte yatakta başkası kalıyordu" mesajı). `kamp_cikis` · `kamp_konaklama_duzelt` ·
+  `kamp_konaklama_gecmis` (çıkışı belli eski kayıt) · `kamp_tarihte` (o GECE kampta olanlar) · `kamp_icmal($ay)` (firma bazında kişi ·
+  KİŞİ-GECE · giren · çıkan · ay sonu kalan + kişi satırları; içinde bulunulan ay bugüne kadar).
+  • Sayfalar: **index** (KPI'lar kendi listelerine gider: kampta kalan · boş yatak · bugün/bu ay giren · bu ay çıkan · bu ay kişi-gece ·
+  sorunlu demirbaş · kullanım dışı yatak + bina doluluk çubukları + kategori doughnut + son 30 gün gece gece kampta kalan + bu ay firma
+  + son hareketler + arızalı demirbaş) · ⭐ **yerlesim** (YERLEŞİM KROKİSİ, ana ekran: bina sekmeleri, kat kat; **aynı üniteli odalar
+  konteyner kutusunda yan yana: SOL · ORTAK · SAĞ** — sahadaki çizimin aynısı; ranza yatakları aynı numarada tek blokta üst üste
+  (üst yukarıda); boş yatağa tık → **Yerleştir** penceresi [kayıtlı kişi — `?kisi_ara=` JSON, Türkçe harf duyarsız, kelime sırası
+  serbest; kişi başka yatakta ise "TAŞINACAK" uyarısı — ya da yeni kişi + yeni firma]; dolu yatağa tık → kişi kartı · tutanak ·
+  **taşı** (boş yatak aranabilir menüsü) · **çıkış**; "kişi/firma vurgula" kutusu; çamaşırhane/depo/ortak odalar taralı, arızalı
+  demirbaşlı odada kırmızı rozet) · **konaklama** (yalnız POST uç: yerlestir|tasi|cikis|duzelt|sil, `geri` adresi `kamp_geri()`
+  beyaz listesiyle) · **yapi** (binalar + ⭐ **HIZLI YAPI ÜRETİCİ** `kamp_yapi_uret()`: konteyner düzeni [katlar × konteyner × 1|2 oda
+  (A sol / B sağ) + ortak alan] ya da koğuş düzeni [katlar × oda × yatak, tek / ranza / 3'lü ranza]; adlar `Z-01A`, `1-03B`, `2-04`;
+  aynı adlı oda atlanır → tekrar çalıştırmak mükerrer açmaz; hazır düğmeler: Staff 2×8×2 · ranzalı blok · formen) + **oda tablosu**
+  (ad · konteyner · tür · yatak sayısı · aktif tek formda; tür çamaşırhane/depo yapılınca boş yataklar kaldırılır — geçmişli yatak
+  kullanım dışı olur, `kamp_yatak_sayisi_ayarla`; içinde kalan olan odada engellenir) · **oda** (yataklar + kalanlar, kullanım dışı
+  yap/aç, yatak ekle, demirbaşlar, oda geçmişi, aynı konteynerin diğer odaları) · **kisiler** (kampta · ayrılanlar · yerleşmemiş ·
+  hepsi; firma/bina/kategori süzgeci, whitelist sıralama, Excel; konaklaması olan kişi silinmez) · **kisi_form** (BÜYÜK HARF
+  `kamp_buyuk`, TC 11 hane + TC/sicil mükerrer engeli, aynı ad+firma uyarısı "yine de kaydet"; yeni kişide "hemen yerleştir";
+  firma değişirse AÇIK konaklamanın firması da güncellenir) · **kisi_detay** (künye, şu anki yer, taşı/çıkış/yerleştir, geçmiş +
+  tarih düzelt/kaydı sil) · **hareketler** (giriş/çıkış defteri: giriş · çıkış · yatak değişikliği + "**şu tarihte kimler
+  kalıyordu**" sekmesi; Excel) · **demirbas** (oda/bina ortak; durum `KAMP_DB_DURUM` sağlam · arızalı · bakımda · kayıp · hurda —
+  her değişiklik `kamp_demirbas_hareket`'e; ⭐ **toplu ekle**: bina/kat/oda türü seçilen tüm odalara, oda başına ya da **yatak başına**
+  adet; aynı adlı demirbaşı olan oda atlanır) · **firmalar** (kampta / kayıtlı / bu ay kişi-gece) · **icmal** (aylık icmal + ay sonu
+  dökümü, ay ileri/geri, firma satırına tıklayınca kişiler süzülür; ERN_RAPOR Excel/PDF/Yazdır) · **raporlar** (son 12 ay giren/çıkan/
+  kişi-gece grafiği, **firma × ay kişi-gece matrisi**, bina doluluğu, bina × kategori, kalış süresi dağılımı; ERN_RAPOR) ·
+  **tutanak** (A4 ERN Taahhüt logolu **KAMP ODA / YATAK TESLİM TUTANAĞI** `KMP-T-00001`: kişi, yer, odanın + konteyner ortak alanının
+  demirbaşları teslim/iade kutucuklu, kamp kuralları, iade bölümü, 3 imza; `@page margin:0`) · **import** (Excel kadro: `_import.php`
+  `kim_*` — başlıktan sütun eşleme [Ad Soyad / Ad+Soyad · TC · sicil · firma · görev · kategori · telefon · bina · kat · oda · yatak ·
+  giriş · çıkış · sebep · not], ön izleme, kişi eşleşmesi TC → sicil → ad soyad [tek kayıtsa], mevcut kişide yalnız BOŞ alan dolar,
+  kategori görevden sezilir [MÜHENDİS/ŞEF/TEKNİK → staff, FORMEN/USTABAŞI → formen; kelime BAŞI eşleşir — "MÜHENDİSİ"], yer: bina
+  (tek bina varsa boş olabilir) → oda → yatak (boşsa ilk boş yatak), çıkış doluysa geçmiş kayıt; okunan = yeni + güncellenen +
+  değişmeyen + atlanan; tekrar yükleme mükerrer açmaz; dosya `uploads/kamp/bekleyen/` 2 gün) · **kurulum_kamp** (şema + DB rozeti).
+  İşlem günlüğü `kamp_audit()` → ANA DB `audit_log` (kamp DB'sinde audit_log yok). Menüde "Kamp Yapısı" yalnız `duzenle`.
+  Mükerrer merkezi: `MK_KURAL['kamp']` firmalar + kişiler. Test (scratchpad `kt/`, gerçek MariaDB `kamptest` + `php -S` router
+  `srv.php` [X-U başlığıyla kullanıcı] + Playwright [CDN npm paketlerinden]): `t2.py` yapı 10 · `t3.py` konaklama/yetki/icmal 23 ·
+  `t4.py` demirbaş + 26 sayfa + izleyici/kamp sorumlusu 44 · `t5.py` Excel aktarımı 14 sağlama; 1847 inline script/öznitelik temiz.
 - Geliştirici: **Tayyar Akbulut**. Sürüm: v3.0. Canlı: `https://ernsaha.com.tr/beton/` (eski: takbulut.com/beton/).
 
 > **⭐⭐ §0 — KURAL: HER MODÜL BAĞIMSIZDIR** (2026-09-14, kullanıcı: *"BU MODÜL AYRI VERİ TABANI VE
@@ -2274,10 +2331,10 @@ Sidebar: Dashboard · Sevkiyatlar · Siparişler · **Sipariş Talepleri** · **
 
 ## 6. Veritabanları
 
-> **Canlıda 9 AYRI veritabanı vardır** — kural §0'da: her modül kendi DB'sinde (+ `takbulut_prekast`, 2026-11-01).
+> **Canlıda 10 AYRI veritabanı vardır** — kural §0'da: her modül kendi DB'sinde (+ `takbulut_prekast`, 2026-11-01).
 > `takbulut_beton` (beton) · `takbulut_demir` · `takbulut_seramik` · `takbulut_depo` ·
 > `takbulut_akaryakit` · `takbulut_crm` · **`takbulut_it`** (IT Envanter) · **`takbulut_pts`**
-> (Personel Takip — 2026-09-14'te IT'den ayrıldı, kendi `pts_personel` listesiyle).
+> (Personel Takip — 2026-09-14'te IT'den ayrıldı, kendi `pts_personel` listesiyle). + **`takbulut_kamp`** (Kamp Takip, `KAMP_DB_NAME` — 2026-11-14).
 > Tümü `config.php`'deki `DEMIR_DB_NAME`/`SERAMIK_DB_NAME`/`DEPO_DB_NAME`/`AKARYAKIT_DB_NAME`/`CRM_DB_NAME`/
 > `IT_DB_NAME`/**`PTS_DB_NAME`** sabitleriyle etkinleştirilir; tek DB kullanıcısı hepsine yetkili.
 > ⚠️ Bu sabitlerden biri **tanımsız kalırsa** ilgili modül sessizce **ana DB'ye** düşer ve veriler

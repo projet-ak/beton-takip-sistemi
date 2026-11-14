@@ -28,6 +28,7 @@ function yedek_db_listesi(): array
         ['crm',       'CRM',       'CRM_DB_NAME',       'CRM_DB_USER',       'CRM_DB_PASS'],
         ['it',        'IT Envanter', 'IT_DB_NAME',      'IT_DB_USER',        'IT_DB_PASS'],
         ['pts',       'Personel Takip', 'PTS_DB_NAME',  'PTS_DB_USER',       'PTS_DB_PASS'],
+        ['kamp',      'Kamp Takip', 'KAMP_DB_NAME',     'KAMP_DB_USER',      'KAMP_DB_PASS'],
         // Prekast 2026-11-01'den beri kendi DB'sinde; PREKAST_DB_NAME tanımsız bir kurulumda CRM'e düşer ve
         // DB adı tekilleştirmesi onu atlar (tabloları CRM yedeğindedir)
         ['prekast',   'Prekast',   'PREKAST_DB_NAME',   'PREKAST_DB_USER',   'PREKAST_DB_PASS'],

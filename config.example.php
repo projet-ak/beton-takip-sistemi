@@ -69,7 +69,10 @@ define('DB_PASS', 'sifre');
 // Personel Takip (PTS) modülü ayrı veritabanı — her modül kendi DB'sinde çalışır.
 // Tanımsızsa ana DB'de pts_ önekli tablolar kullanılır (modül boş açılırsa önce buraya bak).
 // define('PTS_DB_NAME', 'takbulut_pts');
-// define('PTS_SCAN_DEBOUNCE', 30);   // aynı kart kaç saniye içinde tekrar okunursa yeni kayıt açılmaz
+// define('PTS_SCAN_DEBOUNCE', 30);
+
+// Kamp Takip modülü ayrı veritabanı (tanımsızsa ana DB'de kamp_ önekli tablolar)
+// define('KAMP_DB_NAME', 'takbulut_kamp');   // aynı kart kaç saniye içinde tekrar okunursa yeni kayıt açılmaz
 
 // ── Snipe-IT köprüsü (isteğe bağlı) ──────────────────────────────────────────
 // IT Envanter › Cihaz İçe Aktar › "Snipe-IT'den Belge Çek" ekranı cihaz fotoğraflarını ve

@@ -114,6 +114,7 @@ const MODULLER = [
     'whatsapp'  => ['Saha Takip',               'bi-chat-dots',  'whatsapp/mesajlar.php'],
     'it'        => ['IT Envanter',              'bi-pc-display', 'it/index.php'],
     'pts'       => ['Personel Takip',           'bi-person-badge','pts/index.php'],
+    'kamp'      => ['Kamp Takip',               'bi-house-heart', 'kamp/index.php'],
 ];
 
 /** Modül erişim denetiminden MUAF kök sayfalar (giriş/çıkış, kurulum, yönetim, tanıtım). */
@@ -146,6 +147,7 @@ const ROLLER = [
     'proje_muduru'      => ['Proje Müdürü',             'dark',                'Tüm modülleri görür, raporları alır, onay verir; veri girmez'],
     'direktor'          => ['Direktör / Üst Yönetim',   'dark',                'Tüm modüllerde görüntüleme + rapor (veri değiştirmez)'],
     'izleyici'          => ['Görüntüleyici',            'light text-dark border', 'Yalnız okuma — hiçbir veri değiştiremez, rapor alamaz'],
+    'kamp_sorumlusu'    => ['Kamp Sorumlusu',           'success',             'Kamp Takip\'te tam yetki (yerleşim, giriş/çıkış, demirbaş, icmal); diğer modüllerde yetki yok'],
     'it_sorumlusu'      => ['IT Sorumlusu',             'primary',             'IT Envanter\'de tam yetki (cihaz, zimmet, servis, rapor); diğer modüllerde görüntüleme'],
 ];
 
@@ -179,6 +181,8 @@ function yetki_sablon(string $rol): array
         case 'it_sorumlusu':
             // PTS kartları/kiosk cihazları IT sorumlusunun işi — envanterle birlikte tam yetki
             return $doldur(['it','pts'], $hepsi) + $doldur(['beton','depo'], ['oku']);
+        case 'kamp_sorumlusu':
+            return ['kamp' => $hepsi];
         case 'depo':
             return ['beton' => ['oku','giris']]
                  + $doldur(['seramik','depo','akaryakit'], ['oku','giris','duzenle','rapor'])

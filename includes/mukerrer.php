@@ -172,6 +172,15 @@ const MK_KURAL = [
         'it_tanimlar'   => ['ad'=>'Tanımlar (üretici / model / tedarikçi)', 'tablo'=>'it_tanimlar', 'etiket'=>['tur','ad'],
                             'anahtar'=>[['Tür + Ad',['tur','ad']]], 'bagli'=>[]],
     ],
+    'kamp' => [
+        'kamp_firmalar' => ['ad'=>'Firmalar', 'tablo'=>'kamp_firmalar', 'etiket'=>['ad','vergi_no'],
+                            'anahtar'=>[['Ad',['ad']], ['Vergi No',['vergi_no']]],
+                            'bagli'=>[['kamp_kisiler','firma_id'], ['kamp_konaklama','firma_id']]],
+        // İki kartın da AÇIK konaklaması varsa birleştirme DB kuralına (tek açık konaklama) takılır ve geri alınır
+        'kamp_kisiler'  => ['ad'=>'Kişiler', 'tablo'=>'kamp_kisiler', 'etiket'=>['ad','soyad','tc_no'],
+                            'anahtar'=>[['TC No',['tc_no']], ['Sicil No',['sicil_no']], ['Ad + Soyad + Firma',['ad','soyad','firma_id']]],
+                            'bagli'=>[['kamp_konaklama','kisi_id']]],
+    ],
 ];
 
 /** Modülün PDO bağlantısı (istek başına önbellekli). Bağlanamazsa null. */
@@ -181,9 +190,9 @@ function mk_pdo(string $modul): ?PDO
     if (array_key_exists($modul, $cache)) return $cache[$modul];
     $kok = dirname(__DIR__);
     $dosya = ['beton'=>'db.php', 'demir'=>'db_demir.php', 'seramik'=>'db_seramik.php', 'depo'=>'db_depo.php',
-              'akaryakit'=>'db_akaryakit.php', 'crm'=>'db_crm.php', 'prekast'=>'db_prekast.php', 'it'=>'db_it.php'][$modul] ?? null;
+              'akaryakit'=>'db_akaryakit.php', 'crm'=>'db_crm.php', 'prekast'=>'db_prekast.php', 'it'=>'db_it.php', 'kamp'=>'db_kamp.php'][$modul] ?? null;
     $degisken = ['beton'=>'pdo', 'demir'=>'pdoDemir', 'seramik'=>'pdoSeramik', 'depo'=>'pdoDepo',
-                 'akaryakit'=>'pdoAkaryakit', 'crm'=>'pdoCrm', 'prekast'=>'pdoPrekast', 'it'=>'pdoIt'][$modul] ?? null;
+                 'akaryakit'=>'pdoAkaryakit', 'crm'=>'pdoCrm', 'prekast'=>'pdoPrekast', 'it'=>'pdoIt', 'kamp'=>'pdoKamp'][$modul] ?? null;
     $cache[$modul] = null;
     // Sayfa bağlantıyı zaten kurduysa onu kullan — db*.php'yi yeniden yüklemek gereksiz
     // (config.php yoksa db.php login/install'a YÖNLENDİRİP çıkar; buradan tetiklenmemeli).
