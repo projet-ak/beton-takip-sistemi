@@ -443,6 +443,118 @@ function dfat_tedarikci_coz(PDO $pdo, ?int $tedId, ?string $unvan, ?string $vkn,
     return [null, $unvan !== '' ? $unvan : null, false];
 }
 
+/** demir_caplar adındaki sayı → id (duz öncelikli; "Çelik Hasır Q188" → 188). İstek başına bir kez okunur. */
+function dfat_cap_map(PDO $pdo): array {
+    static $m = null;
+    if ($m !== null) return $m;
+    $m = [];
+    foreach ($pdo->query("SELECT id, ad, tip FROM demir_caplar") as $c0) {
+        if (preg_match('/(\d+)/', (string)$c0['ad'], $cm)) {
+            $n0 = (int)$cm[1];
+            if (!isset($m[$n0]) || $c0['tip'] === 'duz') $m[$n0] = (int)$c0['id'];
+        }
+    }
+    return $m;
+}
+
+/**
+ * Bir sevkiyata o irsaliyeye ait fatura kalemlerini yazar. Kalem hangi irsaliyeye ait?
+ *  • kalemde irsaliye no varsa → ona · • faturada TEK irsaliye varsa → hepsi ona ·
+ *  • birden çok irsaliye, kalemlerde irsaliye yok ama kalem sayısı = irsaliye sayısı → SIRAYLA (Cangül düzeni)
+ *  • aksi halde yazılmaz (tahmin edilmez — hangi irsaliyede hangi çapın geldiği bilinmez).
+ */
+function dfat_kalem_yaz(PDO $pdo, int $sid, string $irsNo, array $kalemler, array $irsListe): int {
+    static $ins = null;
+    $ins = $ins ?? $pdo->prepare("INSERT INTO demir_sevkiyat_kalemleri (sevkiyat_id, cap_id, irsaliye_miktar) VALUES (?,?,?)");
+    $capMap = dfat_cap_map($pdo);
+    $n0k = fat_irs_norm($irsNo);
+    $irsNorm = array_values(array_map(fn($x) => fat_irs_norm((string)$x), $irsListe));
+    $hicIrsYok = !array_filter($kalemler, fn($kl) => isset($kl['irs']) && $kl['irs'] !== null && $kl['irs'] !== '');
+    $sira = ($hicIrsYok && count($irsNorm) > 1 && count($kalemler) === count($irsNorm)) ? array_search($n0k, $irsNorm, true) : false;
+    $say = 0;
+    foreach (array_values($kalemler) as $i => $kl) {
+        if (isset($kl['irs']) && $kl['irs'] !== null && $kl['irs'] !== '') $ait = fat_irs_norm((string)$kl['irs']) === $n0k;
+        elseif (count($irsNorm) === 1) $ait = true;
+        else $ait = ($sira !== false && $sira === $i);
+        if (!$ait || empty($kl['kg'])) continue;
+        $capId0 = isset($kl['cap']) && $kl['cap'] !== null ? ($capMap[(int)$kl['cap']] ?? null) : null;
+        if ($capId0 === null) continue;   // çapı bilinmeyen kalem yazılamaz (cap_id zorunlu)
+        $ins->execute([$sid, $capId0, round(((float)$kl['kg']) / 1000, 3)]);
+        $say++;
+    }
+    return $say;
+}
+
+/** Faturanın not satırları (bilgi): tedarikçinin sevkiyat no'su + İDİS bağ etiketleri — irsaliye/sipariş DEĞİL. */
+function dfat_not_bilgi(array $p): string {
+    $b = '';
+    $seNo = array_values(array_filter(array_map('strval', (array)($p['sevkiyat_nolar'] ?? []))));
+    $idis = array_values(array_filter(array_map('strval', (array)($p['idis_etiketler'] ?? []))));
+    if ($seNo) $b .= ' · Tedarikçi sevkiyat no: ' . implode(', ', $seNo);
+    if ($idis) $b .= ' · İDİS bağ etiketi (' . count($idis) . ' bağ): ' . implode(', ', $idis);
+    return $b;
+}
+
+/**
+ * Faturaya bağlı, HİÇ kalemi olmayan [FATURADAN] taslak sevkiyatları kalemlerle doldurur.
+ *  1) Kesin eşleme (dfat_kalem_yaz): kalemde irsaliye no · tek irsaliye · kalem sayısı = irsaliye sayısı (sırayla).
+ *  2) ⚠ Eşlenemeyen çok irsaliyeli fatura (KRD2026000020746: 2 irsaliye, 3 kalem — hangi çap hangi kamyonda
+ *     geldi faturada YAZMIYOR): faturanın çap toplamlarından, bu faturaya bağlı diğer sevkiyatlarda ZATEN yazılı
+ *     miktarlar düşülür; KALAN ilk kalemsiz taslağa yazılır, diğer taslaklara not düşülür. Böylece icmal / sipariş
+ *     bakiyesindeki ÇAP TOPLAMLARI doğru olur, çift sayım olmaz. Excel aktarımı taslağı gerçek verilerle günceller.
+ * Kalemi olan ya da gerçek (Excel'den gelen) sevkiyata dokunulmaz → tekrar çalıştırmak güvenli.
+ * @return array{dolan:int, kalan:string[], toplu:?string}
+ */
+function dfat_taslak_kalem_doldur(PDO $pdo, int $fid, array $kalemler, array $irsListe, string $bilgi = ''): array {
+    $bosSql = "SELECT s.id, s.irsaliye_no, s.aciklama FROM demir_sevkiyatlar s
+                WHERE s.fatura_id = ? AND s.aciklama LIKE '[FATURADAN]%' AND s.aciklama NOT LIKE '%taslağına toplu yazıldı%'
+                  AND NOT EXISTS (SELECT 1 FROM demir_sevkiyat_kalemleri k WHERE k.sevkiyat_id = s.id) ORDER BY s.id";
+    $bos = $pdo->prepare($bosSql);
+    $bos->execute([$fid]);
+    $acq = $pdo->prepare("UPDATE demir_sevkiyatlar SET aciklama = ? WHERE id = ?");
+    $notEkle = function (array $b0, string $ek) use ($acq) {
+        if ($ek !== '' && !str_contains((string)$b0['aciklama'], trim($ek, ' ·'))) $acq->execute([(string)$b0['aciklama'] . $ek, (int)$b0['id']]);
+    };
+    $dolan = 0; $kalanSatir = [];
+    foreach ($bos->fetchAll() as $b0) {
+        if ($kalemler && dfat_kalem_yaz($pdo, (int)$b0['id'], (string)$b0['irsaliye_no'], $kalemler, $irsListe) > 0) {
+            $dolan++;
+            if (!str_contains((string)$b0['aciklama'], 'İDİS') && !str_contains((string)$b0['aciklama'], 'sevkiyat no')) $notEkle($b0, $bilgi);
+        } else $kalanSatir[] = $b0;
+    }
+    $toplu = null;
+    if ($kalanSatir && $kalemler) {
+        // Faturanın çap toplamı (cap_id → kg) − bu faturaya bağlı sevkiyatlarda zaten yazılı olan
+        $capMap = dfat_cap_map($pdo);
+        $fat = [];
+        foreach ($kalemler as $kl) {
+            $cid = isset($kl['cap']) && $kl['cap'] !== null ? ($capMap[(int)$kl['cap']] ?? null) : null;
+            if ($cid !== null && !empty($kl['kg'])) $fat[$cid] = ($fat[$cid] ?? 0) + (float)$kl['kg'];
+        }
+        $vq = $pdo->prepare("SELECT k.cap_id, SUM(k.irsaliye_miktar) t FROM demir_sevkiyat_kalemleri k
+                               JOIN demir_sevkiyatlar s ON s.id = k.sevkiyat_id WHERE s.fatura_id = ? GROUP BY k.cap_id");
+        $vq->execute([$fid]);
+        foreach ($vq->fetchAll() as $r) if (isset($fat[(int)$r['cap_id']])) $fat[(int)$r['cap_id']] -= (float)$r['t'] * 1000;
+        $kalanKal = [];
+        foreach ($fat as $cid => $kg) if ($kg > 1) $kalanKal[$cid] = $kg;
+        if ($kalanKal) {
+            $hedef = $kalanSatir[0];
+            $ins = $pdo->prepare("INSERT INTO demir_sevkiyat_kalemleri (sevkiyat_id, cap_id, irsaliye_miktar) VALUES (?,?,?)");
+            foreach ($kalanKal as $cid => $kg) $ins->execute([(int)$hedef['id'], $cid, round($kg / 1000, 3)]);
+            $dolan++;
+            $toplu = (string)$hedef['irsaliye_no'];
+            $diger = array_values(array_filter(array_map(fn($b) => (string)$b['irsaliye_no'], array_slice($kalanSatir, 1))));
+            $notEkle($hedef, $bilgi . ' · ⚠ Faturada ' . count($irsListe) . ' irsaliye ' . count($kalemler) . ' kalem var; hangi çapın hangi '
+                . 'irsaliyeyle geldiği faturada yazmıyor — faturanın kalan kalemlerinin TAMAMI bu taslağa yazıldı'
+                . ($diger ? ' (diğer irsaliye: ' . implode(', ', $diger) . ')' : '') . '. Çap toplamları doğrudur; irsaliye bazında Excel aktarımında düzelir.');
+            foreach (array_slice($kalanSatir, 1) as $b1)
+                $notEkle($b1, ' · ⚠ Bu irsaliyenin kalemleri ' . $toplu . ' taslağına toplu yazıldı (faturada kalem-irsaliye eşlemesi yok).');
+            $kalanSatir = [];   // diğerleri bilinçli boş (not düşüldü) — "doldurulamayan" sayılmaz
+        }
+    }
+    return ['dolan' => $dolan, 'kalan' => array_map(fn($b) => (string)$b['irsaliye_no'], $kalanSatir), 'toplu' => $toplu];
+}
+
 /**
  * Faturayı kaydeder — no VEYA ETTN ile kayıtlıysa GÜNCELLER (mükerrer açılmaz) — ve verilen
  * sevkiyatları bağlar. $eksikOlustur: sevkiyatlarda bulunamayan irsaliyeler [FATURADAN] taslak
@@ -491,36 +603,9 @@ function dfat_kaydet(PDO $pdo, array $p, array $svkIds, bool $eksikOlustur): arr
     $upd = $pdo->prepare("UPDATE demir_sevkiyatlar SET fatura_id = ? WHERE id = ?");
     foreach (array_unique(array_filter(array_map('intval', $svkIds))) as $sid) { $upd->execute([$fid, $sid]); $bagli++; }
 
-    // Taslak sevkiyat kalemleri: demir_caplar adlarındaki sayıdan çap çözülür (duz öncelikli; "Çelik Hasır Q188" → 188)
-    $capMap = [];
-    foreach ($pdo->query("SELECT id, ad, tip FROM demir_caplar") as $c0) {
-        if (preg_match('/(\d+)/', (string)$c0['ad'], $cm)) {
-            $n0 = (int)$cm[1];
-            if (!isset($capMap[$n0]) || $c0['tip'] === 'duz') $capMap[$n0] = (int)$c0['id'];
-        }
-    }
-    $insK = $pdo->prepare("INSERT INTO demir_sevkiyat_kalemleri (sevkiyat_id, cap_id, irsaliye_miktar) VALUES (?,?,?)");
-    // Bir sevkiyata o irsaliyeye ait kalemleri yazar; irsaliye bilgisi taşımayan kalem, faturada tek irsaliye varsa ona aittir.
-    $kalemYaz = function (int $sid, string $irsNo) use ($kalemler, $irsListe, $capMap, $insK): int {
-        $n0k = fat_irs_norm($irsNo); $say = 0;
-        foreach ($kalemler as $kl) {
-            $ait = (isset($kl['irs']) && $kl['irs'] !== null && $kl['irs'] !== '')
-                 ? (fat_irs_norm((string)$kl['irs']) === $n0k)
-                 : (count($irsListe) === 1);
-            if (!$ait || empty($kl['kg'])) continue;
-            $capId0 = isset($kl['cap']) && $kl['cap'] !== null ? ($capMap[(int)$kl['cap']] ?? null) : null;
-            if ($capId0 === null) continue;   // çapı bilinmeyen kalem yazılamaz (cap_id zorunlu)
-            $insK->execute([$sid, $capId0, round(((float)$kl['kg']) / 1000, 3)]);
-            $say++;
-        }
-        return $say;
-    };
+    $kalemYaz = fn (int $sid, string $irsNo): int => dfat_kalem_yaz($pdo, $sid, $irsNo, $kalemler, $irsListe);
     // Faturanın not satırları (bilgi): tedarikçinin sevkiyat no'su + İDİS bağ etiketleri — irsaliye/sipariş DEĞİL
-    $bilgi = '';
-    $seNo = array_values(array_filter(array_map('strval', (array)($p['sevkiyat_nolar'] ?? []))));
-    $idis = array_values(array_filter(array_map('strval', (array)($p['idis_etiketler'] ?? []))));
-    if ($seNo) $bilgi .= ' · Tedarikçi sevkiyat no: ' . implode(', ', $seNo);
-    if ($idis) $bilgi .= ' · İDİS bağ etiketi (' . count($idis) . ' bağ): ' . implode(', ', $idis);
+    $bilgi = dfat_not_bilgi($p);
 
     $taslakOlusan = 0; $taslakUyari = '';
     if ($eksikOlustur) {
@@ -548,21 +633,7 @@ function dfat_kaydet(PDO $pdo, array $p, array $svkIds, bool $eksikOlustur): arr
     }
     // ONARIM: bu faturaya bağlı, HİÇ kalemi olmayan [FATURADAN] taslaklar (okuma kalemi kaçırdığında çapsız açılmıştı —
     // TDC2026000002133) yeni okumanın kalemleriyle doldurulur. Kalemi olan ya da gerçek (Excel'den gelen) sevkiyata dokunulmaz.
-    $kalemDolan = 0;
-    if ($kalemler) {
-        $bos = $pdo->prepare("SELECT s.id, s.irsaliye_no, s.aciklama FROM demir_sevkiyatlar s
-                               WHERE s.fatura_id = ? AND s.aciklama LIKE '[FATURADAN]%'
-                                 AND NOT EXISTS (SELECT 1 FROM demir_sevkiyat_kalemleri k WHERE k.sevkiyat_id = s.id)");
-        $bos->execute([$fid]);
-        $acq = $pdo->prepare("UPDATE demir_sevkiyatlar SET aciklama = ? WHERE id = ?");
-        foreach ($bos->fetchAll() as $b0) {
-            if ($kalemYaz((int)$b0['id'], (string)$b0['irsaliye_no']) > 0) {
-                $kalemDolan++;
-                if ($bilgi !== '' && !str_contains((string)$b0['aciklama'], 'İDİS') && !str_contains((string)$b0['aciklama'], 'sevkiyat no'))
-                    $acq->execute([(string)$b0['aciklama'] . $bilgi, (int)$b0['id']]);
-            }
-        }
-    }
+    $kalemDolan = dfat_taslak_kalem_doldur($pdo, $fid, $kalemler, $irsListe, $bilgi)['dolan'];
     // Faturaya bağlı TASLAK sevkiyatların boş projesi faturadaki proje koduyla tamamlanır
     // (gerçek sevkiyatın projesine dokunulmaz — o Excel'den gelir).
     $projeDolan = 0;
@@ -689,6 +760,69 @@ if (($_POST['action'] ?? '') === 'yeniden_oku' && ctype_digit((string)($_POST['f
             flash(($e['eksik'] || $baska || !$v['irsaliyeler']) ? 'warning' : 'success', $msj);
         } catch (Throwable $eY) { flash('error', 'Yeniden okuma hatası: ' . $eY->getMessage()); }
     }
+    redirect(dfat_liste_geri());
+}
+
+// ── 2b') KALEMSİZ TASLAK SEVKİYAT ONARIMI (toplu) ─────────────────────────────
+// Kalem okuması eklenmeden önce (2026-10-29) ya da AI kalemi iki satıra böldüğünde açılan [FATURADAN] taslaklar
+// çapsız kaldı. Her faturada önce SAKLI kalemler kullanılır; yoksa dosya yeniden okunur (pdftotext → AI).
+// Süre bütçesiyle çalışır: bitmeyen kısım için düğmeye yeniden basılır (iş idempotent).
+function dfat_kalemsiz_faturalar(PDO $pdo): array {
+    try {
+        return $pdo->query("SELECT f.id, f.fatura_no, f.irsaliye_liste, f.kalemler, f.dosya_url, COUNT(s.id) adet
+            FROM demir_faturalar f JOIN demir_sevkiyatlar s ON s.fatura_id = f.id
+           WHERE s.aciklama LIKE '[FATURADAN]%' AND s.aciklama NOT LIKE '%taslağına toplu yazıldı%'
+             AND NOT EXISTS (SELECT 1 FROM demir_sevkiyat_kalemleri k WHERE k.sevkiyat_id = s.id)
+           GROUP BY f.id ORDER BY f.id")->fetchAll();
+    } catch (Throwable $e) { return []; }
+}
+if (($_POST['action'] ?? '') === 'kalem_onar') {
+    if (!can_edit()) { flash('error', 'Bu işlem için yetkiniz yok.'); redirect('faturalar.php'); }
+    @set_time_limit(300);
+    $bas = microtime(true); $islenen = 0; $dolan = 0; $okunan = 0; $toplu = []; $cozulmeyen = []; $kalanFat = 0;
+    $kalq = $pdoDemir->prepare("UPDATE demir_faturalar SET kalemler = ? WHERE id = ?");
+    foreach (dfat_kalemsiz_faturalar($pdoDemir) as $f) {
+        if (microtime(true) - $bas > 40) { $kalanFat++; continue; }
+        $islenen++;
+        $kal = json_decode((string)($f['kalemler'] ?? ''), true) ?: [];
+        $irs = json_decode((string)($f['irsaliye_liste'] ?? ''), true) ?: [];
+        if (!$irs) {
+            $iq = $pdoDemir->prepare("SELECT irsaliye_no FROM demir_sevkiyatlar WHERE fatura_id = ? ORDER BY id"); $iq->execute([(int)$f['id']]);
+            $irs = $iq->fetchAll(PDO::FETCH_COLUMN);
+        }
+        $bilgi = '';
+        if (!$kal) {
+            $kok = realpath(__DIR__ . '/../uploads/demir_fatura');
+            $tam = $f['dosya_url'] ? realpath(__DIR__ . '/../' . $f['dosya_url']) : false;
+            if ($tam && $kok && str_starts_with($tam, $kok . DIRECTORY_SEPARATOR) && is_file($tam)) {
+                try {
+                    $metin = fat_dosyadan_metin($tam, guess_mime($tam, $tam), $kyn, dfat_ai_sistem());
+                    if ($metin !== null && trim($metin) !== '') {
+                        $v = dfat_cikar($metin); $okunan++;
+                        $kal = $v['kalemler'];
+                        if ($v['irsaliyeler']) $irs = $v['irsaliyeler'];
+                        $bilgi = dfat_not_bilgi($v);
+                        if ($kal) $kalq->execute([json_encode($kal, JSON_UNESCAPED_UNICODE), (int)$f['id']]);
+                    }
+                } catch (Throwable $eO) { /* aşağıda çözülemeyen olarak raporlanır */ }
+            }
+        }
+        $r = dfat_taslak_kalem_doldur($pdoDemir, (int)$f['id'], $kal, $irs, $bilgi);
+        $dolan += $r['dolan'];
+        if ($r['toplu']) $toplu[] = $f['fatura_no'];
+        if ($r['kalan']) $cozulmeyen[] = $f['fatura_no'] . ' (' . implode(', ', $r['kalan']) . ($kal ? '' : ' — kalem okunamadı' . ($f['dosya_url'] ? '' : ', dosya yok')) . ')';
+    }
+    flash($cozulmeyen || $kalanFat ? 'warning' : 'success',
+        "Kalemsiz taslak onarımı: {$islenen} fatura incelendi, {$dolan} taslak sevkiyata çap/miktar yazıldı"
+        . ($okunan ? " ({$okunan} fatura dosyasından yeniden okundu)" : '') . '.'
+        . ($toplu ? ' Kalem-irsaliye eşlemesi faturada olmadığı için kalemleri tek taslakta toplanan: ' . implode(', ', $toplu) . '.' : '')
+        . ($cozulmeyen ? ' Doldurulamayan: ' . implode(' · ', array_slice($cozulmeyen, 0, 15)) . (count($cozulmeyen) > 15 ? ' …' : '') . ' — sevkiyat formundan elle girin.' : '')
+        . ($kalanFat ? " Süre doldu, {$kalanFat} fatura kaldı — düğmeye yeniden basın." : ''));
+    try {
+        require_once __DIR__ . '/../includes/db.php';   // audit_log ana veritabanında ($pdo)
+        $pdo->prepare("INSERT INTO audit_log (tablo, kayit_id, islem, yeni_deger, kullanici_id) VALUES ('demir_sevkiyatlar', 0, 'UPDATE', ?, ?)")
+               ->execute([json_encode(['kalem_onar' => ['fatura' => $islenen, 'dolan' => $dolan, 'toplu' => $toplu]], JSON_UNESCAPED_UNICODE), current_user_id()]);
+    } catch (Throwable $eA) { /* günlük ikincil */ }
     redirect(dfat_liste_geri());
 }
 
@@ -1152,6 +1286,19 @@ require_once __DIR__ . '/../includes/header.php';
 <p class="text-muted small mb-3">Tedarikçi e-faturasındaki irsaliye numarası sevkiyat kayıtlarıyla eşleştirilir; fatura tonajı kantarla karşılaştırılır.</p>
 <?php foreach(['success','error','warning','info'] as $t): if($m=get_flash($t)): ?><div class="alert alert-<?= $t==='error'?'danger':$t ?>"><?= h($m) ?></div><?php endif; endforeach; ?>
 <?php if ($hata): ?><div class="alert alert-danger"><?= h($hata) ?></div><?php endif; ?>
+<?php $__kalemsiz = dfat_kalemsiz_faturalar($pdoDemir); if ($__kalemsiz): $__kalemsizAdet = array_sum(array_column($__kalemsiz, 'adet')); ?>
+<div class="alert alert-warning d-flex flex-wrap align-items-center gap-2">
+    <i class="bi bi-exclamation-triangle"></i>
+    <span><strong><?= (int)$__kalemsizAdet ?> taslak sevkiyatın çap kalemi BOŞ</strong> (<?= count($__kalemsiz) ?> fatura:
+        <?= h(implode(', ', array_slice(array_column($__kalemsiz, 'fatura_no'), 0, 6))) ?><?= count($__kalemsiz) > 6 ? ' …' : '' ?>) —
+        faturadan açılmış ama çapı/miktarı yazılmamış; icmal ve sipariş bakiyesinde görünmez.</span>
+    <?php if (can_edit()): ?>
+    <form method="post" class="ms-auto" onsubmit="this.querySelector('button').disabled=true">
+        <input type="hidden" name="action" value="kalem_onar">
+        <button class="btn btn-warning btn-sm"><i class="bi bi-wrench me-1"></i>Hepsini faturadan doldur</button></form>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
 <?php if ($__kgOnarilan): ?><div class="alert alert-info"><i class="bi bi-wrench-adjustable me-1"></i>
     <strong><?= (int)$__kgOnarilan ?> faturanın miktarı düzeltildi</strong> — eski sürüm "26.400 kg" değerini binde bir okuyup 26,4 kg kaydediyordu (listede "0,03 t" görünüyordu).</div><?php endif; ?>
 
