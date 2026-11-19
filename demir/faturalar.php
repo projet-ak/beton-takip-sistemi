@@ -237,7 +237,7 @@ function dfat_cikar(string $metin): array {
             if (preg_match('/\b[A-Z]{2}\d{5,12}\b/u', $l) || preg_match('/\bkg\b/iu', $l)) continue;
             $cap = null;
             if (preg_match('/\bQ\s?(\d{3})\b.*HASIR/iu', $l, $g)) $cap = (int)$g[1];
-            elseif (preg_match('/(?:Ø\s*|\bN\s*-?\s*)?\b(\d{1,2})\s*MM\b.*(?:NERV|DEM[İI]R|[İI]N[ŞS]|ÇUBUK|KANGAL)/iu', $l, $g)
+            elseif (preg_match('/(?:Ø\s*|\bN\s*-?\s*)?\b(\d{1,2})\s*MM\b.*(?:NERV|DEM[İI]R|[İI]N[ŞS]|ÇUBUK|KANGAL|HASIR)/iu', $l, $g)
                     && (int)$g[1] >= 6 && (int)$g[1] <= 50) $cap = (int)$g[1];
             if ($cap === null) continue;
             for ($j = $i + 1; $j <= $i + 3 && $j < count($sat); $j++) {
@@ -268,7 +268,8 @@ function dfat_cikar(string $metin): array {
     // kalem için otomatik açar — eski sürümde saklanan kalemlerde hasır bilgisi yoktu, düz demir sanılmasın.
     // "Ø 06 MM ÇELİK HASIR" — aynı satırda HASIR geçen çaplar hasırdır (satır içi fiyat sütunları HASIR'dan sonra gelir)
     $hasirCap = [];
-    if (preg_match_all('/Ø\s*(\d{1,2})\s*MM[^\n]{0,40}?HASIR/iu', $t, $hm)) foreach ($hm[1] as $x) $hasirCap[(int)$x] = true;
+    // ⚠ "Ø" işareti AI okumasında düşebilir ("6 MM ÇELİK HASIR") — işaretsiz yazım da hasır sayılır, yoksa düz demire yazılırdı
+    if (preg_match_all('/(?:Ø\s*|\b)(\d{1,2})\s*MM[^\n]{0,40}?HASIR/iu', $t, $hm)) foreach ($hm[1] as $x) $hasirCap[(int)$x] = true;
     foreach ($d['kalemler'] as &$kl2) {
         $c2 = isset($kl2['cap']) && $kl2['cap'] !== null ? (int)$kl2['cap'] : 0;
         $kl2['hasir'] = !empty($kl2['hasir']) || $c2 >= 100 || isset($hasirCap[$c2]);
