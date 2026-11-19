@@ -845,7 +845,7 @@ function dfat_kalemsiz_faturalar(PDO $pdo): array {
  */
 function dfat_elle_satirlar(PDO $pdo): array {
     try {
-        $rows = $pdo->query("SELECT s.id sid, s.irsaliye_no, COALESCE(s.irsaliye_tarih, s.gelis_tarih) tarih, f.id fid, f.fatura_no, f.tedarikci, f.miktar_kg, f.kalemler, f.irsaliye_liste
+        $rows = $pdo->query("SELECT s.id sid, s.irsaliye_no, COALESCE(s.irsaliye_tarih, s.gelis_tarih) tarih, f.id fid, f.fatura_no, f.tedarikci, f.miktar_kg, f.kalemler, f.irsaliye_liste, f.dosya_url
             FROM demir_sevkiyatlar s JOIN demir_faturalar f ON f.id = s.fatura_id
            WHERE s.aciklama LIKE '[FATURADAN]%' AND s.aciklama NOT LIKE '%taslağına toplu yazıldı%'
              AND NOT EXISTS (SELECT 1 FROM demir_sevkiyat_kalemleri k WHERE k.sevkiyat_id = s.id)
@@ -1462,12 +1462,19 @@ require_once __DIR__ . '/../includes/header.php';
         Faturada yazan <strong><?= h(implode(', ', $__tanimsiz)) ?></strong> çap tanımlarınızda yok. Doğru karşılığı seçin
         ya da önce <a href="caplar.php" target="_blank">Çaplar</a> ekranından tanımı ekleyin (hasır için tip <em>Çelik Hasır</em>, adında çap geçsin:
         ör. "Çelik Hasır Ø6") — sonra "Hepsini faturadan doldur" kendiliğinden yazar.</div><?php endif; ?>
-    <div class="table-responsive"><table class="table table-sm align-middle mb-0">
-        <thead class="table-light"><tr><th>Fatura</th><th>Tedarikçi</th><th>İrsaliye (taslak)</th><th>Tarih</th><th style="width:190px">Çap</th><th style="width:150px">Miktar (kg)</th></tr></thead>
+    <div class="row g-0">
+    <div class="col-xl-6 border-end">
+    <div class="table-responsive"><table class="table table-sm align-middle mb-0" id="capElleTablo">
+        <thead class="table-light"><tr><th>Fatura</th><th>Tedarikçi</th><th>İrsaliye (taslak)</th><th>Tarih</th><th style="width:170px">Çap</th><th style="width:120px">Miktar (kg)</th></tr></thead>
         <tbody>
-        <?php foreach ($__elle as $e): $__oc = (int)($e['oneri_cap'] ?? 0); ?>
-        <tr>
-            <td class="text-nowrap"><?= h($e['fatura_no']) ?></td>
+        <?php foreach ($__elle as $e): $__oc = (int)($e['oneri_cap'] ?? 0);
+              // Ön izleme yalnız uploads/demir_fatura altındaki dosya için (yol elle yazılmış/bozuksa gösterilmez)
+              $__du = (string)($e['dosya_url'] ?? '');
+              $__du = (preg_match('#^uploads/demir_fatura/[^\0]+$#', $__du) && !str_contains($__du, '..')) ? $__du : ''; ?>
+        <tr class="elle-satir" style="cursor:pointer" data-dosya="<?= h($__du) ?>" data-fatura="<?= h($e['fatura_no']) ?>">
+            <td class="text-nowrap"><?= h($e['fatura_no']) ?>
+                <?php if ($__du): ?><button type="button" class="btn btn-link btn-sm p-0 ms-1 elle-goster" title="Faturayı yanda göster"><i class="bi bi-eye"></i></button>
+                <?php else: ?><span class="badge bg-secondary-subtle text-secondary ms-1" title="Bu faturanın dosyası sistemde yok">dosya yok</span><?php endif; ?></td>
             <td class="small"><?= h($e['tedarikci'] ?? '') ?></td>
             <td class="text-nowrap"><a href="sevkiyat_form.php?id=<?= (int)$e['sid'] ?>" target="_blank"><?= h($e['irsaliye_no']) ?></a>
                 <input type="hidden" name="sid[]" value="<?= (int)$e['sid'] ?>"></td>
@@ -1483,9 +1490,65 @@ require_once __DIR__ . '/../includes/header.php';
         <?php endforeach; ?>
         </tbody>
     </table></div>
+    </div>
+    <div class="col-xl-6">
+        <div class="d-flex align-items-center gap-2 px-2 py-1 border-bottom bg-body-tertiary small">
+            <i class="bi bi-file-earmark-pdf text-danger"></i><strong id="elleOnBaslik">Fatura</strong>
+            <span class="text-muted">— çapı faturadaki kalem satırından okuyun</span>
+            <a id="elleOnAc" href="#" target="_blank" class="ms-auto d-none"><i class="bi bi-box-arrow-up-right me-1"></i>Yeni sekmede aç</a>
+        </div>
+        <div id="elleOnKutu" style="height:560px" class="d-flex align-items-center justify-content-center text-muted small">
+            Satıra tıklayın — faturası burada açılır.</div>
+    </div>
+    </div>
     <div class="card-footer text-end"><button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-check2 me-1"></i>Seçilenleri yaz</button></div>
 </form>
 </div>
+<script>
+(function () {
+    var kutu = document.getElementById('elleOnKutu'), bas = document.getElementById('elleOnBaslik'),
+        ac = document.getElementById('elleOnAc'), simdiki = null;
+    if (!kutu) return;
+    function goster(tr) {
+        if (!tr) return;
+        document.querySelectorAll('#capElleTablo tr.elle-satir').forEach(function (r) { r.classList.toggle('table-warning', r === tr); });
+        var d = tr.getAttribute('data-dosya') || '', no = tr.getAttribute('data-fatura') || '';
+        bas.textContent = no || 'Fatura';
+        if (d === simdiki) return;
+        simdiki = d;
+        kutu.innerHTML = '';
+        if (!d) {
+            ac.classList.add('d-none');
+            kutu.className = 'd-flex align-items-center justify-content-center text-muted small p-3 text-center';
+            kutu.textContent = 'Bu faturanın dosyası sistemde yok — çapı kâğıt faturadan ya da irsaliyeden okuyun (taslak irsaliyeye tıklayıp sevkiyat formundan da girilebilir).';
+            return;
+        }
+        var url = '../' + d.split('/').map(encodeURIComponent).join('/');
+        ac.href = url; ac.classList.remove('d-none');
+        kutu.className = '';
+        var el;
+        if (/\.(png|jpe?g|gif|webp)$/i.test(d)) {
+            el = document.createElement('div'); el.style.cssText = 'height:100%;overflow:auto';
+            var im = document.createElement('img'); im.src = url; im.alt = no; im.style.maxWidth = '100%'; el.appendChild(im);
+        } else {
+            el = document.createElement('iframe'); el.src = url + '#view=FitH'; el.title = no;
+            el.style.cssText = 'width:100%;height:100%;border:0';
+        }
+        kutu.appendChild(el);
+    }
+    var tablo = document.getElementById('capElleTablo');
+    tablo.addEventListener('click', function (e) {
+        var tr = e.target.closest('tr.elle-satir');
+        if (!tr || e.target.closest('a')) return;
+        goster(tr);
+    });
+    tablo.addEventListener('focusin', function (e) { var tr = e.target.closest('tr.elle-satir'); if (tr) goster(tr); });
+    var ilk = function () { goster(tablo.querySelector('tr.elle-satir[data-dosya]:not([data-dosya=""])') || tablo.querySelector('tr.elle-satir')); };
+    var cl = document.getElementById('capElle');
+    if (cl.classList.contains('show')) ilk();
+    cl.addEventListener('shown.bs.collapse', function () { if (simdiki === null) ilk(); });
+})();
+</script>
 <?php endif; ?>
 <?php endif; ?>
 <?php if ($__kgOnarilan): ?><div class="alert alert-info"><i class="bi bi-wrench-adjustable me-1"></i>
