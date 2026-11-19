@@ -197,12 +197,13 @@ function dfat_cikar(string $metin): array {
     $kgListe = [];
     if (preg_match_all('/([\d.,]+,\d{2})\s*kg\b/iu', $t, $km)) foreach ($km[1] as $v) { $f = fat_sayi($v); if ($f !== null) $kgListe[] = $f; }
     $capIrs = [];
-    if (preg_match_all('/Ø\s*(\d{1,2})\s*MM[^\[\n]{0,80}\n?\s*\[İRS\.?\s*NO[:\s]*(\d+)/iu', $t, $mm, PREG_SET_ORDER)) {
-        foreach ($mm as $g) $capIrs[] = ['cap' => (int)$g[1], 'irs' => strtoupper($g[2])];
+    if (preg_match_all('/Ø\s*(\d{1,2})\s*MM([^\[\n]{0,260})\n?\s*\[İRS\.?\s*NO[:\s]*(\d+)/iu', $t, $mm, PREG_SET_ORDER)) {
+        // "Ø 06 MM ÇELİK HASIR [İRS.NO:7200…]" — hasır kalemi düz Ø6 demir DEĞİLDİR, işaretle (H022026000005079)
+        foreach ($mm as $g) $capIrs[] = ['cap' => (int)$g[1], 'irs' => strtoupper($g[3]), 'hasir' => (bool)preg_match('/HASIR/iu', $g[2])];
     }
     if ($capIrs && count($capIrs) === count($kgListe)) {
         // Ali Cangül düzeni: her kalemde Ø + [İRS.NO] + kg — birebir eşle
-        foreach ($capIrs as $i => $ci) $d['kalemler'][] = ['cap' => $ci['cap'], 'kg' => $kgListe[$i], 'irs' => $ci['irs']];
+        foreach ($capIrs as $i => $ci) $d['kalemler'][] = ['cap' => $ci['cap'], 'kg' => $kgListe[$i], 'irs' => $ci['irs']] + ($ci['hasir'] ? ['hasir' => true] : []);
     } elseif (preg_match_all('/(\d{1,2})\s*MM\s*NERV.{0,60}?([\d.,]+)\s*Kg\b/su', $t, $mm, PREG_SET_ORDER)) {
         // Çakıroğlu düzeni: kalemde çap + kg (irsaliye tek olduğundan hepsi ona ait).
         // "27.680" ondalıksız BİNLİK yazımdır (27.680 kg = 27680) — fat_sayi ondalık sanmasın.
@@ -256,6 +257,23 @@ function dfat_cikar(string $metin): array {
         && preg_match('/^(?:Ø(\d{1,2})|Q(\d{3}) \(hasır\))$/u', $d['caplar'][0], $g)) {
         $d['kalemler'][] = ['cap' => (int)($g[1] !== '' ? $g[1] : $g[2]), 'kg' => $d['miktar_kg'], 'irs' => null];
     }
+    // Cangül düzeni kalemlerde çap yazmaz: faturanın başka bir yerinde TEK çap geçiyorsa çapsız kalemlere o yazılır
+    // (birden çok çap varsa hangi kalemin hangisi olduğu bilinmez — tahmin edilmez, ekranda elle seçilir)
+    if ($d['kalemler'] && count($d['caplar']) === 1
+        && preg_match('/^(?:Ø(\d{1,2})|Q(\d{3}) \(hasır\))$/u', $d['caplar'][0], $g)) {
+        foreach ($d['kalemler'] as &$kl1) if (!isset($kl1['cap']) || $kl1['cap'] === null) $kl1['cap'] = (int)($g[1] !== '' ? $g[1] : $g[2]);
+        unset($kl1);
+    }
+    // Her kaleme 'hasir' anahtarı: dfat_cap_id tanımda olmayan çapı yalnız bu anahtarı taşıyan (yeni okunmuş)
+    // kalem için otomatik açar — eski sürümde saklanan kalemlerde hasır bilgisi yoktu, düz demir sanılmasın.
+    // "Ø 06 MM ÇELİK HASIR" — aynı satırda HASIR geçen çaplar hasırdır (satır içi fiyat sütunları HASIR'dan sonra gelir)
+    $hasirCap = [];
+    if (preg_match_all('/Ø\s*(\d{1,2})\s*MM[^\n]{0,40}?HASIR/iu', $t, $hm)) foreach ($hm[1] as $x) $hasirCap[(int)$x] = true;
+    foreach ($d['kalemler'] as &$kl2) {
+        $c2 = isset($kl2['cap']) && $kl2['cap'] !== null ? (int)$kl2['cap'] : 0;
+        $kl2['hasir'] = !empty($kl2['hasir']) || $c2 >= 100 || isset($hasirCap[$c2]);
+    }
+    unset($kl2);
     // Sağlama: kalem toplamı fatura toplamının binde biriyse ölçek hatası var demektir — düzelt
     if ($d['kalemler'] && $d['miktar_kg'] !== null) {
         $ktop = array_sum(array_column($d['kalemler'], 'kg'));
@@ -458,6 +476,50 @@ function dfat_cap_map(PDO $pdo): array {
 }
 
 /**
+ * Fatura kalemi → demir_caplar.id. Hasır kalemi ("Ø 06 MM ÇELİK HASIR") yalnız TİPİ hasır olan ve adında aynı sayı
+ * geçen tanıma eşlenir (ör. "Çelik Hasır Ø6") — düz Ø6/Ø8 demire yazılıp icmali bozmasın. Bulunamazsa null.
+ */
+function dfat_cap_id(PDO $pdo, array $kl, bool $olustur = false): ?int {
+    if (!isset($kl['cap']) || $kl['cap'] === null) return null;
+    $n = (int)$kl['cap'];
+    $hasirMi = !empty($kl['hasir']) && $n < 100;
+    static $hasir = null, $eklenen = [];
+    $anahtar = ($hasirMi ? 'h' : 'd') . $n;
+    if (isset($eklenen[$anahtar])) return $eklenen[$anahtar];
+    if ($hasirMi) {
+        if ($hasir === null) {
+            $hasir = [];
+            foreach ($pdo->query("SELECT id, ad FROM demir_caplar WHERE tip = 'hasir'") as $c0)
+                if (preg_match_all('/\d+/', (string)$c0['ad'], $cm)) foreach ($cm[0] as $x) $hasir[(int)$x] ??= (int)$c0['id'];
+        }
+        $id = $hasir[$n] ?? null;
+    } else $id = dfat_cap_map($pdo)[$n] ?? null;
+    if ($id !== null || !$olustur) return $id;
+    // ⭐ Tanımda yok → OTOMATİK EKLE (kullanıcı isteği 2026-11-19). Yalnız yeni okunmuş kalemde ('hasir' anahtarı
+    // var) ve makul aralıkta: düz/kangal Ø6–Ø50, hasır teli Ø4–Ø12, Q100–Q999.
+    if (!array_key_exists('hasir', $kl)) return null;
+    if ($hasirMi) { if ($n < 4 || $n > 12) return null; $ad = "Çelik Hasır Ø{$n}"; $tip = 'hasir'; $bw = null; }
+    elseif ($n >= 100) { if ($n > 999) return null; $ad = "Çelik Hasır Q{$n}"; $tip = 'hasir'; $bw = null; }
+    else { if ($n < 6 || $n > 50) return null; $ad = "Ø{$n}"; $tip = 'duz'; $bw = round(0.006165 * $n * $n, 3); }
+    $q = $pdo->prepare("SELECT id FROM demir_caplar WHERE UPPER(ad) = UPPER(?) LIMIT 1");
+    $q->execute([$ad]);
+    $id = (int)($q->fetchColumn() ?: 0);
+    if (!$id) {
+        $sira = (int)$pdo->query("SELECT COALESCE(MAX(sira),0) FROM demir_caplar")->fetchColumn() + 1;
+        $pdo->prepare("INSERT INTO demir_caplar (ad, tip, birim_agirlik, sira) VALUES (?,?,?,?)")->execute([$ad, $tip, $bw, $sira]);
+        $id = (int)$pdo->lastInsertId();
+        $GLOBALS['dfat_cap_eklenen'][$ad] = true;
+    }
+    return $eklenen[$anahtar] = $id;
+}
+/** Kalemin okunabilir adı: "Ø6 çelik hasır" / "Ø12" / "Q188" */
+function dfat_kalem_ad(array $kl): string {
+    if (!isset($kl['cap']) || $kl['cap'] === null) return 'çap yazmıyor';
+    $n = (int)$kl['cap'];
+    return $n >= 100 ? "Q{$n}" : "Ø{$n}" . (!empty($kl['hasir']) ? ' çelik hasır' : '');
+}
+
+/**
  * Bir sevkiyata o irsaliyeye ait fatura kalemlerini yazar. Kalem hangi irsaliyeye ait?
  *  • kalemde irsaliye no varsa → ona · • faturada TEK irsaliye varsa → hepsi ona ·
  *  • birden çok irsaliye, kalemlerde irsaliye yok ama kalem sayısı = irsaliye sayısı → SIRAYLA (Cangül düzeni)
@@ -466,7 +528,6 @@ function dfat_cap_map(PDO $pdo): array {
 function dfat_kalem_yaz(PDO $pdo, int $sid, string $irsNo, array $kalemler, array $irsListe): int {
     static $ins = null;
     $ins = $ins ?? $pdo->prepare("INSERT INTO demir_sevkiyat_kalemleri (sevkiyat_id, cap_id, irsaliye_miktar) VALUES (?,?,?)");
-    $capMap = dfat_cap_map($pdo);
     $n0k = fat_irs_norm($irsNo);
     $irsNorm = array_values(array_map(fn($x) => fat_irs_norm((string)$x), $irsListe));
     $hicIrsYok = !array_filter($kalemler, fn($kl) => isset($kl['irs']) && $kl['irs'] !== null && $kl['irs'] !== '');
@@ -477,7 +538,7 @@ function dfat_kalem_yaz(PDO $pdo, int $sid, string $irsNo, array $kalemler, arra
         elseif (count($irsNorm) === 1) $ait = true;
         else $ait = ($sira !== false && $sira === $i);
         if (!$ait || empty($kl['kg'])) continue;
-        $capId0 = isset($kl['cap']) && $kl['cap'] !== null ? ($capMap[(int)$kl['cap']] ?? null) : null;
+        $capId0 = dfat_cap_id($pdo, $kl, true);
         if ($capId0 === null) continue;   // çapı bilinmeyen kalem yazılamaz (cap_id zorunlu)
         $ins->execute([$sid, $capId0, round(((float)$kl['kg']) / 1000, 3)]);
         $say++;
@@ -525,10 +586,9 @@ function dfat_taslak_kalem_doldur(PDO $pdo, int $fid, array $kalemler, array $ir
     $toplu = null;
     if ($kalanSatir && $kalemler) {
         // Faturanın çap toplamı (cap_id → kg) − bu faturaya bağlı sevkiyatlarda zaten yazılı olan
-        $capMap = dfat_cap_map($pdo);
         $fat = [];
         foreach ($kalemler as $kl) {
-            $cid = isset($kl['cap']) && $kl['cap'] !== null ? ($capMap[(int)$kl['cap']] ?? null) : null;
+            $cid = dfat_cap_id($pdo, $kl, true);
             if ($cid !== null && !empty($kl['kg'])) $fat[$cid] = ($fat[$cid] ?? 0) + (float)$kl['kg'];
         }
         $vq = $pdo->prepare("SELECT k.cap_id, SUM(k.irsaliye_miktar) t FROM demir_sevkiyat_kalemleri k
@@ -702,7 +762,8 @@ if (($_POST['action'] ?? '') === 'kaydet') {
             . ($r['bagli'] ? ", {$r['bagli']} sevkiyata bağlandı" : "")
             . ($r['taslak'] ? ", {$r['taslak']} eksik irsaliye TASLAK sevkiyat olarak oluşturuldu (Excel aktarımında gerçek verilerle güncellenir)" : "")
             . ($r['proje_dolan'] ? ", {$r['proje_dolan']} taslak sevkiyata faturadaki proje yazıldı" : "")
-            . ($r['kalem_dolan'] ? ", {$r['kalem_dolan']} kalemsiz taslak sevkiyata çap/miktar yazıldı" : "") . ".");
+            . ($r['kalem_dolan'] ? ", {$r['kalem_dolan']} kalemsiz taslak sevkiyata çap/miktar yazıldı" : "") . "."
+            . (!empty($GLOBALS['dfat_cap_eklenen']) ? ' Çap tanımlarına otomatik eklendi: ' . implode(', ', array_keys($GLOBALS['dfat_cap_eklenen'])) . '.' : ''));
         if ($r['uyari']) flash('warning', $r['uyari']);
     } catch (Throwable $eK) { flash('error', 'Kayıt hatası: ' . $eK->getMessage()); }
     redirect('faturalar.php');
@@ -757,6 +818,7 @@ if (($_POST['action'] ?? '') === 'yeniden_oku' && ctype_digit((string)($_POST['f
             if ($r['ted_yeni']) $msj .= ' Yeni tedarikçi oluşturuldu: ' . $r['ted_ad'] . '.';
             if ($r['proje_dolan']) $msj .= " {$r['proje_dolan']} taslak sevkiyata faturadaki proje yazıldı.";
             if ($r['kalem_dolan']) $msj .= " {$r['kalem_dolan']} kalemsiz taslak sevkiyata çap/miktar yazıldı.";
+            if (!empty($GLOBALS['dfat_cap_eklenen'])) $msj .= ' Çap tanımlarına otomatik eklendi: ' . implode(', ', array_keys($GLOBALS['dfat_cap_eklenen'])) . '.';
             flash(($e['eksik'] || $baska || !$v['irsaliyeler']) ? 'warning' : 'success', $msj);
         } catch (Throwable $eY) { flash('error', 'Yeniden okuma hatası: ' . $eY->getMessage()); }
     }
@@ -776,6 +838,76 @@ function dfat_kalemsiz_faturalar(PDO $pdo): array {
            GROUP BY f.id ORDER BY f.id")->fetchAll();
     } catch (Throwable $e) { return []; }
 }
+/**
+ * Otomatik doldurulamayan taslaklar için elle çap seçim satırları: her kalemsiz taslak + faturadan önerilen
+ * kg / çap (kalemde irsaliye no → o kalem · tek irsaliye → fatura kalemleri ya da toplam · kalem sayısı =
+ * irsaliye sayısı → sırayla). Öneri yalnız formu doldurur; kaydı kullanıcı onaylar.
+ */
+function dfat_elle_satirlar(PDO $pdo): array {
+    try {
+        $rows = $pdo->query("SELECT s.id sid, s.irsaliye_no, COALESCE(s.irsaliye_tarih, s.gelis_tarih) tarih, f.id fid, f.fatura_no, f.tedarikci, f.miktar_kg, f.kalemler, f.irsaliye_liste
+            FROM demir_sevkiyatlar s JOIN demir_faturalar f ON f.id = s.fatura_id
+           WHERE s.aciklama LIKE '[FATURADAN]%' AND s.aciklama NOT LIKE '%taslağına toplu yazıldı%'
+             AND NOT EXISTS (SELECT 1 FROM demir_sevkiyat_kalemleri k WHERE k.sevkiyat_id = s.id)
+           ORDER BY f.id, s.id LIMIT 300")->fetchAll();
+    } catch (Throwable $e) { return []; }
+    $out = [];
+    foreach ($rows as $r) {
+        $kal = array_values(array_filter(json_decode((string)($r['kalemler'] ?? ''), true) ?: [], 'is_array'));
+        $irs = array_values(array_map(fn($x) => fat_irs_norm((string)$x), json_decode((string)($r['irsaliye_liste'] ?? ''), true) ?: []));
+        $n0 = fat_irs_norm((string)$r['irsaliye_no']);
+        $sec = [];
+        foreach ($kal as $i => $k0) {
+            if (!empty($k0['irs'])) { if (fat_irs_norm((string)$k0['irs']) === $n0) $sec[] = $k0; }
+            elseif (count($irs) <= 1) $sec[] = $k0;
+            elseif (count($kal) === count($irs) && ($irs[$i] ?? null) === $n0) $sec[] = $k0;
+        }
+        if (!$sec && count($irs) <= 1 && (float)$r['miktar_kg'] > 0) $sec[] = ['cap' => null, 'kg' => (float)$r['miktar_kg']];
+        if (!$sec) $sec[] = ['cap' => null, 'kg' => null];
+        foreach ($sec as $k0) $out[] = $r + ['oneri_cap' => dfat_cap_id($pdo, $k0), 'oneri_ad' => isset($k0['cap']) && $k0['cap'] !== null ? dfat_kalem_ad($k0) : null,
+                                          'oneri_kg' => isset($k0['kg']) && $k0['kg'] ? (float)$k0['kg'] : null];
+    }
+    return $out;
+}
+if (($_POST['action'] ?? '') === 'kalem_elle') {
+    if (!can_edit()) { flash('error', 'Bu işlem için yetkiniz yok.'); redirect('faturalar.php'); }
+    $sidL = (array)($_POST['sid'] ?? []); $capL = (array)($_POST['cap'] ?? []); $kgL = (array)($_POST['kg'] ?? []);
+    $capVar = $pdoDemir->prepare("SELECT id FROM demir_caplar WHERE id = ?");
+    $tsl = $pdoDemir->prepare("SELECT id, irsaliye_no FROM demir_sevkiyatlar WHERE id = ? AND aciklama LIKE '[FATURADAN]%'");
+    $dolu = $pdoDemir->prepare("SELECT COUNT(*) FROM demir_sevkiyat_kalemleri WHERE sevkiyat_id = ?");
+    $ins = $pdoDemir->prepare("INSERT INTO demir_sevkiyat_kalemleri (sevkiyat_id, cap_id, irsaliye_miktar) VALUES (?,?,?)");
+    $yazilan = []; $atlanan = 0; $bosBirakilan = 0; $islemeBas = [];
+    $pdoDemir->beginTransaction();
+    try {
+        foreach ($sidL as $i => $sidH) {
+            $sid = (int)$sidH; $cid = (int)($capL[$i] ?? 0);
+            $kg = dfat_kg(trim((string)($kgL[$i] ?? '')));
+            if ($sid <= 0) continue;
+            if ($cid <= 0 || $kg === null || $kg <= 0) { $bosBirakilan++; continue; }
+            $capVar->execute([$cid]); $tsl->execute([$sid]); $t0 = $tsl->fetch();
+            if (!$capVar->fetchColumn() || !$t0) { $atlanan++; continue; }
+            // Yalnız bu istekte ilk kez yazılan, kalemsiz taslak: başka sekmede doldurulmuşsa üstüne eklenmez
+            if (!isset($islemeBas[$sid])) { $dolu->execute([$sid]); $islemeBas[$sid] = (int)$dolu->fetchColumn() === 0; }
+            if (!$islemeBas[$sid]) { $atlanan++; continue; }
+            $ins->execute([$sid, $cid, round($kg / 1000, 3)]);
+            $yazilan[$t0['irsaliye_no']] = true;
+        }
+        $pdoDemir->commit();
+    } catch (Throwable $e) {
+        if ($pdoDemir->inTransaction()) $pdoDemir->rollBack();
+        flash('error', 'Kaydedilemedi: ' . $e->getMessage()); redirect(dfat_liste_geri());
+    }
+    flash($yazilan ? 'success' : 'warning', count($yazilan) . ' taslak sevkiyata çap/miktar yazıldı'
+        . ($yazilan ? ' (' . implode(', ', array_slice(array_keys($yazilan), 0, 10)) . (count($yazilan) > 10 ? ' …' : '') . ')' : '') . '.'
+        . ($bosBirakilan ? " {$bosBirakilan} satırda çap veya miktar boş — yazılmadı." : '')
+        . ($atlanan ? " {$atlanan} satır atlandı (taslak bulunamadı, zaten doldurulmuş ya da çap geçersiz)." : ''));
+    if ($yazilan) try {
+        require_once __DIR__ . '/../includes/db.php';
+        $pdo->prepare("INSERT INTO audit_log (tablo, kayit_id, islem, yeni_deger, kullanici_id) VALUES ('demir_sevkiyatlar', 0, 'UPDATE', ?, ?)")
+            ->execute([json_encode(['kalem_elle' => array_keys($yazilan)], JSON_UNESCAPED_UNICODE), current_user_id()]);
+    } catch (Throwable $eA) { /* günlük ikincil */ }
+    redirect(dfat_liste_geri());
+}
 if (($_POST['action'] ?? '') === 'kalem_onar') {
     if (!can_edit()) { flash('error', 'Bu işlem için yetkiniz yok.'); redirect('faturalar.php'); }
     @set_time_limit(300);
@@ -791,7 +923,9 @@ if (($_POST['action'] ?? '') === 'kalem_onar') {
             $irs = $iq->fetchAll(PDO::FETCH_COLUMN);
         }
         $bilgi = '';
-        if (!$kal) {
+        // Saklı kalemlerden biri çözülemiyorsa (çapsız / tanımda yok ve eski kayıt — hasır bilgisi taşımıyor) dosyayı yeniden oku
+        $capsiz = $kal && array_filter($kal, fn($k0) => !array_key_exists('hasir', $k0) && dfat_cap_id($pdoDemir, $k0) === null);
+        if (!$kal || $capsiz) {
             $kok = realpath(__DIR__ . '/../uploads/demir_fatura');
             $tam = $f['dosya_url'] ? realpath(__DIR__ . '/../' . $f['dosya_url']) : false;
             if ($tam && $kok && str_starts_with($tam, $kok . DIRECTORY_SEPARATOR) && is_file($tam)) {
@@ -799,7 +933,9 @@ if (($_POST['action'] ?? '') === 'kalem_onar') {
                     $metin = fat_dosyadan_metin($tam, guess_mime($tam, $tam), $kyn, dfat_ai_sistem());
                     if ($metin !== null && trim($metin) !== '') {
                         $v = dfat_cikar($metin); $okunan++;
-                        $kal = $v['kalemler'];
+                        // Yeni okuma daha iyiyse kullan (saklı kalemler çapsızdı, yenisinde çap var / hiç yoktu)
+                        $capliSay = fn(array $L) => count(array_filter($L, fn($k0) => isset($k0['cap']) && $k0['cap'] !== null));
+                        if ($v['kalemler'] && (!$kal || $capliSay($v['kalemler']) >= $capliSay($kal))) $kal = $v['kalemler'];
                         if ($v['irsaliyeler']) $irs = $v['irsaliyeler'];
                         $bilgi = dfat_not_bilgi($v);
                         if ($kal) $kalq->execute([json_encode($kal, JSON_UNESCAPED_UNICODE), (int)$f['id']]);
@@ -810,13 +946,20 @@ if (($_POST['action'] ?? '') === 'kalem_onar') {
         $r = dfat_taslak_kalem_doldur($pdoDemir, (int)$f['id'], $kal, $irs, $bilgi);
         $dolan += $r['dolan'];
         if ($r['toplu']) $toplu[] = $f['fatura_no'];
-        if ($r['kalan']) $cozulmeyen[] = $f['fatura_no'] . ' (' . implode(', ', $r['kalan']) . ($kal ? '' : ' — kalem okunamadı' . ($f['dosya_url'] ? '' : ', dosya yok')) . ')';
+        if ($r['kalan']) {
+            $sebep = !$kal ? ' — faturadan kalem okunamadı' . ($f['dosya_url'] ? '' : ', dosya yok')
+                   : (array_filter($kal, fn($k0) => !isset($k0['cap']) || $k0['cap'] === null) ? ' — faturada ÇAP YAZMIYOR'
+                   : ' — faturadaki ' . implode(', ', array_unique(array_map('dfat_kalem_ad', array_filter($kal, fn($k0) => dfat_cap_id($GLOBALS['pdoDemir'], $k0) === null)))) . ' otomatik eklenemedi (eski okuma, dosya okunamadı)');
+            $cozulmeyen[] = $f['fatura_no'] . ' (' . implode(', ', $r['kalan']) . $sebep . ')';
+        }
     }
     flash($cozulmeyen || $kalanFat ? 'warning' : 'success',
         "Kalemsiz taslak onarımı: {$islenen} fatura incelendi, {$dolan} taslak sevkiyata çap/miktar yazıldı"
         . ($okunan ? " ({$okunan} fatura dosyasından yeniden okundu)" : '') . '.'
+        . (!empty($GLOBALS['dfat_cap_eklenen']) ? ' Çap tanımlarına otomatik eklendi: ' . implode(', ', array_keys($GLOBALS['dfat_cap_eklenen'])) . '.' : '')
         . ($toplu ? ' Kalem-irsaliye eşlemesi faturada olmadığı için kalemleri tek taslakta toplanan: ' . implode(', ', $toplu) . '.' : '')
-        . ($cozulmeyen ? ' Doldurulamayan: ' . implode(' · ', array_slice($cozulmeyen, 0, 15)) . (count($cozulmeyen) > 15 ? ' …' : '') . ' — sevkiyat formundan elle girin.' : '')
+        . ($cozulmeyen ? ' Otomatik doldurulamayan: ' . implode(' · ', array_slice($cozulmeyen, 0, 15)) . (count($cozulmeyen) > 15 ? ' …' : '')
+            . ' — bunlar düğmeye yeniden basmakla dolmaz; aşağıdaki "Çapı elle seç" tablosundan çapı seçip yazın.' : '')
         . ($kalanFat ? " Süre doldu, {$kalanFat} fatura kaldı — düğmeye yeniden basın." : ''));
     try {
         require_once __DIR__ . '/../includes/db.php';   // audit_log ana veritabanında ($pdo)
@@ -1295,9 +1438,55 @@ require_once __DIR__ . '/../includes/header.php';
     <?php if (can_edit()): ?>
     <form method="post" class="ms-auto" onsubmit="this.querySelector('button').disabled=true">
         <input type="hidden" name="action" value="kalem_onar">
-        <button class="btn btn-warning btn-sm"><i class="bi bi-wrench me-1"></i>Hepsini faturadan doldur</button></form>
+        <button class="btn btn-warning btn-sm" title="Tüm faturalar tek basışta işlenir; çapı faturada yazmayanlar için aşağıdaki tablodan seçin"><i class="bi bi-wrench me-1"></i>Hepsini faturadan doldur</button></form>
+    <button class="btn btn-outline-dark btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#capElle"><i class="bi bi-pencil-square me-1"></i>Çapı elle seç</button>
     <?php endif; ?>
+    <div class="w-100 small text-muted">"Hepsini faturadan doldur" bütün faturaları <strong>tek basışta</strong> işler; dolmayanlar (ör. Cangül faturalarında kalem satırında çap yazmaz) yeniden basmakla dolmaz — çapı aşağıdan seçin.</div>
 </div>
+<?php if (can_edit()): $__elle = dfat_elle_satirlar($pdoDemir);
+      $__capSec = $pdoDemir->query("SELECT id, ad FROM demir_caplar ORDER BY sira, id")->fetchAll();
+      $__tanimsiz = array_unique(array_filter(array_map(fn($e) => $e['oneri_ad'] && !$e['oneri_cap'] ? $e['oneri_ad'] : null, $__elle))); ?>
+<div class="collapse<?= isset($_GET['elle']) ? ' show' : '' ?> mb-3" id="capElle">
+<form method="post" class="card border-warning" onsubmit="this.querySelector('[type=submit]').disabled=true">
+    <input type="hidden" name="action" value="kalem_elle">
+    <div class="card-header bg-warning-subtle d-flex flex-wrap align-items-center gap-2">
+        <strong><i class="bi bi-pencil-square me-1"></i>Çapı elle seç (<?= count($__elle) ?> satır)</strong>
+        <span class="small text-muted">Miktar faturadan önerildi; çapı fatura / irsaliye / kantar fişinden seçin. Boş bırakılan satır yazılmaz.</span>
+        <span class="ms-auto d-flex align-items-center gap-1 small">Tümüne:
+            <select class="form-select form-select-sm" style="width:auto" onchange="if(this.value){document.querySelectorAll('#capElle select[name=\'cap[]\']').forEach(s=>{if(!s.value)s.value=this.value});}">
+                <option value="">— boş olanlara —</option>
+                <?php foreach ($__capSec as $c): ?><option value="<?= (int)$c['id'] ?>"><?= h($c['ad']) ?></option><?php endforeach; ?>
+            </select></span>
+    </div>
+    <?php if ($__tanimsiz): ?><div class="alert alert-danger small m-2 mb-0">
+        Faturada yazan <strong><?= h(implode(', ', $__tanimsiz)) ?></strong> çap tanımlarınızda yok. Doğru karşılığı seçin
+        ya da önce <a href="caplar.php" target="_blank">Çaplar</a> ekranından tanımı ekleyin (hasır için tip <em>Çelik Hasır</em>, adında çap geçsin:
+        ör. "Çelik Hasır Ø6") — sonra "Hepsini faturadan doldur" kendiliğinden yazar.</div><?php endif; ?>
+    <div class="table-responsive"><table class="table table-sm align-middle mb-0">
+        <thead class="table-light"><tr><th>Fatura</th><th>Tedarikçi</th><th>İrsaliye (taslak)</th><th>Tarih</th><th style="width:190px">Çap</th><th style="width:150px">Miktar (kg)</th></tr></thead>
+        <tbody>
+        <?php foreach ($__elle as $e): $__oc = (int)($e['oneri_cap'] ?? 0); ?>
+        <tr>
+            <td class="text-nowrap"><?= h($e['fatura_no']) ?></td>
+            <td class="small"><?= h($e['tedarikci'] ?? '') ?></td>
+            <td class="text-nowrap"><a href="sevkiyat_form.php?id=<?= (int)$e['sid'] ?>" target="_blank"><?= h($e['irsaliye_no']) ?></a>
+                <input type="hidden" name="sid[]" value="<?= (int)$e['sid'] ?>"></td>
+            <td class="small text-nowrap"><?= h(format_date($e['tarih'] ?? '')) ?></td>
+            <td><?php if ($e['oneri_ad']): ?><div class="small <?= $__oc ? 'text-success' : 'text-danger' ?>">Faturada: <?= h($e['oneri_ad']) ?><?= $__oc ? '' : ' — tanımda yok' ?></div><?php endif; ?>
+                <select name="cap[]" class="form-select form-select-sm">
+                <option value="">— seçin —</option>
+                <?php foreach ($__capSec as $c): ?><option value="<?= (int)$c['id'] ?>"<?= (int)$c['id'] === $__oc ? ' selected' : '' ?>><?= h($c['ad']) ?></option><?php endforeach; ?>
+            </select></td>
+            <td><input name="kg[]" class="form-control form-control-sm text-end" inputmode="decimal"
+                       value="<?= $e['oneri_kg'] ? h(number_format($e['oneri_kg'], 0, ',', '.')) : '' ?>" placeholder="kg"></td>
+        </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table></div>
+    <div class="card-footer text-end"><button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-check2 me-1"></i>Seçilenleri yaz</button></div>
+</form>
+</div>
+<?php endif; ?>
 <?php endif; ?>
 <?php if ($__kgOnarilan): ?><div class="alert alert-info"><i class="bi bi-wrench-adjustable me-1"></i>
     <strong><?= (int)$__kgOnarilan ?> faturanın miktarı düzeltildi</strong> — eski sürüm "26.400 kg" değerini binde bir okuyup 26,4 kg kaydediyordu (listede "0,03 t" görünüyordu).</div><?php endif; ?>
