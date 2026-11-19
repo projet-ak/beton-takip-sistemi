@@ -1696,17 +1696,63 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
 </div>
 <?php endif; ?>
 
-<?php if ($cift['irs'] || $cift['tutar']): ?>
-<div class="alert <?= $cift['irs'] ? 'alert-danger' : 'alert-warning' ?> mb-3">
+<?php if ($cift['cift'] || $cift['tutar']): ?>
+<div class="alert <?= $cift['cift'] ? 'alert-danger' : 'alert-warning' ?> mb-3">
     <div class="fw-semibold mb-1"><i class="bi bi-exclamation-octagon me-1"></i>Çift faturalama kontrolü</div>
-    <?php if ($cift['irs']): ?>
-    <div class="small mb-1"><strong><?= count($cift['irs']) ?> irsaliye birden fazla FARKLI faturada geçiyor</strong> — aynı teslimat iki kez faturalanmış olabilir, ödemeden önce tedarikçiyle kontrol edin:</div>
-    <ul class="small mb-2">
-        <?php foreach ($cift['irs'] as $x): ?>
-        <li><code><?= h($x['ham']) ?></code> →
-            <?php foreach ($x['f'] as $fno): ?><a href="fatura_eslestir.php?fatura_ara=<?= urlencode($fno) ?>" class="badge bg-danger text-decoration-none me-1"><?= h($fno) ?></a><?php endforeach; ?></li>
-        <?php endforeach; ?>
-    </ul>
+    <?php if ($cift['cift']): ?>
+    <div class="small mb-2">Aşağıdaki faturalar <strong>aynı irsaliyeleri</strong> içeriyor. Aynı teslimat iki ayrı faturayla
+        kesilmiş olabilir — <strong>ödemeden önce iki faturayı karşılaştırın</strong>. İkinci fatura bir
+        <em>fiyat farkı / düzeltme</em> faturasıysa (aynı irsaliyelere atıf yapar) çift faturalama değildir:
+        türünü "Fiyat Farkı" yapın, bu uyarıdan çıkar.</div>
+    <?php foreach ($cift['cift'] as $ci => $c): $cIrs = $c['irs']; ?>
+    <div class="border border-danger-subtle rounded bg-white p-2 mb-2">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+            <strong class="text-danger"><?= implode(' ↔ ', array_map(fn($f) => h((string)$f['fatura_no']), $c['f'])) ?></strong>
+            <span class="badge bg-danger"><?= count($cIrs) ?> ortak irsaliye</span>
+            <?php if ($c['ayni_tutar'] && $c['ayni_m3']): ?>
+                <span class="badge bg-dark">tutar ve m³ AYNI — büyük olasılıkla aynı teslimat iki kez faturalanmış</span>
+            <?php elseif ($c['ayni_tutar']): ?>
+                <span class="badge bg-dark">tutar AYNI</span>
+            <?php else: ?>
+                <span class="badge bg-warning text-dark">tutarlar farklı — biri fiyat farkı / düzeltme faturası olabilir</span>
+            <?php endif; ?>
+        </div>
+        <div class="table-responsive">
+        <table class="table table-sm align-middle mb-1 small">
+            <thead class="table-light"><tr><th>Fatura</th><th>Tarih</th><th>Tedarikçi</th><th>Tür</th>
+                <th class="text-end">Tutar</th><th class="text-end">m³</th><th class="text-end">Bağlı irsaliye</th><th></th></tr></thead>
+            <tbody>
+            <?php foreach ($c['f'] as $cf): $cfTur = fat_tur_norm($cf['tur'] ?? 'beton');
+                $cfDosya = (string)($cf['dosya_url'] ?? ''); $cfDosyaOk = $cfDosya !== '' && !str_contains($cfDosya, '..'); ?>
+            <tr>
+                <td><a href="fatura_eslestir.php?fatura_ara=<?= urlencode((string)$cf['fatura_no']) ?>#kayitli-faturalar" class="fw-semibold"><?= h((string)$cf['fatura_no']) ?></a></td>
+                <td><?= h(format_date($cf['tarih'])) ?></td>
+                <td><?= h((string)($cf['tedarikci'] ?? '—')) ?></td>
+                <td><span class="badge bg-<?= h(FAT_TUR[$cfTur][1]) ?>"><?= h(FAT_TUR[$cfTur][0]) ?></span></td>
+                <td class="text-end text-nowrap"><?= $cf['tutar'] !== null ? $fmt((float)$cf['tutar']) . '&nbsp;₺' : '—' ?></td>
+                <td class="text-end"><?= $cf['miktar_m3'] !== null ? $fmt((float)$cf['miktar_m3']) : '—' ?></td>
+                <td class="text-end"><?= (int)$cf['bagli'] ?></td>
+                <td class="text-nowrap text-end">
+                    <?php if ($cfDosyaOk): ?><a href="<?= h($cfDosya) ?>" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary py-0"><i class="bi bi-file-earmark-pdf"></i> Faturayı aç</a><?php endif; ?>
+                    <?php if (can_edit()): ?>
+                    <form method="post" class="d-inline" onsubmit="return confirm('<?= h((string)$cf['fatura_no']) ?> fiyat farkı faturası olarak işaretlensin mi? Çift faturalama kontrolünden ve m³ mutabakatından çıkar.')">
+                        <input type="hidden" name="action" value="tur_degistir">
+                        <input type="hidden" name="fatura_id" value="<?= (int)$cf['id'] ?>">
+                        <input type="hidden" name="tur" value="fark">
+                        <button class="btn btn-sm btn-outline-warning py-0" title="Bu fatura aynı irsaliyelere atıf yapan bir fiyat farkı / düzeltme faturasıysa">Fiyat farkı</button>
+                    </form>
+                    <?php endif; ?>
+                </td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+        <details class="small"><summary>Ortak irsaliyeler (<?= count($cIrs) ?>)</summary>
+            <div class="mt-1"><?php foreach ($cIrs as $no): ?><code class="me-2"><?= h($no) ?></code> <?php endforeach; ?></div>
+        </details>
+    </div>
+    <?php endforeach; ?>
     <?php endif; ?>
     <?php if ($cift['tutar']): ?>
     <div class="small mb-1"><strong><?= count($cift['tutar']) ?> grup</strong> aynı tedarikçi · aynı gün · aynı tutarlı farklı fatura (şüphe — kalemleri karşılaştırın; sabit bedelli pompa kirası olabilir):</div>
@@ -1720,6 +1766,14 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
 </div>
 <?php elseif ($fatTumAdet): ?>
 <div class="small text-success mb-2"><i class="bi bi-shield-check me-1"></i>Çift faturalama kontrolü: hiçbir irsaliye iki farklı faturada geçmiyor; aynı gün aynı tutarlı fatura yok.</div>
+<?php endif; ?>
+<?php if ($cift['ref']): ?>
+<div class="small text-muted mb-2"><i class="bi bi-info-circle me-1"></i>Bilgi:
+    <?php foreach ($cift['ref'] as $r): ?>
+        <a href="fatura_eslestir.php?fatura_ara=<?= urlencode((string)$r['f']['fatura_no']) ?>#kayitli-faturalar"><?= h((string)$r['f']['fatura_no']) ?></a>
+        (<?= h(FAT_TUR[fat_tur_norm($r['f']['tur'] ?? 'beton')][0]) ?>) <?= (int)$r['adet'] ?> irsaliyeye atıf yapıyor;
+    <?php endforeach; ?>
+    irsaliyesiz fatura olduğu için çift faturalama sayılmaz.</div>
 <?php endif; ?>
 <div class="card" id="kayitli-faturalar">
     <div class="card-header bg-white fw-semibold d-flex align-items-center justify-content-between flex-wrap gap-2">

@@ -803,17 +803,18 @@ function fat_kaydet(PDO $pdo, array $fatura, array $irsIds, ?int $userId = null,
  */
 function fat_cift_kontrol(PDO $pdo): array
 {
-    $fat = []; $irs = [];
+    $fat = []; $irs = []; $ref = [];
     try {
-        foreach ($pdo->query("SELECT f.id, f.fatura_no, f.tarih, f.tutar, f.tedarikci_id, f.eksik_liste, f.irsaliye_liste, f.notlar,
-                                     t.ad AS tedarikci
+        foreach ($pdo->query("SELECT f.id, f.fatura_no, f.tur, f.tarih, f.tutar, f.miktar_m3, f.dosya_url, f.tedarikci_id,
+                                     f.eksik_liste, f.irsaliye_liste, f.notlar, t.ad AS tedarikci
                               FROM faturalar f LEFT JOIN tedarikciler t ON t.id = f.tedarikci_id") as $f) $fat[(int)$f['id']] = $f;
         $bagli = [];
         foreach ($pdo->query("SELECT fatura_id, irsaliye_no FROM irsaliyeler WHERE fatura_id IS NOT NULL") as $r)
             $bagli[(int)$r['fatura_id']][] = (string)$r['irsaliye_no'];
-    } catch (Throwable $e) { return ['irs' => [], 'tutar' => [], 'fid' => []]; }
+    } catch (Throwable $e) { return ['irs' => [], 'tutar' => [], 'fid' => [], 'cift' => [], 'ref' => []]; }
 
     foreach ($fat as $fid => $f) {
+        $fat[$fid]['bagli'] = count($bagli[$fid] ?? []);
         $nolar = array_merge(
             (array)(json_decode((string)($f['irsaliye_liste'] ?? ''), true) ?: []),
             (array)(json_decode((string)($f['eksik_liste'] ?? ''), true) ?: []),
@@ -823,13 +824,47 @@ function fat_cift_kontrol(PDO $pdo): array
                 if (preg_match('/^\s*(\S+)\s*→/u', $parca, $m2)) $nolar[] = $m2[1];
             }
         }
+        // ⚠ Fiyat farkı / pompa / hizmet faturası aynı irsaliyelere ATIF yapabilir (ör. "Ekim ayı fiyat farkı:
+        //   şu irsaliyeler") — bu çift faturalama DEĞİLDİR; yalnız bilgi olarak ayrı tutulur.
+        $hedef = fat_tur_irsaliyeli($f['tur'] ?? 'beton') ? 'irs' : 'ref';
         foreach ($nolar as $no) {
             $k = fat_irs_norm((string)$no); if ($k === '') continue;
-            $irs[$k]['ham'] ??= strtoupper(trim((string)$no));
-            $irs[$k]['f'][$fid] = (string)$f['fatura_no'];
+            if ($hedef === 'irs') {
+                $irs[$k]['ham'] ??= strtoupper(trim((string)$no));
+                $irs[$k]['f'][$fid] = (string)$f['fatura_no'];
+            } else {
+                $ref[$k][$fid] = true;
+            }
         }
     }
+    $irsTum = $irs;
     $irs = array_filter($irs, fn($x) => count($x['f']) > 1);
+
+    // Aynı fatura KÜMESİNİ paylaşan irsaliyeler tek grupta: "A ↔ B: 44 ortak irsaliye" (44 ayrı satır yerine)
+    $cift = [];
+    foreach ($irs as $x) {
+        $ids = array_keys($x['f']); sort($ids);
+        $gk = implode('|', $ids);
+        $cift[$gk]['f'] ??= array_combine($ids, array_map(fn($i) => $fat[$i], $ids));
+        $cift[$gk]['irs'][] = $x['ham'];
+    }
+    foreach ($cift as &$c) {
+        $tut = array_map(fn($f) => $f['tutar'] === null ? null : round((float)$f['tutar'], 2), $c['f']);
+        $m3  = array_map(fn($f) => $f['miktar_m3'] === null ? null : round((float)$f['miktar_m3'], 2), $c['f']);
+        $c['ayni_tutar'] = !in_array(null, $tut, true) && count(array_unique($tut)) === 1;
+        $c['ayni_m3']    = !in_array(null, $m3, true) && count(array_unique($m3)) === 1;
+    }
+    unset($c);
+    uasort($cift, fn($a, $b) => count($b['irs']) <=> count($a['irs']));
+
+    // Bilgi: beton faturasındaki irsaliyelere atıf yapan irsaliyesiz faturalar
+    $refSay = [];
+    foreach ($ref as $k => $fidler) {
+        if (!isset($irsTum[$k])) continue;                 // yalnız bir BETON faturasında da geçen irsaliyeler
+        foreach (array_keys($fidler) as $rf) {
+            $refSay[$rf] = ($refSay[$rf] ?? 0) + 1;
+        }
+    }
 
     $grup = [];
     foreach ($fat as $fid => $f) {
@@ -842,7 +877,8 @@ function fat_cift_kontrol(PDO $pdo): array
     $fidMap = [];
     foreach ($irs as $x) foreach ($x['f'] as $fid => $_) $fidMap[$fid] = 'irs';
     foreach ($grup as $x) foreach ($x as $fid => $_) $fidMap[$fid] ??= 'tutar';
-    return ['irs' => $irs, 'tutar' => $grup, 'fid' => $fidMap];
+    return ['irs' => $irs, 'tutar' => $grup, 'fid' => $fidMap, 'cift' => array_values($cift),
+            'ref' => array_map(fn($fid, $n) => ['f' => $fat[$fid], 'adet' => $n], array_keys($refSay), $refSay)];
 }
 
 /**
