@@ -159,7 +159,9 @@ function dfat_cikar(string $metin): array {
 
     // Proje kodu adayları: Çakıroğlu faturası açıklamaya "U031 İSTANBUL KARTAL ESENTEPE" yazar.
     // Yalnız ADAY toplanır (harf + 3 hane); hangisinin gerçek proje olduğuna demir_projeler.kod karar verir.
-    if (preg_match_all('/\b([A-Z]\d{3})\b/u', $t, $mm)) $d['proje_kodlar'] = array_values(array_unique($mm[1]));
+    // ⚠ ETTN (9B0ECA73-C862-…) içindeki parçalar aday sayılmasın — ETTN önce metinden çıkarılır.
+    $tProje = preg_replace('/\b[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\b/i', ' ', $t);
+    if (preg_match_all('/\b([A-Z]\d{3})\b/u', $tProje, $mm)) $d['proje_kodlar'] = array_values(array_unique($mm[1]));
 
     // Miktar: "Toplam Miktar 27680" / "TOPLAM MİKTAR : 66420.000" → kg;
     // yoksa kalem satırlarındaki ",00 kg" değerlerinin toplamı (ondalıksız özet
@@ -2182,7 +2184,13 @@ ERN_TOPLU_KONTROL.kur({form: document.getElementById('kontrolForm'), url: 'fatur
                                     <?php foreach ($fKalem as $kl): ?>
                                         <tr><td><?= $kl['cap'] !== null ? ((int)$kl['cap'] >= 100 ? 'Q' : 'Ø').(int)$kl['cap'] : '<span class="text-muted">—</span>' ?></td>
                                             <td class="text-end font-monospace"><?= $fmt(((float)($kl['kg'] ?? 0))/1000) ?></td>
-                                            <td class="small"><code><?= h((string)($kl['irs'] ?? '')) ?></code></td></tr>
+                                            <td class="small"><?php
+                                                // Kalemde irsaliye yazmıyorsa: faturanın TEK irsaliyesi varsa o (kalem ona aittir), yoksa "—".
+                                                // Eskiden boş <code> çiziliyor, hücrede anlamsız gri kutucuk kalıyordu.
+                                                $klIrs = trim((string)($kl['irs'] ?? ''));
+                                                if ($klIrs !== ''): ?><code><?= h($klIrs) ?></code><?php
+                                                elseif (count($irsL) === 1): ?><code class="text-muted" title="Kalemde irsaliye yazmıyor; faturanın tek irsaliyesi"><?= h((string)$irsL[0]) ?></code><?php
+                                                else: ?><span class="text-muted">—</span><?php endif; ?></td></tr>
                                     <?php endforeach; ?>
                                     </tbody>
                                 </table>
