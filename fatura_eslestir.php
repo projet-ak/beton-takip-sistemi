@@ -93,6 +93,11 @@ if (($_POST['action'] ?? '') === 'kaydet') {
 
     // Tedarikçi seçilmemişse ve faturadan satıcı bilgisi çıkarıldıysa (isteğe bağlı kutu):
     // önce VKN, sonra normalize unvan ile mevcut tedarikçi aranır; yoksa OLUŞTURULUR.
+    // Satıcı okunamadıysa (AI metni) numara önekinden (SGA…/SKB…) önerilen tedarikçi gizli alanla gelir;
+    // kullanıcı select'i boş bırakıp kaydederse fatura tedarikçisiz kalmasın.
+    if (!(int)($_POST['tedarikci_id'] ?? 0) && ctype_digit((string)($_POST['tedarikci_onek'] ?? ''))) {
+        $_POST['tedarikci_id'] = (int)$_POST['tedarikci_onek'];
+    }
     if (!(int)($_POST['tedarikci_id'] ?? 0) && !empty($_POST['tedarikci_olustur'])) {
         $sUnvan = trim((string)($_POST['satici_unvan'] ?? ''));
         $sVkn   = preg_replace('/\D/', '', (string)($_POST['satici_vkn'] ?? ''));
@@ -234,6 +239,49 @@ if (($_POST['action'] ?? '') === 'eksik_tara' && ctype_digit((string)($_POST['fa
     redirect(($_POST['geri'] ?? '') === 'liste' ? 'fatura_eslestir.php' : 'fatura_eslestir.php?eksik=1');
 }
 
+// ── 2c'') TEDARİKÇİSİ BOŞ faturaya tedarikçi ata (+ eksikleri taslak aç) ─────
+// AI ile okunan faturada satıcı VKN/unvanı bulunamayınca fatura tedarikçisiz kaydediliyordu
+// (SGA2026000001252) ve tedarikçisiz faturada taslak açılamadığı için eksikler hep eksik kalıyordu.
+// fatura_id=<id>: seçilen tedarikçi (boşsa numara önekinden önerilen) · fatura_id=hepsi: tedarikçisi
+// boş TÜM faturalar, yalnız önekten KESİN bulunanlar. taslak=1 → ardından eksikler taslak açılır.
+$eksikIdler = [];
+if (($_POST['action'] ?? '') === 'ted_ata') {
+    if (!can_edit()) { flash('error', 'Bu işlem için yetkiniz yok.'); redirect(fat_liste_geri()); }
+    $hepsi = ($_POST['fatura_id'] ?? '') === 'hepsi';
+    if (!$hepsi && !ctype_digit((string)($_POST['fatura_id'] ?? ''))) redirect(fat_liste_geri());
+    $st = $pdo->prepare("SELECT * FROM faturalar WHERE tedarikci_id IS NULL" . ($hepsi ? '' : ' AND id = ?'));
+    $st->execute($hepsi ? [] : [(int)$_POST['fatura_id']]);
+    $atanan = []; $bulunamayan = [];
+    foreach ($st->fetchAll() as $f) {
+        $tid = (!$hepsi && ctype_digit((string)($_POST['tedarikci_id'] ?? ''))) ? (int)$_POST['tedarikci_id'] : 0;
+        $kaynak = 'elle seçildi';
+        if (!$tid) {
+            $irsN = array_merge((array)json_decode((string)($f['irsaliye_liste'] ?? ''), true),
+                                (array)json_decode((string)($f['eksik_liste'] ?? ''), true));
+            $o = fat_tedarikci_onekten($pdo, $f['fatura_no'], array_filter($irsN, 'is_string'));
+            if ($o) { $tid = (int)$o['id']; $kaynak = $o['kaynak']; }
+        }
+        $var = $tid ? $pdo->prepare("SELECT ad FROM tedarikciler WHERE id = ?") : null;
+        if ($var) $var->execute([$tid]);
+        $tedAd = $var ? $var->fetchColumn() : false;
+        if ($tedAd === false) { $bulunamayan[] = $f['fatura_no']; continue; }
+        $pdo->prepare("UPDATE faturalar SET tedarikci_id = ? WHERE id = ? AND tedarikci_id IS NULL")->execute([$tid, (int)$f['id']]);
+        audit_log($pdo, 'faturalar', (int)$f['id'], 'UPDATE', ['tedarikci_id' => null],
+                  ['tedarikci_id' => $tid, 'tedarikci' => $tedAd, 'kaynak' => $kaynak], current_user_id());
+        $atanan[] = $f['fatura_no'] . ' → ' . $tedAd . ' (' . $kaynak . ')';
+        if ((int)$f['eksik_adet'] > 0) $eksikIdler[] = (int)$f['id'];
+    }
+    if ($atanan) flash('info', count($atanan) . ' faturaya tedarikçi atandı: ' . implode(' · ', $atanan));
+    if ($bulunamayan) flash('warning', 'Tedarikçi bulunamadı (fatura/irsaliye önekiyle kayıtlı belge yok ya da birden çok firmada) — '
+                                     . 'listeden elle seçin: ' . implode(', ', $bulunamayan));
+    if (!$atanan && !$bulunamayan) flash('info', 'Tedarikçisi boş fatura yok.');
+    if (!empty($_POST['taslak']) && $eksikIdler) {
+        $_POST['action'] = 'eksik_taslak'; $_POST['fatura_id'] = 'secili'; $_POST['_geri_liste'] = 1;
+    } else {
+        redirect(fat_liste_geri());
+    }
+}
+
 // ── 2c') Kayıtlı faturanın EKSİK irsaliyelerini taslak olarak aç ────────────
 // Toplu "Çözümle ve Kaydet" eskiden taslak açmıyordu; o faturaların eksik numaraları
 // `eksik_liste`de saklı — dosya yeniden okunmadan (AI harcamadan) taslak açılıp faturaya
@@ -244,7 +292,9 @@ if (($_POST['action'] ?? '') === 'eksik_taslak') {
     $sql = "SELECT * FROM faturalar WHERE eksik_adet > 0 AND eksik_liste IS NOT NULL AND eksik_liste <> ''
             AND tur NOT IN ('" . implode("','", FAT_TUR_IRSALIYESIZ) . "')";
     $par = [];
-    if (!$hepsi) {
+    if (($_POST['fatura_id'] ?? '') === 'secili' && $eksikIdler) {      // yalnız sunucu içinden (ted_ata)
+        $sql .= " AND id IN (" . implode(',', array_map('intval', $eksikIdler)) . ")";
+    } elseif (!$hepsi) {
         if (!ctype_digit((string)($_POST['fatura_id'] ?? ''))) redirect('fatura_eslestir.php?eksik=1');
         $sql .= " AND id = ?"; $par[] = (int)$_POST['fatura_id'];
     }
@@ -289,9 +339,9 @@ if (($_POST['action'] ?? '') === 'eksik_taslak') {
                                   . "{$topBag} irsaliye faturaya bağlandı (Excel aktarımı gerçek verilerle günceller).");
     if ($baskada) flash('warning', "{$baskada} irsaliye başka bir faturaya bağlı olduğu için taşınmadı.");
     if ($tedsiz)  flash('warning', 'Tedarikçisi olmayan faturada taslak açılamaz (irsaliye tedarikçisiz kaydedilemez): '
-                                  . implode(', ', $tedsiz) . ' — faturayı tekil ekranda tedarikçi seçerek yeniden kaydedin.');
+                                  . implode(', ', $tedsiz) . ' — Kayıtlı Faturalar listesinde Tedarikçi sütunundan atayın (eksikler taslak açılır).');
     if (!$islenen && !$tedsiz) flash('info', 'Taslak açılacak eksik irsaliye bulunamadı.');
-    redirect('fatura_eslestir.php?eksik=1');
+    redirect(!empty($_POST['_geri_liste']) ? fat_liste_geri() : 'fatura_eslestir.php?eksik=1');
 }
 
 // ── 2d) TOPLU FATURA KONTROLÜ: "bu 100 dosyadan hangisi işlenmiş?" ──────────
@@ -544,9 +594,8 @@ if (($_POST['action'] ?? '') === 'fatura_isle' && !empty($_POST['dosya'])) {
                              'cakisma'=>$cakisma, 'dosya'=>$cakisma ? $pid : null];
                 continue;
             }
-            // Tedarikçi: VKN → normalize unvan → oluştur
-            $ted = fat_tedarikci_bul($pdo, $veri['satici_vkn'] ?? null)
-                ?: fat_tedarikci_bul_ad($pdo, $veri['satici_unvan'] ?? null);
+            // Tedarikçi: VKN → normalize unvan → numara öneki (SGA…/SKB…) → oluştur
+            $ted = fat_tedarikci_coz($pdo, $veri);
             $tedYeni = false;
             if (!$ted && !empty($veri['satici_unvan'])) {
                 $pdo->prepare("INSERT INTO tedarikciler (ad, vkn) VALUES (?, ?)")
@@ -738,6 +787,16 @@ uasort($fatTedler, fn($x, $y) => strcmp($x['ad'], $y['ad']));
 $kayitliIrs = $kayitli ? fat_bagli_irsaliyeler($pdo, array_column($kayitli, 'id')) : [];
 // Çift faturalama kontrolü — TÜM faturalar (süzgeçten ve aramadan bağımsız)
 $cift = fat_cift_kontrol($pdo);
+// Tedarikçisi BOŞ faturalar (satıcı okunamamış) — numara önekinden öneri; süzgeçten bağımsız
+$tedsizOner = []; $tedsizNo = [];
+foreach ($kayitli as $__f) {
+    if (!empty($__f['tedarikci_id'])) continue;
+    $tedsizNo[(int)$__f['id']] = (string)$__f['fatura_no'];
+    $__irs = array_merge((array)json_decode((string)($__f['irsaliye_liste'] ?? ''), true),
+                         (array)json_decode((string)($__f['eksik_liste'] ?? ''), true));
+    $tedsizOner[(int)$__f['id']] = fat_tedarikci_onekten($pdo, $__f['fatura_no'], array_filter($__irs, 'is_string'));
+}
+$tedsizBulunan = count(array_filter($tedsizOner));
 
 // Yapısal süzgeçler (tür · tedarikçi · tarih · durum)
 $kayitli = array_values(array_filter($kayitli, function ($f) use ($fatTur, $fatTed, $fatBas, $fatBit, $fatDurum, $kayitliIrs, $cift) {
@@ -1425,6 +1484,9 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
             $saticiUnvan = trim((string)($v['satici_unvan'] ?? ''));
             $onerTed = $qrTed ?: ($saticiVkn !== '' ? fat_tedarikci_bul($pdo, $saticiVkn) : null);
             if (!$onerTed && $saticiUnvan !== '') $onerTed = fat_tedarikci_bul_ad($pdo, $saticiUnvan);
+            // Satıcı okunamadıysa: aynı fatura/irsaliye önekiyle kayıtlı geçmişten (SGA… → SAFİ BETON)
+            $onekTed = null;
+            if (!$onerTed) $onerTed = $onekTed = fat_tedarikci_onekten($pdo, $v['fatura_no'] ?? null, (array)($v['irsaliyeler'] ?? []));
             $onerId = $onerTed ? (int)$onerTed['id'] : 0;
             if (!$onerId && $e['eslesen']) {
                 $ilk = $e['eslesen'][0];
@@ -1436,7 +1498,12 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                 <?php foreach ($tedarikciler as $td): ?>
                     <option value="<?= (int)$td['id'] ?>" <?= $onerId===(int)$td['id']?'selected':'' ?>><?= h($td['ad']) ?></option>
                 <?php endforeach; ?>
-            </select></div>
+            </select>
+            <?php if ($onekTed): ?>
+            <input type="hidden" name="tedarikci_onek" value="<?= (int)$onekTed['id'] ?>">
+            <div class="form-text text-warning-emphasis"><i class="bi bi-info-circle"></i>
+                Satıcı faturadan okunamadı — <?= h($onekTed['kaynak']) ?> ile kayıtlı <?= (int)$onekTed['adet'] ?> belgeden önerildi.</div>
+            <?php endif; ?></div>
         <div class="col-md-2"><label class="form-label">Ödenecek Tutar</label>
             <input type="text" name="tutar" class="form-control" value="<?= $v['tutar']!==null?$fmt($v['tutar']):'' ?>"></div>
         <div class="col-md-2"><label class="form-label">Miktar (m³)</label>
@@ -1606,6 +1673,29 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
 </script>
 <?php endif; ?>
 
+<?php if ($tedsizOner): ?>
+<div class="alert alert-warning mb-3 d-flex flex-wrap align-items-center gap-2">
+    <div class="flex-grow-1">
+        <i class="bi bi-person-exclamation me-1"></i><strong><?= count($tedsizOner) ?> faturanın tedarikçisi boş</strong>
+        (satıcı faturadan okunamamış) —
+        <?php foreach ($tedsizOner as $__fid => $__o): ?>
+            <a href="fatura_eslestir.php?fatura_ara=<?= urlencode($tedsizNo[$__fid]) ?>#kayitli-faturalar" class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle text-decoration-none"><?= h($tedsizNo[$__fid]) ?><?= $__o ? ' → ' . h($__o['ad']) : '' ?></a>
+        <?php endforeach; ?>
+        <div class="small mt-1">Tedarikçisiz faturada eksik irsaliyeler taslak açılamaz. Tedarikçi sütunundan tek tek ya da
+            <?= $tedsizBulunan ? 'aşağıdaki düğmeyle numara önekinden (aynı önekli kayıtlı fatura/irsaliyelerin tedarikçisi) ' : '' ?>atayın.</div>
+    </div>
+    <?php if ($tedsizBulunan && can_edit()): ?>
+    <form method="post" class="d-flex align-items-center gap-2" onsubmit="return confirm('Önekten bulunan <?= (int)$tedsizBulunan ?> faturaya tedarikçi atansın mı?')">
+        <input type="hidden" name="action" value="ted_ata">
+        <input type="hidden" name="fatura_id" value="hepsi">
+        <div class="form-check small mb-0"><input class="form-check-input" type="checkbox" name="taslak" value="1" id="tedTaslakHepsi" checked>
+            <label class="form-check-label" for="tedTaslakHepsi">eksikleri taslak aç</label></div>
+        <button class="btn btn-sm btn-warning"><i class="bi bi-magic"></i> <?= (int)$tedsizBulunan ?> faturaya ata</button>
+    </form>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
+
 <?php if ($cift['irs'] || $cift['tutar']): ?>
 <div class="alert <?= $cift['irs'] ? 'alert-danger' : 'alert-warning' ?> mb-3">
     <div class="fw-semibold mb-1"><i class="bi bi-exclamation-octagon me-1"></i>Çift faturalama kontrolü</div>
@@ -1731,7 +1821,32 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                         </div>
                     </td>
                     <td><?= h(format_date($f['tarih'])) ?></td>
-                    <td><?= h((string)$f['tedarikci']) ?></td>
+                    <td>
+                        <?php if (!empty($f['tedarikci_id']) || !array_key_exists((int)$f['id'], $tedsizOner)): ?>
+                            <?= h((string)$f['tedarikci']) ?>
+                        <?php elseif (can_edit()): $__o = $tedsizOner[(int)$f['id']]; ?>
+                        <form method="post" class="d-flex flex-column gap-1" style="min-width:190px">
+                            <input type="hidden" name="action" value="ted_ata">
+                            <input type="hidden" name="fatura_id" value="<?= (int)$f['id'] ?>">
+                            <div class="input-group input-group-sm">
+                                <select name="tedarikci_id" class="form-select form-select-sm border-warning" required>
+                                    <option value="">— tedarikçi yok —</option>
+                                    <?php foreach ($tedarikciler as $td): ?>
+                                    <option value="<?= (int)$td['id'] ?>" <?= $__o && (int)$__o['id'] === (int)$td['id'] ? 'selected' : '' ?>><?= h($td['ad']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <button class="btn btn-warning" title="Tedarikçiyi ata"><i class="bi bi-check-lg"></i></button>
+                            </div>
+                            <?php if ($__o): ?><span class="small text-muted">öneri: <?= h($__o['kaynak']) ?> (<?= (int)$__o['adet'] ?> kayıt)</span><?php endif; ?>
+                            <?php if ((int)$f['eksik_adet'] > 0 && fat_tur_irsaliyeli($f['tur'] ?? 'beton')): ?>
+                            <label class="small mb-0"><input type="checkbox" name="taslak" value="1" checked>
+                                <?= (int)$f['eksik_adet'] ?> eksik irsaliyeyi taslak aç</label>
+                            <?php endif; ?>
+                        </form>
+                        <?php else: ?>
+                            <span class="badge bg-warning-subtle text-warning-emphasis">tedarikçi yok</span>
+                        <?php endif; ?>
+                    </td>
                     <td class="text-end"><?= $f['tutar']!==null?$fmt($f['tutar']).' ₺':'—' ?></td>
                     <td class="text-end">
                         <?php if (!$fBeton): ?>

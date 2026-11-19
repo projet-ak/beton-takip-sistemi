@@ -193,8 +193,11 @@ function fat_metinden_cikar(string $metin): array
     // Satıcı VKN + unvan (metinden): faturada iki VKN vardır — "SAYIN" bloğundaki
     // ALICI'nındır (bize kesilen fatura), diğeri SATICI'nındır. Karekod varsa
     // satıcı VKN'si zaten oradan gelir (fat_qr_birlestir ezer).
+    // ⚠ AI okumasında etiket "VKN/TCKN: …", "Vergi No: …", "Vergi Kimlik No: …" diye de yazılabilir —
+    //   yalnız "VKN:" aranınca satıcı bulunamıyor, fatura TEDARİKÇİSİZ kaydediliyordu (SGA2026000001252).
     $saticiOff = null;
-    if (preg_match_all('/VKN[:\s]*([0-9]{10,11})/iu', $t, $vm, PREG_OFFSET_CAPTURE)) {
+    $vknDesen = '/(?:\bV\.?\s*K\.?\s*N\.?|Vergi\s*Kimlik\s*No(?:su)?|Vergi\s*No(?:su)?)(?:\s*\/\s*T\.?\s*C\.?\s*K\.?\s*N\.?)?\s*[:.]?\s*([0-9]{10,11})\b/iu';
+    if (preg_match_all($vknDesen, $t, $vm, PREG_OFFSET_CAPTURE)) {
         $sayinOff = stripos($t, 'SAYIN');
         $aliciVkn = null;
         if ($sayinOff !== false) {
@@ -205,12 +208,19 @@ function fat_metinden_cikar(string $metin): array
         }
         if ($d['satici_vkn'] === null && $vm[1]) { $d['satici_vkn'] = $vm[1][0][0]; $saticiOff = $vm[1][0][1]; }
     }
+    // Unvan: satıcı VKN'sinden geriye doğru en yakın "…ŞİRKETİ / A.Ş. / LTD.ŞTİ." satırı. Satır sonunda
+    // "KARTAL ŞUBESİ" gibi ek olabilir (AI tek satıra yazar) — unvan şirket ekinde KESİLİR; baştaki
+    // "Satıcı:" / "Unvan:" etiketi atılır. VKN hiç okunamadıysa SAYIN'dan (alıcı bloğu) önceki ilk şirket satırı.
+    $unvanDesen = '/^[ \t]*(?:(?:Satıcı|Satici|Unvan[ıi]?|Ticaret\s*Unvan[ıi]|Firma)[^:\n]{0,20}:\s*)?'
+                . '([^\n:]{2,100}?(?:ANON[İI]M\s+[ŞS][İI]RKET[İI]|L[İI]M[İI]TED\s+[ŞS][İI]RKET[İI]|A\.\s*[ŞS]\.?|LTD\.?\s*[ŞS]T[İI]\.?))(?=[^\n]{0,60}$)/miu';
     if ($saticiOff !== null) {
-        // Unvan: satıcı VKN'sinden geriye doğru en yakın "…ŞİRKETİ / A.Ş. / LTD.ŞTİ." satırı
         $pencere = substr($t, max(0, $saticiOff - 900), min(900, $saticiOff));
-        if (preg_match_all('/^[^\n]{3,100}?(?:ANON[İI]M\s+[ŞS][İI]RKET[İI]|L[İI]M[İI]TED\s+[ŞS][İI]RKET[İI]|A\.\s*[ŞS]\.?|LTD\.?\s*[ŞS]T[İI]\.?)[^\n]{0,10}$/miu', $pencere, $um)) {
-            $d['satici_unvan'] = trim((string)end($um[0]));
-        }
+        if (preg_match_all($unvanDesen, $pencere, $um)) $d['satici_unvan'] = trim((string)end($um[1]));
+    }
+    if ($d['satici_unvan'] === null) {
+        $sayinOff = stripos($t, 'SAYIN');
+        $bas = $sayinOff !== false ? substr($t, 0, $sayinOff) : substr($t, 0, 1500);
+        if (preg_match($unvanDesen, $bas, $um1)) $d['satici_unvan'] = trim($um1[1]);
     }
 
     // Metne karekot içeriği de yapıştırılmış olabilir — varsa o esas alınır
@@ -348,6 +358,62 @@ function fat_tedarikci_bul(PDO $pdo, ?string $vkn): ?array
     $st = $pdo->prepare("SELECT id, ad, vkn FROM tedarikciler WHERE REPLACE(REPLACE(vkn,' ',''),'-','') = ? LIMIT 1");
     $st->execute([$vkn]);
     return $st->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+
+/**
+ * Fatura / irsaliye NUMARA ÖNEKİNDEN tedarikçi önerir (metinde satıcı okunamadığında son çare).
+ *
+ * e-Belge numarasının harf öneki (SGA2026…, SKB2026…) belgeyi kesen firmaya özgüdür. Aynı önekle
+ * daha önce kaydedilmiş faturalar ve irsaliyeler hangi tedarikçiye bağlıysa o önerilir — yalnız
+ * kayıtların en az %80'i AYNI tedarikçideyse (aksi halde tahmin yapılmaz, null döner).
+ * Önce fatura öneki (en güçlü kanıt), sonra irsaliye önekleri denenir.
+ *
+ * @return array|null  ['id','ad','vkn','kaynak'=>'fatura öneki SGA' | 'irsaliye öneki SKB', 'adet'=>n]
+ */
+function fat_tedarikci_onekten(PDO $pdo, ?string $faturaNo, array $irsNolar = []): ?array
+{
+    $onek = function (?string $no): ?string {
+        return preg_match('/^\s*([A-Z]{2,5})(?=20\d{2})/', strtoupper((string)$no), $m) ? $m[1] : null;
+    };
+    $sec = function (array $satirlar): ?array {          // [tedarikci_id => adet]
+        $top = array_sum($satirlar);
+        if ($top < 1) return null;
+        arsort($satirlar);
+        $id = (int)array_key_first($satirlar);
+        return ($satirlar[$id] / $top >= 0.8) ? ['id' => $id, 'adet' => $top] : null;
+    };
+    $denemeler = [];
+    if ($f = $onek($faturaNo)) $denemeler[] = ['faturalar', 'fatura_no', $f, 'fatura öneki ' . $f];
+    $irsOnek = [];
+    foreach ($irsNolar as $n) if ($o = $onek((string)$n)) $irsOnek[$o] = true;
+    foreach (array_keys($irsOnek) as $o) $denemeler[] = ['irsaliyeler', 'irsaliye_no', $o, 'irsaliye öneki ' . $o];
+
+    foreach ($denemeler as [$tablo, $kolon, $o, $kaynak]) {
+        try {
+            $st = $pdo->prepare("SELECT tedarikci_id, COUNT(*) n FROM $tablo
+                                 WHERE $kolon LIKE ? AND tedarikci_id IS NOT NULL GROUP BY tedarikci_id");
+            $st->execute([$o . '20%']);
+            $say = [];
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) $say[(int)$r['tedarikci_id']] = (int)$r['n'];
+            if (!($k = $sec($say))) continue;
+            $t = $pdo->prepare("SELECT id, ad, vkn FROM tedarikciler WHERE id = ?");
+            $t->execute([$k['id']]);
+            if ($row = $t->fetch(PDO::FETCH_ASSOC)) return $row + ['kaynak' => $kaynak, 'adet' => $k['adet']];
+        } catch (Throwable $e) { /* tablo/kolon yoksa sonraki deneme */ }
+    }
+    return null;
+}
+
+/**
+ * Faturanın tedarikçisini çözer: satıcı VKN → normalize unvan → numara öneki (fatura/irsaliye).
+ * Bulamazsa null (oluşturma kararı çağırana kalır).
+ * @return array|null  ['id','ad','vkn','kaynak'=>'vkn'|'unvan'|'fatura öneki …'|'irsaliye öneki …']
+ */
+function fat_tedarikci_coz(PDO $pdo, array $veri): ?array
+{
+    if ($r = fat_tedarikci_bul($pdo, $veri['satici_vkn'] ?? null))      return $r + ['kaynak' => 'vkn'];
+    if ($r = fat_tedarikci_bul_ad($pdo, $veri['satici_unvan'] ?? null)) return $r + ['kaynak' => 'unvan'];
+    return fat_tedarikci_onekten($pdo, $veri['fatura_no'] ?? null, (array)($veri['irsaliyeler'] ?? []));
 }
 
 /**
@@ -607,7 +673,9 @@ function fat_ai_oku(string $path, string $mime, ?string $sistemOverride = null):
             . 'MUTLAKA aynen aktar: Fatura No, Fatura Tarihi, ETTN, Vergiler Dahil Toplam Tutar, '
             . 'Ödenecek Tutar, kalem tablosundaki Miktar değerleri BİRİMİYLE aynen (örn. "250 M3" — '
             . 'birimi asla atlama) ve TÜM "İrsaliye No / İrsaliye Tarihi" değerleri. '
-            . 'İrsaliye numaralarını tek tek, her biri ayrı satırda listele.') . $duzMetinKurali;
+            . 'İrsaliye numaralarını tek tek, her biri ayrı satırda listele. '
+            . 'Faturanın başındaki SATICI firmanın unvanını ve hemen altına "VKN: <numara>" satırını, '
+            . 'ardından "SAYIN" bloğundaki ALICI firmanın unvanını ve "VKN: <numara>" satırını da aynen yaz.') . $duzMetinKurali;
 
     $r = ai_call($sistem, [$parca, ['type' => 'text', 'text' => 'Faturanın metnini çıkar.']], 8000);
     if (!($r['ok'] ?? false)) return null;
