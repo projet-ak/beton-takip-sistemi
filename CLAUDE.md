@@ -54,7 +54,7 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   SARF MALZEME/EL ALETLERİ → stok, MALZEME GİRİŞ-ÇIKIŞ + TAŞERON MALZEME GİRİŞ-TESLİMAT → hareket; her biri kendi
   türünde tam yenileme, dosyada olmayan sayfaya dokunulmaz — takip 2026-08'den beri **4 AYRI dosya** geliyor
   [Demirbaş Takip / Sarf Malzeme Stok (sarf+el aletleri) / Malzeme Takip (giriş+çıkış) / Sarf Taşeron Teslimat],
-  **4'ü birden seçilip tek seferde yüklenir**; her dosya `dp_import_dosya()` ile kendi transaction'ında işlenir (biri
+  **4'ü birden seçilip tek seferde yüklenir**; her dosya `dp_import_dosya()` ile kendi transaction'ında işlenir (çekirdek `depo/_import.php` — kök `toplu_yukleme.php` da bunu çağırır; sarf sayfası adı kesik gelir: "…SARF MALZ") (biri
   bozuksa diğerleri yine aktarılır), aynı bölüm iki dosyada varsa son işlenen esas + uyarı. Dosya başına **veri
   doğrulama raporu** (`kontrol`: ok/uyari/bilgi + satır listesi `<details>`): Excel özet hücreleri sağlaması
   [DEMİRBAŞLAR "STOK MALİ DEĞERİ", SARF "KALEM SAYISI"], **STOK sütunu = SAYIM+GELEN−GİDEN** satır satır, eksi stok,
@@ -2176,6 +2176,43 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   - Yetki fonksiyonları: `can_edit()`, `can_edit_irsaliye($row)` (durum bazlı), `can_approve_saha()`,
     `can_approve_teknik()`, `can_view_reports()`, `can_manage_definitions()` (admin+teknik_ofis_admin),
     `can_manage_users()` (admin), `has_role(...)`, `is_admin()`.
+- **`toplu_yukleme.php` + `includes/toplu_yukleme.php` (ty_*)** — ⭐ **GÜNLÜK TOPLU YÜKLEME, TÜM MODÜLLER**
+  (2026-11-20, kullanıcı: *"günlük böyle mail geliyor, tek tek zor oluyor, bir yer ekle toplu modüllere güncelleyecek"*).
+  Her gün e-postayla gelen 5 Excel (Beton Takip · Demirbaş Takip · Malzeme Takip · Sarf Malzeme Stok · Sarf Taşeron
+  Teslimat) hep birlikte seçilir/sürüklenir; her dosya **İÇERİĞİNDEN tanınır** (`ty_tani`, dosya adına güvenilmez) ve
+  ilgili modülün **KENDİ çekirdeği** çağrılır — kopya mantık yok, kurallar modül ekranıyla birebir:
+  beton → `includes/beton_import.php` **`beton_import_otomatik`** (yeni irsaliye eklenir, `[FATURADAN]` taslağı
+  güncellenir, kayıtlı irsaliye DEĞİŞMEZ + Excel↔sistem farkı listelenir; tam yenileme YOK) · depo → `depo/_import.php`
+  `dp_import_dosya` (bölüm bazında tam yenileme) · CRM `crm_import` (kapat=açık) · Prekast `pk_import` (koruma kutuları
+  açık) · demir talep `tlp_import`. **Önizleme/seçim gerektirenler** (demir sevkiyat & sipariş, akaryakıt, seramik)
+  TANINIR ama aktarılmaz → "Modül ekranından" rozeti + bağlantı. Tanıma sırası önemli (`TY_TUR` / `ty_tani`):
+  depo bölümleri ÖNCE (hareket sayfalarında da "İrsaliye No" var — betona düşmesin; "DEMİRBAŞLAR" adında DEMİR geçer —
+  demir sevkiyatına düşmesin) → seramik (AMBAR …) → demir (`tlp_dosya_turu`) → CRM → Prekast → akaryakıt (OCAK 2026…) →
+  beton (irsaliye başlığı + VERİ/KOT sayfası ya da "Beton Sınıfı" sütunu). Dosyalar tarayıcıdan **TEK TEK** gönderilir
+  (`islem=basla` → her dosya `islem=dosya` → `?rapor=1`; sunucu boyut sınırı ve zaman aşımı dosya başına; gönderilemeyen
+  dosya `kontrol_hata` ile rapora yazılır, "N seçildi · M işlendi"); JS yoksa hepsi tek istekte. Her dosya kendi
+  transaction'ında: biri bozuksa diğerleri yine aktarılır. Modül DB'lerine **`ty_pdo()`** kendi bağlantısını açar
+  (db_*.php bağlantı hatasında `die()` ettiği için yüklenmez — hata dosya satırında raporlanır). Günlük ana DB'de
+  **`toplu_yukleme_log`** (runtime + kurulum); sayfada "Günlük dosyalar — son yükleme" paneli (`TY_GUNLUK`; bugün
+  yüklendiyse yeşil, depo ekranından yapılan yükleme de `depo_import_log`'dan sayılır) + son 25 yükleme. Yetki:
+  `toplu_yukleme_izinli($mod)` (auth.php) — matrisli kullanıcıda modülde `giris`, eski rol düzeninde admin /
+  teknik_ofis_admin (içe aktarma sayfalarıyla aynı kapı); sayfa `MODUL_MUAF`'ta, yetki DOSYA BAŞINA denetlenir.
+  Giriş noktaları: üst çubukta vurgulu bulut düğmesi · kullanıcı menüsü · her modülün kenar menüsünün en üstü ·
+  beton/depo içe aktarma ekranlarında düğme. ⚠ **Bu iş sırasında ortaya çıkan üç gerçek hata da düzeltildi**:
+  (1) **Sarf stoğu HİÇ aktarılmıyordu** — dosyada sayfa adı "KARTAL-BATIYAKASI SARF MALZ" diye KESİK geliyor,
+  `dp_import_dosya` "SARF MALZEME" arıyordu → artık `SARF MALZ` (738 kalem). (2) **Beton aktarımı tek hücre yüzünden
+  tamamen geri alınıyordu** — Excel'de kantar giriş saati "14;03" yazılmış, MySQL "Incorrect time value" verip
+  transaction'ı düşürüyordu; yeni **`beton_saat()`** "14;03" / "14.03" / Excel kesirli gün / tarih-saat okur, okunamazsa
+  satır yine aktarılır, saat boş kalır ve not düşülür (import.php'de de). (3) **`tlp_import` 0 talep okuyunca bile tam
+  yenileme yapıp TÜM talepleri siliyordu** → artık hata fırlatır, mevcut talepler korunur (demir ekranları da korunur).
+  Ortak çekirdekler: `includes/beton_import.php` (import.php'nin yardımcıları + `beton_sayfalar` · `beton_mevcut_no` ·
+  **`beton_satir_kaydet`** — import.php'nin satır döngüsü de artık bunu kullanır) · `depo/_import.php` (depo/import.php'den
+  taşındı). Gerçek 5 dosyayla doğrulandı (MariaDB + php -S + Playwright): 4.289 irsaliye / 40.521 m³ (eski ekranla
+  karşılaştırılan satırlarda 0 fark) · 1.831 demirbaş · 738 sarf + 32 el aleti · 2.167+3.429 depo · 695+1.108 taşeron
+  hareket; aynı dosyalar 2. kez → "Yeni irsaliye yok · 4.289 zaten kayıtlı"; sentetik CRM/Prekast/talep/akaryakıt/seramik/
+  tanınmayan/bozuk/.csv dosyaları doğru yönlendi; saha_sefi/depo rolünde sayfa 403 ve menüde bağlantı yok; JS hatası yok.
+  ⚠ Eski `import.php` önizlemesi her satırı ayrı form alanı gönderdiğinden `max_input_vars` (varsayılan 1000) üstündeki
+  YENİ satırları sessizce keser — toplu yüklemede bu sınır yoktur.
 - **`mukerrer.php` + `includes/mukerrer.php` (mk_*)** — **MÜKERRER KAYIT MERKEZİ, TÜM MODÜLLER** (2026-09-09,
   admin, Araçlar → "Mükerrer Kayıtlar"). Aynı tedarikçi/firma/personel/araç iki kez açılınca raporlar bölünür,
   bakiyeler yanlış çıkar. **`MK_KURAL` kayıt defteri** modül => tablo => [anahtarlar, etiket, bağlı FK'ler,

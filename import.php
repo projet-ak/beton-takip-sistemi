@@ -6,207 +6,13 @@ require_auth(['admin', 'teknik_ofis_admin']);
 require_once __DIR__ . '/includes/db.php';
 beton_onay_gocu($pdo);   // onay akışı kapalı: bekleyenler geçerli sayılır
 require_once __DIR__ . '/includes/fatura.php';   // fat_irs_norm: ANM2026-4710 ↔ ANM2026000004710 aynı belgedir
+require_once __DIR__ . '/includes/beton_import.php';   // çekirdek: toplu_yukleme.php ile ORTAK (satır kaydı, sayfa tespiti, ön analiz)
 require_once __DIR__ . '/vendor/autoload.php';
 
 use Shuchkin\SimpleXLSX;
 
 $pageTitle = 'Dinamik Excel Aktarımı — Beton Takip Sistemi';
 
-// Yardımcı Fonksiyonlar — ?string (nullable) ile PHP 8 uyumlu
-function getOrCreate(PDO $pdo, string $tablo, string $sutun, ?string $deger): ?int {
-    if ($deger === null || trim($deger) === '') return null;
-    $deger = trim($deger);
-    $s = $pdo->prepare("SELECT id FROM $tablo WHERE $sutun = ?");
-    $s->execute([$deger]);
-    $id = $s->fetchColumn();
-    if ($id) return (int)$id;
-    $pdo->prepare("INSERT INTO $tablo ($sutun) VALUES (?)")->execute([$deger]);
-    return (int)$pdo->lastInsertId();
-}
-
-function getOrCreateImalat(PDO $pdo, ?string $ad): ?int {
-    if ($ad === null || trim($ad) === '') return null;
-    $ad = trim($ad);
-    $s = $pdo->prepare("SELECT id FROM imalat_gruplari WHERE ad = ?");
-    $s->execute([$ad]);
-    $id = $s->fetchColumn();
-    if ($id) return (int)$id;
-    $pdo->prepare("INSERT INTO imalat_gruplari (ad, sira) VALUES (?, 99)")->execute([$ad]);
-    return (int)$pdo->lastInsertId();
-}
-
-function getOrCreateAnaKalem(PDO $pdo, ?int $grupId, ?string $ad): ?int {
-    if ($grupId === null || $ad === null || trim($ad) === '') return null;
-    $ad = trim($ad);
-    $s = $pdo->prepare("SELECT id FROM ana_is_kalemleri WHERE imalat_grup_id = ? AND ad = ?");
-    $s->execute([$grupId, $ad]);
-    $id = $s->fetchColumn();
-    if ($id) return (int)$id;
-    $pdo->prepare("INSERT INTO ana_is_kalemleri (imalat_grup_id, ad, sira) VALUES (?, ?, 99)")->execute([$grupId, $ad]);
-    return (int)$pdo->lastInsertId();
-}
-
-function getOrCreateParsel(PDO $pdo, ?string $ad): ?int {
-    if ($ad === null || trim($ad) === '') return null;
-    $ad = trim($ad);
-    $s = $pdo->prepare("SELECT id FROM parseller WHERE ad = ?");
-    $s->execute([$ad]);
-    $id = $s->fetchColumn();
-    if ($id) return (int)$id;
-    $pdo->prepare("INSERT INTO parseller (ad) VALUES (?)")->execute([$ad]);
-    return (int)$pdo->lastInsertId();
-}
-
-function getOrCreateBlok(PDO $pdo, ?int $parselId, ?string $ad): ?int {
-    if ($parselId === null || $ad === null || trim($ad) === '') return null;
-    $ad = trim($ad);
-    $s = $pdo->prepare("SELECT id FROM bloklar WHERE parsel_id = ? AND ad = ?");
-    $s->execute([$parselId, $ad]);
-    $id = $s->fetchColumn();
-    if ($id) return (int)$id;
-    $pdo->prepare("INSERT INTO bloklar (parsel_id, ad) VALUES (?, ?)")->execute([$parselId, $ad]);
-    return (int)$pdo->lastInsertId();
-}
-
-function getOrCreateKot(PDO $pdo, ?int $blokId, ?string $ad): ?int {
-    if ($blokId === null || $ad === null || trim($ad) === '') return null;
-    $ad = trim($ad);
-    $s = $pdo->prepare("SELECT id FROM kotlar WHERE blok_id = ? AND kot_degeri = ?");
-    $s->execute([$blokId, $ad]);
-    $id = $s->fetchColumn();
-    if ($id) return (int)$id;
-    $pdo->prepare("INSERT INTO kotlar (blok_id, kot_degeri) VALUES (?, ?)")->execute([$blokId, $ad]);
-    return (int)$pdo->lastInsertId();
-}
-
-function getOrCreateProje(PDO $pdo, ?string $kod): ?int {
-    $kod = trim((string)$kod);
-    if ($kod === '') return null;
-    $s = $pdo->prepare("SELECT id FROM projeler WHERE UPPER(kod) = UPPER(?)");
-    $s->execute([$kod]);
-    if ($id = $s->fetchColumn()) return (int)$id;
-    $pdo->prepare("INSERT INTO projeler (kod, aciklama) VALUES (?, ?)")->execute([$kod, $kod]);
-    return (int)$pdo->lastInsertId();
-}
-
-/**
- * Satır GERÇEK bir irsaliye verisi mi?
- *
- * Excel şablonunda "Sıra" sütunu formülle binlerce satır aşağı uzatılmış ve
- * toplam hücreleri 0 üretiyor; bu satırlar boş görünse de teknik olarak dolu.
- * Bu yüzden "hiçbir hücre dolu değil" testi yetmez — satırı ancak KİLİT
- * alanlardan (irsaliye no / tarih / tedarikçi / plaka / miktar) en az biri
- * doluysa veri sayarız. Sıra numarası veya sıfır tek başına satır yapmaz.
- */
-function satirVeriMi(array $r, array $colMapping): bool {
-    foreach (['irsaliye_no', 'tarih', 'tedarikci', 'arac_plaka', 'miktar'] as $k) {
-        if (!isset($colMapping[$k])) continue;
-        $v = trim((string)($r[$colMapping[$k]] ?? ''));
-        if ($v === '' || $v === '0') continue;
-        return true;
-    }
-    return false;
-}
-
-/**
- * İmalat/metraj/zayiat sayfalarını (PRP Bina Üstyapı, İksa Kazık, İCMAL, Metraj …)
- * metraj_sayfa tablosuna grid (JSON) olarak kaydeder — İmalat Sayfaları / PRP / İcmal
- * ekranları buradan okur. Sayfa1, VERİ ve KOT hariç (KOT Kotlar sayfasında yönetilir).
- */
-function storeImalatSheets(PDO $pdo, $xlsx): int {
-    $pdo->exec("CREATE TABLE IF NOT EXISTS metraj_sayfa (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        ad VARCHAR(150) NOT NULL,
-        sira INT NOT NULL DEFAULT 0,
-        satir_sayisi INT NOT NULL DEFAULT 0,
-        kolon_sayisi INT NOT NULL DEFAULT 0,
-        veri LONGTEXT NOT NULL,
-        guncelleme TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY uq_ad (ad)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    $haric = ['SAYFA1', 'VERİ', 'VERI', 'KOT'];
-    $ins = $pdo->prepare("INSERT INTO metraj_sayfa (ad, sira, satir_sayisi, kolon_sayisi, veri)
-        VALUES (?,?,?,?,?)
-        ON DUPLICATE KEY UPDATE sira=VALUES(sira), satir_sayisi=VALUES(satir_sayisi),
-        kolon_sayisi=VALUES(kolon_sayisi), veri=VALUES(veri)");
-    $n = 0;
-    foreach ($xlsx->sheetNames() as $i => $ad) {
-        if (in_array(mb_strtoupper(trim($ad), 'UTF-8'), $haric, true)) continue;
-        $rows = $xlsx->rows($i, 2000);
-        $maxCol = 0; $lastRow = -1;
-        foreach ($rows as $ri => $r) {
-            $dolu = false;
-            foreach ($r as $ci => $c) { if (trim((string)$c) !== '') { $dolu = true; if ($ci + 1 > $maxCol) $maxCol = $ci + 1; } }
-            if ($dolu) $lastRow = $ri;
-        }
-        if ($lastRow < 0) continue;
-        $grid = [];
-        for ($ri = 0; $ri <= $lastRow; $ri++) {
-            $s = [];
-            for ($ci = 0; $ci < $maxCol; $ci++) $s[] = isset($rows[$ri][$ci]) ? trim((string)$rows[$ri][$ci]) : '';
-            $grid[] = $s;
-        }
-        $ins->execute([trim($ad), $i, $lastRow + 1, $maxCol, json_encode($grid, JSON_UNESCAPED_UNICODE)]);
-        $n++;
-    }
-    return $n;
-}
-
-/** Türkçe sayı: "1.234,56" → 1234.56, "8,5" → 8.5, "8.5" → 8.5 */
-function parseMiktar($v): float {
-    $v = trim((string)$v);
-    if ($v === '') return 0.0;
-    if (strpos($v, ',') !== false) $v = str_replace(['.', ','], ['', '.'], $v); // binlik nokta + ondalık virgül
-    return is_numeric($v) ? (float)$v : 0.0;
-}
-
-function parseTarih(?string $tarih): ?string {
-    if ($tarih === null || trim($tarih) === '') return null;
-    $tarih = trim($tarih);
-
-    // Format: YYYY-MM-DD (exact)
-    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $tarih)) {
-        return $tarih;
-    }
-    // Format: YYYY-MM-DD HH:MM:SS  veya  YYYY-MM-DDThh:mm:ss  (saat bileşeni varsa at)
-    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})[T\s]/', $tarih, $m)) {
-        return "{$m[1]}-{$m[2]}-{$m[3]}";
-    }
-    // Format: DD.MM.YYYY
-    if (preg_match('/^(\d{2})\.(\d{2})\.(\d{4})$/', $tarih, $m)) {
-        return "{$m[3]}-{$m[2]}-{$m[1]}";
-    }
-    // Format: D.M.YYYY veya DD/MM/YYYY
-    if (preg_match('/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/', $tarih, $m)) {
-        return sprintf('%04d-%02d-%02d', $m[3], $m[2], $m[1]);
-    }
-    // Excel serial date (sayısal): Excel, tarihleri 1900-01-01'den gün sayısı olarak saklar
-    // Örn: 45678 → 2025-01-10
-    if (preg_match('/^\d{4,6}$/', $tarih)) {
-        $serial = (int)$tarih;
-        if ($serial > 1000 && $serial < 100000) {
-            // Excel'in 1900 yılını hatalı artık yıl saydığı düzeltme (+1)
-            $date = (new DateTime('1899-12-30'))->modify("+{$serial} days");
-            $result = $date->format('Y-m-d');
-            // Makul tarih aralığı: 2000-2050
-            if ($result >= '2000-01-01' && $result <= '2050-12-31') {
-                return $result;
-            }
-        }
-    }
-    // Float serial (bazen ondalıklı gelir: 45678.5 → saat bilgisi var, yalnızca tarih al)
-    if (preg_match('/^(\d{4,6})\.\d+$/', $tarih, $m)) {
-        $serial = (int)$m[1];
-        if ($serial > 1000 && $serial < 100000) {
-            $date = (new DateTime('1899-12-30'))->modify("+{$serial} days");
-            $result = $date->format('Y-m-d');
-            if ($result >= '2000-01-01' && $result <= '2050-12-31') {
-                return $result;
-            }
-        }
-    }
-    return null;
-}
 
 $error = null;
 $success = null;
@@ -230,137 +36,6 @@ foreach (glob(__DIR__ . '/uploads/tmp_import_*.xlsx') ?: [] as $oldTmp) {
     if (filemtime($oldTmp) < time() - 86400) @unlink($oldTmp);
 }
 
-function cleanHeader($text) {
-    $text = str_replace(
-        ['İ', 'ı', 'I', 'Ş', 'ş', 'Ğ', 'ğ', 'Ü', 'ü', 'Ö', 'ö', 'Ç', 'ç'],
-        ['i', 'i', 'i', 's', 's', 'g', 'g', 'u', 'u', 'o', 'o', 'c', 'c'],
-        $text
-    );
-    $text = strtolower($text);
-    $text = preg_replace('/[^a-z0-9\s]/', '', $text);
-    $text = preg_replace('/\s+/', ' ', $text);
-    return trim($text);
-}
-
-/**
- * Bir sayfada başlık satırını ve kolon haritasını tespit eder.
- * Başlık bulunamazsa null döner (VERİ/KOT/Kaşe gibi sayfalar böylece atlanır).
- */
-function detectSheetMapping(array $rows): ?array {
-    $headerRowIndex = -1;
-    for ($i = 0; $i < min(15, count($rows)); $i++) {
-        $nonEmpty = array_map('cleanHeader', $rows[$i]);
-        if (in_array('irsaliye no', $nonEmpty) || in_array('irsaliye tarihi', $nonEmpty)
-            || (in_array('tarih', $nonEmpty) && in_array('miktar', $nonEmpty))) {
-            $headerRowIndex = $i;
-            break;
-        }
-    }
-    if ($headerRowIndex < 0) return null; // veri sayfası değil
-
-    $colMapping = [];
-    foreach ($rows[$headerRowIndex] as $colIdx => $hText) {
-        $hText = cleanHeader($hText);
-        if ($hText === '') continue;
-        if (in_array($hText, ['sira', 'sira no', 'no']))                                   $colMapping['sira_no'] = $colIdx;
-        elseif (in_array($hText, ['proje kodu', 'proje no', 'proje']))                     $colMapping['proje_kodu'] = $colIdx;
-        elseif (in_array($hText, ['fatura no', 'fatura']))                                 $colMapping['fatura_no'] = $colIdx;
-        elseif (in_array($hText, ['arac plaka no', 'plaka', 'arac plaka']))                $colMapping['arac_plaka'] = $colIdx;
-        elseif (in_array($hText, ['kivam sinifi', 'kivam']))                               $colMapping['kivam_sinifi'] = $colIdx;
-        elseif (in_array($hText, ['irsaliye no', 'irsaliye no.']))                         $colMapping['irsaliye_no'] = $colIdx;
-        elseif (in_array($hText, ['tedarikci']))                                           $colMapping['tedarikci'] = $colIdx;
-        elseif (in_array($hText, ['irsaliye tarihi', 'tarih']))                            $colMapping['tarih'] = $colIdx;
-        elseif (in_array($hText, ['mikser cikis saati', 'mikser cikis']))                  $colMapping['mikser_cikis'] = $colIdx;
-        elseif (in_array($hText, ['yildizlar kantar giris saati', 'kantar giris saati', 'kantar giris'])) $colMapping['kantar_giris'] = $colIdx;
-        elseif (in_array($hText, ['yildizlar kantar cikis saati', 'kantar cikis saati', 'kantar cikis'])) $colMapping['kantar_cikis'] = $colIdx;
-        elseif (in_array($hText, ['yildizlar kantar net', 'yildizlar net']))               $colMapping['kantar_net_yildiz'] = $colIdx;
-        elseif (in_array($hText, ['tedarikci kantar net', 'tedarikci net']))               $colMapping['kantar_net_tedarikci'] = $colIdx;
-        elseif (in_array($hText, ['kantar farki', 'fark']))                                $colMapping['kantar_farki'] = $colIdx;
-        elseif (in_array($hText, ['beton sinifi', 'beton']))                               $colMapping['beton_sinifi'] = $colIdx;
-        elseif (in_array($hText, ['miktar', 'm', 'm3', 'metre kup', 'metrekup']))          $colMapping['miktar'] = $colIdx;
-        elseif (in_array($hText, ['birim']))                                               $colMapping['birim'] = $colIdx;
-        elseif (in_array($hText, ['pompa durumu', 'pompa']))                               $colMapping['pompa'] = $colIdx;
-        elseif (in_array($hText, ['katki 1', 'katki1']))                                   $colMapping['katki1'] = $colIdx;
-        elseif (in_array($hText, ['katki 2', 'katki2']))                                   $colMapping['katki2'] = $colIdx;
-        elseif (in_array($hText, ['firma']))                                               $colMapping['firma'] = $colIdx;
-        elseif (in_array($hText, ['imalat ana grup', 'imalat grup', 'grup']))              $colMapping['imalat_grup'] = $colIdx;
-        elseif (in_array($hText, ['ana is kalemi', 'is kalemi']))                          $colMapping['ana_is_kalemi'] = $colIdx;
-        elseif (in_array($hText, ['parsel']))                                              $colMapping['parsel'] = $colIdx;
-        elseif (in_array($hText, ['blok']))                                                $colMapping['blok'] = $colIdx;
-        elseif (in_array($hText, ['kot', 'seviye']))                                       $colMapping['kot'] = $colIdx;
-        elseif (in_array($hText, ['irsaliye aciklama', 'aciklama', 'not', 'notlar']))      $colMapping['aciklama'] = $colIdx;
-    }
-    // Şablon bilinen düzende: eksik eşleşmede varsayılan indekslere dön
-    if (!isset($colMapping['irsaliye_no']) || !isset($colMapping['tarih'])) {
-        $colMapping = [
-            'sira_no' => 1, 'fatura_no' => 2, 'arac_plaka' => 3, 'kivam_sinifi' => 4,
-            'irsaliye_no' => 5, 'tedarikci' => 6, 'tarih' => 8, 'mikser_cikis' => 9,
-            'kantar_giris' => 10, 'kantar_cikis' => 11, 'kantar_net_yildiz' => 12,
-            'kantar_net_tedarikci' => 13, 'kantar_farki' => 14, 'beton_sinifi' => 15,
-            'miktar' => 16, 'birim' => 17, 'pompa' => 18, 'katki1' => 19, 'katki2' => 20,
-            'firma' => 21, 'imalat_grup' => 22, 'ana_is_kalemi' => 23, 'parsel' => 24,
-            'blok' => 25, 'kot' => 26, 'aciklama' => 27
-        ];
-    }
-    return ['header_row' => $headerRowIndex, 'mapping' => $colMapping];
-}
-
-/**
- * Önizleme ÖN ANALİZİ — her veri satırının durumu AKTARIMLA AYNI kuralla belirlenir
- * (fat_irs_norm normalize: SKB2026-12047 ↔ SKB2026000012047; [FATURADAN] taslağı güncellenir;
- * aynı dosyada ikinci kez geçen no atlanır). Durumlar: yeni · taslak · kayitli · tekrar · hatali.
- * Eskiden önizleme UPPER(TRIM()) ile ayrı bir sorgu yapıyordu: biçim farklı no "Hazır" görünüp
- * aktarımda mükerrer düşüyor, taslağı güncelleyecek satır ise "Zaten Kayıtlı" diye kilitleniyordu.
- * Kayıtlı satırlarda Excel ↔ sistem miktar/tarih farkı bilgi olarak toplanır (kayıt DEĞİŞTİRİLMEZ).
- */
-function importOnAnaliz(PDO $pdo, $xlsx, array $sheets): array {
-    $mevcut = [];
-    foreach ($pdo->query("SELECT id, irsaliye_no, aciklama, miktar, tarih FROM irsaliyeler
-                          WHERE irsaliye_no IS NOT NULL AND TRIM(irsaliye_no) <> ''") as $mr) {
-        $k = fat_irs_norm((string)$mr['irsaliye_no']);
-        if ($k !== '' && !isset($mevcut[$k])) $mevcut[$k] = $mr;
-    }
-    $a = ['durum' => [], 'say' => ['okunan' => 0, 'yeni' => 0, 'taslak' => 0, 'kayitli' => 0, 'tekrar' => 0, 'hatali' => 0],
-          'hatali' => [], 'farkli' => []];
-    $dosyada = [];
-    foreach ($sheets as $si => $S) {
-        $rows = $xlsx->rows($si, 20000);
-        $cm = $S['mapping'];
-        for ($i = $S['header_row'] + 1, $n = count($rows); $i < $n; $i++) {
-            $r = $rows[$i];
-            if (!satirVeriMi($r, $cm)) continue;
-            $g = fn($k) => isset($cm[$k], $r[$cm[$k]]) ? trim((string)$r[$cm[$k]]) : '';
-            $a['say']['okunan']++;
-            $no = $g('irsaliye_no'); $tarih = parseTarih($g('tarih'));
-            $etiket = 'Satır ' . ($i + 1) . ($S['name'] ? ' · ' . $S['name'] : '') . ' (' . ($no ?: 'no yok') . ', ' . ($g('miktar') ?: '0') . ' m³)';
-            if (!$tarih || $g('tedarikci') === '') {
-                $d = 'hatali';
-                $a['hatali'][] = $etiket . ': ' . (!$tarih ? 'geçersiz/boş tarih "' . $g('tarih') . '"' : 'tedarikçi boş');
-            } else {
-                $k = $no !== '' ? fat_irs_norm($no) : '';
-                if ($k !== '' && isset($dosyada[$k])) {
-                    $d = 'tekrar';
-                } elseif ($k !== '' && isset($mevcut[$k])) {
-                    $m = $mevcut[$k];
-                    $d = str_contains((string)$m['aciklama'], '[FATURADAN]') ? 'taslak' : 'kayitli';
-                    if ($d === 'kayitli') {
-                        $mEx = parseMiktar($g('miktar')); $mDb = (float)$m['miktar'];
-                        $fark = [];
-                        if (abs($mEx - $mDb) > 0.001) $fark[] = 'miktar Excel ' . number_format($mEx, 2, ',', '.') . ' · sistem ' . number_format($mDb, 2, ',', '.');
-                        if (substr((string)$tarih, 0, 10) !== substr((string)$m['tarih'], 0, 10)) $fark[] = 'tarih Excel ' . substr((string)$tarih, 0, 10) . ' · sistem ' . substr((string)$m['tarih'], 0, 10);
-                        if ($fark) $a['farkli'][] = ['id' => (int)$m['id'], 'metin' => $etiket . ': ' . implode(' — ', $fark)];
-                    }
-                } else {
-                    $d = 'yeni';
-                }
-                if ($k !== '') $dosyada[$k] = true;
-            }
-            $a['durum']["$si:$i"] = $d;
-            $a['say'][$d]++;
-        }
-    }
-    return $a;
-}
 
 // CSRF doğrulama (tüm POST'lar için)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -390,20 +65,7 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['excel_fil
                     // İmalat/metraj/zayiat sayfalarını (PRP Bina Üstyapı, İcmal, Metraj …)
                     // aynı yüklemede metraj_sayfa'ya kaydet — ayrı ekranlardan görüntülenir.
                     try { $_SESSION['import_imalat_sayi'] = storeImalatSheets($pdo, $xlsx); } catch (Throwable $e) { $_SESSION['import_imalat_sayi'] = 0; }
-                    $sheets = [];
-                    foreach ($xlsx->sheetNames() as $si => $sName) {
-                        $rows = $xlsx->rows($si, 20000);
-                        if (!$rows) continue;
-                        $det = detectSheetMapping($rows);
-                        if ($det === null) continue; // VERİ / KOT / Kaşe gibi sayfalar atlanır
-                        $adNorm = cleanHeader($sName);
-                        $sheets[$si] = [
-                            'name'       => $sName,
-                            'tip'        => (strpos($adNorm, 'iade') !== false) ? 'iade' : 'alis',
-                            'header_row' => $det['header_row'],
-                            'mapping'    => $det['mapping'],
-                        ];
-                    }
+                    $sheets = beton_sayfalar($xlsx);   // VERİ / KOT / Kaşe gibi sayfalar atlanır
                     if (!$sheets) {
                         $error = "Bu dosyada irsaliye veri sayfası bulunamadı (başlık satırı algılanamadı).";
                         @unlink($tempPath);
@@ -488,17 +150,10 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                         audit_log($pdo, 'irsaliyeler', 0, 'DELETE', null, ['tam_yenileme'=>true, 'silinen'=>$silinenTum]);
                     }
 
-                    // Mevcut numaraları NORMALİZE indeksle: biçim farkı (tire/sıfır dolgu) mükerrer
-                    // kontrolünü atlatamaz. Fatura eşleştirmeden açılan [FATURADAN] taslakları
-                    // Excel satırı SİLMEDEN GÜNCELLER — fatura bağı ve ekli belgeler korunur.
-                    $mevcutNo = [];   // norm no => ['id'=>int, 'taslak'=>bool]
-                    foreach ($pdo->query("SELECT id, irsaliye_no, aciklama FROM irsaliyeler
-                                          WHERE irsaliye_no IS NOT NULL AND TRIM(irsaliye_no) <> ''") as $mr) {
-                        $mk = fat_irs_norm((string)$mr['irsaliye_no']);
-                        if ($mk !== '' && !isset($mevcutNo[$mk]))
-                            $mevcutNo[$mk] = ['id' => (int)$mr['id'],
-                                              'taslak' => str_contains((string)$mr['aciklama'], '[FATURADAN]')];
-                    }
+                    // Mevcut numaraları NORMALİZE indeksle (biçim farkı mükerrer kontrolünü atlatamaz);
+                    // [FATURADAN] taslakları Excel satırıyla SİLMEDEN GÜNCELLENİR — çekirdek: includes/beton_import.php
+                    $mevcutNo = beton_mevcut_no($pdo);
+                    $uid = (int)(current_user()['id'] ?? 0) ?: null;
                     foreach ($secimler as $sheetIdx => $idxler) {
                     if (!isset($sheets[$sheetIdx])) continue;
                     $colMapping = $sheets[$sheetIdx]['mapping'];
@@ -507,127 +162,12 @@ if (!$error && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['execute_im
                     $rows = $rowsCache[$sheetIdx];
                     foreach ($idxler as $idx) {
                         if (!isset($rows[$idx])) continue;
-                        $r = $rows[$idx];
-                        // Formülle uzatılmış sahte satır seçilmişse sessizce atla (rapora girmesin)
-                        if (!satirVeriMi($r, $colMapping)) continue;
-
-                        // Sütun verilerini eşle
-                        $val = function($key, $default = null) use ($r, $colMapping) {
-                            if (isset($colMapping[$key]) && isset($r[$colMapping[$key]])) {
-                                $v = trim($r[$colMapping[$key]]);
-                                return $v === '' ? $default : $v;
-                            }
-                            return $default;
-                        };
-                        
-                        $tarihRaw = $val('tarih');
-                        $tarih = parseTarih($tarihRaw ?? '');
-                        if (!$tarih) {
-                            $skipped++;
-                            $atlananlar[] = "Satır ".($idx+1)." (".h($val('irsaliye_no','no?')).", ".h($val('miktar','0'))." m³): geçersiz/boş tarih \"".h((string)$tarihRaw)."\"";
-                            continue;
-                        }
-
-                        $tedarikciAd = $val('tedarikci');
-                        if (!$tedarikciAd) {
-                            $skipped++;
-                            $atlananlar[] = "Satır ".($idx+1)." (".h($val('irsaliye_no','no?')).", ".h($val('miktar','0'))." m³): tedarikçi boş";
-                            continue;
-                        }
-                        $tedarikciId = getOrCreate($pdo, 'tedarikciler', 'ad', $tedarikciAd);
-                        
-                        $betonId    = getOrCreate($pdo, 'beton_siniflari', 'ad',  $val('beton_sinifi'));
-                        $pompaId    = getOrCreate($pdo, 'pompa_turleri',   'ad',  $val('pompa'));
-                        $katki1Id   = getOrCreate($pdo, 'katki_listesi',   'ad',  $val('katki1'));
-                        $katki2Id   = getOrCreate($pdo, 'katki_listesi',   'ad',  $val('katki2'));
-                        $firmaId    = getOrCreate($pdo, 'firmalar',        'ad',  $val('firma'));
-                        $kivamId    = getOrCreate($pdo, 'kivam_siniflari', 'ad',  $val('kivam_sinifi'));
-                        
-                        $imalatGrupId  = getOrCreateImalat($pdo, $val('imalat_grup'));
-                        $anaKalemId    = $imalatGrupId ? getOrCreateAnaKalem($pdo, $imalatGrupId, $val('ana_is_kalemi')) : null;
-                        $parselId      = getOrCreateParsel($pdo, $val('parsel'));
-                        $blokId        = $parselId ? getOrCreateBlok($pdo, $parselId, $val('blok')) : null;
-                        $kotId         = $blokId   ? getOrCreateKot($pdo, $blokId, $val('kot'))   : null;
-                        
-                        $irsaliyeNo = $val('irsaliye_no');
-
-                        // İrsaliye no ile mükerrer kontrolü (normalize: SKB2026-12047 ↔ SKB2026000012047).
-                        // [FATURADAN] taslağıysa atlamak yerine GÜNCELLENİR (bağlar korunur).
-                        $irsNorm  = $irsaliyeNo ? fat_irs_norm((string)$irsaliyeNo) : '';
-                        $taslakId = null;
-                        if ($irsNorm !== '' && isset($mevcutNo[$irsNorm])) {
-                            if ($mevcutNo[$irsNorm]['taslak']) {
-                                $taslakId = $mevcutNo[$irsNorm]['id'];
-                            } else {
-                                $skipped++;
-                                $atlananlar[] = "Satır ".($idx+1)." (".h($irsaliyeNo).", ".h($val('miktar','0'))." m³): mükerrer — bu irsaliye no zaten kayıtlı";
-                                continue;
-                            }
-                        }
-
-                        $projeId = getOrCreateProje($pdo, $val('proje_kodu'));
-                        
-                        $mikserCikis = $val('mikser_cikis');
-                        $kantarGiris = $val('kantar_giris');
-                        $kantarCikis = $val('kantar_cikis');
-                        
-                        $mikserCikis = ($mikserCikis && $mikserCikis !== '00:00:00') ? $mikserCikis : null;
-                        $kantarGiris = ($kantarGiris && $kantarGiris !== '00:00:00') ? $kantarGiris : null;
-                        $kantarCikis = ($kantarCikis && $kantarCikis !== '00:00:00') ? $kantarCikis : null;
-                        
-                        $miktarVal = parseMiktar($val('miktar', 0));
-
-                        $ortak = [
-                            $rowTip,
-                            $val('sira_no'), $val('fatura_no'), $val('arac_plaka'),
-                            $kivamId, $irsaliyeNo,
-                            $val('proje_kodu'), $projeId,
-                            $tedarikciId, $tarih,
-                            $mikserCikis, $kantarGiris, $kantarCikis,
-                            parseMiktar($val('kantar_net_yildiz', 0)),
-                            parseMiktar($val('kantar_net_tedarikci', 0)),
-                            parseMiktar($val('kantar_farki', 0)),
-                            $betonId, $miktarVal, $val('birim', 'M3'), $pompaId,
-                            $katki1Id, $katki2Id, $firmaId,
-                            $imalatGrupId, $anaKalemId,
-                            $parselId, $blokId, $kotId, $val('aciklama'),
-                        ];
-
-                        if ($taslakId !== null) {
-                            // [FATURADAN] taslağı Excel verisiyle güncelle: id sabit kalır,
-                            // fatura_id bağı ve irsaliye_fotolar ekleri olduğu gibi korunur.
-                            // Excel'de fatura no boşsa taslağın fatura no'su ezilmez.
-                            $stmt = $pdo->prepare("UPDATE irsaliyeler SET
-                                tip=?, sira_no=?, fatura_no=COALESCE(?, fatura_no), arac_plaka=?, kivam_sinifi_id=?, irsaliye_no=?,
-                                proje_no=?, proje_id=?,
-                                tedarikci_id=?, tarih=?,
-                                mikser_cikis_saati=?, kantar_giris_saati=?, kantar_cikis_saati=?,
-                                kantar_net_yildizlar=?, kantar_net_tedarikci=?, kantar_farki=?,
-                                beton_sinifi_id=?, miktar=?, birim=?, pompa_id=?,
-                                katki1_id=?, katki2_id=?, firma_id=?,
-                                imalat_grup_id=?, ana_is_kalemi_id=?,
-                                parsel_id=?, blok_id=?, kot_id=?, aciklama=?, updated_by=?
-                                WHERE id = ?");
-                            $stmt->execute([...$ortak, current_user()['id'], $taslakId]);
-                            $mevcutNo[$irsNorm]['taslak'] = false;   // artık gerçek kayıt
-                            $guncellenen++;
-                        } else {
-                            $stmt = $pdo->prepare("INSERT INTO irsaliyeler
-                                (tip, sira_no, fatura_no, arac_plaka, kivam_sinifi_id, irsaliye_no,
-                                 proje_no, proje_id,
-                                 tedarikci_id, tarih,
-                                 mikser_cikis_saati, kantar_giris_saati, kantar_cikis_saati,
-                                 kantar_net_yildizlar, kantar_net_tedarikci, kantar_farki,
-                                 beton_sinifi_id, miktar, birim, pompa_id,
-                                 katki1_id, katki2_id, firma_id,
-                                 imalat_grup_id, ana_is_kalemi_id,
-                                 parsel_id, blok_id, kot_id, aciklama, created_by)
-                                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
-                            $stmt->execute([...$ortak, current_user()['id']]);
-                            if ($irsNorm !== '')
-                                $mevcutNo[$irsNorm] = ['id' => (int)$pdo->lastInsertId(), 'taslak' => false];
-                            $added++;
-                        }
+                        $sn = beton_satir_kaydet($pdo, $rows[$idx], $colMapping, $rowTip, $mevcutNo, $uid, 'Satır ' . ($idx + 1));
+                        foreach ($sn['not'] ?? [] as $nt) $atlananlar[] = h($nt) . ' (satır aktarıldı)';
+                        if ($sn['sonuc'] === 'eklendi') $added++;
+                        elseif ($sn['sonuc'] === 'guncellendi') $guncellenen++;
+                        elseif ($sn['sonuc'] === 'atlandi') { $skipped++; $atlananlar[] = h($sn['neden']); }
+                        // 'bos' = formülle uzatılmış sahte satır — rapora girmez
                     }
                     } // sayfa döngüsü sonu
 
@@ -696,7 +236,10 @@ require_once __DIR__ . '/includes/header.php';
 
 <div class="d-flex align-items-center justify-content-between mb-4">
     <h1 class="page-title h3 mb-0"><i class="bi bi-file-earmark-spreadsheet text-primary me-2"></i>Dinamik Excel Aktarımı</h1>
-    <a href="irsaliyeler.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>İrsaliyelere Dön</a>
+    <div class="d-flex gap-2">
+        <a href="toplu_yukleme.php" class="btn btn-outline-primary btn-sm" title="Beton + Depo + CRM + Prekast dosyalarını tek seferde yükle"><i class="bi bi-cloud-arrow-up-fill me-1"></i>Günlük Toplu Yükleme</a>
+        <a href="irsaliyeler.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>İrsaliyelere Dön</a>
+    </div>
 </div>
 
 <?php if ($error): ?>

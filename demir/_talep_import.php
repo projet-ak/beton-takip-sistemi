@@ -188,6 +188,9 @@ try {
         foreach ($kalemler as $k) { $insK->execute(array_merge([$tid], $k)); $kalemAdet++; }
         $talepAdet++;
     }
+    // Tam yenileme: hiç talep okunamadıysa (bozuk / yanlış dosya) mevcut talepler SİLİNMESİN
+    if ($talepAdet === 0)
+        throw new RuntimeException('Dosyada okunabilir talep sayfası yok (atlanan sayfalar: ' . implode(', ', $atlanan) . ') — mevcut talepler korundu, hiçbir şey değiştirilmedi.');
     $pdoDemir->commit();
     return ['talep' => $talepAdet, 'kalem' => $kalemAdet, 'atlanan' => $atlanan];
     } catch (Throwable $e) {

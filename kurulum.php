@@ -289,6 +289,12 @@ try {
     modul_ayar_semasi($pdo);     // modul_ayarlar (modül adı / gizleme / sıra — moduller.php)
     $log[] = ['ok', 'modul_ayarlar tablosu eklendi / zaten mevcuttu'];
 
+    try {                         // toplu_yukleme_log (Günlük Toplu Yükleme — toplu_yukleme.php)
+        require_once __DIR__ . '/includes/toplu_yukleme.php';
+        ty_log_kur($pdo);
+        $log[] = ['ok', 'toplu_yukleme_log tablosu eklendi / zaten mevcuttu'];
+    } catch (Throwable $e) { $log[] = ['warn', 'toplu_yukleme_log kurulamadı: ' . $e->getMessage()]; }
+
     if (!beton_onay_aktif()) {      // onay akışı kaldırıldı: irsaliyeler.durum varsayılanı 'onaylandi'
         $__gocen = beton_onay_gocu($pdo);
         $log[] = ['ok', "irsaliye onay akışı kapalı — durum varsayılanı 'onaylandi'"

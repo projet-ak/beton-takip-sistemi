@@ -122,6 +122,7 @@ const MODUL_MUAF = [
     'login.php','logout.php','install.php','tanitim.php','deploy2.php',
     'onbellek_temizle.php','sistem_kontrol.php','kurulum.php',
     'kullanicilar.php','ai_ayarlar.php','yedek.php','aktivite.php','veri_kontrol.php','moduller.php','mukerrer.php',
+    'toplu_yukleme.php',   // tüm modüllere dosya yönlendirir — modül yetkisi dosya başına toplu_yukleme_izinli() ile
 ];
 
 /**
@@ -477,6 +478,24 @@ function can_module(string $mod): bool
     if (modul_gizli($mod) && ($_SESSION['user']['role'] ?? '') !== 'admin') return false;
     $izin = modul_erisimi();
     return $izin === null || in_array($mod, $izin, true);
+}
+
+/**
+ * Günlük Toplu Yükleme (toplu_yukleme.php): kullanıcı $mod modülüne Excel aktarabilir mi?
+ * Modül ekranlarıyla aynı kapı: matrisli kullanıcıda modülde 'giris' yetkisi, eski rol düzeninde
+ * admin / teknik_ofis_admin (içe aktarma sayfaları bu rollere açıktır). $mod boşsa: herhangi bir modüle.
+ */
+function toplu_yukleme_izinli(?string $mod = null): bool
+{
+    $u = $_SESSION['user'] ?? null;
+    if (!$u) return false;
+    $modlar = $mod !== null ? [$mod] : ['beton', 'depo', 'crm', 'prekast', 'demir', 'akaryakit', 'seramik'];
+    foreach ($modlar as $m) {
+        if (!array_key_exists($m, MODULLER) || !can_module($m)) continue;
+        if (($u['role'] ?? '') === 'admin') return true;
+        if (yetki_matris() !== null ? yetki_var('giris', $m) : ($u['role'] ?? '') === 'teknik_ofis_admin') return true;
+    }
+    return false;
 }
 
 /** Kullanıcının açabileceği ilk modülün giriş sayfası (kökten göreli). */

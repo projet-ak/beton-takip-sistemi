@@ -120,6 +120,14 @@ if ($__user) {
   </div>
 
   <div class="sidebar-scroll">
+    <?php if (!empty($__user) && function_exists('toplu_yukleme_izinli') && toplu_yukleme_izinli()): ?>
+    <ul class="list-unstyled mb-0"><!-- her modülde: Günlük Toplu Yükleme (tüm modüllere Excel) -->
+      <li class="sidebar-nav-item">
+        <a class="sidebar-nav-link <?= __isActive('toplu_yukleme.php') ?>" href="<?= $__rootPath ?>toplu_yukleme.php" data-label="Günlük Toplu Yükleme">
+          <i class="bi bi-cloud-arrow-up-fill"></i><span>Günlük Toplu Yükleme</span></a>
+      </li>
+    </ul>
+    <?php endif; ?>
     <?php if($__module==='beton'): ?>
     <ul class="list-unstyled mb-0">
 
@@ -779,6 +787,10 @@ if ($__user) {
         <span id="sessionTimerText">--:--</span>
       </div>
       <?php endif; ?>
+      <?php if ($__user && function_exists('toplu_yukleme_izinli') && toplu_yukleme_izinli()): ?>
+      <a class="btn-topbar btn-topbar-yukle" href="<?= $__rootPath ?>toplu_yukleme.php" title="Günlük Toplu Yükleme — e-postayla gelen Excel'leri tek seferde modüllere aktar" aria-label="Günlük Toplu Yükleme">
+        <i class="bi bi-cloud-arrow-up-fill"></i></a>
+      <?php endif; ?>
       <div class="dropdown">
         <button class="btn-topbar" id="temaBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside"
                 title="Tema ve görünüm" aria-label="Tema ve görünüm"><i class="bi bi-palette-fill" id="temaIkon"></i></button>
@@ -823,6 +835,10 @@ if ($__user) {
             <div><div style="font-weight:600;font-size:.82rem"><?= h($__user['username']) ?></div><div style="font-size:.7rem;color:var(--bt-text-muted)"><?= role_label($__user['role']) ?></div></div>
           </span></li>
           <li><hr class="dropdown-divider my-1"></li>
+          <?php if (function_exists('toplu_yukleme_izinli') && toplu_yukleme_izinli()): ?>
+          <li><a class="dropdown-item" href="<?= $__rootPath ?>toplu_yukleme.php"><i class="bi bi-cloud-arrow-up me-2"></i>Günlük Toplu Yükleme</a></li>
+          <li><hr class="dropdown-divider my-1"></li>
+          <?php endif; ?>
           <li><a class="dropdown-item text-danger" href="<?= $__rootPath ?>logout.php"><i class="bi bi-box-arrow-right me-2"></i>Çıkış Yap</a></li>
         </ul>
       </div>

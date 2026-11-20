@@ -553,6 +553,9 @@ a { text-decoration: none; }
     transition: var(--transition);
 }
 .btn-topbar:hover { background: var(--bt-tint); color: var(--ern); }
+/* Günlük Toplu Yükleme kısayolu — vurgulu, yalnız ikon (yazı kullanıcı menüsünde) */
+.btn-topbar-yukle { flex: 0 0 auto; text-decoration: none; color: var(--ern); background: var(--bt-tint, rgba(var(--ern-rgb), .1)); font-size: 1.1rem; }
+.btn-topbar-yukle:hover { background: var(--ern); color: #fff; }
 
 /* Kullanıcı chip */
 .topbar-user {
