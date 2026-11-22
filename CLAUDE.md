@@ -1182,6 +1182,14 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   (biri OSMAN UĞUR'da, biri serviste) → 26 yeni + 4 taşınan, zimmet dönemleri OSMAN kapalı / HASAN açık, zaten
   I001'deki cihaza hareket yazılmadı · kutu kapalıyken eski davranış · 2. yükleme 0 yeni / 0 taşınan / hareket aynı.
   Kaynak listede **ZAT80BC00789C** diğer Reyee serilerinden farklı (sonu harf) — etiketten kontrol edilmeli.
+  ⭐ **FIRMWARE + LENS SÜTUNLARI (2026-11-22, kullanıcı: Batıyakası → Bozcaada RES Y024, 4 HiLook IPC-B120H-F IP kamera,
+  Suat ASLAN)** — `CIM_ALAN`'a **`firmware`** (FIRMWARE · FIRMWARE SÜRÜMÜ · FW · YAZILIM SÜRÜMÜ; ⚠ çıplak 'VERSIYON' bilerek
+  yok — o "Autocad Versiyon" gibi nota giden sütunlardır) → `it_cihazlar.firmware` (IT_EK_ALAN kolonu; eskiden sütun
+  tanınmıyor, değer KAYBOLUYORDU) ve `ozellik` eş anlamlılarına **LENS** ("Lens: 4 mm" özelliğe birleşir). Şablon 39 → 40
+  sütun ("Firmware", Dahili No'dan sonra). Test (MariaDB + gerçek 3 adımlı sayfa): 2 kayıtlı kamera (biri seri no, biri
+  yalnız MAC ile — farklı ayraç biçimi) taşındı, OSMAN zimmeti iade → sevk → teslim → SUAT zimmet; 2 yeni kayıt
+  giris → sevk → teslim → zimmet; durum `transfer_edildi`; 2. yükleme 0/0, hareket sayısı aynı. ⚠ Hedef lokasyon
+  (Y024) ağaçta YOKSA kayıtlı cihazlar taşınmaz ve yeni kayıtlar lokasyonsuz açılır — lokasyon ÖNCE Tanımlar'dan eklenmeli.
   ⭐ **DOSYADA DURUMU HURDA / KAYIP / HİBE GELEN CİHAZ (2026-11-08, kullanıcı: 2 HP DesignJet T795 plotter,
   Kartal → M023, "EKSPER BİLİŞİM - İBRAHİM POLAT", zimmet 2024-01-01, durum hurda)** — eskiden yeni kayıt
   `durum='hurda'` + zimmetli kişiyle açılıyor, günlüğe düşüm hareketi YAZILMIYORDU: zimmet dönemi açık kalıyor,

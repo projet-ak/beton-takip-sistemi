@@ -57,6 +57,9 @@ const CIM_ALAN = [
     'dahili_no'    => ['etiket' => 'Dahili No',                'es' => ['DAHILI','DAHILI NO','DAHILI NUMARA','DAHILI TEL','KISA KOD','EXTENSION','EXT']],
     'transfer_gonderen' => ['etiket' => 'Transfer Gönderen',   'es' => ['TRANSFER GONDEREN','GONDEREN','GONDEREN KISI','SEVK EDEN']],
     'transfer_teslim'   => ['etiket' => 'Transfer Teslim Tarihi', 'es' => ['TRANSFER TESLIM TARIHI','TRANSFER TESLIM','TESLIM ALMA TARIHI','TESLIM ALINDI']],
+    // Firmware: ağ / güvenlik cihazlarının yazılım sürümü (kamera · NVR · switch …). ⚠ Çıplak 'VERSIYON'
+    // bilerek yok — o "Autocad Versiyon" gibi yazılım sütunlarıdır ve nota gider.
+    'firmware'     => ['etiket' => 'Firmware',                 'es' => ['FIRMWARE','FIRMWARE SURUMU','FIRMWARE VERSIYON','FIRMWARE VERSIYONU','FIRMWARE VERSION','FW','YAZILIM SURUMU','CIHAZ YAZILIMI']],
     'cozunurluk'   => ['etiket' => 'Ekran Çözünürlüğü',        'es' => ['COZUNURLUK','EKRAN COZUNURLUK','EKRAN COZUNURLUGU','1 EKRAN COZUNURLUGU','DIZUSTU EKRAN COZUNURLUK','RESOLUTION']],
     'disk_seri'    => ['etiket' => 'Disk Seri No',             'es' => ['HARDDISK SERIAL','DISK SERI NO','HDD SERIAL','HDD SERI NO']],
     'tedarikci'    => ['etiket' => 'Tedarikçi',                'es' => ['TEDARIKCI','SATICI','FIRMA','VENDOR','SUPPLIER']],
@@ -75,7 +78,7 @@ const CIM_ALAN = [
     'imei'         => ['etiket' => 'IMEI',               'es' => ['IMEI','IMEI NO','IMEI NUMARASI']],
     'kapasite'     => ['etiket' => 'Kapasite',           'es' => ['KAPASITE','KAPASITESI','CAPACITY']],
     'kiralik_firma'=> ['etiket' => 'Kiralanan Firma',    'es' => ['KIRALANAN FIRMA','KIRALIK FIRMA','KIRALAYAN FIRMA']],
-    'ozellik'      => ['etiket' => 'Diğer teknik özellik (birleşir)','es' => ['TEKNIK OZELLIK','TEKNIK OZELLIKLER','OZELLIK','OZELLIKLER','SPECS','SPECIFICATION']],
+    'ozellik'      => ['etiket' => 'Diğer teknik özellik (birleşir)','es' => ['TEKNIK OZELLIK','TEKNIK OZELLIKLER','OZELLIK','OZELLIKLER','SPECS','SPECIFICATION','LENS','LENS MM','ODAK UZAKLIGI','COZUNURLUK MP']],
     'sicil_no'     => ['etiket' => 'Zimmetli kişinin sicil no', 'es' => ['CALISAN NUMARASI','SICIL NO','SICIL','PERSONEL NO','EMPLOYEE NUMBER','EMPLOYEE NO']],
     'snipe_id'     => ['etiket' => 'Snipe-IT Kimlik (belge köprüsü)', 'es' => ['KIMLIK','SNIPE ID','SNIPE-IT ID','ASSET ID']],
     'sirket'       => ['etiket' => 'Şirket',                  'es' => ['SIRKET','SIRKETI','COMPANY','FIRMA ADI']],
@@ -429,7 +432,7 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
     $alanlar = ['varlik_kodu','cihaz_kodu','kategori','ad','marka','model','seri_no','sasi_no','imei','durum','zimmetli','personel_id','departman','lokasyon','lokasyon_id',
                 'zimmet_tarihi','alis_tarihi','garanti_bitis','fiyat','para_birimi','kur','fiyat_tl','sas_ref',
                 'transfer_birim','transfer_tarihi','dahili_no','tedarikci','fatura_no','sirket','snipe_id','ip_adresi','mac_adresi','isletim_sistemi',
-                'islemci','ram','ekran_karti','disk','disk_seri','anakart','ekran_boyutu','cozunurluk','kapasite','kiralik_firma','ozellikler'];
+                'islemci','ram','ekran_karti','disk','disk_seri','anakart','ekran_boyutu','cozunurluk','kapasite','kiralik_firma','firmware','ozellikler'];
 
     cim_semasi_kur($pdo);                       // ⚠ DDL transaction'ı örtük commit eder → ÖNCE
     $mevcut = $pdo->query("SELECT * FROM it_cihazlar")->fetchAll();
@@ -549,6 +552,7 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
                 'ekran_karti' => $birlesik('ekran_karti', 160), 'disk' => $birlesik('disk', 160),
                 'anakart'     => $v['anakart'] ?: null, 'ekran_boyutu' => $v['ekran_boyutu'] ?: null,
                 'kapasite'    => $v['kapasite'] ?: null, 'kiralik_firma' => $v['kiralik_firma'] ?: null,
+                'firmware'    => $v['firmware'] !== '' ? mb_substr($v['firmware'], 0, 80) : null,
                 'ozellikler'  => null,   // aşağıda künyeden ya da serbest sütunlardan doldurulur
             ] + cim_fiyat_kunyesi($v);
             // Serbest "özellik" sütunları varsa onlar, yoksa donanım künyesinin özeti
