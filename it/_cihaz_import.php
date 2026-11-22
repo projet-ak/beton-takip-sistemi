@@ -60,6 +60,10 @@ const CIM_ALAN = [
     // Firmware: ağ / güvenlik cihazlarının yazılım sürümü (kamera · NVR · switch …). ⚠ Çıplak 'VERSIYON'
     // bilerek yok — o "Autocad Versiyon" gibi yazılım sütunlarıdır ve nota gider.
     'firmware'     => ['etiket' => 'Firmware',                 'es' => ['FIRMWARE','FIRMWARE SURUMU','FIRMWARE VERSIYON','FIRMWARE VERSIYONU','FIRMWARE VERSION','FW','YAZILIM SURUMU','CIHAZ YAZILIMI']],
+    // ⚠ Seri nosuz, adetli malzeme (yangın dedektörü, adaptör, akü…): model başına TEK satır + adet.
+    // 'adet' kolonu IT_EK_ALAN'da (sarf/aksesuar/bilesen kategorilerinde görünür). Çıplak 'STOK' bilerek
+    // yok — "STOK MALİ DEĞERİ" gibi başlıkları kapardı.
+    'adet'         => ['etiket' => 'Adet (stok)',              'es' => ['ADET','ADEDI','MIKTAR','MIKTARI','STOK ADEDI','QUANTITY','QTY']],
     'cozunurluk'   => ['etiket' => 'Ekran Çözünürlüğü',        'es' => ['COZUNURLUK','EKRAN COZUNURLUK','EKRAN COZUNURLUGU','1 EKRAN COZUNURLUGU','DIZUSTU EKRAN COZUNURLUK','RESOLUTION']],
     'disk_seri'    => ['etiket' => 'Disk Seri No',             'es' => ['HARDDISK SERIAL','DISK SERI NO','HDD SERIAL','HDD SERI NO']],
     'tedarikci'    => ['etiket' => 'Tedarikçi',                'es' => ['TEDARIKCI','SATICI','FIRMA','VENDOR','SUPPLIER']],
@@ -432,13 +436,20 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
     $alanlar = ['varlik_kodu','cihaz_kodu','kategori','ad','marka','model','seri_no','sasi_no','imei','durum','zimmetli','personel_id','departman','lokasyon','lokasyon_id',
                 'zimmet_tarihi','alis_tarihi','garanti_bitis','fiyat','para_birimi','kur','fiyat_tl','sas_ref',
                 'transfer_birim','transfer_tarihi','dahili_no','tedarikci','fatura_no','sirket','snipe_id','ip_adresi','mac_adresi','isletim_sistemi',
-                'islemci','ram','ekran_karti','disk','disk_seri','anakart','ekran_boyutu','cozunurluk','kapasite','kiralik_firma','firmware','ozellikler'];
+                'islemci','ram','ekran_karti','disk','disk_seri','anakart','ekran_boyutu','cozunurluk','kapasite','kiralik_firma','firmware','adet','ozellikler'];
 
     cim_semasi_kur($pdo);                       // ⚠ DDL transaction'ı örtük commit eder → ÖNCE
     $mevcut = $pdo->query("SELECT * FROM it_cihazlar")->fetchAll();
-    $byVarlik = []; $byKod = []; $byEnv = []; $bySeri = []; $byMac = []; $byDahili = [];
+    $byVarlik = []; $byKod = []; $byEnv = []; $bySeri = []; $byMac = []; $byDahili = []; $byAdetli = [];
     $macN = fn($s) => strtoupper(preg_replace('/[^0-9A-Fa-f]/', '', (string)$s));
+    // Kimliksiz ADETLİ kalem (yangın dedektörü, adaptör, akü… — model başına tek kart + adet): aynı lokasyonda
+    // aynı ad + marka + modeli taşıyan TEK adetli kart onun karşılığıdır; yoksa her yüklemede yeni kart açılırdı.
+    $adetK = fn(array $x): string => pim_norm((string)($x['ad'] ?? '')) . '|' . pim_norm((string)($x['marka'] ?? '')) . '|'
+                                   . pim_norm((string)($x['model'] ?? '')) . '|' . (int)($x['lokasyon_id'] ?? 0);
     foreach ($mevcut as $m) {
+        if ((int)($m['adet'] ?? 0) > 0 && trim((string)($m['seri_no'] ?? '')) === '' && trim((string)($m['varlik_kodu'] ?? '')) === ''
+            && trim((string)($m['cihaz_kodu'] ?? '')) === '' && $macN($m['mac_adresi'] ?? '') === '' && !it_durum_dustu((string)$m['durum']))
+            $byAdetli[$adetK($m)][] = $m;
         if (strlen($macN($m['mac_adresi'] ?? '')) === 12) $byMac[$macN($m['mac_adresi'])] = $m;
         if (trim((string)($m['dahili_no'] ?? '')) !== '' && in_array($m['kategori'], ['ip_telefon', 'santral'], true) && !it_durum_dustu((string)$m['durum']))
             $byDahili[trim((string)$m['dahili_no'])][] = $m;
@@ -553,6 +564,7 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
                 'anakart'     => $v['anakart'] ?: null, 'ekran_boyutu' => $v['ekran_boyutu'] ?: null,
                 'kapasite'    => $v['kapasite'] ?: null, 'kiralik_firma' => $v['kiralik_firma'] ?: null,
                 'firmware'    => $v['firmware'] !== '' ? mb_substr($v['firmware'], 0, 80) : null,
+                'adet'        => (($n = it_sayi(preg_replace('/[^\d.,]/', '', $v['adet']))) !== null && $n > 0) ? (int)round($n) : null,
                 'ozellikler'  => null,   // aşağıda künyeden ya da serbest sütunlardan doldurulur
             ] + cim_fiyat_kunyesi($v);
             // Serbest "özellik" sütunları varsa onlar, yoksa donanım künyesinin özeti
@@ -574,6 +586,10 @@ function cim_import(PDO $pdo, array $satirlar, array $opt): array
             elseif ($v['varlik_kodu'] === '' && $v['cihaz_kodu'] === '' && $v['envanter_no'] === '' && $v['seri_no'] === '' && $macN($v['mac_adresi']) === ''
                     && ($dh = (string)($yeni['dahili_no'] ?? '')) !== '' && in_array($yeni['kategori'], ['ip_telefon', 'santral'], true) && count($byDahili[$dh] ?? []) === 1) {
                 $m = $byDahili[$dh][0]; $nasil = 'dahili no';
+            }
+            elseif ($v['varlik_kodu'] === '' && $v['cihaz_kodu'] === '' && $v['envanter_no'] === '' && $v['seri_no'] === '' && $macN($v['mac_adresi']) === ''
+                    && ($yeni['adet'] ?? null) && count($byAdetli[$adetK($yeni + ['lokasyon_id' => $lokId])] ?? []) === 1) {
+                $m = $byAdetli[$adetK($yeni + ['lokasyon_id' => $lokId])][0]; $nasil = 'adetli kalem (ad + marka + model + lokasyon)';
             }
 
             // ⚠ Aynı cihaz kaydına iki dosya satırı denk gelirse (ör. bizdeki IFS kodu dosyada başka

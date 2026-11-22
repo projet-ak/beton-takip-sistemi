@@ -1190,6 +1190,15 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   yalnız MAC ile — farklı ayraç biçimi) taşındı, OSMAN zimmeti iade → sevk → teslim → SUAT zimmet; 2 yeni kayıt
   giris → sevk → teslim → zimmet; durum `transfer_edildi`; 2. yükleme 0/0, hareket sayısı aynı. ⚠ Hedef lokasyon
   (Y024) ağaçta YOKSA kayıtlı cihazlar taşınmaz ve yeni kayıtlar lokasyonsuz açılır — lokasyon ÖNCE Tanımlar'dan eklenmeli.
+  ⭐ **ADETLİ (SERİ NOSUZ) KALEM + "Adet" SÜTUNU (2026-11-22, kullanıcı: U055 Malatya → U059 Ümraniye sevki; 157 yangın
+  dedektörü, 47 siren, 34 buton, 9 adaptör, 9 akü — "şimdilik IT modülünde olsun, mobilizasyondan sonra Depo'ya aktaracağım")** —
+  `CIM_ALAN['adet']` (ADET · ADEDI · MIKTAR · MIKTARI · STOK ADEDI · QUANTITY · QTY; ⚠ çıplak 'STOK' bilerek yok) →
+  `it_cihazlar.adet` (IT_EK_ALAN, sarf/aksesuar/bilesen'de görünür). Seri nosuz malzeme **model başına TEK kart + adet**
+  olarak girer (155 dedektörü 155 karta bölmek anlamsız). ⚠ Kimliği olmayan satır eskiden her yüklemede yeni kart açıyordu:
+  eşleşme zincirine son halka **`$byAdetli`** — seri/IFS/cihaz kodu/envanter/MAC'i boş, adet dolu satır AYNI lokasyonda aynı
+  ad + marka + modeli taşıyan TEK adetli kartla eşleşir (yalnız aktarım ÖNCESİ kayıtlardan; iki aday varsa eşleşmez).
+  Şablon 40 → 41 sütun ("Adet", Kapasite'den sonra). Test (MariaDB + gerçek sayfa): 114 seri nolu + 17 adetli satır, U055'te
+  kayıtlı 3 cihaz taşındı · adetli dosya 2. kez → 0 yeni / 17 değişmeyen · `?sablon=mevcut` round-trip 131 → 0/0/131, adet 256.
   ⭐ **DOSYADA DURUMU HURDA / KAYIP / HİBE GELEN CİHAZ (2026-11-08, kullanıcı: 2 HP DesignJet T795 plotter,
   Kartal → M023, "EKSPER BİLİŞİM - İBRAHİM POLAT", zimmet 2024-01-01, durum hurda)** — eskiden yeni kayıt
   `durum='hurda'` + zimmetli kişiyle açılıyor, günlüğe düşüm hareketi YAZILMIYORDU: zimmet dönemi açık kalıyor,

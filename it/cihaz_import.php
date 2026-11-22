@@ -22,7 +22,7 @@ $kisi = $_SESSION['user']['full_name'] ?? $_SESSION['user']['username'] ?? null;
 const CIM_SABLON_BASLIK = ['Envanter No','Cihaz Kodu','IFS Seri Nesne No','Seri Nesne Adı','Kategori','Marka','Model','Seri No','Şasi No','IMEI',
                            'Durum','Kişi','Departman','Mevcut Proje','Kiralanan Firma','Alış Tarihi','Garanti Bitiş','Fiyat (TL)','Fiyat (USD)','Kur',
                            'Tedarikçi','Fatura No','SAS Ref','Şirket','Transfer Geldiği Birim','Transfer Tarihi','IP Adresi','MAC Adresi','Dahili No','Firmware','İşletim Sistemi',
-                           'İşlemci','Ram','Ekran Kartı','Hdd','Anakart','Ekran Boyutu','Kapasite','Teknik Özellik','Not'];
+                           'İşlemci','Ram','Ekran Kartı','Hdd','Anakart','Ekran Boyutu','Kapasite','Adet','Teknik Özellik','Not'];
 
 /** Bir cihaz kaydını şablon düzenine çevirir. */
 function cim_sablon_satiri(PDO $pdo, array $r): array
@@ -52,6 +52,7 @@ function cim_sablon_satiri(PDO $pdo, array $r): array
         ['v'=>(string)($r['islemci'] ?? '')], ['v'=>(string)($r['ram'] ?? '')], ['v'=>(string)($r['ekran_karti'] ?? '')],
         ['v'=>(string)($r['disk'] ?? '')], ['v'=>(string)($r['anakart'] ?? '')], ['v'=>(string)($r['ekran_boyutu'] ?? '')],
         ['v'=>(string)($r['kapasite'] ?? '')],
+        ['v'=>($r['adet'] ?? null) !== null && $r['adet'] !== '' ? (int)$r['adet'] : '', 't'=>'number'],
         ['v'=>(string)($r['ozellikler'] ?? '')], ['v'=>mb_substr((string)($r['notlar'] ?? ''), 0, 400)],
     ];
 }
