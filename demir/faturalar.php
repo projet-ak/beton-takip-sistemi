@@ -63,9 +63,7 @@ dfat_semasi_kur($pdoDemir);
 
 /** Çift faturalama grubunun karar anahtarı: tür + sıralı fatura id'leri. */
 function dfat_cift_anahtar(string $tur, array $fidler): string {
-    $fidler = array_values(array_unique(array_map('intval', $fidler)));
-    sort($fidler);
-    return $tur . '|' . implode(',', $fidler);
+    return fat_cift_anahtar($tur, $fidler);   // includes/fatura.php — beton ile aynı kural
 }
 
 /**

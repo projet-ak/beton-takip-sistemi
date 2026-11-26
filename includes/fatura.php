@@ -898,6 +898,73 @@ function fat_cift_kontrol(PDO $pdo): array
 }
 
 /**
+ * Çift faturalama grubuna verilen karar (2026-11-26): "kontrol edildi — kabul" (ör. sipariş araç için ikiye
+ * bölündü, iki fatura da doğru) ya da "kabul etme" (gerçek mükerrer). Anahtar = tür + SIRALI fatura id'leri →
+ * gruba yeni bir fatura katılırsa anahtar değişir ve uyarı kendiliğinden geri gelir.
+ * Beton `fatura_cift_karar` (ana DB) kullanır; demir kendi `demir_fatura_cift_karar` tablosunu kurar.
+ */
+function fat_cift_anahtar(string $tur, array $fidler): string
+{
+    $fidler = array_values(array_unique(array_map('intval', $fidler)));
+    sort($fidler);
+    return $tur . '|' . implode(',', $fidler);
+}
+
+function fat_cift_karar_semasi(PDO $pdo): void
+{
+    static $tamam = false;
+    if ($tamam) return;
+    $pdo->exec("CREATE TABLE IF NOT EXISTS fatura_cift_karar (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        anahtar VARCHAR(190) NOT NULL,
+        tur VARCHAR(10) NOT NULL,
+        fatura_nolar VARCHAR(500) NULL,
+        karar VARCHAR(10) NOT NULL,
+        aciklama VARCHAR(500) NULL,
+        kullanici_id INT NULL,
+        kullanici VARCHAR(120) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_anahtar (anahtar)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $tamam = true;
+}
+
+/**
+ * fat_cift_kontrol() sonucuna kararları uygular:
+ *  - kabul edilen gruplar 'cift'/'tutar'dan çıkıp 'kabul' listesine geçer,
+ *  - her grup 'anahtar' + 'karar' taşır ('tutar' grupları ['f' => [fid => satır], …] biçimine çevrilir),
+ *  - 'fid' haritası: irs | tutar | red | kabul,  'red' = mükerrer işaretli grup sayısı.
+ */
+function fat_cift_karar_uygula(array $cift, array $kararlar): array
+{
+    $kabul = []; $red = 0; $fid = [];
+    $ciftYeni = [];
+    foreach ($cift['cift'] ?? [] as $c) {
+        $c['anahtar'] = fat_cift_anahtar('irs', array_keys($c['f']));
+        $c['karar']   = $kararlar[$c['anahtar']] ?? null;
+        if (($c['karar']['karar'] ?? '') === 'kabul') { $c['tur'] = 'irs'; $kabul[] = $c; continue; }
+        $ciftYeni[] = $c;
+    }
+    $tutarYeni = [];
+    foreach ($cift['tutar'] ?? [] as $x) {
+        $g = ['f' => $x, 'tur' => 'tutar', 'anahtar' => fat_cift_anahtar('tutar', array_keys($x))];
+        $g['karar'] = $kararlar[$g['anahtar']] ?? null;
+        if (($g['karar']['karar'] ?? '') === 'kabul') { $kabul[] = $g; continue; }
+        $tutarYeni[] = $g;
+    }
+    foreach ($kabul as $g) foreach ($g['f'] as $i => $_) $fid[$i] = 'kabul';
+    foreach ($tutarYeni as $g) foreach ($g['f'] as $i => $_) $fid[$i] = ($g['karar']['karar'] ?? '') === 'red' ? 'red' : 'tutar';
+    foreach ($ciftYeni as $g) foreach ($g['f'] as $i => $_) {
+        if (($g['karar']['karar'] ?? '') === 'red') $fid[$i] = 'red';
+        elseif (($fid[$i] ?? '') !== 'red') $fid[$i] = 'irs';
+    }
+    foreach (array_merge($ciftYeni, $tutarYeni) as $g) if (($g['karar']['karar'] ?? '') === 'red') $red++;
+    $cift['cift'] = $ciftYeni; $cift['tutar'] = $tutarYeni;
+    $cift['kabul'] = $kabul; $cift['red'] = $red; $cift['fid'] = $fid;
+    return $cift;
+}
+
+/**
  * Yüklenen dosya, sistemde kayıtlı bir faturanın dosyasıyla BAYT BAYT aynı mı? (toplu kontrol)
  * Dosya adı fatura numarası değilse (irsaliye no, "scan_001.pdf"…) ve PDF taranmış olduğundan metni
  * de okunamıyorsa kontrol faturayı bulamıyor, "ÇÖZÜMLE ve KAYDET" ise AI ile okuyup "zaten kayıtlı"

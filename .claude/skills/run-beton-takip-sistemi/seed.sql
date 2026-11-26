@@ -22,3 +22,9 @@ FROM (SELECT a.n*10+b.n AS n FROM (SELECT 0 n UNION SELECT 1 UNION SELECT 2 UNIO
       CROSS JOIN (SELECT 0 n UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) b) t;
 UPDATE faturalar SET dosya_url='uploads/faturalar/2026/11/ornek.pdf' WHERE fatura_no<>'SGB2026000000088';
 UPDATE irsaliyeler SET fatura_id=(SELECT id FROM faturalar WHERE fatura_no='BFA2026000001611'), fatura_no='BFA2026000001611' WHERE id<=16;
+-- Çift faturalama kontrolü örnekleri: aynı gün aynı tutar (araç için bölünmüş) + aynı irsaliyeyi taşıyan iki beton faturası
+SET @s=(SELECT id FROM tedarikciler WHERE vkn='7371227729'), @k=(SELECT id FROM tedarikciler WHERE vkn='0150012345');
+INSERT INTO faturalar (fatura_no,tur,tarih,tedarikci_id,tutar,miktar_m3,ettn,irsaliye_adet,eksik_adet,eksik_liste,irsaliye_liste,dosya_url) VALUES
+ ('AKC2026000004501','beton','2026-11-06',@k,96000.00,20.00,'9b0eca73-c862-4f1e-a1b2-000000004501',0,1,'["AKI2026000009950"]','["AKI2026000009950"]','uploads/faturalar/2026/11/ornek.pdf'),
+ ('AKC2026000004502','beton','2026-11-06',@k,96000.00,20.00,'9b0eca73-c862-4f1e-a1b2-000000004502',0,1,'["AKI2026000009951"]','["AKI2026000009951"]','uploads/faturalar/2026/11/ornek.pdf'),
+ ('SGA2026000001300','beton','2026-11-19',@s,48000.00,8.00,'9b0eca73-c862-4f1e-a1b2-000000001300',0,1,'["AKI2026000009911"]','["AKI2026000009911"]','uploads/faturalar/2026/11/ornek.pdf');
