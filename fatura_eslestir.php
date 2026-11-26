@@ -1818,6 +1818,16 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
     <?php endforeach; ?>
     irsaliyesiz fatura olduğu için çift faturalama sayılmaz.</div>
 <?php endif; ?>
+<style>
+/* Kayıtlı Faturalar: notebook genişliğinde (≈1000px tablo alanı) tek satıra sığsın — uzun ticaret unvanı
+   kelime kelime alt alta kırılıp satırı 6 satır yüksekliğe çıkarıyordu; tam unvan title'da. */
+.fat-liste .fat-ted { max-width: 130px; }
+.fat-liste .fat-sira { display: none; }   /* sıra no yalnız geniş ekranda — dar ekranda yer kazandırır */
+@media (max-width: 1099.98px) { .fat-liste .fat-ted { max-width: 110px; } }
+@media (min-width: 1440px) { .fat-liste .fat-ted { max-width: 180px; } .fat-liste .fat-sira { display: table-cell; } }
+@media (min-width: 1700px) { .fat-liste .fat-ted { max-width: 300px; } }
+.fat-liste td code { white-space: nowrap; }
+</style>
 <div class="card" id="kayitli-faturalar">
     <div class="card-header bg-white fw-semibold d-flex align-items-center justify-content-between flex-wrap gap-2">
         <span><i class="bi bi-archive me-1"></i> Kayıtlı Faturalar</span>
@@ -1831,7 +1841,9 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
             · <?= $fmt(array_sum(array_map(fn($x)=>(float)$x['tutar'], $kayitli))) ?> ₺
             <?= $digerFat ? '· ' . $digerFat . ' irsaliyesiz (pompa/fiyat farkı/hizmet)' : '' ?></span>
     </div>
-    <form method="get" action="fatura_eslestir.php#kayitli-faturalar" class="row g-2 align-items-end px-3 py-2 border-bottom bg-light-subtle small">
+    <?php /* .row negatif kenar boşluğu kartın dışına taşıyordu → form kabı ayrı, satır içinde */ ?>
+    <form method="get" action="fatura_eslestir.php#kayitli-faturalar" class="px-3 py-2 border-bottom bg-light-subtle small">
+    <div class="row g-2 align-items-end">
         <div class="col-6 col-md-3 col-xl-2">
             <label class="form-label small mb-0">Tedarikçi</label>
             <select name="ted" class="form-select form-select-sm">
@@ -1875,23 +1887,24 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
             <button class="btn btn-sm btn-primary"><i class="bi bi-funnel me-1"></i>Süz</button>
             <?php if ($fatSuzgec): ?><a href="fatura_eslestir.php#kayitli-faturalar" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-lg me-1"></i>Süzgeci temizle</a><?php endif; ?>
         </div>
+    </div>
     </form>
     <div class="card-body p-0">
     <?php if (!$kayitli): ?>
         <div class="p-3 text-muted"><?= $fatSuzgec ? 'Süzgeçle eşleşen fatura bulunamadı.' : 'Henüz kayıtlı fatura yok.' ?></div>
     <?php else: ?>
         <div class="table-responsive">
-        <table class="table table-sm table-hover mb-0 align-middle">
+        <table class="table table-sm table-hover mb-0 align-middle small fat-liste">
             <thead class="table-light"><tr>
-                <th class="text-center">#</th>
+                <th class="text-center fat-sira">#</th>
                 <th>Fatura No</th><th>Tür</th><th>Tarih</th><th>Tedarikçi</th><th class="text-end">Tutar</th>
-                <th class="text-end">m³</th><th class="text-end">Bağlı İrs.</th><th class="text-end">Eksik</th><th>Dosya</th><th></th>
+                <th class="text-end">m³</th><th class="text-end">Bağlı İrs.</th><th class="text-end">Eksik</th><th></th>
             </tr></thead>
             <tbody>
             <?php $sira = count($kayitli); foreach ($kayitli as $f): $fIrs = $kayitliIrs[(int)$f['id']] ?? [];
                   $fTur = fat_tur_norm($f['tur'] ?? 'beton'); $fBeton = fat_tur_irsaliyeli($fTur); ?>
                 <tr class="<?= $fBeton ? '' : 'table-light' ?>">
-                    <td class="text-center text-muted"><?= $sira-- ?></td>
+                    <td class="text-center text-muted fat-sira"><?= $sira-- ?></td>
                     <td><code><?= h($f['fatura_no']) ?></code>
                         <?php if (($cift['fid'][(int)$f['id']] ?? '') === 'irs'): ?><span class="badge bg-danger ms-1" title="Bu faturadaki bir irsaliye başka bir faturada da geçiyor — çift faturalama şüphesi">çift irsaliye</span>
                         <?php elseif (($cift['fid'][(int)$f['id']] ?? '') === 'tutar'): ?><span class="badge bg-warning text-dark ms-1" title="Aynı tedarikçi, aynı gün, aynı tutarlı başka fatura var">aynı tutar</span><?php endif; ?></td>
@@ -1899,7 +1912,7 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                         <div class="dropdown">
                             <a class="badge bg-<?= h(FAT_TUR[$fTur][1]) ?> text-decoration-none" href="#" role="button"
                                data-bs-toggle="dropdown" title="<?= h(FAT_TUR[$fTur][3]) ?> — değiştirmek için tıklayın">
-                                <i class="bi <?= h(FAT_TUR[$fTur][2]) ?> me-1"></i><?= h(FAT_TUR[$fTur][0]) ?>
+                                <i class="bi <?= h(FAT_TUR[$fTur][2]) ?> me-1"></i><?= h(preg_replace('/\s*\(.*\)$/u', '', FAT_TUR[$fTur][0])) ?>
                             </a>
                             <div class="dropdown-menu p-2" style="min-width:260px">
                                 <div class="small text-muted px-1 pb-1">Fatura türünü değiştir</div>
@@ -1920,7 +1933,7 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                     <td><?= h(format_date($f['tarih'])) ?></td>
                     <td>
                         <?php if (!empty($f['tedarikci_id']) || !array_key_exists((int)$f['id'], $tedsizOner)): ?>
-                            <?= h((string)$f['tedarikci']) ?>
+                            <span class="d-inline-block text-truncate align-bottom fat-ted" title="<?= h((string)$f['tedarikci']) ?>"><?= h(fat_unvan_kisa((string)$f['tedarikci'])) ?></span>
                         <?php elseif (can_edit()): $__o = $tedsizOner[(int)$f['id']]; ?>
                         <form method="post" class="d-flex flex-column gap-1" style="min-width:190px">
                             <input type="hidden" name="action" value="ted_ata">
@@ -1944,7 +1957,7 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                             <span class="badge bg-warning-subtle text-warning-emphasis">tedarikçi yok</span>
                         <?php endif; ?>
                     </td>
-                    <td class="text-end"><?= $f['tutar']!==null?$fmt($f['tutar']).' ₺':'—' ?></td>
+                    <td class="text-end text-nowrap"><?= $f['tutar']!==null?$fmt($f['tutar']).'&nbsp;₺':'—' ?></td>
                     <td class="text-end">
                         <?php if (!$fBeton): ?>
                             <span class="text-muted" title="<?= h(FAT_TUR[$fTur][0]) ?> faturasının m³'ü yoktur">—</span>
@@ -1985,7 +1998,7 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                         <?php elseif ((int)$f['eksik_adet'] > 0): $fel = json_decode((string)($f['eksik_liste'] ?? ''), true); ?>
                         <a href="?eksik=1" class="text-danger text-decoration-none" title="<?= h(is_array($fel) ? implode(', ', $fel) : 'numara listesi için tıklayın') ?>"><?= (int)$f['eksik_adet'] ?> <i class="bi bi-box-arrow-up-right small"></i></a>
                         <?php elseif (!$fIrs && (int)$f['bagli'] === 0 && !json_decode((string)($f['irsaliye_liste'] ?? ''), true)): ?>
-                        <span class="badge bg-warning text-dark" title="Faturadan hiç irsaliye numarası okunamamış — taranmış PDF'te numaralar etiketsiz yazılmış olabilir">irsaliye okunamadı</span>
+                        <span class="badge bg-warning text-dark text-wrap lh-sm" style="max-width:6.5rem" title="Faturadan hiç irsaliye numarası okunamamış — taranmış PDF'te numaralar etiketsiz yazılmış olabilir">irsaliye okunamadı</span>
                         <?php if ($f['dosya_url'] && can_edit()): ?>
                         <form method="post" class="d-inline">
                             <input type="hidden" name="action" value="eksik_tara">
@@ -1999,9 +2012,9 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                         <span class="badge bg-warning text-dark" title="Faturadan otomatik açılmış taslak irsaliyeler — Excel aktarımıyla gerçek veriler gelmeden EKSİK sayılır<?= beton_onay_aktif() ? ', onaylanamaz' : '' ?>"><?= $fTaslak ?> taslak</span>
                         <?php else: ?>0<?php endif; ?>
                     </td>
-                    <td><?php if ($f['dosya_url']): ?><a href="<?= h($f['dosya_url']) ?>" target="_blank"><i class="bi bi-file-earmark-pdf"></i></a><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
-                    <td class="text-end">
-                        <a class="btn btn-sm btn-outline-secondary py-0" href="irsaliyeler.php?fatura_id=<?= (int)$f['id'] ?>">İrsaliyeler</a>
+                    <td class="text-end text-nowrap">
+                        <?php if ($f['dosya_url']): ?><a class="btn btn-sm btn-outline-secondary py-0" href="<?= h($f['dosya_url']) ?>" target="_blank" title="Fatura dosyasını aç"><i class="bi bi-file-earmark-pdf"></i></a><?php endif; ?>
+                        <a class="btn btn-sm btn-outline-secondary py-0" href="irsaliyeler.php?fatura_id=<?= (int)$f['id'] ?>" title="Bu faturanın irsaliyeleri"><i class="bi bi-list-ul"></i><span class="d-none d-xxl-inline ms-1">İrsaliyeler</span></a>
                         <?php if (is_admin()): ?>
                         <a class="btn btn-sm btn-outline-danger py-0" href="?sil=<?= (int)$f['id'] ?>" onclick="return confirm('Fatura kaydı silinsin, irsaliye bağları çözülsün mü?')"><i class="bi bi-trash"></i></a>
                         <?php endif; ?>
@@ -2009,7 +2022,7 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                 </tr>
                 <?php if ($fIrs): ?>
                 <tr class="collapse" id="fi<?= (int)$f['id'] ?>">
-                    <td colspan="11" class="bg-body-tertiary">
+                    <td colspan="10" class="bg-body-tertiary">
                         <div class="small fw-semibold mb-1">
                             <?= h($f['fatura_no']) ?> faturasına bağlı irsaliyeler (<?= count($fIrs) ?>)
                         </div>

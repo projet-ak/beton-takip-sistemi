@@ -2310,6 +2310,31 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   Doğrulandı: 9 PNG + ICO geçerli (ICO 16/32/48 ayrıştırılıyor), `php -S` üzerinden hepsi HTTP 200
   doğru MIME ile, Playwright'ta sayfa ikon bağlantıları çözülüyor ve manifest'in 4 ikonu da 200
   dönüyor, başarısız istek yok.
+- **YERLEŞİM DÜZELTMESİ — NOTEBOOK / TABLET / TELEFON (2026-11-26, kullanıcı: "mobil tasarım bir garip oldu,
+  notebook ekranı aynı şekilde garip duruyor")** — `run-beton-takip-sistemi` becerisiyle (aşağıda) 1366/1280/955/390 px
+  ekran görüntüsü alınarak düzeltildi: • **Alt menü (`footer.php` bottom-nav) `d-lg-none` → `d-md-none`**: 768–991 px'te
+  (tablet, ölçekli notebook penceresi) içeriğin üstüne biniyordu ve içerik alt boşluğu yalnız <576'da verildiği için
+  son satırları örtüyordu; boşluk artık `@media (max-width:767.98px)` bloğunda. AI düğmesi/panelinin `bottom`
+  kuralları da 768'e çekildi (`ai_chat_widget.php`). • ⚠ **`style.css`'teki `.col-md-4,.col-md-3,.col-md-2{flex:0 0 100%}`
+  (≤576) KALDIRILDI** — col-md-* zaten md altında tam genişliktir; kural yalnız sayfanın BİLEREK verdiği col-6'yı ezip
+  dashboard KPI/hızlı işlem kartlarını telefonda tek tek alt alta diziyordu. • **`.table-sm` dolgusu gerçekten sıkı**
+  (`.45rem .6rem`) — genel `.table … {padding:.72rem 1rem}` kuralı Bootstrap'in table-sm'ini eziyordu. • **Modül şeridi**
+  (`header.php`): <2000 px'te yalnız ETKİN modül adıyla, diğerleri simge + `title`; şerit kendi içinde kayar (`min-width:0;
+  overflow-x:auto`), etkin modül görünür alana kaydırılır; `.topbar-actions` küçülmez; telefonda oturum sayacı yalnız
+  warn/danger iken görünür, kullanıcı oku gizli, topbar dolgusu daraltıldı. • **Fatura listesi** (`fatura_eslestir.php`
+  Kayıtlı Faturalar, `table.fat-liste`): küçük yazı · tedarikçi **`fat_unvan_kisa()`** ile kısa ticari ad ("SAFİ BETON
+  ÜRETİM VE TİCARET A.Ş." → "SAFİ BETON", tam unvan title'da; `includes/fatura.php`, yalnız gösterim) + `text-truncate`
+  · tutar `&nbsp;₺` bölünmez · tür rozetinde parantezli ek atıldı ("Beton") · Dosya sütunu kaldırıldı, PDF düğmesi işlem
+  hücresinde · "İrsaliyeler" düğmesi simge (metin ≥xxl) · "irsaliye okunamadı" rozeti iki satıra bölünebilir · sıra no
+  sütunu <1440'ta gizli · süzgeç `.row`u kendi kabında (negatif kenar boşluğu kartın dışına taşıyordu). Ölçüm: tablo
+  1366'da 1022/1022, 1280'de 941/941 (önce 1284 — sağdaki düğmeler kesiliyordu). • Dashboard hızlı işlemleri
+  `row-cols-3 row-cols-sm-5` · "Günlük Ort. (November)" → Türkçe ay adı. 13 sayfa × 3 genişlikte sayfa taşması yok.
+- **`.claude/skills/run-beton-takip-sistemi/`** — ajan için ÇALIŞTIRMA becerisi: `up.sh <komut>` (MariaDB + php -S +
+  10 DB kurulumu + `seed.sql`, çıkışta config.php ve bu çalıştırmanın `backups/auto_*` dosyalarını temizler) ·
+  `router.php` (yönetici oturumu, CSRF `tok`, `X-Rol` başlığı) · `shot.mjs` (Playwright: `ERN_GENISLIK`, `ERN_TAM=0`,
+  `ERN_EVAL`; jsdelivr'i `npm pack` önbelleğinden verir). Tasarım/yerleşim işinde önce bununla ekran görüntüsü alın.
+  ⚠ **`.claude/` canlıya GİTMEZ**: `deploy2.php` `dp_sunucuda_tutulmaz` `.claude/` önekini yazmaz/siler (router.php her
+  isteğe yönetici oturumu verir); router.php ayrıca `PHP_SAPI !== 'cli-server'` ise 404 ile çıkar (ikinci kilit).
 - **`footer.php`** — footer, mobil bottom-nav, `ai_chat_widget.php`, app.js, service worker.
 - **`ai_call.php`** — `ai_call($system,$parts,$maxTokens)` → Claude/Gemini/OpenRouter.
 - **`config.example.php`** — sadece DB_HOST/NAME/USER/PASS şablonu. Gerçek `config.php` git-ignored.

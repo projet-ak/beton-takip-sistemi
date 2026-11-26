@@ -539,7 +539,7 @@ a { text-decoration: none; }
     font-weight: 600;
     color: var(--bt-text-muted);
 }
-.topbar-actions { display: flex; align-items: center; gap: .5rem; }
+.topbar-actions { display: flex; align-items: center; gap: .5rem; flex-shrink: 0; }
 
 /* Dark mode toggle */
 .btn-topbar {
@@ -687,6 +687,9 @@ html[data-dark="1"] .ern-footer .dev-credit strong { color: var(--ern-teal); }
 /* ── Tablolar ─────────────────────────────────────────────────────── */
 .table { --bs-table-bg: transparent; color: var(--bt-text); margin-bottom: 0; }
 .table > :not(caption) > * > * { padding: .72rem 1rem; }
+/* table-sm gerçekten sıkı olsun: yukarıdaki kural Bootstrap'in table-sm dolgusunu eziyordu, 10+ sütunlu
+   listeler (fatura, irsaliye) notebook genişliğinde sağa taşıyordu. */
+.table-sm > :not(caption) > * > * { padding: .45rem .6rem; }
 .table thead th,
 .table > thead > tr > th {
     font-size: .7rem; text-transform: uppercase; letter-spacing: .6px;
@@ -1163,6 +1166,10 @@ html[data-dark="1"] .bottom-nav-fab {
 
 /* ── Tablet (768px) ──────────────────────────────────────────────────── */
 @media (max-width: 767.98px) {
+    /* Alt menü (bottom-nav, footer.php d-md-none) yalnız bu genişlikte görünür → içerik altına yer aç */
+    .ern-content { padding-bottom: 5rem !important; }
+    .ern-footer  { margin-bottom: 4.5rem; }
+
     /* İrsaliyeler tablosu — tablet'te yardımcı kolonları gizle */
     .tbl-hide-tablet { display: none !important; }
 
@@ -1177,6 +1184,8 @@ html[data-dark="1"] .bottom-nav-fab {
 /* ── Mobil (576px) ───────────────────────────────────────────────────── */
 @media (max-width: 576px) {
     .ern-content { padding: .75rem; }
+    .ern-topbar { padding: 0 .6rem; gap: .5rem; }
+    .topbar-actions { gap: .3rem; }
     .ern-footer { flex-direction: column; text-align: center; gap: .25rem; }
 
     /* Mobil tablo — kritik olmayan kolonlar gizlenir */
@@ -1193,12 +1202,9 @@ html[data-dark="1"] .bottom-nav-fab {
     .stat-card .stat-value { font-size: 1.3rem !important; }
     .stat-icon { min-width: 38px !important; width: 38px !important; min-height: 38px !important; height: 38px !important; font-size: .9rem !important; }
 
-    /* Form sütunları tek kolon */
-    .col-md-4, .col-md-3, .col-md-2 { flex: 0 0 100%; max-width: 100%; }
-
-    /* Bottom nav için içerik alanı alt boşluğu */
-    .ern-content { padding-bottom: 5rem !important; }
-    .ern-footer  { margin-bottom: 4.5rem; }
+    /* ⚠ Eskiden burada `.col-md-4,.col-md-3,.col-md-2 { flex:0 0 100% }` vardı: col-md-* zaten md altında
+       tam genişliktir, kural yalnız sayfanın BİLEREK verdiği col-6/col-sm-*'ı eziyordu — dashboard'daki
+       KPI ve hızlı işlem kartları telefonda tek tek alt alta diziliyordu. Kaldırıldı. */
 }
 
 /* ── Küçük Mobil (400px) ─────────────────────────────────────────────── */

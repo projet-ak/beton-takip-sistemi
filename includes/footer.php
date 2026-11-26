@@ -45,7 +45,7 @@ $__navSetler = [
 ];
 $__navItems = $__navSetler[$__navMod] ?? $__navSetler['beton'];
 ?>
-<nav class="bottom-nav d-lg-none" id="bottomNav">
+<nav class="bottom-nav d-md-none" id="bottomNav"><?php /* yalnız telefonda (<768): tablette/dar notebook penceresinde içeriğin üstüne biniyordu */ ?>
 <?php if($__navMod==='beton'): ?>
   <a href="<?= $__rp ?>index.php" class="bottom-nav-item <?= $__page==='index.php'?'active':'' ?>">
     <i class="bi bi-speedometer2"></i><span>Dashboard</span>

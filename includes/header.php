@@ -750,10 +750,16 @@ if ($__user) {
     <?php if($__user): ?>
     <!-- Modül geçişi: Beton / Demir -->
     <style>
-    .module-switch{display:inline-flex;gap:.2rem;background:var(--bt-surface-2,rgba(0,0,0,.05));border:1px solid var(--bt-border,rgba(0,0,0,.08));border-radius:999px;padding:.2rem;}
-    .module-switch-item{display:inline-flex;align-items:center;gap:.4rem;padding:.34rem .8rem;border-radius:999px;font-size:.8rem;font-weight:600;color:var(--bt-text-soft,#64748b);text-decoration:none;white-space:nowrap;transition:.15s;}
+    /* Modül şeridi: 10 modülün tamamı adıyla ancak geniş ekrana sığar. Dar ekranda (notebook dahil) yalnız
+       ETKİN modül adıyla, diğerleri simgeyle görünür (ad title'da) — eskiden şerit sağa taşıp son modüller
+       kesiliyordu. Yine sığmazsa şerit kendi içinde yatay kayar, sayfa taşmaz. */
+    .module-switch{display:inline-flex;gap:.2rem;background:var(--bt-surface-2,rgba(0,0,0,.05));border:1px solid var(--bt-border,rgba(0,0,0,.08));border-radius:999px;padding:.2rem;
+      min-width:0;max-width:100%;flex:0 1 auto;overflow-x:auto;scrollbar-width:none;}
+    .module-switch::-webkit-scrollbar{display:none;}
+    .module-switch-item{display:inline-flex;align-items:center;gap:.4rem;padding:.34rem .8rem;border-radius:999px;font-size:.8rem;font-weight:600;color:var(--bt-text-soft,#64748b);text-decoration:none;white-space:nowrap;transition:.15s;flex:0 0 auto;}
     .module-switch-item.active{background:var(--ern,#00584E);color:#fff;box-shadow:0 2px 6px rgba(0,88,78,.3);}
     .module-switch-item:not(.active):hover{color:var(--ern,#00584E);}
+    @media (max-width:1999.98px){.module-switch-item:not(.active) span{display:none;}.module-switch-item:not(.active){padding:.34rem .6rem;}}
     @media (max-width:575.98px){.module-switch-item span{display:none;}.module-switch-item{padding:.34rem .55rem;}}
     </style>
     <div class="module-switch">
@@ -772,11 +778,14 @@ if ($__user) {
           // Varsayılan adlar şeritte uzun kalıyor; yönetici kendi adını verdiyse ona dokunulmaz
           $__mEt   = ($__m['ad'] === $__m['varsayilan_ad']) ? (['crm'=>'CRM','prekast'=>'Prekast','it'=>'IT'][$__mk] ?? $__mAd) : $__mAd;
       ?>
-      <a href="<?= $__rootPath . $__mHref ?>" class="module-switch-item <?= $__module===$__mk?'active':'' ?>">
+      <a href="<?= $__rootPath . $__mHref ?>" class="module-switch-item <?= $__module===$__mk?'active':'' ?>" title="<?= h($__mAd) ?>" aria-label="<?= h($__mAd) ?>">
         <i class="bi <?= h($__mIkon) ?>"></i><span><?= h($__mEt) ?></span>
       </a>
       <?php endforeach; ?>
     </div>
+    <script>/* şerit kendi içinde kayıyorsa etkin modülü görünür alana getir */
+    (function(){var w=document.currentScript.previousElementSibling,a=w&&w.querySelector('.active');
+      if(a&&w.scrollWidth>w.clientWidth)w.scrollLeft=a.offsetLeft-(w.clientWidth-a.offsetWidth)/2;})();</script>
     <?php endif; ?>
 
     <div class="topbar-actions ms-auto">
@@ -827,7 +836,7 @@ if ($__user) {
             <div class="topbar-user-name"><?= h($__user['full_name']?:$__user['username']) ?></div>
             <div class="topbar-user-role"><?= h(!empty($__user['unvan']) ? $__user['unvan'] : role_label($__user['role'])) ?></div>
           </div>
-          <i class="bi bi-chevron-down ms-1" style="font-size:.7rem;color:var(--bt-text-soft)"></i>
+          <i class="bi bi-chevron-down ms-1 d-none d-sm-inline" style="font-size:.7rem;color:var(--bt-text-soft)"></i>
         </div>
         <ul class="dropdown-menu dropdown-menu-end mt-1" style="min-width:190px">
           <li><span class="dropdown-item-text small py-2 d-flex align-items-center gap-2">
@@ -864,7 +873,8 @@ foreach(['success'=>'check-circle-fill','error'=>'exclamation-triangle-fill','wa
 .session-timer.warn{color:#b54708;background:rgba(251,189,35,.16);border-color:rgba(251,189,35,.5);}
 .session-timer.danger{color:#fff;background:#dc3545;border-color:#dc3545;animation:sessionPulse 1s ease-in-out infinite;}
 @keyframes sessionPulse{0%,100%{opacity:1}50%{opacity:.55}}
-@media (max-width:575.98px){.session-timer span{display:none;}.session-timer{padding:.28rem .45rem;}}
+/* Telefonda üst çubuk dar: sayaç yalnız süre azalınca (warn/danger) görünür — yer modül şeridine kalsın */
+@media (max-width:575.98px){.session-timer{display:none;padding:.28rem .45rem;}.session-timer.warn,.session-timer.danger{display:inline-flex;}}
 </style>
 <script>
 (function(){

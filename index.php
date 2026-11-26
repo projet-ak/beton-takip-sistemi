@@ -472,33 +472,33 @@ html[data-dark="1"] .trend-down { background:rgba(224,84,84,.14); color:#ff8080;
 
 <!-- Hızlı İşlemler -->
 <?php if (can_edit()): ?>
-<div class="row g-2 mb-4">
-    <div class="col-6 col-sm-3 col-md-2">
+<div class="row row-cols-3 row-cols-sm-5 row-cols-xxl-6 g-2 mb-4">
+    <div class="col">
         <a href="irsaliye_form.php" class="qa-btn w-100">
             <i class="bi bi-plus-circle-fill" style="color:var(--ern)"></i>
             <span>Yeni İrsaliye</span>
         </a>
     </div>
-    <div class="col-6 col-sm-3 col-md-2">
+    <div class="col">
         <a href="hizli_tarama.php" class="qa-btn w-100">
             <i class="bi bi-qr-code-scan" style="color:var(--ern-teal)"></i>
             <span>Hızlı Tara</span>
         </a>
     </div>
-    <div class="col-6 col-sm-3 col-md-2">
+    <div class="col">
         <a href="irsaliyeler.php?tip=alis" class="qa-btn w-100">
             <i class="bi bi-list-ul" style="color:var(--ern-gold)"></i>
             <span>İrsaliyeler</span>
         </a>
     </div>
-    <div class="col-6 col-sm-3 col-md-2">
+    <div class="col">
         <a href="raporlar.php" class="qa-btn w-100">
             <i class="bi bi-bar-chart-line" style="color:#3B82F6"></i>
             <span>Raporlar</span>
         </a>
     </div>
     <?php if (has_role('admin','teknik_ofis_admin')): ?>
-    <div class="col-6 col-sm-3 col-md-2">
+    <div class="col">
         <a href="import.php" class="qa-btn w-100">
             <i class="bi bi-cloud-arrow-up" style="color:#6f42c1"></i>
             <span>Excel Aktar</span>
@@ -611,7 +611,7 @@ html[data-dark="1"] .trend-down { background:rgba(224,84,84,.14); color:#ff8080;
             <div class="kpi-icon" style="background:rgba(0,88,78,.1)"><i class="bi bi-calculator" style="color:var(--ern)"></i></div>
             <div>
                 <div class="kpi-val"><?= format_number($gunlukOrt,1) ?> <small style="font-size:.65rem;font-weight:500;color:var(--bt-text-muted)">m³/gün</small></div>
-                <div class="kpi-lbl">Günlük Ort. (<?= date('F') ?>)</div>
+                <div class="kpi-lbl">Günlük Ort. (<?= ['','Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'][(int)date('n')] ?>)</div>
             </div>
         </div>
     </div>

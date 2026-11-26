@@ -329,6 +329,19 @@ function fat_qr_birlestir(array $veri, ?array $qr): array
     return $veri;
 }
 
+/**
+ * Listede gösterilecek KISA ticari ad: "SAFİ BETON ÜRETİM VE TİCARET A.Ş." → "SAFİ BETON".
+ * Şirket türü/faaliyet kelimesinden (ÜRETİM, SANAYİ, TİCARET, İNŞAAT, LTD, A.Ş. …) itibaren kesilir;
+ * en az bir kelime kalır. Yalnız GÖSTERİM içindir — eşleştirme fat_unvan_norm ile yapılır.
+ */
+function fat_unvan_kisa(string $ad): string
+{
+    $ad = trim(preg_replace('/\s+/u', ' ', $ad));
+    $k = preg_split('/\s+(?=(?:ÜRETİM|URETIM|SANAYİ|SANAYI|SAN\.|TİCARET|TICARET|TİC\.|TIC\.|İNŞAAT|INSAAT|İNŞ\.|NAKLİYAT|LTD|LİMİTED|LIMITED|A\.?Ş\.?|ANONİM|ANONIM|ŞTİ|STI)(?:\s|$|\.|,))/ui', $ad, 2);
+    $kisa = rtrim($k[0] ?? $ad, ' ,-');
+    return $kisa !== '' ? $kisa : $ad;
+}
+
 /** Şirket unvanını karşılaştırılabilir çekirdeğe indirger ("SAFİ BETON ÜRETİM VE TİCARET A.Ş." → "SAFI BETON"). */
 function fat_unvan_norm(?string $s): string
 {

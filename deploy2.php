@@ -105,6 +105,8 @@ function dp_korunan(string $rel): bool
 function dp_sunucuda_tutulmaz(string $rel): bool
 {
     if (in_array($rel, ['composer.json', 'composer.lock', '.dockerignore', '.gitattributes', '.gitignore'], true)) return true;
+    // .claude/ = ajan araçları (yerel çalıştırma becerisi; router.php her isteğe yönetici oturumu verir) — canlıya ASLA
+    if (str_starts_with($rel, '.claude/')) return true;
     if (str_contains($rel, '/')) return false;   // yalnız kök dizin
     return (bool)preg_match('/\.(md|pdf|xlsx?|csv|sql)$/i', $rel);
 }

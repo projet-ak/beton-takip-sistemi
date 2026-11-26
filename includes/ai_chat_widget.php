@@ -33,7 +33,7 @@
   display: flex; align-items: center; justify-content: center;
   display: none;
 }
-@media (min-width: 992px) {
+@media (min-width: 768px) {   /* alt menü (bottom-nav) yalnız <768'de var */
   #aiChatBtn { bottom: 24px; }
 }
 
@@ -61,7 +61,7 @@
   opacity: 1;
   pointer-events: all;
 }
-@media (min-width: 992px) {
+@media (min-width: 768px) {
   #aiChatPanel { bottom: 88px; }
 }
 
