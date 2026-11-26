@@ -39,9 +39,16 @@ if [ ! -f "$R/.kuruldu" ]; then
   for d in ern ern_demir ern_seramik ern_depo ern_akaryakit ern_crm ern_prekast ern_it ern_pts ern_kamp; do
     $SQL -e "CREATE DATABASE IF NOT EXISTS $d CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"; done
   for p in kurulum.php demir/kurulum_demir.php depo/kurulum_depo.php crm/kurulum_crm.php prekast/kurulum_prekast.php \
-           it/kurulum_it.php kamp/kurulum_kamp.php fatura_eslestir.php; do
+           it/kurulum_it.php kamp/kurulum_kamp.php; do
     c=$(curl -s -o /dev/null -w '%{http_code}' -X POST -d csrf=tok -d kur=1 -d action=kur "$ERN_URL/$p"); echo "kurulum $p → $c"; done
-  $SQL ern < "$SK/seed.sql" && touch "$R/.kuruldu" && echo "örnek veri yüklendi"
+  touch "$R/.kuruldu"
 fi
+# Örnek veri: her dosya bir kez yüklenir (işaret dosyası .seed_<ad>). Önce sayfası açılır — tabloyu runtime kuran sayfalar var.
+for s in "seed.sql:ern:fatura_eslestir.php" "seed_demir.sql:ern_demir:demir/faturalar.php"; do
+  IFS=: read f db sayfa <<< "$s"
+  [ -f "$R/.seed_$f" ] && continue
+  curl -s -o /dev/null "$ERN_URL/$sayfa"
+  $SQL "$db" < "$SK/$f" && touch "$R/.seed_$f" && echo "örnek veri yüklendi: $f → $db"
+done
 
 "$@"

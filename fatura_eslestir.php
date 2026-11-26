@@ -1822,6 +1822,7 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
 /* Kayıtlı Faturalar: notebook genişliğinde (≈1000px tablo alanı) tek satıra sığsın — uzun ticaret unvanı
    kelime kelime alt alta kırılıp satırı 6 satır yüksekliğe çıkarıyordu; tam unvan title'da. */
 .fat-liste .fat-ted { max-width: 130px; }
+@media (max-width: 1399.98px) { .fat-liste .fat-ted { max-width: 105px; } }
 .fat-liste .fat-sira { display: none; }   /* sıra no yalnız geniş ekranda — dar ekranda yer kazandırır */
 @media (max-width: 1099.98px) { .fat-liste .fat-ted { max-width: 110px; } }
 @media (min-width: 1440px) { .fat-liste .fat-ted { max-width: 180px; } .fat-liste .fat-sira { display: table-cell; } }
@@ -1905,7 +1906,7 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                   $fTur = fat_tur_norm($f['tur'] ?? 'beton'); $fBeton = fat_tur_irsaliyeli($fTur); ?>
                 <tr class="<?= $fBeton ? '' : 'table-light' ?>">
                     <td class="text-center text-muted fat-sira"><?= $sira-- ?></td>
-                    <td><code><?= h($f['fatura_no']) ?></code>
+                    <td class="text-nowrap"><code><?= h($f['fatura_no']) ?></code><?php if ($f['dosya_url']): ?><a href="<?= h($f['dosya_url']) ?>" target="_blank" class="ms-1 text-danger" title="Fatura dosyasını aç"><i class="bi bi-file-earmark-pdf"></i></a><?php endif; ?>
                         <?php if (($cift['fid'][(int)$f['id']] ?? '') === 'irs'): ?><span class="badge bg-danger ms-1" title="Bu faturadaki bir irsaliye başka bir faturada da geçiyor — çift faturalama şüphesi">çift irsaliye</span>
                         <?php elseif (($cift['fid'][(int)$f['id']] ?? '') === 'tutar'): ?><span class="badge bg-warning text-dark ms-1" title="Aynı tedarikçi, aynı gün, aynı tutarlı başka fatura var">aynı tutar</span><?php endif; ?></td>
                     <td>
@@ -2013,7 +2014,6 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                         <?php else: ?>0<?php endif; ?>
                     </td>
                     <td class="text-end text-nowrap">
-                        <?php if ($f['dosya_url']): ?><a class="btn btn-sm btn-outline-secondary py-0" href="<?= h($f['dosya_url']) ?>" target="_blank" title="Fatura dosyasını aç"><i class="bi bi-file-earmark-pdf"></i></a><?php endif; ?>
                         <a class="btn btn-sm btn-outline-secondary py-0" href="irsaliyeler.php?fatura_id=<?= (int)$f['id'] ?>" title="Bu faturanın irsaliyeleri"><i class="bi bi-list-ul"></i><span class="d-none d-xxl-inline ms-1">İrsaliyeler</span></a>
                         <?php if (is_admin()): ?>
                         <a class="btn btn-sm btn-outline-danger py-0" href="?sil=<?= (int)$f['id'] ?>" onclick="return confirm('Fatura kaydı silinsin, irsaliye bağları çözülsün mü?')"><i class="bi bi-trash"></i></a>

@@ -2329,6 +2329,13 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   sütunu <1440'ta gizli · süzgeç `.row`u kendi kabında (negatif kenar boşluğu kartın dışına taşıyordu). Ölçüm: tablo
   1366'da 1022/1022, 1280'de 941/941 (önce 1284 — sağdaki düğmeler kesiliyordu). • Dashboard hızlı işlemleri
   `row-cols-3 row-cols-sm-5` · "Günlük Ort. (November)" → Türkçe ay adı. 13 sayfa × 3 genişlikte sayfa taşması yok.
+  • **Demir Fatura Takibi aynı düzene alındı** (2026-11-26, kullanıcı: "demir modülü neden böyle"): `demir/faturalar.php`
+  Kayıtlı Faturalar `table.fat-liste` — sayılar **monospace DEĞİL** (`td.sayi` = nowrap + tabular-nums; monospace Tutar/Ton
+  sütunlarını şişiriyordu) · kısa tedarikçi adı · "tartılmadı · irsaliye" → "tartılmadı" (üç satıra kırılıyordu) · boş
+  tutar/kg kutuları **"✎ gir" düğmesi** arkasında (tıklayınca açılır, odak `input[name=deger]` — ⚠ formun ilk input'u CSRF
+  gizli alanı) · "Svk." sütunu <1600'de gizli (irsaliye kodu bağlıysa mavi bağlantı) · "içerik" yazısı ≥1700 · sıra no ≥1440.
+  İki listede de **PDF simgesi Fatura No hücresinde** (işlem sütunu daraldı). Ölçüm: 1366/1440/1536/1600/1920'de iki tablo
+  da alanına birebir sığıyor; demir 1280'de ~70 px tablo içinde kayar. 15 demir sayfasında 1366'da tablo taşması yok.
 - **`.claude/skills/run-beton-takip-sistemi/`** — ajan için ÇALIŞTIRMA becerisi: `up.sh <komut>` (MariaDB + php -S +
   10 DB kurulumu + `seed.sql`, çıkışta config.php ve bu çalıştırmanın `backups/auto_*` dosyalarını temizler) ·
   `router.php` (yönetici oturumu, CSRF `tok`, `X-Rol` başlığı) · `shot.mjs` (Playwright: `ERN_GENISLIK`, `ERN_TAM=0`,

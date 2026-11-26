@@ -15,7 +15,10 @@ Dosyalar (`.claude/skills/run-beton-takip-sistemi/`):
 - `router.php` — php -S yönlendiricisi: her isteğe yönetici oturumu + sabit CSRF `tok` verir
   (`X-Rol: saha_sefi` başlığıyla rol değişir). Giriş ekranı/şifre gerekmez.
 - `shot.mjs` — Playwright sürücüsü (ekran görüntüsü, taşma denetimi, JS hatası, DOM ölçümü).
-- `seed.sql` — 3 tedarikçi, 7 fatura (beton/pompa/fiyat farkı), 60 irsaliye. Gerçek veri değildir.
+- `seed.sql` (→ ana DB) — 3 tedarikçi, 7 beton faturası (beton/pompa/fiyat farkı), 60 irsaliye ·
+  `seed_demir.sql` (→ demir DB) — 3 tedarikçi, 6 demir faturası, 5 bağlı sevkiyat (biri tartılmış, biri
+  tutarsız/tonajsız). Gerçek veri değildir. Her dosya bir kez yüklenir (`$ERN_RUN_DIR/.seed_<dosya>` işareti);
+  yeni seed eklemek için `up.sh`'deki listeye `dosya:veritabanı:önce_açılacak_sayfa` satırı eklenir.
 
 ## Ön koşullar
 
@@ -71,6 +74,9 @@ Portlar `ERN_DB_PORT` (3399) / `ERN_PORT` (8099).
 - Taşma raporu `.table-responsive`, dropdown, modal, offcanvas içini saymaz — tablo sığıyor mu sorusu için
   `ERN_EVAL` ile `table.offsetWidth` ↔ `parentElement.clientWidth` ölçün.
 - `.module-switch` (üst modül şeridi) kendi içinde kayar; sığma ölçümü `scrollWidth/clientWidth`.
+- **Formun ilk `input`'u CSRF gizli alanıdır** — `header.php` her POST formuna `<input type=hidden name=csrf>`
+  ekler; `form.querySelector('input')` onu bulur. Odak/okuma için alanı adıyla seçin (`input[name=deger]`).
+- Seed'de `dosya_url` dolu olmalı: listelerde dosyalı satır fazladan düğme çizer, boş veriyle genişlik ölçümü yanıltır.
 
 - ⚠ **`router.php` her isteğe yönetici oturumu verir** — canlıya çıkmamalı: `deploy2.php` `.claude/`'u sunucuya
   yazmaz (varsa siler) ve router yalnız `php -S` (cli-server) altında çalışır. Bu iki kilidi kaldırmayın.

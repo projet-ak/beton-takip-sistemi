@@ -2027,6 +2027,23 @@ ERN_TOPLU_KONTROL.kur({form: document.getElementById('kontrolForm'), url: 'fatur
 <?php elseif ($fatTumAdet): ?>
 <div class="small text-success mb-2"><i class="bi bi-shield-check me-1"></i>Çift faturalama kontrolü: hiçbir irsaliye iki farklı faturada geçmiyor; aynı gün aynı tutarlı fatura yok.</div>
 <?php endif; ?>
+<style>
+/* Kayıtlı Faturalar (beton fatura_eslestir.php ile aynı düzen): notebook genişliğinde tek satır.
+   Sayılar monospace DEĞİL (tabular-nums) — monospace tutar/ton sütunlarını şişirip tabloyu sağa taşırıyordu;
+   uzun unvan kelime kelime alt alta kırılıyordu → kısa ad + title. */
+.fat-liste td.sayi { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fat-liste .fat-ted { max-width: 115px; }
+.fat-liste .fat-sira { display: none; }
+@media (max-width: 1099.98px) { .fat-liste .fat-ted { max-width: 110px; } }
+@media (min-width: 1440px) { .fat-liste .fat-ted { max-width: 150px; } .fat-liste .fat-sira { display: table-cell; } }
+@media (min-width: 1700px) { .fat-liste .fat-ted { max-width: 300px; } }
+.fat-liste td code { white-space: nowrap; font-size: .8em; }
+.fat-liste .fat-icerik-yazi { display: none; }
+@media (min-width: 1700px) { .fat-liste .fat-icerik-yazi { display: inline; } }
+@media (max-width: 1399.98px) { .fat-liste .fat-ted { max-width: 100px; } }
+/* dar ekranda "Svk." sütunu kalkar: irsaliye kodu sevkiyata bağlıysa bağlantı (mavi), değilse soluk yazılır */
+@media (max-width: 1599.98px) { .fat-liste .fat-svk { display: none; } }
+</style>
 <div class="card" id="kayitli-faturalar">
     <div class="card-header bg-white fw-semibold d-flex align-items-center justify-content-between flex-wrap gap-2">
         <span><i class="bi bi-archive me-1"></i> Kayıtlı Faturalar</span>
@@ -2035,7 +2052,9 @@ ERN_TOPLU_KONTROL.kur({form: document.getElementById('kontrolForm'), url: 'fatur
             · <?= $fmt($topKg/1000) ?> t
             · <?= $fmt(array_sum(array_map(fn($x)=>(float)$x['tutar'], $kayitli))) ?> ₺</span>
     </div>
-    <form method="get" action="faturalar.php#kayitli-faturalar" class="row g-2 align-items-end px-3 py-2 border-bottom bg-light-subtle small">
+    <?php /* .row negatif kenar boşluğu kartın dışına taşıyordu → form kabı ayrı, satır içinde */ ?>
+    <form method="get" action="faturalar.php#kayitli-faturalar" class="px-3 py-2 border-bottom bg-light-subtle small">
+    <div class="row g-2 align-items-end">
         <div class="col-6 col-md-3">
             <label class="form-label small mb-0">Tedarikçi</label>
             <select name="ted" class="form-select form-select-sm">
@@ -2070,17 +2089,18 @@ ERN_TOPLU_KONTROL.kur({form: document.getElementById('kontrolForm'), url: 'fatur
             <button class="btn btn-sm btn-primary"><i class="bi bi-funnel me-1"></i>Süz</button>
             <?php if ($fatSuzgec): ?><a href="faturalar.php#kayitli-faturalar" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x-lg me-1"></i>Süzgeci temizle</a><?php endif; ?>
         </div>
+    </div>
     </form>
     <div class="card-body p-0">
     <?php if (!$kayitli): ?>
         <div class="p-3 text-muted"><?= $fatSuzgec ? 'Süzgeçle eşleşen fatura bulunamadı.' : 'Henüz kayıtlı demir faturası yok.' ?></div>
     <?php else: ?>
-        <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0">
+        <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0 small fat-liste">
             <thead class="table-light"><tr>
-                <th class="text-center">#</th>
+                <th class="text-center fat-sira">#</th>
                 <th>Fatura No</th><th>Tarih</th><th>Tedarikçi</th><th>İrsaliye</th>
                 <th class="text-end">Tutar</th><th class="text-end">Fatura (t)</th><th class="text-end">Kantar (t)</th>
-                <th class="text-end">Fark</th><th class="text-center">Bağlı Svk.</th><th>Dosya</th><th></th>
+                <th class="text-end">Fark</th><th class="text-center fat-svk" title="Faturaya bağlı sevkiyat sayısı">Svk.</th><th></th>
             </tr></thead>
             <tbody>
             <?php $sira = count($kayitli); foreach ($kayitli as $f):
@@ -2095,13 +2115,13 @@ ERN_TOPLU_KONTROL.kur({form: document.getElementById('kontrolForm'), url: 'fatur
                 $fKalem = json_decode((string)($f['kalemler'] ?? ''), true) ?: [];
                 $fSvk = $bagliSvk[(int)$f['id']] ?? []; ?>
                 <tr>
-                    <td class="text-center text-muted"><?= $sira-- ?></td>
-                    <td><code><?= h($f['fatura_no']) ?></code>
+                    <td class="text-center text-muted fat-sira"><?= $sira-- ?></td>
+                    <td class="text-nowrap"><code><?= h($f['fatura_no']) ?></code><?php if ($f['dosya_url']): ?><a href="../<?= h($f['dosya_url']) ?>" target="_blank" class="ms-1 text-danger" title="Fatura dosyasını aç"><i class="bi bi-file-earmark-pdf"></i></a><?php endif; ?>
                         <?php if (($ciftFid[(int)$f['id']] ?? '') === 'irs'): ?><span class="badge bg-danger ms-1" title="Bu faturadaki bir irsaliye başka bir faturada da geçiyor — çift faturalama şüphesi">çift irsaliye</span>
                         <?php elseif (($ciftFid[(int)$f['id']] ?? '') === 'tutar'): ?><span class="badge bg-warning text-dark ms-1" title="Aynı tedarikçi, aynı gün, aynı tutarlı başka fatura var">aynı tutar</span><?php endif; ?></td>
                     <td class="text-nowrap"><?= h(format_date($f['tarih'])) ?></td>
-                    <td class="small"><?= h((string)$f['tedarikci']) ?></td>
-                    <td class="small text-nowrap">
+                    <td><span class="d-inline-block text-truncate align-bottom fat-ted" title="<?= h((string)$f['tedarikci']) ?>"><?= h(fat_unvan_kisa((string)$f['tedarikci'])) ?></span></td>
+                    <td class="text-nowrap">
                         <?php // Satır tek satır kalsın: yalnız İLK irsaliye görünür, tamamı "içerik" açılımında listelenir
                         $irsIlk = $irsL[0] ?? null; $irsDiger = max(0, count($irsL) - 1); ?>
                         <?php if ($irsIlk !== null): $svkId = $irsSvkMap[(int)$f['id'] . '|' . fat_irs_norm($irsIlk)] ?? 0; ?>
@@ -2113,40 +2133,41 @@ ERN_TOPLU_KONTROL.kur({form: document.getElementById('kontrolForm'), url: 'fatur
                         <?php if ($fSvk || $fKalem || $irsDiger): ?>
                         <button class="btn btn-sm btn-link p-0 ms-1 text-decoration-none align-baseline" type="button"
                                 data-bs-toggle="collapse" data-bs-target="#df<?= (int)$f['id'] ?>" title="Fatura içeriği + tüm irsaliyeler + bağlı sevkiyatlar">
-                            <i class="bi bi-chevron-down small"></i> içerik
+                            <i class="bi bi-chevron-down small"></i><span class="fat-icerik-yazi"> içerik</span>
                         </button>
                         <?php endif; ?>
                     </td>
-                    <td class="text-end font-monospace text-nowrap">
+                    <td class="text-end sayi">
                         <?php if ($f['tutar'] !== null): ?><?= $fmt($f['tutar']) ?>&nbsp;₺
                         <?php else: ?>
-                        <form method="post" class="d-inline-flex align-items-center gap-1" title="Ödenecek tutarı elle girin">
+<button type="button" class="btn btn-sm btn-outline-secondary py-0" title="Ödenecek tutarı elle girin" onclick="this.hidden=true;var f=this.nextElementSibling;f.classList.remove('d-none');f.querySelector('input[name=deger]').focus()"><i class="bi bi-pencil"></i> gir</button>
+                        <form method="post" class="d-none d-inline-flex align-items-center gap-1" title="Ödenecek tutarı elle girin">
                             <input type="hidden" name="action" value="alan_duzelt"><input type="hidden" name="alan" value="tutar">
                             <input type="hidden" name="fatura_id" value="<?= (int)$f['id'] ?>">
-                            <input type="text" name="deger" class="form-control form-control-sm py-0 px-1 text-end" style="width:90px" placeholder="₺" inputmode="decimal">
+                            <input type="text" name="deger" class="form-control form-control-sm py-0 px-1 text-end" style="width:68px" placeholder="₺" inputmode="decimal">
                             <button class="btn btn-sm btn-outline-success py-0"><i class="bi bi-check-lg"></i></button>
                         </form>
                         <?php endif; ?>
                     </td>
-                    <td class="text-end font-monospace">
+                    <td class="text-end sayi">
                         <?php if ($fTon !== null): ?><?= $fmt($fTon) ?>
                         <?php else: ?>
-                        <form method="post" class="d-inline-flex align-items-center gap-1" title="Fatura miktarını KG olarak elle girin">
+<button type="button" class="btn btn-sm btn-outline-secondary py-0" title="Fatura miktarını KG olarak elle girin" onclick="this.hidden=true;var f=this.nextElementSibling;f.classList.remove('d-none');f.querySelector('input[name=deger]').focus()"><i class="bi bi-pencil"></i> gir</button>
+                        <form method="post" class="d-none d-inline-flex align-items-center gap-1" title="Fatura miktarını KG olarak elle girin">
                             <input type="hidden" name="action" value="alan_duzelt"><input type="hidden" name="alan" value="miktar_kg">
                             <input type="hidden" name="fatura_id" value="<?= (int)$f['id'] ?>">
-                            <input type="text" name="deger" class="form-control form-control-sm py-0 px-1 text-end" style="width:80px" placeholder="kg" inputmode="decimal">
+                            <input type="text" name="deger" class="form-control form-control-sm py-0 px-1 text-end" style="width:62px" placeholder="kg" inputmode="decimal">
                             <button class="btn btn-sm btn-outline-success py-0"><i class="bi bi-check-lg"></i></button>
                         </form>
                         <?php endif; ?>
                     </td>
-                    <td class="text-end font-monospace"><?php if (!(int)$f['bagli'] || !$kalemN): ?>—<?php else: ?><?= $fmt($kTon) ?>
-                        <?php if ($tartili === 0): ?><div class="small text-muted" title="Bağlı sevkiyat kantarda tartılmamış — irsaliye miktarı gösteriliyor">tartılmadı · irsaliye</div>
+                    <td class="text-end sayi"><?php if (!(int)$f['bagli'] || !$kalemN): ?>—<?php else: ?><?= $fmt($kTon) ?>
+                        <?php if ($tartili === 0): ?><div class="small text-muted" title="Bağlı sevkiyat kantarda tartılmamış — irsaliye miktarı gösteriliyor">tartılmadı</div>
                         <?php elseif ($tartili < $kalemN): ?><div class="small text-warning" title="Tartılmayan kalemlerde irsaliye miktarı kullanıldı"><?= $tartili ?>/<?= $kalemN ?> kalem tartılı</div><?php endif; ?>
                     <?php endif; ?></td>
-                    <td class="text-end font-monospace <?= $fark===null ? 'text-muted' : (abs($fark)<=0.05 ? 'text-success' : 'text-danger fw-bold') ?>">
+                    <td class="text-end sayi <?= $fark===null ? 'text-muted' : (abs($fark)<=0.05 ? 'text-success' : 'text-danger fw-bold') ?>">
                         <?= $fark===null ? '—' : $fmt($fark) ?></td>
-                    <td class="text-center"><span class="badge <?= (int)$f['bagli'] ? 'bg-success' : 'bg-danger' ?>"><?= (int)$f['bagli'] ?></span></td>
-                    <td><?php if ($f['dosya_url']): ?><a href="../<?= h($f['dosya_url']) ?>" target="_blank"><i class="bi bi-file-earmark-pdf"></i></a><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
+                    <td class="text-center fat-svk"><span class="badge <?= (int)$f['bagli'] ? 'bg-success' : 'bg-danger' ?>"><?= (int)$f['bagli'] ?></span></td>
                     <td class="text-end text-nowrap">
                         <?php if ($f['dosya_url']): ?>
                         <form method="post" class="d-inline" onsubmit="this.querySelector('button').disabled=true">
@@ -2161,7 +2182,7 @@ ERN_TOPLU_KONTROL.kur({form: document.getElementById('kontrolForm'), url: 'fatur
                 </tr>
                 <?php if ($fSvk || $fKalem || $irsDiger): ?>
                 <tr class="collapse" id="df<?= (int)$f['id'] ?>">
-                    <td colspan="12" class="bg-body-tertiary">
+                    <td colspan="11" class="bg-body-tertiary">
                         <div class="row g-3 p-2">
                             <?php if (count($irsL) > 1): ?>
                             <div class="col-12">
