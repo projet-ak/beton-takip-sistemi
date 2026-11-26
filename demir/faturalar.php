@@ -85,7 +85,9 @@ function dfat_ai_sistem(): string {
          . 'TAMAMI, kalem tablosundaki malzeme adları ve Miktar değerleri BİRİMİYLE (örn. "27.680 Kg", "26.400 KG"), '
          . '"Toplam Miktar", "Vergiler Dahil Toplam Tutar" ve "Ödenecek Tutar" satırları, "Satıcı" ve "Alıcı" '
          . 'unvan satırları ile VKN / "Vergi No" satırları. KALEM TABLOSUNUN HER SATIRINI TEK SATIRDA yaz: malzeme adı ve '
-         . 'miktarı birimiyle AYNI satırda (örn. "12MM NERVÜRLÜ DEMİR 25.740 kg") — malzeme ve miktarı ayrı satırlara bölme. Rulo/bağ kodu listelerini (CA02..., FD03... gibi) aktarmana gerek YOK.';
+         . 'miktarı birimiyle AYNI satırda (örn. "12MM NERVÜRLÜ DEMİR 25.740 KG 32,08333 TL") — malzeme ve miktarı ayrı satırlara bölme, '
+         . 'birim fiyatı miktarın hemen ardından yaz. HER KALEMİ YALNIZ BİR KEZ yaz (özet ya da tekrar satırı ekleme). '
+         . '"Ürün / Hizmet Toplam Tutarı" ve "Vergiler Hariç Toplam Tutar" satırlarını da aynen aktar. Rulo/bağ kodu listelerini (CA02..., FD03... gibi) aktarmana gerek YOK.';
 }
 
 // ── Demir faturası metin çözümleme ───────────────────────────────────────────
@@ -283,6 +285,43 @@ function dfat_cikar(string $metin): array {
         if ($ktop > 0 && abs($ktop * 1000 - $d['miktar_kg']) < max(1.0, $d['miktar_kg'] * 0.001)) {
             foreach ($d['kalemler'] as &$kl0) $kl0['kg'] *= 1000;
             unset($kl0);
+        }
+    }
+
+    // ⚠⚠ TUTAR SAĞLAMASI (KRD2026000021650, 2026-11-26): miktar "… KG" değerlerinin TOPLAMIDIR — AI okuması kalem
+    // satırını iki kez yazarsa (tablo + özet / tekrar) tonaj İKİ KATINA çıkıyordu (25.540 → 51.080 kg; ton başı fiyat
+    // diğer faturaların yarısı). Faturanın kendisi doğruyu söyler: Σ (miktar × birim fiyat) = matrah. Kalem satırlarındaki
+    // "25.540 KG 32,08333 TL" çiftlerinden hesaplanır; tüm çiftlerin toplamı matrahı tutuyorsa dokunulmaz (aynı kg/fiyatlı
+    // iki GERÇEK kalem olabilir), yalnız TEKRARSIZ çiftler tutuyorsa tekrar düşülür ve kalemler tekilleşir.
+    $matrah = null;
+    foreach (['Vergiler\s*Hari[çc]\s*Toplam\s*Tutar', '(?:Ürün|Mal)\s*\/?\s*Hizmet\s*Toplam\s*Tutar[ıi]', 'K\.?\s*D\.?\s*V\.?\s*Matrah[ıi](?:\s*\(%\s*\d+\))?'] as $mx)
+        if ($matrah === null && preg_match('/' . $mx . '[:\s]*([\d.,]+)/iu', $t, $m)) $matrah = fat_sayi($m[1]);
+    if ($matrah > 0 && preg_match_all('/([\d.]+(?:,\d+)?)\s*(?:KG|Kg|kg)\.?\s+([\d.]*\d,\d{2,6})\s*(?:TL|₺)/u', $t, $pm, PREG_SET_ORDER)) {
+        $sAll = 0.0; $kgAll = 0.0; $sTek = 0.0; $kgTek = 0.0; $gor = [];
+        foreach ($pm as $g) {
+            $kg = dfat_kg($g[1]); $bf = fat_sayi($g[2]);
+            if ($kg === null || $bf === null || $kg <= 0 || $bf <= 0) continue;
+            $sAll += $kg * $bf; $kgAll += $kg;
+            $key = round($kg, 2) . '|' . round($bf, 5);
+            if (isset($gor[$key])) continue;
+            $gor[$key] = true; $sTek += $kg * $bf; $kgTek += $kg;
+        }
+        $tutar = fn($x) => abs($x - $matrah) <= max(1.0, $matrah * 0.005);
+        // Hedef: tüm fiyatlı çiftler matrahı tutuyorsa onların kg toplamı (fiyatsız "Miktar: … KG" tekrarları dışarıda kalır),
+        // tutmuyor ama tekrarsız çiftler tutuyorsa tekrarsız toplam. İkisi de tutmuyorsa tahmin YOK, okunan kalır.
+        $hedef = $tutar($sAll) ? $kgAll : ($sTek > 0 && $tutar($sTek) ? $kgTek : null);
+        if ($hedef !== null && $d['miktar_kg'] !== null && $d['miktar_kg'] > $hedef * 1.001) {
+            $d['miktar_duzeltme'] = 'Metinde miktar tekrar ediyordu: okunan ' . number_format($d['miktar_kg'], 0, ',', '.')
+                . ' kg, "miktar × birim fiyat = matrah (' . number_format($matrah, 2, ',', '.') . ' ₺)" sağlamasına göre '
+                . number_format($hedef, 0, ',', '.') . ' kg alındı.';
+            $d['miktar_kg'] = $hedef;
+        }
+        // Kalemler de tekrar ettiyse tekilleştir (yalnız tekrarsız çiftler matrahı tutuyorsa — aynı kg'lı iki gerçek kalem korunur)
+        if ($d['kalemler'] && !$tutar($sAll) && $sTek > 0 && $tutar($sTek)
+            && array_sum(array_column($d['kalemler'], 'kg')) > $kgTek * 1.001) {
+            $tek = [];
+            foreach ($d['kalemler'] as $kl) $tek[($kl['cap'] ?? '') . '|' . round((float)$kl['kg'], 2) . '|' . ($kl['irs'] ?? '')] = $kl;
+            $d['kalemler'] = array_values($tek);
         }
     }
 
@@ -816,6 +855,7 @@ if (($_POST['action'] ?? '') === 'yeniden_oku' && ctype_digit((string)($_POST['f
                  . count($v['irsaliyeler']) . ' irsaliye'
                  . ($v['miktar_kg'] !== null ? ', ' . number_format($v['miktar_kg'] / 1000, 3, ',', '.') . ' t' : '')
                  . ($r['bagli'] ? ", {$r['bagli']} sevkiyata bağlandı" : '') . '.';
+            if (!empty($v['miktar_duzeltme'])) $msj .= ' ' . $v['miktar_duzeltme'];
             if ($e['eksik']) $msj .= ' Sevkiyatlarda bulunamayan: ' . implode(', ', $e['eksik']) . ' — sevkiyat girilince tekrar okuyun ya da PDF\'i yükleyip taslak kutusunu kullanın.';
             if ($baska) $msj .= ' Başka faturaya bağlı olduğu için TAŞINMAYAN: ' . implode(', ', $baska) . '.';
             if ($r['ted_yeni']) $msj .= ' Yeni tedarikçi oluşturuldu: ' . $r['ted_ad'] . '.';
@@ -1277,7 +1317,14 @@ if (($_POST['action'] ?? '') === 'alan_duzelt' && ctype_digit((string)($_POST['f
     if ($deger === null || $deger < 0) {
         flash('error', 'Geçerli bir değer girin (örn. 27680 veya 27.680).');
     } else {
+        $eski = $pdoDemir->prepare("SELECT {$alan} FROM demir_faturalar WHERE id = ?"); $eski->execute([$fid]); $eski = $eski->fetchColumn();
         $pdoDemir->prepare("UPDATE demir_faturalar SET {$alan} = ? WHERE id = ?")->execute([$deger, $fid]);
+        if ($eski !== null && $eski !== false) {   // DOLU değer değiştirildiyse iz kalsın (₺/t şüpheli satırdaki düzeltme)
+            try {
+                require_once __DIR__ . '/../includes/db.php';   // audit_log ana veritabanında ($pdo)
+                audit_log($pdo, 'demir_faturalar', $fid, 'UPDATE', [$alan => $eski], [$alan => $deger, 'sebep' => 'elle düzeltme'], current_user_id());
+            } catch (Throwable $__e) {}
+        }
         flash('success', ($alan === 'miktar_kg' ? 'Miktar (kg)' : 'Tutar') . ' elle kaydedildi: ' . number_format($deger, 2, ',', '.'));
     }
     redirect(dfat_liste_geri());
@@ -1362,6 +1409,15 @@ foreach ($ciftTutar as $x) foreach ($x as $fid0 => $_) $ciftFid[$fid0] ??= 'tuta
 // ── Fatura arama: no / ETTN / tedarikçi / sipariş no / irsaliye no (NORMALİZE —
 //    "3302" ya da "CKI2026-3302" yazınca CKI2026000003302'li faturayı da bulur) ─────────
 $kayitliTum = $kayitli;   // süzgeç sayaçları ve tedarikçi listesi TÜM kayıtlardan
+// Ton başı fiyat sağlaması (KRD2026000021650): tonajı İKİ KAT okunmuş faturada ₺/t diğerlerinin yarısı çıkar.
+// Medyandan %40'tan fazla sapan satıra "₺/t şüpheli" rozeti + kg'yi elle düzeltme kutusu. En az 4 fatura gerekir.
+$tlTon = [];
+foreach ($kayitli as $__f) if ((float)$__f['tutar'] > 0 && (float)$__f['miktar_kg'] > 0) $tlTon[(int)$__f['id']] = (float)$__f['tutar'] / ((float)$__f['miktar_kg'] / 1000);
+$tlTonMed = null;
+if (count($tlTon) >= 4) { $__s = array_values($tlTon); sort($__s); $__n = count($__s);
+    $tlTonMed = $__n % 2 ? $__s[intdiv($__n, 2)] : ($__s[$__n / 2 - 1] + $__s[$__n / 2]) / 2; }
+$tlTonSupheli = [];   // fid => oran (fatura ₺/t ÷ medyan)
+if ($tlTonMed) foreach ($tlTon as $__id => $__v) { $__o = $__v / $tlTonMed; if ($__o < 0.6 || $__o > 1.6) $tlTonSupheli[$__id] = $__o; }
 $fatAra = trim((string)($_GET['fatura_ara'] ?? ''));
 if ($fatAra !== '') {
     $araU = mb_strtoupper($fatAra, 'UTF-8');
@@ -1835,6 +1891,9 @@ ERN_TOPLU_KONTROL.kur({form: document.getElementById('kontrolForm'), url: 'fatur
 
 <?php $bosAlan = array_keys(array_filter(['Fatura No'=>$v['fatura_no']===null, 'Tarih'=>$v['tarih']===null,
       'ETTN'=>$v['ettn']===null, 'Tutar'=>$v['tutar']===null, 'Miktar'=>$v['miktar_kg']===null, 'İrsaliye'=>!$v['irsaliyeler']])); ?>
+<?php if (!empty($v['miktar_duzeltme'])): ?>
+<div class="alert alert-info py-2 small"><i class="bi bi-calculator me-1"></i><strong>Miktar düzeltildi.</strong> <?= h($v['miktar_duzeltme']) ?></div>
+<?php endif; ?>
 <?php if ($bosAlan): ?>
 <div class="alert alert-warning py-2 small">
     <i class="bi bi-exclamation-triangle-fill me-1"></i>
@@ -2151,6 +2210,16 @@ ERN_TOPLU_KONTROL.kur({form: document.getElementById('kontrolForm'), url: 'fatur
                     </td>
                     <td class="text-end sayi">
                         <?php if ($fTon !== null): ?><?= $fmt($fTon) ?>
+                        <?php if (isset($tlTonSupheli[(int)$f['id']])): $__o = $tlTonSupheli[(int)$f['id']]; ?>
+                        <div class="text-nowrap"><span class="badge bg-warning text-dark" style="font-size:.6rem;padding:.2em .35em" title="Ton başı fiyat <?= h(number_format((float)$f['tutar'] / $fTon, 0, ',', '.')) ?> ₺/t — diğer faturaların ortası <?= h(number_format($tlTonMed, 0, ',', '.')) ?> ₺/t. <?= $__o < 0.6 ? 'Tonaj fazla (ör. iki kat) okunmuş olabilir.' : 'Tonaj eksik okunmuş olabilir.' ?> Dosyadan yeniden okuyun (↻) ya da kg'yi elle düzeltin.">₺/t?</span>
+                        <button type="button" class="btn btn-sm btn-link p-0 align-baseline" title="Fatura miktarını KG olarak elle düzeltin" onclick="this.hidden=true;var f=this.nextElementSibling;f.classList.remove('d-none');f.querySelector('input[name=deger]').focus()"><i class="bi bi-pencil"></i></button>
+                        <form method="post" class="d-none d-inline-flex align-items-center gap-1" onsubmit="return confirm('Fatura miktarı bu değerle değiştirilsin mi?')">
+                            <input type="hidden" name="action" value="alan_duzelt"><input type="hidden" name="alan" value="miktar_kg">
+                            <input type="hidden" name="fatura_id" value="<?= (int)$f['id'] ?>">
+                            <input type="text" name="deger" class="form-control form-control-sm py-0 px-1 text-end" style="width:62px" placeholder="kg" inputmode="decimal">
+                            <button class="btn btn-sm btn-outline-success py-0"><i class="bi bi-check-lg"></i></button>
+                        </form></div>
+                        <?php endif; ?>
                         <?php else: ?>
 <button type="button" class="btn btn-sm btn-outline-secondary py-0" title="Fatura miktarını KG olarak elle girin" onclick="this.hidden=true;var f=this.nextElementSibling;f.classList.remove('d-none');f.querySelector('input[name=deger]').focus()"><i class="bi bi-pencil"></i> gir</button>
                         <form method="post" class="d-none d-inline-flex align-items-center gap-1" title="Fatura miktarını KG olarak elle girin">
