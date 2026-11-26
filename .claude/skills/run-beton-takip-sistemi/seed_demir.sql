@@ -27,3 +27,8 @@ INSERT INTO demir_sevkiyat_kalemleri (sevkiyat_id,cap_id,irsaliye_miktar,kantar_
  ((SELECT id FROM demir_sevkiyatlar WHERE irsaliye_no='TDC2026000002258'),@c12,25.820,25.760),
  ((SELECT id FROM demir_sevkiyatlar WHERE irsaliye_no='CKI2026000005315'),@c28,25.100,NULL);
 UPDATE demir_faturalar SET dosya_url='uploads/demir_fatura/2026/11/ornek.pdf' WHERE fatura_no<>'CKE2026000005150';
+-- Çift faturalama kontrolü örnekleri: aynı gün aynı tutar (sipariş araç için ikiye bölünmüş) + aynı irsaliye iki faturada
+INSERT INTO demir_faturalar (fatura_no,ettn,tarih,tedarikci,tedarikci_id,irsaliye_liste,miktar_kg,tutar,kalemler) VALUES
+ ('KRD2026000020432','9b0eca73-0000-4f1e-a1b2-000000020432','2026-11-05','KARADENİZ DEMİR ÇELİK SANAYİ VE TİCARET A.Ş.',@k,'["KRI2026000026001"]',25120,875042.66,'[{"cap":20,"kg":25120,"irs":""}]'),
+ ('KRD2026000020395','9b0eca73-0000-4f1e-a1b2-000000020395','2026-11-05','KARADENİZ DEMİR ÇELİK SANAYİ VE TİCARET A.Ş.',@k,'["KRI2026000026002"]',25120,875042.66,'[{"cap":20,"kg":25120,"irs":""}]'),
+ ('TDC2026000002199','9b0eca73-0000-4f1e-a1b2-000000002199','2026-11-13','TOKAL DEMİR ÇELİK SANAYİ VE TİCARET ANONİM ŞİRKETİ',@t,'["TDC2026000002258"]',25820,899396.67,'[{"cap":12,"kg":25820,"irs":""}]');

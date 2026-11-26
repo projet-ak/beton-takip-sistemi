@@ -16,7 +16,7 @@ Dosyalar (`.claude/skills/run-beton-takip-sistemi/`):
   (`X-Rol: saha_sefi` başlığıyla rol değişir). Giriş ekranı/şifre gerekmez.
 - `shot.mjs` — Playwright sürücüsü (ekran görüntüsü, taşma denetimi, JS hatası, DOM ölçümü).
 - `seed.sql` (→ ana DB) — 3 tedarikçi, 7 beton faturası (beton/pompa/fiyat farkı), 60 irsaliye ·
-  `seed_demir.sql` (→ demir DB) — 3 tedarikçi, 6 demir faturası, 5 bağlı sevkiyat (biri tartılmış, biri
+  `seed_demir.sql` (→ demir DB) — 3 tedarikçi, 9 demir faturası (iki çift faturalama grubu dahil), 5 bağlı sevkiyat (biri tartılmış, biri
   tutarsız/tonajsız) · `seed_seramik/akaryakit/crm/prekast.sql` — dashboard'lar boş açılmasın diye küçük örnek veri
   (seramik/akaryakıt/PTS kurulumu ve Saha Takip tabloları `.kuruldu2` işaretiyle ayrıca kurulur). Gerçek veri değildir. Her dosya bir kez yüklenir (`$ERN_RUN_DIR/.seed_<dosya>` işareti);
   yeni seed eklemek için `up.sh`'deki listeye `dosya:veritabanı:önce_açılacak_sayfa` satırı eklenir.
@@ -90,3 +90,7 @@ Portlar `ERN_DB_PORT` (3399) / `ERN_PORT` (8099).
 - `ENOENT …/npm/<paket>/…min.js` → paket o dosyayı içermiyor; sürücü `.min`siz dosyaya düşer, yoksa isteği iptal eder.
 - `page.evaluate: TypeError … null` → `ERN_EVAL` seçicisi o sayfada yok; sürücü hatayı `HATA:` diye yazar, durmaz.
 - Kurulum satırlarında 200 dışı kod → `$ERN_RUN_DIR/php.log`; MariaDB açılmadıysa `$ERN_RUN_DIR/mdb.log`.
+- Tüm kurulumlar **503** + `Can't connect to server on '127.0.0.1' (115)` ve mdb.log'da `The socket file path is too
+  long (> 107)` → `ERN_RUN_DIR` çok uzun (ör. scratchpad yolu). Kısa bir klasör verin: `ERN_RUN_DIR=/tmp/ern-x`.
+- `mariadb` istemcisinde Türkçe harfler `?`/`�` görünüyor → istemciye `--default-character-set=utf8mb4` verin
+  (yalnız görüntü sorunu; uygulama doğru yazar). Bu istemciyle Türkçe metin INSERT etmek de bozuk veri yazar.

@@ -43,8 +43,30 @@ function dfat_semasi_kur(PDO $pdo): void {
     catch (Throwable $e) {}
     try { $pdo->exec("ALTER TABLE demir_faturalar ADD COLUMN kalemler LONGTEXT NULL"); }
     catch (Throwable $e) {}
+    // Çift faturalama grubuna verilen karar (2026-11-26): "kontrol edildi — kabul" (ör. sipariş araç için ikiye
+    // bölündü) ya da "kabul etme" (gerçek mükerrer). Anahtar = tür + SIRALI fatura id'leri → gruba yeni bir fatura
+    // katılırsa anahtar değişir ve uyarı yeniden çıkar.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS demir_fatura_cift_karar (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        anahtar VARCHAR(190) NOT NULL,
+        tur VARCHAR(10) NOT NULL,
+        fatura_nolar VARCHAR(500) NULL,
+        karar VARCHAR(10) NOT NULL,
+        aciklama VARCHAR(500) NULL,
+        kullanici_id INT NULL,
+        kullanici VARCHAR(120) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_anahtar (anahtar)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 dfat_semasi_kur($pdoDemir);
+
+/** Çift faturalama grubunun karar anahtarı: tür + sıralı fatura id'leri. */
+function dfat_cift_anahtar(string $tur, array $fidler): string {
+    $fidler = array_values(array_unique(array_map('intval', $fidler)));
+    sort($fidler);
+    return $tur . '|' . implode(',', $fidler);
+}
 
 /**
  * KG okuyucu. Demir miktarı ondalıksız BİNLİK yazılır ("26.400 KG" = 26400 kg) — genel
@@ -1330,6 +1352,51 @@ if (($_POST['action'] ?? '') === 'alan_duzelt' && ctype_digit((string)($_POST['f
     redirect(dfat_liste_geri());
 }
 
+// ── 2c) Çift faturalama grubuna karar: kabul (kontrol edildi, kayıt doğru) · red (mükerrer) · geri (kararı kaldır)
+if (($_POST['action'] ?? '') === 'cift_karar') {
+    if (!can_edit()) { flash('error', 'Bu işlem için yetkiniz yok.'); redirect(dfat_liste_geri()); }
+    $tur   = (string)($_POST['tur'] ?? '');
+    $karar = (string)($_POST['karar'] ?? '');
+    $fidler = array_values(array_unique(array_filter(array_map('intval', explode(',', (string)($_POST['fidler'] ?? ''))), fn($v) => $v > 0)));
+    if (!in_array($tur, ['irs', 'tutar'], true) || !in_array($karar, ['kabul', 'red', 'geri'], true) || count($fidler) < 2 || count($fidler) > 20) {
+        flash('error', 'Geçersiz istek.'); redirect(dfat_liste_geri());
+    }
+    $ph = implode(',', array_fill(0, count($fidler), '?'));
+    $st = $pdoDemir->prepare("SELECT id, fatura_no FROM demir_faturalar WHERE id IN ($ph) ORDER BY fatura_no");
+    $st->execute($fidler);
+    $nolar = $st->fetchAll(PDO::FETCH_KEY_PAIR);
+    if (count($nolar) !== count($fidler)) { flash('error', 'Faturalardan biri bulunamadı (silinmiş olabilir).'); redirect(dfat_liste_geri()); }
+    $anahtar = dfat_cift_anahtar($tur, $fidler);
+    $eski = $pdoDemir->prepare("SELECT * FROM demir_fatura_cift_karar WHERE anahtar = ?"); $eski->execute([$anahtar]);
+    $eski = $eski->fetch(PDO::FETCH_ASSOC) ?: null;
+    $nolarMetin = implode(' · ', $nolar);
+    if ($karar === 'geri') {
+        $pdoDemir->prepare("DELETE FROM demir_fatura_cift_karar WHERE anahtar = ?")->execute([$anahtar]);
+        $mesaj = "Karar geri alındı — {$nolarMetin} yeniden çift faturalama uyarısında.";
+    } else {
+        $acik = mb_substr(trim(preg_replace('/\s+/u', ' ', (string)($_POST['aciklama'] ?? ''))), 0, 500);
+        if ($karar === 'kabul' && $acik === '') $acik = 'Kontrol edildi, kayıtlar doğru';
+        $u = $_SESSION['user'] ?? [];
+        $kim = mb_substr((string)(($u['full_name'] ?? '') ?: ($u['username'] ?? '')), 0, 120);
+        $pdoDemir->prepare("INSERT INTO demir_fatura_cift_karar (anahtar, tur, fatura_nolar, karar, aciklama, kullanici_id, kullanici)
+                VALUES (?,?,?,?,?,?,?)
+                ON DUPLICATE KEY UPDATE fatura_nolar = VALUES(fatura_nolar), karar = VALUES(karar), aciklama = VALUES(aciklama),
+                    kullanici_id = VALUES(kullanici_id), kullanici = VALUES(kullanici), created_at = CURRENT_TIMESTAMP")
+            ->execute([$anahtar, $tur, mb_substr($nolarMetin, 0, 500), $karar, $acik !== '' ? $acik : null, current_user_id(), $kim]);
+        $mesaj = $karar === 'kabul'
+            ? "Kontrol edildi — kabul: {$nolarMetin}. Grup çift faturalama uyarısından çıkarıldı."
+            : "Kabul edilmedi — {$nolarMetin} MÜKERRER olarak işaretlendi; ödemeden önce tedarikçiyle düzeltin.";
+    }
+    try {
+        require_once __DIR__ . '/../includes/db.php';   // audit_log ana veritabanında ($pdo)
+        audit_log($pdo, 'demir_fatura_cift_karar', (int)min($fidler), $karar === 'geri' ? 'DELETE' : ($eski ? 'UPDATE' : 'INSERT'),
+            $eski ? ['karar' => $eski['karar'], 'aciklama' => $eski['aciklama']] : null,
+            ['anahtar' => $anahtar, 'faturalar' => $nolarMetin, 'karar' => $karar, 'aciklama' => $acik ?? null], current_user_id());
+    } catch (Throwable $__e) {}
+    flash($karar === 'red' ? 'warning' : 'success', $mesaj);
+    redirect(dfat_liste_geri());
+}
+
 // ── 3) Sil ───────────────────────────────────────────────────────────────────
 if (is_admin() && isset($_GET['sil']) && ctype_digit((string)$_GET['sil'])) {
     $fid = (int)$_GET['sil'];
@@ -1402,9 +1469,41 @@ foreach ($kayitli as $f) {
     $ciftTutar[$k0][(int)$f['id']] = $f;
 }
 $ciftTutar = array_filter($ciftTutar, fn($x) => count($x) > 1);
-$ciftFid = [];   // fid => 'irs' | 'tutar' (satır rozeti)
-foreach ($ciftIrs as $x) foreach ($x['f'] as $fid0 => $_) $ciftFid[$fid0] = 'irs';
-foreach ($ciftTutar as $x) foreach ($x as $fid0 => $_) $ciftFid[$fid0] ??= 'tutar';
+// Kullanıcı kararları (kontrol edildi — kabul / kabul etme). Aynı fatura kümesini paylaşan irsaliyeler tek karar alır.
+$ciftKarar = [];
+try {
+    foreach ($pdoDemir->query("SELECT * FROM demir_fatura_cift_karar") as $r) $ciftKarar[$r['anahtar']] = $r;
+} catch (Throwable $e0) {}
+$ciftKabul = [];   // anahtar => ['tur','fidler','nolar','karar'(satır)] — kabul edilen gruplar (uyarıdan çıkar)
+$ciftIrsAcik = []; $ciftTutarAcik = [];
+foreach ($ciftIrs as $k0 => $x) {
+    $an = dfat_cift_anahtar('irs', array_keys($x['f']));
+    $x['anahtar'] = $an; $x['karar'] = $ciftKarar[$an] ?? null;
+    if (($x['karar']['karar'] ?? '') === 'kabul') { $ciftKabul[$an]['tur'] = 'irs'; $ciftKabul[$an]['f'] = $x['f']; $ciftKabul[$an]['irs'][] = $x['ham']; $ciftKabul[$an]['karar'] = $x['karar']; }
+    else $ciftIrsAcik[$k0] = $x;
+}
+foreach ($ciftTutar as $k0 => $x) {
+    $an = dfat_cift_anahtar('tutar', array_keys($x));
+    $f0 = reset($x);
+    $g = ['f' => array_map(fn($f) => (string)$f['fatura_no'], $x), 'satir' => $f0, 'anahtar' => $an, 'karar' => $ciftKarar[$an] ?? null];
+    if (($g['karar']['karar'] ?? '') === 'kabul') $ciftKabul[$an] = ['tur' => 'tutar', 'f' => $g['f'], 'satir' => $f0, 'karar' => $g['karar']];
+    else $ciftTutarAcik[$k0] = $g;
+}
+// Açık irsaliye çakışmaları da fatura kümesine göre gruplanır (tek karar düğmesi; aynı iki fatura 10 irsaliye paylaşabilir)
+$ciftIrsGrup = [];
+foreach ($ciftIrsAcik as $x) {
+    $ciftIrsGrup[$x['anahtar']] ??= ['f' => $x['f'], 'irs' => [], 'anahtar' => $x['anahtar'], 'karar' => $x['karar']];
+    $ciftIrsGrup[$x['anahtar']]['irs'][] = $x['ham'];
+}
+$ciftRed = 0;
+foreach ([$ciftIrsGrup, $ciftTutarAcik] as $__gl) foreach ($__gl as $__g) if (($__g['karar']['karar'] ?? '') === 'red') $ciftRed++;
+$ciftFid = [];   // fid => 'irs' | 'tutar' | 'red' | 'kabul' (satır rozeti; kabul edilen grup süzgece girmez)
+foreach ($ciftKabul as $g) foreach ($g['f'] as $fid0 => $_) $ciftFid[$fid0] = 'kabul';
+foreach ($ciftTutarAcik as $g) foreach ($g['f'] as $fid0 => $_) $ciftFid[$fid0] = ($g['karar']['karar'] ?? '') === 'red' ? 'red' : 'tutar';
+foreach ($ciftIrsGrup as $g) foreach ($g['f'] as $fid0 => $_) {
+    if (($g['karar']['karar'] ?? '') === 'red') $ciftFid[$fid0] = 'red';
+    elseif (($ciftFid[$fid0] ?? '') !== 'red') $ciftFid[$fid0] = 'irs';
+}
 
 // ── Fatura arama: no / ETTN / tedarikçi / sipariş no / irsaliye no (NORMALİZE —
 //    "3302" ya da "CKI2026-3302" yazınca CKI2026000003302'li faturayı da bulur) ─────────
@@ -1475,7 +1574,7 @@ if ($fatTed !== '' || $fatBas !== '' || $fatBit !== '' || $fatDurum !== '') {
             'bagsiz'     => (int)$f['bagli'] === 0,
             'tartilmadi' => (int)$f['bagli'] > 0 && (int)$f['kantar_satir'] < (int)$f['kalem_satir'],
             'kgsiz'      => (float)$f['miktar_kg'] <= 0,
-            'cift'       => isset($ciftFid[(int)$f['id']]),
+            'cift'       => in_array($ciftFid[(int)$f['id']] ?? '', ['irs', 'tutar', 'red'], true),
             default      => true,
         };
     }));
@@ -2061,30 +2160,72 @@ ERN_TOPLU_KONTROL.kur({form: document.getElementById('kontrolForm'), url: 'fatur
 </form>
 <?php endif; ?>
 
-<?php if ($ciftIrs || $ciftTutar): ?>
-<div class="alert <?= $ciftIrs ? 'alert-danger' : 'alert-warning' ?> mb-3">
-    <div class="fw-semibold mb-1"><i class="bi bi-exclamation-octagon me-1"></i>Çift faturalama kontrolü</div>
-    <?php if ($ciftIrs): ?>
-    <div class="small mb-1"><strong><?= count($ciftIrs) ?> irsaliye birden fazla FARKLI faturada geçiyor</strong> — aynı teslimat iki kez faturalanmış olabilir, ödemeden önce tedarikçiyle kontrol edin:</div>
+<?php
+// Karar düğmeleri: "Kontrol edildi, kabul" (not sorulur) · "Kabul etme" (mükerrer) · kararı geri al
+$ciftDugme = function (string $tur, array $fidler, ?array $karar, bool $kabulEdilmis = false): string {
+    if (!can_edit()) return '';
+    $f = fn(string $k, string $etiket, string $cls, string $js) =>
+        '<form method="post" class="d-inline" onsubmit="' . h($js) . '">'
+        . '<input type="hidden" name="action" value="cift_karar"><input type="hidden" name="tur" value="' . h($tur) . '">'
+        . '<input type="hidden" name="fidler" value="' . h(implode(',', $fidler)) . '"><input type="hidden" name="karar" value="' . $k . '">'
+        . '<input type="hidden" name="aciklama" value="">'
+        . '<button class="btn btn-sm ' . $cls . ' py-0 px-2 ms-1">' . $etiket . '</button></form>';
+    if ($kabulEdilmis) return $f('geri', '<i class="bi bi-arrow-counterclockwise me-1"></i>Kabulü geri al', 'btn-outline-secondary', "return confirm('Kabul geri alınsın mı? Grup yeniden çift faturalama uyarısına döner.')");
+    $out = $f('kabul', '<i class="bi bi-check2-circle me-1"></i>Kontrol edildi, kabul', 'btn-success',
+        "var a=prompt('Kontrol notu (ör. sipariş araç kapasitesi için ikiye bölündü):','Sipariş araç kapasitesi için ikiye bölündü — kayıtlar doğru'); if(a===null) return false; this.aciklama.value=a; return true;");
+    if (($karar['karar'] ?? '') === 'red') $out .= $f('geri', '<i class="bi bi-arrow-counterclockwise me-1"></i>Kararı kaldır', 'btn-outline-secondary', "return confirm('Mükerrer işareti kaldırılsın mı?')");
+    else $out .= $f('red', '<i class="bi bi-x-octagon me-1"></i>Kabul etme', 'btn-outline-danger',
+        "var a=prompt('Neden kabul edilmedi? (ör. aynı teslimat iki kez faturalanmış — iade faturası istenecek)',''); if(a===null) return false; this.aciklama.value=a; return true;");
+    return $out;
+};
+$ciftKararNot = function (?array $karar): string {
+    if (!$karar) return '';
+    $ne = $karar['karar'] === 'red' ? '<span class="badge bg-danger me-1">Kabul edilmedi — mükerrer</span>' : '<span class="badge bg-success me-1">Kontrol edildi — kabul</span>';
+    return '<div class="ms-1 mt-1">' . $ne . '<span class="text-body-secondary">' . h((string)($karar['aciklama'] ?? ''))
+        . ' · ' . h((string)($karar['kullanici'] ?: '—')) . ' · ' . h(date('d.m.Y H:i', strtotime((string)$karar['created_at']))) . '</span></div>';
+};
+?>
+<?php if ($ciftIrsGrup || $ciftTutarAcik): ?>
+<div class="alert <?= ($ciftIrsGrup || $ciftRed) ? 'alert-danger' : 'alert-warning' ?> mb-3">
+    <div class="fw-semibold mb-1"><i class="bi bi-exclamation-octagon me-1"></i>Çift faturalama kontrolü
+        <?php if ($ciftRed): ?><span class="badge bg-danger ms-1"><?= $ciftRed ?> grup mükerrer işaretli</span><?php endif; ?></div>
+    <?php if ($ciftIrsGrup): ?>
+    <div class="small mb-1"><strong><?= count($ciftIrsAcik) ?> irsaliye birden fazla FARKLI faturada geçiyor</strong> — aynı teslimat iki kez faturalanmış olabilir, ödemeden önce tedarikçiyle kontrol edin:</div>
     <ul class="small mb-2">
-        <?php foreach ($ciftIrs as $x): ?>
-        <li><code><?= h($x['ham']) ?></code> →
-            <?php foreach ($x['f'] as $fno): ?><a href="faturalar.php?fatura_ara=<?= urlencode($fno) ?>" class="badge bg-danger text-decoration-none me-1"><?= h($fno) ?></a><?php endforeach; ?></li>
+        <?php foreach ($ciftIrsGrup as $g): ?>
+        <li class="mb-1"><?php foreach ($g['irs'] as $__i => $__ham): ?><code><?= h($__ham) ?></code><?= $__i < count($g['irs']) - 1 ? ', ' : '' ?><?php endforeach; ?> →
+            <?php foreach ($g['f'] as $fno): ?><a href="faturalar.php?fatura_ara=<?= urlencode($fno) ?>" class="badge bg-danger text-decoration-none me-1"><?= h($fno) ?></a><?php endforeach; ?>
+            <?= $ciftDugme('irs', array_keys($g['f']), $g['karar']) ?><?= $ciftKararNot($g['karar']) ?></li>
         <?php endforeach; ?>
     </ul>
     <?php endif; ?>
-    <?php if ($ciftTutar): ?>
-    <div class="small mb-1"><strong><?= count($ciftTutar) ?> grup</strong> aynı tedarikçi · aynı gün · aynı tutarlı farklı fatura (şüphe — kalemleri karşılaştırın):</div>
+    <?php if ($ciftTutarAcik): ?>
+    <div class="small mb-1"><strong><?= count($ciftTutarAcik) ?> grup</strong> aynı tedarikçi · aynı gün · aynı tutarlı farklı fatura (şüphe — kalemleri karşılaştırın; sipariş araç için bölünmüşse "Kontrol edildi, kabul" deyin):</div>
     <ul class="small mb-0">
-        <?php foreach ($ciftTutar as $x): $f0 = reset($x); ?>
-        <li><?= h((string)$f0['tedarikci']) ?> · <?= h(format_date($f0['tarih'])) ?> · <?= $fmt((float)$f0['tutar']) ?> ₺ →
-            <?php foreach ($x as $f1): ?><a href="faturalar.php?fatura_ara=<?= urlencode((string)$f1['fatura_no']) ?>" class="badge bg-warning text-dark text-decoration-none me-1"><?= h((string)$f1['fatura_no']) ?></a><?php endforeach; ?></li>
+        <?php foreach ($ciftTutarAcik as $g): $f0 = $g['satir']; ?>
+        <li class="mb-1"><?= h((string)$f0['tedarikci']) ?> · <?= h(format_date($f0['tarih'])) ?> · <?= $fmt((float)$f0['tutar']) ?> ₺ →
+            <?php foreach ($g['f'] as $fno): ?><a href="faturalar.php?fatura_ara=<?= urlencode($fno) ?>" class="badge bg-warning text-dark text-decoration-none me-1"><?= h($fno) ?></a><?php endforeach; ?>
+            <?= $ciftDugme('tutar', array_keys($g['f']), $g['karar']) ?><?= $ciftKararNot($g['karar']) ?></li>
         <?php endforeach; ?>
     </ul>
     <?php endif; ?>
 </div>
 <?php elseif ($fatTumAdet): ?>
-<div class="small text-success mb-2"><i class="bi bi-shield-check me-1"></i>Çift faturalama kontrolü: hiçbir irsaliye iki farklı faturada geçmiyor; aynı gün aynı tutarlı fatura yok.</div>
+<div class="small text-success mb-2"><i class="bi bi-shield-check me-1"></i>Çift faturalama kontrolü: <?= $ciftKabul ? 'açık şüphe yok — ' . count($ciftKabul) . ' grup kontrol edilip kabul edildi.' : 'hiçbir irsaliye iki farklı faturada geçmiyor; aynı gün aynı tutarlı fatura yok.' ?></div>
+<?php endif; ?>
+<?php if ($ciftKabul): ?>
+<details class="small mb-3 border border-success-subtle rounded px-2 py-1">
+    <summary class="text-success fw-semibold"><i class="bi bi-check2-all me-1"></i>Kontrol edildi — kabul edilen çift faturalama grupları (<?= count($ciftKabul) ?>)</summary>
+    <ul class="mb-1 mt-2">
+        <?php foreach ($ciftKabul as $g): ?>
+        <li class="mb-1">
+            <?php if ($g['tur'] === 'irs'): ?><span class="text-body-secondary">Ortak irsaliye:</span> <?php foreach ($g['irs'] as $__i => $__ham): ?><code><?= h($__ham) ?></code><?= $__i < count($g['irs']) - 1 ? ', ' : '' ?><?php endforeach; ?>
+            <?php else: ?><span class="text-body-secondary">Aynı gün aynı tutar:</span> <?= h((string)$g['satir']['tedarikci']) ?> · <?= h(format_date($g['satir']['tarih'])) ?> · <?= $fmt((float)$g['satir']['tutar']) ?> ₺<?php endif; ?> →
+            <?php foreach ($g['f'] as $fno): ?><a href="faturalar.php?fatura_ara=<?= urlencode($fno) ?>" class="badge bg-success text-decoration-none me-1"><?= h($fno) ?></a><?php endforeach; ?>
+            <?= $ciftDugme($g['tur'], array_keys($g['f']), $g['karar'], true) ?><?= $ciftKararNot($g['karar']) ?></li>
+        <?php endforeach; ?>
+    </ul>
+</details>
 <?php endif; ?>
 <style>
 /* Kayıtlı Faturalar (beton fatura_eslestir.php ile aynı düzen): notebook genişliğinde tek satır.
@@ -2092,6 +2233,8 @@ ERN_TOPLU_KONTROL.kur({form: document.getElementById('kontrolForm'), url: 'fatur
    uzun unvan kelime kelime alt alta kırılıyordu → kısa ad + title. */
 .fat-liste td.sayi { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .fat-liste .fat-ted { max-width: 115px; }
+/* çift faturalama rozeti fatura no'nun ALTINDA — yanında sütunu genişletip tabloyu 1366'da taşırıyordu */
+.fat-liste .fat-cift { display: table; font-size: .6rem; padding: .25em .5em; margin-top: 3px; }
 .fat-liste .fat-sira { display: none; }
 @media (max-width: 1099.98px) { .fat-liste .fat-ted { max-width: 110px; } }
 @media (min-width: 1440px) { .fat-liste .fat-ted { max-width: 150px; } .fat-liste .fat-sira { display: table-cell; } }
@@ -2176,8 +2319,10 @@ ERN_TOPLU_KONTROL.kur({form: document.getElementById('kontrolForm'), url: 'fatur
                 <tr>
                     <td class="text-center text-muted fat-sira"><?= $sira-- ?></td>
                     <td class="text-nowrap"><code><?= h($f['fatura_no']) ?></code><?php if ($f['dosya_url']): ?><a href="../<?= h($f['dosya_url']) ?>" target="_blank" class="ms-1 text-danger" title="Fatura dosyasını aç"><i class="bi bi-file-earmark-pdf"></i></a><?php endif; ?>
-                        <?php if (($ciftFid[(int)$f['id']] ?? '') === 'irs'): ?><span class="badge bg-danger ms-1" title="Bu faturadaki bir irsaliye başka bir faturada da geçiyor — çift faturalama şüphesi">çift irsaliye</span>
-                        <?php elseif (($ciftFid[(int)$f['id']] ?? '') === 'tutar'): ?><span class="badge bg-warning text-dark ms-1" title="Aynı tedarikçi, aynı gün, aynı tutarlı başka fatura var">aynı tutar</span><?php endif; ?></td>
+                        <?php if (($ciftFid[(int)$f['id']] ?? '') === 'irs'): ?><span class="badge bg-danger fat-cift" title="Bu faturadaki bir irsaliye başka bir faturada da geçiyor — çift faturalama şüphesi">çift irsaliye</span>
+                        <?php elseif (($ciftFid[(int)$f['id']] ?? '') === 'tutar'): ?><span class="badge bg-warning text-dark fat-cift" title="Aynı tedarikçi, aynı gün, aynı tutarlı başka fatura var">aynı tutar</span>
+                        <?php elseif (($ciftFid[(int)$f['id']] ?? '') === 'red'): ?><span class="badge bg-danger fat-cift" title="Çift faturalama kontrolünde KABUL EDİLMEDİ — mükerrer işaretli">mükerrer</span>
+                        <?php elseif (($ciftFid[(int)$f['id']] ?? '') === 'kabul'): ?><span class="badge bg-success-subtle text-success-emphasis fat-cift" title="Çift faturalama şüphesi kontrol edildi ve kabul edildi">kontrol ✓</span><?php endif; ?></td>
                     <td class="text-nowrap"><?= h(format_date($f['tarih'])) ?></td>
                     <td><span class="d-inline-block text-truncate align-bottom fat-ted" title="<?= h((string)$f['tedarikci']) ?>"><?= h(fat_unvan_kisa((string)$f['tedarikci'])) ?></span></td>
                     <td class="text-nowrap">
