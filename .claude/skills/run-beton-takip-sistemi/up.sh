@@ -43,8 +43,17 @@ if [ ! -f "$R/.kuruldu" ]; then
     c=$(curl -s -o /dev/null -w '%{http_code}' -X POST -d csrf=tok -d kur=1 -d action=kur "$ERN_URL/$p"); echo "kurulum $p → $c"; done
   touch "$R/.kuruldu"
 fi
+# Sonradan eklenen modüller (seramik/akaryakıt GET ile, PTS POST islem=kur ile, Saha Takip tablolarını sayfa kurar)
+if [ ! -f "$R/.kuruldu2" ]; then
+  for p in seramik/kurulum_seramik.php akaryakit/kurulum_akaryakit.php whatsapp/mesajlar.php; do
+    echo "kurulum $p → $(curl -s -o /dev/null -w '%{http_code}' "$ERN_URL/$p")"; done
+  echo "kurulum pts/kurulum_pts.php → $(curl -s -o /dev/null -w '%{http_code}' -X POST -d csrf=tok -d islem=kur "$ERN_URL/pts/kurulum_pts.php")"
+  touch "$R/.kuruldu2"
+fi
 # Örnek veri: her dosya bir kez yüklenir (işaret dosyası .seed_<ad>). Önce sayfası açılır — tabloyu runtime kuran sayfalar var.
-for s in "seed.sql:ern:fatura_eslestir.php" "seed_demir.sql:ern_demir:demir/faturalar.php"; do
+for s in "seed.sql:ern:fatura_eslestir.php" "seed_demir.sql:ern_demir:demir/faturalar.php" \
+         "seed_seramik.sql:ern_seramik:seramik/index.php" "seed_akaryakit.sql:ern_akaryakit:akaryakit/index.php" \
+         "seed_crm.sql:ern_crm:crm/index.php" "seed_prekast.sql:ern_prekast:prekast/index.php"; do
   IFS=: read f db sayfa <<< "$s"
   [ -f "$R/.seed_$f" ] && continue
   curl -s -o /dev/null "$ERN_URL/$sayfa"

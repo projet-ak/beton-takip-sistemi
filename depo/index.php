@@ -34,6 +34,16 @@ $enCokFirma = $hToplam ? $pdoDepo->query("SELECT firma, tur, COUNT(*) adet FROM 
                                           WHERE firma IS NOT NULL AND firma <> ''
                                           GROUP BY firma, tur ORDER BY adet DESC LIMIT 8")->fetchAll() : [];
 
+// Bu ayın hareketleri (eşik PHP'de hesaplanıp bağlanır)
+$__ayBas = date('Y-m-01');
+$buAyH = ['giris' => 0, 'cikis' => 0];
+if ($hToplam) {
+    $st = $pdoDepo->prepare("SELECT tur, COUNT(*) n FROM depo_hareketler WHERE tarih >= ? GROUP BY tur");
+    $st->execute([$__ayBas]);
+    foreach ($st->fetchAll() as $r) $buAyH[$r['tur']] = (int)$r['n'];
+}
+$sonHTarih = $hToplam ? $pdoDepo->query("SELECT MAX(tarih) FROM depo_hareketler")->fetchColumn() : null;
+
 $pageTitle = 'Depo Takip — Genel Bakış';
 require_once __DIR__ . '/../includes/header.php';
 ?>
@@ -46,33 +56,26 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 </div>
 
-<!-- Özet KPI -->
-<div class="row g-3 mb-4">
-    <div class="col-6 col-lg-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small mb-1"><i class="bi bi-collection me-1"></i>Toplam Kalem</div>
-            <div class="h3 mb-0 fw-bold"><?= $fmt0($topKalem) ?></div>
-        </div></div>
-    </div>
-    <div class="col-6 col-lg-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small mb-1"><i class="bi bi-cash-stack me-1"></i>Toplam Mali Değer</div>
-            <div class="h3 mb-0 fw-bold text-success"><?= $fmt0($topDeger) ?> <small class="fs-6 text-muted">TL</small></div>
-        </div></div>
-    </div>
-    <div class="col-6 col-lg-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small mb-1"><i class="bi bi-diagram-3 me-1"></i>Kategori</div>
-            <div class="h3 mb-0 fw-bold"><?= count($GLOBALS['DP_KATEGORI']) ?></div>
-        </div></div>
-    </div>
-    <div class="col-6 col-lg-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small mb-1"><i class="bi bi-exclamation-triangle me-1"></i>Tükenen Kalem</div>
-            <div class="h3 mb-0 fw-bold <?= $topTukenen>0?'text-danger':'' ?>"><?= $fmt0($topTukenen) ?></div>
-        </div></div>
-    </div>
-</div>
+<!-- Özet KPI (ortak kpi_kart) -->
+<?php
+$__katKir = [];
+foreach ($GLOBALS['DP_KATEGORI'] as $kk => $ki) $__katKir[] = $fmt0($ozet[$kk]['adet'] ?? 0) . ' ' . mb_strtolower($ki['ad'], 'UTF-8');
+echo kpi_satir([
+    ['ad' => 'Toplam Kalem', 'deger' => $topKalem, 'ikon' => 'bi-collection', 'renk' => 'green', 'link' => 'kalemler.php',
+     'alt_metin' => implode(' · ', $__katKir)],
+    ['ad' => 'Toplam Mali Değer', 'deger' => round($topDeger), 'ondalik' => 0, 'birim' => 'TL', 'ikon' => 'bi-cash-stack', 'renk' => 'teal',
+     'link' => 'raporlar.php', 'alt_metin' => 'stok × birim fiyat (demirbaş + sarf)'],
+    ['ad' => 'Tükenen Kalem', 'deger' => $topTukenen, 'ikon' => 'bi-exclamation-triangle', 'renk' => $topTukenen ? 'red' : 'slate',
+     'link' => '#tukenenler', 'alt_metin' => 'stoğu 0 ya da eksi', 'uyari' => $topTukenen > 0],
+    ['ad' => 'Bu Ay Giriş', 'deger' => $buAyH['giris'], 'ikon' => 'bi-box-arrow-in-down', 'renk' => 'blue',
+     'link' => 'hareketler.php?tur=giris&bas=' . $__ayBas, 'alt_metin' => 'hareket defteri · ' . date('m.Y')],
+    ['ad' => 'Bu Ay Çıkış', 'deger' => $buAyH['cikis'], 'ikon' => 'bi-box-arrow-up', 'renk' => 'orange',
+     'link' => 'hareketler.php?tur=cikis&bas=' . $__ayBas,
+     'alt' => $sonHTarih ? 'son hareket <strong>' . h(format_date($sonHTarih)) . '</strong>' : 'henüz hareket yok'],
+    ['ad' => 'Hurdaya Ayrılan', 'deger' => (int)$hurdaOzet['adet'], 'ikon' => 'bi-trash3', 'renk' => 'slate', 'link' => 'hareketler.php?hurda=1',
+     'alt_metin' => 'toplam ' . $fmt0($hurdaOzet['miktar']) . ' birim'],
+]);
+?>
 
 <!-- Kategori kartları -->
 <div class="row g-3 mb-4">
@@ -187,6 +190,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <!-- Kritik / tükenen liste -->
 <?php if($kritik): ?>
+<a id="tukenenler"></a>
 <div class="card border-0 shadow-sm">
     <div class="card-header bg-white border-0 pt-3"><h6 class="mb-0"><i class="bi bi-exclamation-triangle text-danger me-2"></i>Tükenen / Stok Dışı Kalemler <span class="badge bg-danger ms-1"><?= count($kritik) ?></span></h6></div>
     <div class="card-body p-0"><div class="table-responsive" style="max-height:50vh">

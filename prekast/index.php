@@ -144,30 +144,23 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 <?php endif; ?>
 
-<div class="row g-2 mb-3">
 <?php
-$kpi = [
-    ['Toplam iş', $f0($ozet['toplam']), 'secondary', 'bi-list-check', 'isler.php'],
-    ['Tamamlanan', $f0($ozet['silikon']), 'success', 'bi-check-circle-fill', 'isler.php?durum=tamam',
-        $ozet['olculmemis'] ? $f0($ozet['olculmemis']) . ' tanesinin metrajı ölçülmemiş' : ''],
-    ['Silikon bekleyen', $f0($ozet['silikonBekleyen']), 'warning', 'bi-hourglass-split', 'isler.php?durum=kesim'],
-    ['Kesim bekleyen', $f0($ozet['kesimBekleyen']), 'danger', 'bi-scissors', 'isler.php?durum=bekliyor'],
-    ['Toplam metraj', $f2($ozet['metraj']) . ' m', 'info', 'bi-rulers', null],
-    ['Hakkediş', $f0($ozet['hakkedis']) . ' TL', 'primary', 'bi-cash-coin', 'raporlar.php'],
-];
-foreach ($kpi as $__k): [$ad, $deger, $renk, $ikon, $link] = $__k; $alt = $__k[5] ?? ''; ?>
-    <div class="col-6 col-md-4 col-xl-2">
-        <?php if ($link): ?><a href="<?= h($link) ?>" class="text-decoration-none text-reset"><?php endif; ?>
-        <div class="card border-0 shadow-sm h-100"><div class="card-body py-3 text-center">
-            <i class="bi <?= $ikon ?> text-<?= $renk ?> fs-4"></i>
-            <div class="fs-5 fw-bold mt-1"><?= $deger ?></div>
-            <div class="small text-muted"><?= $ad ?></div>
-            <?php if ($alt !== ''): ?><div class="small text-warning-emphasis" style="font-size:.72rem"><?= h($alt) ?></div><?php endif; ?>
-        </div></div>
-        <?php if ($link): ?></a><?php endif; ?>
-    </div>
-<?php endforeach; ?>
-</div>
+$__yuzde = $ozet['toplam'] ? round($ozet['silikon'] / $ozet['toplam'] * 100) : 0;
+echo kpi_satir([
+    ['ad' => 'Toplam iş', 'deger' => (int)$ozet['toplam'], 'renk' => 'slate', 'ikon' => 'bi-list-check', 'link' => 'isler.php',
+     'alt' => '<strong>%' . $__yuzde . '</strong> tamamlandı'],
+    ['ad' => 'Tamamlanan', 'deger' => (int)$ozet['silikon'], 'renk' => 'green', 'ikon' => 'bi-check-circle-fill', 'link' => 'isler.php?durum=tamam',
+     'alt' => $ozet['olculmemis'] ? '<span class="text-warning-emphasis">' . $f0($ozet['olculmemis']) . ' tanesinin metrajı ölçülmemiş</span>' : 'kesim + silikon yapıldı'],
+    ['ad' => 'Silikon bekleyen', 'deger' => (int)$ozet['silikonBekleyen'], 'renk' => 'yellow', 'ikon' => 'bi-hourglass-split',
+     'link' => 'isler.php?durum=kesim', 'alt_metin' => 'kesimi yapılmış'],
+    ['ad' => 'Kesim bekleyen', 'deger' => (int)$ozet['kesimBekleyen'], 'renk' => 'red', 'ikon' => 'bi-scissors',
+     'link' => 'isler.php?durum=bekliyor', 'alt_metin' => 'henüz başlanmamış'],
+    ['ad' => 'Toplam metraj', 'deger' => round((float)$ozet['metraj'], 2), 'ondalik' => 2, 'birim' => 'm', 'renk' => 'cyan',
+     'ikon' => 'bi-rulers', 'link' => 'icmal.php', 'alt_metin' => 'ölçülmüş metraj'],
+    ['ad' => 'Hakkediş', 'deger' => round((float)$ozet['hakkedis']), 'ondalik' => 0, 'birim' => 'TL', 'renk' => 'blue',
+     'ikon' => 'bi-cash-coin', 'link' => 'raporlar.php', 'alt_metin' => 'metraj × birim fiyat'],
+], '', 'mb-3');
+?>
 
 <div class="card border-0 shadow-sm mb-3"><div class="card-body py-3">
     <div class="d-flex flex-wrap align-items-center gap-2 mb-1 small">

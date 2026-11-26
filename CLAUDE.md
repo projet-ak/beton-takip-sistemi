@@ -2336,6 +2336,32 @@ tabanlı, **çok modüllü** irsaliye/sevkiyat takip uygulaması.
   gizli alanı) · "Svk." sütunu <1600'de gizli (irsaliye kodu bağlıysa mavi bağlantı) · "içerik" yazısı ≥1700 · sıra no ≥1440.
   İki listede de **PDF simgesi Fatura No hücresinde** (işlem sütunu daraldı). Ölçüm: 1366/1440/1536/1600/1920'de iki tablo
   da alanına birebir sığıyor; demir 1280'de ~70 px tablo içinde kayar. 15 demir sayfasında 1366'da tablo taşması yok.
+- ⭐ **ORTAK KPI KARTI — TÜM MODÜL DASHBOARD'LARI (2026-11-26, kullanıcı: "bazı kutular uzun, bazıları animasyonlu,
+  beton'da animasyon var diğerlerinde yok, bazı yazılar kutulardan taşıyor")** — 12 panel (beton · demir · seramik · depo ·
+  akaryakıt · CRM · prekast · IT · PTS · kamp · Saha Takip araç/analiz) artık TEK bileşen kullanır: **`kpi_kart(array)`** +
+  **`kpi_satir(array $kartlar, $col='', $ek='mb-4')`** (`includes/functions.php`). Anahtarlar: `ad` · `deger` (sayı →
+  biçimlenir + sayaç animasyonu; metin → olduğu gibi) · `ondalik` · `birim` (küçük, değerin yanında) · `ikon` · `renk`
+  (`KPI_RENK`: green teal gold red blue slate orange purple pink cyan yellow; Bootstrap adları `KPI_RENK_ESI` ile eşlenir) ·
+  `link` (kart `<a>` olur) · `alt` (GÜVENİLİR HTML — çağıran kaçışlar) / `alt_metin` (düz) · `rozet` · `isaret` (+ önek) ·
+  `uyari` (ikon nabız atar) · `title`. **`kpi_trend($yeni,$eski,$artisIyi=true)`** "↑ %12,5" rozeti (tüketim gibi azalması
+  istenende `false` → artış kırmızı). CSS `style.css` "Ortak KPI kartı": renk tek değişkenden (`--kc`/`--kc-rgb`), satırda EŞİT
+  yükseklik, etiket/alt satır 2 satırda kesilir (tamamı `title`'da), sıralı fadeInUp (`.kpi-row > :nth-child(n)`), hover'da
+  ikon döner, telefonda ikon değerin ÜSTÜNE çıkar, `prefers-reduced-motion`'da animasyon yok. **Sütun düzeni kart sayısından**:
+  4 → 4'lü · 5/6 → ancak **1700 px üstünde** tek satır (`kpi-col-5/6`; kenar menüyle 6'lı dizilim 1440'ta bile kartı ~170 px'e
+  indirip değeri kesiyordu), altında 3'lü · 7+ → 4'lü. `app.js`: sayaç yalnız SAF sayı metnini sayar (`.stat-num` + eski düz
+  `.stat-value`; içinde birim/öğe olan değere dokunmaz — eskiden "1.234 t" birimi siliniyordu) ve **`kpiSigdir()`** sığmayan
+  değerin yazısını en az 13 px'e kadar küçültür (resize'da yeniden; `window.ERN_KPI_SIGDIR`). Doğrulama: 12 panel ×
+  1920/1366/955/390 → kesilen değer 0, eşitsiz satır 0, JS/PHP uyarısı 0; "14.664.438 TL" gibi uzun değerler 1200–1920'de sığıyor.
+  **Panel başına düzeltilen/eklenen veri**: beton — ⚠⚠ **"Kantar Farkı (bu ay) 10.320.940 kg" YANLIŞTI**: `SUM(ABS(kantar_farki))`
+  tek tarafı boş/0 olan ya da Excel'den biri ton ("30.000" → 30) biri kg okunmuş satırlarda tartımın tamamını fark sayıyordu;
+  artık yalnız İKİ net de dolu irsaliyelerde `yıldızlar − tedarikçi` İŞARETLİ toplam + ort. kg/irsaliye, iki net arasında 2 kattan
+  fazla fark olan satır "birim şüpheli" sayılıp toplama girmez · trend rozeti alt satıra alındı (kartın sağında "↓ 3" diye
+  kesiliyordu) · hızlı işlemlerde 6. yuva boş kalmasın diye "Toplu Yükleme" + sütun sayısı düğme sayısından. demir — "Kalan
+  Sipariş … gelen 0,00 t": sipariş↔sevkiyat eşleşmesi `UPPER(TRIM(ifs_siparis_no))` ile, kalan SİPARİŞ BAŞINA (fazla gelen başka
+  siparişin kalanını kapatmaz); hiçbir sipariş bağlı değilse kart kırmızı uyarı + "N sevkiyatta IFS no boş" der · kantar farkı
+  2 ondalık + "x/y kalem tartıldı". seramik — ikonsuz kartlar; bu ay giriş/çıkış, stokta çeşit. depo — anlamsız "Kategori: 3"
+  yerine bu ay giriş / bu ay çıkış / hurda, kategori kırılımı. akaryakıt — dönem tüketimi (önceki döneme göre trend) / dönem
+  geleni / ort. Lt/ay / bu dönem yakıt alan araç. IT — boş görünen "Toplam Cihaz" ikonu ve taşan alt yazılar.
 - **`.claude/skills/run-beton-takip-sistemi/`** — ajan için ÇALIŞTIRMA becerisi: `up.sh <komut>` (MariaDB + php -S +
   10 DB kurulumu + `seed.sql`, çıkışta config.php ve bu çalıştırmanın `backups/auto_*` dosyalarını temizler) ·
   `router.php` (yönetici oturumu, CSRF `tok`, `X-Rol` başlığı) · `shot.mjs` (Playwright: `ERN_GENISLIK`, `ERN_TAM=0`,

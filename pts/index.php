@@ -75,24 +75,18 @@ require __DIR__ . '/../includes/header.php';
 </div>
 <?php endif; ?>
 
-<div class="row g-2 mb-3">
-  <?php foreach ([
+<?php
+// Ortak kpi_kart: [etiket, değer, ikon, renk, link, alt]
+echo kpi_satir(array_map(fn($k) => [
+    'ad' => $k[0], 'deger' => (int)$k[1], 'ikon' => $k[2], 'renk' => $k[3], 'link' => $k[4], 'alt_metin' => $k[5],
+    'uyari' => $k[3] === 'danger' && (int)$k[1] > 0,
+], [
     ['Şu an içeride',   $o['iceride'],       'bi-door-open',     'success',   'hareketler.php?bas=' . $bugun . '&yon=giris', 'son hareketi giriş olanlar'],
     ['Bugün giriş yapan',$o['bugun_giris'],  'bi-person-check',  'primary',   'hareketler.php?bas=' . $bugun . '&bit=' . $bugun, $f0($o['bugun_hareket']) . ' hareket'],
     ['Aktif kart',      $o['kart'],          'bi-person-vcard',  'secondary', 'kartlar.php?durum=kartli',  $f0($o['kartsiz']) . ' kişide kart yok'],
     ['Geçiş noktası',   $o['nokta'],         'bi-door-closed',   'dark',      'noktalar.php',              $o['son_okuma'] ? 'son okuma ' . date('d.m H:i', strtotime($o['son_okuma'])) : 'henüz okuma yok'],
-  ] as [$ad, $deger, $ikon, $renk, $link, $alt]): ?>
-  <div class="col-6 col-xl-3">
-    <a href="<?= h($link) ?>" class="card border-0 shadow-sm h-100 text-decoration-none">
-      <div class="card-body py-2">
-        <div class="small text-muted"><i class="bi <?= $ikon ?> me-1"></i><?= h($ad) ?></div>
-        <div class="fs-4 fw-bold text-<?= $renk ?>"><?= $f0($deger) ?></div>
-        <div class="small text-muted"><?= h($alt) ?></div>
-      </div>
-    </a>
-  </div>
-  <?php endforeach; ?>
-</div>
+  ]), '', 'mb-3');
+?>
 
 <div class="row g-3">
   <div class="col-lg-7">

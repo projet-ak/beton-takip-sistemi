@@ -42,14 +42,23 @@ require_once __DIR__ . '/../includes/header.php';
     <a href="kurulum_seramik.php" class="alert-link">Kurulumu çalıştırın</a>, sonra <a href="import.php" class="alert-link">Excel içe aktarın</a>.</div>
 <?php else: ?>
 
-<div class="row g-2 mb-4">
-    <div class="col-6 col-md-4 col-xl-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-3"><div class="text-muted small">Toplam Giriş</div><div class="fs-4 fw-bold text-success"><?= $fmt($topGiren) ?></div><div class="small text-muted">m²</div></div></div></div>
-    <div class="col-6 col-md-4 col-xl-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-3"><div class="text-muted small">Toplam Çıkış</div><div class="fs-4 fw-bold text-danger"><?= $fmt($topCikan) ?></div><div class="small text-muted">m²</div></div></div></div>
-    <div class="col-6 col-md-4 col-xl-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-3"><div class="text-muted small">Toplam Stok</div><div class="fs-4 fw-bold" style="color:var(--ern)"><?= $fmt($topStok) ?></div><div class="small text-muted">m²</div></div></div></div>
-    <div class="col-6 col-md-4 col-xl-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-3"><div class="text-muted small">Malzeme Çeşidi</div><div class="fs-4 fw-bold"><?= $malSay ?></div></div></div></div>
-    <div class="col-6 col-md-4 col-xl-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-3"><div class="text-muted small">Tükenen</div><div class="fs-4 fw-bold text-danger"><?= $tukenen ?></div></div></div></div>
-    <div class="col-6 col-md-4 col-xl-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-3"><div class="text-muted small">Palet Kaydı</div><div class="fs-4 fw-bold"><?= $paletSay ?></div></div></div></div>
-</div>
+<?php
+$__buAy = date('Y-m'); $__stokta = $malSay - $tukenen;
+echo kpi_satir([
+    ['ad' => 'Toplam Stok', 'deger' => $topStok, 'ondalik' => 2, 'birim' => 'm²', 'ikon' => 'bi-boxes', 'renk' => 'green',
+     'link' => 'stok.php', 'alt_metin' => 'ambar mevcut + elle giriş − elle çıkış'],
+    ['ad' => 'Toplam Giriş', 'deger' => $topGiren, 'ondalik' => 2, 'birim' => 'm²', 'ikon' => 'bi-box-arrow-in-down', 'renk' => 'blue',
+     'link' => 'girisler.php', 'alt' => 'bu ay <strong>' . $fmt($aylikG[$__buAy] ?? 0) . ' m²</strong>'],
+    ['ad' => 'Toplam Çıkış', 'deger' => $topCikan, 'ondalik' => 2, 'birim' => 'm²', 'ikon' => 'bi-box-arrow-up', 'renk' => 'orange',
+     'link' => 'cikislar.php', 'alt' => 'bu ay <strong>' . $fmt($aylikC[$__buAy] ?? 0) . ' m²</strong>'],
+    ['ad' => 'Malzeme Çeşidi', 'deger' => $malSay, 'ikon' => 'bi-grid-3x3-gap', 'renk' => 'teal', 'link' => 'malzemeler.php',
+     'alt' => '<strong>' . $__stokta . '</strong> çeşit stokta'],
+    ['ad' => 'Tükenen', 'deger' => $tukenen, 'ikon' => 'bi-exclamation-octagon', 'renk' => $tukenen ? 'red' : 'slate',
+     'link' => 'stok.php', 'alt_metin' => 'stoğu 0 ya da eksiye düşen', 'uyari' => $tukenen > 0],
+    ['ad' => 'Palet Kaydı', 'deger' => $paletSay, 'ikon' => 'bi-stack', 'renk' => 'slate', 'link' => 'paletler.php',
+     'alt_metin' => 'Excel PALET sayfasından'],
+]);
+?>
 
 <div class="d-flex gap-2 flex-wrap mb-4">
     <a href="giris_form.php" class="btn btn-success btn-sm"><i class="bi bi-plus-circle me-1"></i>Yeni Giriş</a>

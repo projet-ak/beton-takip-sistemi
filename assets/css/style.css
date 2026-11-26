@@ -684,6 +684,91 @@ html[data-dark="1"] .ern-footer .dev-credit strong { color: var(--ern-teal); }
 .stat-card.stat-blue   { border-left: 4px solid #3B82F6; }
 .stat-card.stat-slate  { border-left: 4px solid #94A3B8; }
 
+/* ── Ortak KPI kartı (kpi_kart() — tüm modül dashboard'ları) ──────────────────
+   Renk tek değişkenden: --kc (+ --kc-rgb). Kart satırda eşit yükseklikte, metin taşmaz. */
+.stat-card.stat-green  { --kc: var(--ern);      --kc-rgb: var(--ern-rgb); }
+.stat-card.stat-teal   { --kc: var(--ern-teal); --kc-rgb: 0,168,150; }
+.stat-card.stat-gold   { --kc: #B8912F; --kc-rgb: 184,145,47; }
+.stat-card.stat-red    { --kc: #E05454; --kc-rgb: 224,84,84; }
+.stat-card.stat-blue   { --kc: #3B82F6; --kc-rgb: 59,130,246; }
+.stat-card.stat-slate  { --kc: #64748B; --kc-rgb: 100,116,139; }
+.stat-card.stat-orange { --kc: #EA7A1E; --kc-rgb: 234,122,30;  border-left: 4px solid #EA7A1E; }
+.stat-card.stat-purple { --kc: #7C4DDB; --kc-rgb: 124,77,219;  border-left: 4px solid #7C4DDB; }
+.stat-card.stat-pink   { --kc: #D63384; --kc-rgb: 214,51,132;  border-left: 4px solid #D63384; }
+.stat-card.stat-cyan   { --kc: #0EA5C6; --kc-rgb: 14,165,198;  border-left: 4px solid #0EA5C6; }
+.stat-card.stat-yellow { --kc: #D99A06; --kc-rgb: 217,154,6;   border-left: 4px solid #D99A06; }
+html[data-dark="1"] .stat-card.stat-green { --kc: var(--ern-ultra); }
+html[data-dark="1"] .stat-card.stat-slate { --kc: #A3B1C4; }
+.stat-kpi {
+    display: flex; flex-direction: column; gap: .55rem;
+    padding: .95rem 1rem; color: var(--bt-text); text-decoration: none; min-width: 0;
+}
+a.stat-kpi { cursor: pointer; }
+a.stat-kpi:hover { color: var(--bt-text); }
+a.stat-kpi:focus-visible { outline: 3px solid rgba(var(--kc-rgb), .45); outline-offset: 2px; }
+.stat-kpi .kpi-ust   { display: flex; align-items: center; gap: .8rem; min-width: 0; }
+.stat-kpi .kpi-metin { min-width: 0; flex: 1 1 auto; position: relative; z-index: 1; }
+.stat-kpi .stat-icon { background: rgba(var(--kc-rgb), .12); color: var(--kc); transition: transform var(--transition); }
+.stat-kpi:hover .stat-icon { transform: scale(1.08) rotate(-4deg); }
+.stat-kpi .stat-value {
+    color: var(--kc); font-size: 1.6rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-variant-numeric: tabular-nums;
+}
+.stat-kpi .stat-value.kpi-v-sm { font-size: 1.32rem; }
+.stat-kpi .stat-value.kpi-v-xs { font-size: 1.05rem; }
+.stat-kpi .stat-unit { font-size: .52em; font-weight: 600; color: var(--bt-text-muted); margin-left: .25em; letter-spacing: 0; }
+.stat-kpi .stat-label {
+    font-weight: 600; font-size: .78rem; margin-top: 5px; line-height: 1.25;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+a.stat-kpi:hover .stat-label { color: var(--kc); }
+.stat-kpi .kpi-alt {
+    margin-top: auto; padding-top: .5rem; border-top: 1px dashed var(--bt-border-soft);
+    font-size: .72rem; line-height: 1.35; color: var(--bt-text-muted); position: relative; z-index: 1;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
+}
+.stat-kpi .kpi-alt strong { color: var(--bt-text); font-weight: 650; }
+/* Dikkat isteyen kart: ikon yumuşakça nabız atar */
+.stat-kpi.kpi-uyari .stat-icon { animation: kpiNabiz 2.4s ease-in-out infinite; }
+@keyframes kpiNabiz {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(var(--kc-rgb), .35); }
+    50%      { box-shadow: 0 0 0 7px rgba(var(--kc-rgb), 0); }
+}
+/* Satırdaki kartlar sırayla belirir (kart sütunun ilk çocuğu olduğundan sütuna göre gecikme) */
+.kpi-row > :nth-child(1) > .stat-card { animation-delay: .03s; }
+.kpi-row > :nth-child(2) > .stat-card { animation-delay: .07s; }
+.kpi-row > :nth-child(3) > .stat-card { animation-delay: .11s; }
+.kpi-row > :nth-child(4) > .stat-card { animation-delay: .15s; }
+.kpi-row > :nth-child(5) > .stat-card { animation-delay: .19s; }
+.kpi-row > :nth-child(6) > .stat-card { animation-delay: .23s; }
+.kpi-row > :nth-child(7) > .stat-card { animation-delay: .27s; }
+.kpi-row > :nth-child(8) > .stat-card { animation-delay: .31s; }
+.kpi-row > :nth-child(n+9) > .stat-card { animation-delay: .35s; }
+/* Değişim rozeti (kpi_trend) */
+.trend-badge { display: inline-flex; align-items: center; font-size: .7rem; font-weight: 700; padding: .12em .42em .12em .2em;
+               border-radius: 5px; white-space: nowrap; vertical-align: baseline; }
+.trend-up    { background: rgba(0,200,180,.12); color: #00796b; }
+.trend-down  { background: rgba(224,84,84,.1);  color: #c23b3b; }
+html[data-dark="1"] .trend-up   { background: rgba(0,200,180,.15); color: var(--ern-teal); }
+html[data-dark="1"] .trend-down { background: rgba(224,84,84,.14); color: #ff8080; }
+html[data-kontrast="1"] .stat-kpi .kpi-alt { border-top-style: solid; }
+@media (min-width: 1700px) {
+    .kpi-row > .kpi-col-6 { flex: 0 0 auto; width: 16.6667%; }
+    .kpi-row > .kpi-col-5 { flex: 0 0 auto; width: 20%; }
+}
+/* Telefonda (2 kart yan yana ~170 px) ikon değerin ÜSTÜNE alınır: değer kartın tüm genişliğini
+   kullanır — "8.312,00 m²" gibi değerler yan yana dizilimde kesiliyordu. */
+@media (max-width: 575.98px) {
+    .stat-kpi .kpi-ust { flex-direction: column; align-items: flex-start; gap: .4rem; }
+    .stat-kpi .kpi-metin { width: 100%; }
+    .stat-kpi .stat-icon { width: 34px !important; height: 34px !important; min-width: 34px !important; min-height: 34px !important; border-radius: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .stat-card, .card { animation: none !important; }
+    .stat-kpi.kpi-uyari .stat-icon { animation: none; }
+    .stat-card:hover, .stat-kpi:hover .stat-icon { transform: none; }
+}
+
 /* ── Tablolar ─────────────────────────────────────────────────────── */
 .table { --bs-table-bg: transparent; color: var(--bt-text); margin-bottom: 0; }
 .table > :not(caption) > * > * { padding: .72rem 1rem; }
@@ -1200,6 +1285,12 @@ html[data-dark="1"] .bottom-nav-fab {
 
     /* Stat kartları */
     .stat-card .stat-value { font-size: 1.3rem !important; }
+    .stat-kpi { padding: .75rem .8rem; gap: .45rem; }
+    .stat-kpi .kpi-ust { gap: .6rem; }
+    .stat-kpi .stat-value.kpi-v-sm { font-size: 1.1rem !important; }
+    .stat-kpi .stat-value.kpi-v-xs { font-size: .95rem !important; }
+    .stat-kpi .stat-label { font-size: .72rem; }
+    .stat-kpi .kpi-alt { font-size: .68rem; }
     .stat-icon { min-width: 38px !important; width: 38px !important; min-height: 38px !important; height: 38px !important; font-size: .9rem !important; }
 
     /* ⚠ Eskiden burada `.col-md-4,.col-md-3,.col-md-2 { flex:0 0 100% }` vardı: col-md-* zaten md altında

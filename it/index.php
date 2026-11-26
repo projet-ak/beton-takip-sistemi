@@ -142,56 +142,46 @@ require_once __DIR__ . '/../includes/header.php';
   </div>
 </form>
 
-<div class="row g-3 mb-3">
-  <?php
-  /* Kart = [etiket, değer, ikon, renk, link, alt açıklama].
-     ⚠ Her kartın linki KENDİ sayısını veren listeyi açmalı — "Serviste + Arızalı" tek duruma
-     bağlıyken kart 1 derken liste boş açılıyordu; artık sanal `?durum=sorunlu` süzgecine gider. */
-  $kpi = [
-    ['Toplam Cihaz', $f0($o['toplam']), 'bi-pc-display', 'primary', 'cihazlar.php?durum=hepsi',
-     $f0($o['toplam'] - $o['dusen']) . ' envanterde · ' . $f0($o['dusen']) . ' düşen (hurda dahil)'],
-    ['Kullanımda', $f0($o['aktif']), 'bi-person-check', 'success', 'cihazlar.php?durum=aktif',
-     $f0($o['zimmetliKisi']) . ' kişide zimmetli'],
-    ['Depoda / Boşta', $f0($o['depoda']), 'bi-box-seam', 'secondary', 'cihazlar.php?durum=depoda',
-     'kullanıma hazır stok'],
-    ['Transfer (yolda)', $f0($o['transfer']), 'bi-arrow-left-right', 'info', 'cihazlar.php?durum=transfer',
-     $o['transfer'] ? ('en uzun ' . $f0($yoldaEnUzun) . ' gündür yolda') : 'yolda cihaz yok'],
+<?php
+/* ⚠ Her kartın linki KENDİ sayısını veren listeyi açmalı — "Serviste + Arızalı" tek duruma
+   bağlıyken kart 1 derken liste boş açılıyordu; artık sanal `?durum=sorunlu` süzgecine gider. */
+$kpi = [
+    ['ad' => 'Toplam Cihaz', 'deger' => (int)$o['toplam'], 'ikon' => 'bi-pc-display', 'renk' => 'blue', 'link' => 'cihazlar.php?durum=hepsi',
+     'alt' => '<strong>' . $f0($o['toplam'] - $o['dusen']) . '</strong> envanterde · ' . $f0($o['dusen']) . ' düşen'],
+    ['ad' => 'Kullanımda', 'deger' => (int)$o['aktif'], 'ikon' => 'bi-person-check', 'renk' => 'green', 'link' => 'cihazlar.php?durum=aktif',
+     'alt' => '<strong>' . $f0($o['zimmetliKisi']) . '</strong> kişide zimmetli'],
+    ['ad' => 'Depoda / Boşta', 'deger' => (int)$o['depoda'], 'ikon' => 'bi-box-seam', 'renk' => 'slate', 'link' => 'cihazlar.php?durum=depoda',
+     'alt_metin' => 'kullanıma hazır stok'],
+    ['ad' => 'Transfer (yolda)', 'deger' => (int)$o['transfer'], 'ikon' => 'bi-arrow-left-right', 'renk' => 'cyan', 'link' => 'cihazlar.php?durum=transfer',
+     'alt_metin' => $o['transfer'] ? ('en uzun ' . $f0($yoldaEnUzun) . ' gündür yolda') : 'yolda cihaz yok',
+     'uyari' => $o['transfer'] && $yoldaEnUzun > 14],
     // Sevki tamamlanmış cihazlar: BİZDE DEĞİL. Depoda/Boşta sayılmazlar (kullanıma hazır stok
     // değiller), envanterden de düşmezler — kayıt ve mali değer şirkette kalır.
-    ['Transfer edilmiş', $f0($o['transfer_edildi']), 'bi-box-arrow-up-right', 'info', 'cihazlar.php?durum=transfer_edildi',
-     'karşı taraf teslim aldı — bizde değil'],
-    ['Serviste + Arızalı', $f0($o['serviste'] + $o['arizali']), 'bi-wrench', 'danger', 'cihazlar.php?durum=sorunlu',
-     $f0($o['serviste']) . ' serviste · ' . $f0($o['arizali']) . ' arızalı'],
+    ['ad' => 'Transfer edilmiş', 'deger' => (int)$o['transfer_edildi'], 'ikon' => 'bi-box-arrow-up-right', 'renk' => 'teal',
+     'link' => 'cihazlar.php?durum=transfer_edildi', 'alt_metin' => 'karşı taraf teslim aldı'],
+    ['ad' => 'Serviste + Arızalı', 'deger' => (int)($o['serviste'] + $o['arizali']), 'ikon' => 'bi-wrench', 'renk' => 'red',
+     'link' => 'cihazlar.php?durum=sorunlu', 'alt_metin' => $f0($o['serviste']) . ' serviste · ' . $f0($o['arizali']) . ' arızalı'],
     // Yeri belirsiz: envanterde sayılır (kayıp DEĞİL, aranıyor) — sayımda bulunamayanlar burada birikir
-    ['Yeri belirsiz', $f0($o['belirsiz']), 'bi-geo-alt', $o['belirsiz'] ? 'warning' : 'secondary', 'cihazlar.php?durum=belirsiz',
-     $o['belirsiz'] ? 'aranıyor — bulunursa kartından "Cihaz bulundu"' : 'yeri bilinmeyen cihaz yok'],
+    ['ad' => 'Yeri belirsiz', 'deger' => (int)$o['belirsiz'], 'ikon' => 'bi-geo-alt', 'renk' => $o['belirsiz'] ? 'yellow' : 'slate',
+     'link' => 'cihazlar.php?durum=belirsiz', 'uyari' => $o['belirsiz'] > 0,
+     'alt_metin' => $o['belirsiz'] ? 'aranıyor — bulununca kartından "Cihaz bulundu"' : 'yeri bilinmeyen cihaz yok'],
     // Arşiv kaydı: eski tahsis formlarından açılmış, yeri/durumu henüz doğrulanmamış kartlar
-    ['Arşiv kaydı', $f0($o['arsiv']), 'bi-archive', 'secondary', 'cihazlar.php?durum=arsiv',
-     $o['arsiv'] ? 'yeri doğrulanmadı — bulununca kartından "Yeri belirlendi"' : 'arşivde bekleyen kart yok'],
-    ['Envanterden düşen', $f0($o['dusen']), 'bi-trash', 'dark', 'cihazlar.php?durum=dusen',
-     'hurda ' . $f0($o['hurda']) . ' · kayıp ' . $f0($o['kayip']) . ' · hibe ' . $f0($o['hibe'])],
-  ];
-  if ($maliGoster) {
-      $kpi[] = ['Garanti 60 gün içinde bitiyor', $f0($o['garantiBitiyor']), 'bi-shield-exclamation', 'warning', 'cihazlar.php?garanti=bitiyor',
-                $f0($o['garantiBitti']) . ' cihazın garantisi bitti'];
-      $kpi[] = ['Mali Değer', $f2($o['mali']) . ' <small>TL</small>', 'bi-cash-stack', 'info', 'raporlar.php', 'envanterdeki cihazların toplamı'];
-  } else {
-      $kpi[] = ['İmzalı evrakı eksik zimmet', $f0($evraksiz), 'bi-file-earmark-excel', $evraksiz ? 'warning' : 'success', 'cihazlar.php?evrak=eksik',
-                $evraksiz ? 'tutanağı yazdır → imzalat → yükle' : 'tüm zimmetlerin evrakı tam'];
-  }
-  foreach ($kpi as [$et, $deg, $ik, $renk, $href, $alt]): ?>
-  <div class="col-6 col-md-4 col-xl-3">
-    <a href="<?= $href ?>" class="card border-0 shadow-sm h-100 text-decoration-none">
-      <div class="card-body py-3 d-flex align-items-center gap-3">
-        <div class="rounded-3 bg-<?= $renk ?> bg-opacity-10 text-<?= $renk ?> d-flex align-items-center justify-content-center flex-shrink-0" style="width:44px;height:44px"><i class="bi <?= $ik ?> fs-4"></i></div>
-        <div class="min-w-0"><div class="small text-muted"><?= $et ?></div>
-          <div class="fs-5 fw-bold text-dark lh-1"><?= $deg ?></div>
-          <div class="text-muted text-truncate" style="font-size:.72rem"><?= h($alt) ?></div></div>
-      </div>
-    </a>
-  </div>
-  <?php endforeach; ?>
-</div>
+    ['ad' => 'Arşiv kaydı', 'deger' => (int)$o['arsiv'], 'ikon' => 'bi-archive', 'renk' => 'purple', 'link' => 'cihazlar.php?durum=arsiv',
+     'alt_metin' => $o['arsiv'] ? 'yeri doğrulanmadı — bulununca "Yeri belirlendi"' : 'arşivde bekleyen kart yok'],
+    ['ad' => 'Envanterden düşen', 'deger' => (int)$o['dusen'], 'ikon' => 'bi-trash', 'renk' => 'slate', 'link' => 'cihazlar.php?durum=dusen',
+     'alt_metin' => 'hurda ' . $f0($o['hurda']) . ' · kayıp ' . $f0($o['kayip']) . ' · hibe ' . $f0($o['hibe'])],
+];
+if ($maliGoster) {
+    $kpi[] = ['ad' => 'Garantisi 60 günde bitiyor', 'deger' => (int)$o['garantiBitiyor'], 'ikon' => 'bi-shield-exclamation', 'renk' => 'yellow',
+              'link' => 'cihazlar.php?garanti=bitiyor', 'alt_metin' => $f0($o['garantiBitti']) . ' cihazın garantisi bitti'];
+    $kpi[] = ['ad' => 'Mali Değer', 'deger' => round((float)$o['mali']), 'ondalik' => 0, 'birim' => 'TL', 'ikon' => 'bi-cash-stack', 'renk' => 'teal',
+              'link' => 'raporlar.php', 'alt_metin' => 'envanterdeki cihazların TL karşılığı'];
+} else {
+    $kpi[] = ['ad' => 'İmzalı evrakı eksik zimmet', 'deger' => (int)$evraksiz, 'ikon' => 'bi-file-earmark-excel', 'renk' => $evraksiz ? 'yellow' : 'green',
+              'link' => 'cihazlar.php?evrak=eksik', 'alt_metin' => $evraksiz ? 'tutanağı yazdır → imzalat → yükle' : 'tüm zimmetlerin evrakı tam'];
+}
+echo kpi_satir($kpi, '', 'mb-3');
+?>
 
 <?php if ($grupSayim): ?>
 <div class="card border-0 shadow-sm mb-3">

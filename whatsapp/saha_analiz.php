@@ -144,26 +144,14 @@ require_once __DIR__ . '/../includes/header.php';
   </div>
 <?php endif; ?>
 
-<div class="row g-3 mb-4">
-  <div class="col-6 col-lg-2"><div class="card h-100"><div class="card-body py-3">
-    <div class="fw-bold fs-5 text-success"><?= (int)($kpi['giris'] ?? 0) ?></div>
-    <div class="text-muted small">Sahaya giriş</div></div></div></div>
-  <div class="col-6 col-lg-2"><div class="card h-100"><div class="card-body py-3">
-    <div class="fw-bold fs-5 text-secondary"><?= (int)($kpi['cikis'] ?? 0) ?></div>
-    <div class="text-muted small">Sahadan çıkış</div></div></div></div>
-  <div class="col-6 col-lg-2"><div class="card h-100"><div class="card-body py-3">
-    <div class="fw-bold fs-5"><?= (int)($kpi['kisi_sayisi'] ?? 0) ?></div>
-    <div class="text-muted small">Farklı kişi</div></div></div></div>
-  <div class="col-6 col-lg-2"><div class="card h-100"><div class="card-body py-3">
-    <div class="fw-bold fs-5 text-warning"><?= (int)($kpi['yetki'] ?? 0) ?></div>
-    <div class="text-muted small">Yetkilendirme</div></div></div></div>
-  <div class="col-6 col-lg-2"><div class="card h-100"><div class="card-body py-3">
-    <div class="fw-bold fs-5"><?= (int)($kpi['arac_sayisi'] ?? 0) ?></div>
-    <div class="text-muted small">Farklı araç</div></div></div></div>
-  <div class="col-6 col-lg-2"><div class="card h-100"><div class="card-body py-3">
-    <div class="fw-bold fs-5 text-info"><?= $sayi($kpi['arac_saat'] ?? 0) ?></div>
-    <div class="text-muted small">Toplam araç saati</div></div></div></div>
-</div>
+<?= kpi_satir([
+    ['ad' => 'Sahaya giriş', 'deger' => (int)($kpi['giris'] ?? 0), 'ikon' => 'bi-box-arrow-in-right', 'renk' => 'green'],
+    ['ad' => 'Sahadan çıkış', 'deger' => (int)($kpi['cikis'] ?? 0), 'ikon' => 'bi-box-arrow-right', 'renk' => 'slate'],
+    ['ad' => 'Farklı kişi', 'deger' => (int)($kpi['kisi_sayisi'] ?? 0), 'ikon' => 'bi-people', 'renk' => 'blue'],
+    ['ad' => 'Yetkilendirme', 'deger' => (int)($kpi['yetki'] ?? 0), 'ikon' => 'bi-key', 'renk' => 'yellow'],
+    ['ad' => 'Farklı araç', 'deger' => (int)($kpi['arac_sayisi'] ?? 0), 'ikon' => 'bi-truck', 'renk' => 'teal'],
+    ['ad' => 'Toplam araç saati', 'deger' => round((float)($kpi['arac_saat'] ?? 0), 1), 'ondalik' => 1, 'birim' => 'saat', 'ikon' => 'bi-clock-history', 'renk' => 'cyan'],
+]) ?>
 
 <?php if ($gunluk): ?>
 <div class="card mb-4"><div class="card-header fw-semibold"><i class="bi bi-graph-up me-1"></i>Günlük Hareket</div>

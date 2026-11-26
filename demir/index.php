@@ -31,11 +31,28 @@ try {
 
     // Sipariş bakiye (ifs_siparis_no eşleşmesi)
     $orderTon  = (float)$tryScalar("SELECT COALESCE(SUM(miktar_ton),0) FROM demir_siparis_kalemleri");
-    $siparisGelen = (float)$tryScalar("SELECT COALESCE(SUM(sk.irsaliye_miktar),0)
-        FROM demir_sevkiyat_kalemleri sk JOIN demir_sevkiyatlar s ON s.id=sk.sevkiyat_id
-        WHERE s.ifs_siparis_no IS NOT NULL AND s.ifs_siparis_no<>''
-          AND s.ifs_siparis_no IN (SELECT ifs_siparis_no FROM demir_siparisler)");
-    $siparisKalan = max(0, $orderTon - $siparisGelen);
+    // Eşleşme TRIM+UPPER ile: Excel'den "706589 " / "  706589" gibi boşluklu gelen no
+    // eşleşmeyip gelen'i 0 gösteriyordu. Kalan SİPARİŞ BAŞINA hesaplanır: bir siparişe fazla
+    // gelen demir başka siparişin kalanını kapatmasın.
+    $siparisGelen = 0.0; $sipBagli = 0; $siparisKalan = 0.0;
+    try {
+        foreach ($pdoDemir->query("
+            SELECT sp.sip, COALESCE(g.gel,0) gel FROM (
+                SELECT UPPER(TRIM(s.ifs_siparis_no)) no, SUM(k.miktar_ton) sip
+                FROM demir_siparisler s LEFT JOIN demir_siparis_kalemleri k ON k.siparis_id = s.id
+                WHERE s.ifs_siparis_no IS NOT NULL AND TRIM(s.ifs_siparis_no) <> ''
+                GROUP BY UPPER(TRIM(s.ifs_siparis_no))) sp
+            LEFT JOIN (
+                SELECT UPPER(TRIM(s.ifs_siparis_no)) no, SUM(sk.irsaliye_miktar) gel
+                FROM demir_sevkiyatlar s JOIN demir_sevkiyat_kalemleri sk ON sk.sevkiyat_id = s.id
+                WHERE s.ifs_siparis_no IS NOT NULL AND TRIM(s.ifs_siparis_no) <> ''
+                GROUP BY UPPER(TRIM(s.ifs_siparis_no))) g ON g.no = sp.no") as $r) {
+            $siparisGelen += (float)$r['gel'];
+            $siparisKalan += max(0, (float)$r['sip'] - (float)$r['gel']);
+            if ((float)$r['gel'] > 0) $sipBagli++;
+        }
+    } catch (Throwable $e) {}
+    $sevkSipsiz = (int)$tryScalar("SELECT COUNT(*) FROM demir_sevkiyatlar WHERE ifs_siparis_no IS NULL OR TRIM(ifs_siparis_no) = ''");
     $sipSayi   = (int)$tryScalar("SELECT COUNT(*) FROM demir_siparisler");
 
     // Tutanak / iade / taşeron net
@@ -162,30 +179,36 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
 </div>
 
 <?php
-$kart = function($ikon,$renk,$deger,$etiket,$link=null,$alt=null) {
-    $ic = '<div class="card h-100 border-0 shadow-sm"><div class="card-body">'
-        . '<div class="d-flex align-items-center gap-3">'
-        . '<div style="width:50px;height:50px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:'.$renk.'1f;color:'.$renk.';font-size:1.4rem;"><i class="bi '.$ikon.'"></i></div>'
-        . '<div class="flex-fill"><div class="fs-4 fw-bold lh-1">'.$deger.'</div><div class="text-muted small">'.$etiket.'</div></div>'
-        . '</div>'
-        . ($alt!==null ? '<div class="small mt-2 pt-2 border-top text-muted">'.$alt.'</div>' : '')
-        . '</div></div>';
-    return $link ? '<a href="'.$link.'" class="text-reset text-decoration-none d-block h-100">'.$ic.'</a>' : $ic;
-};
-$farkRenk = abs($fark)<0.0005 ? '#6c757d' : ($fark<0 ? '#dc3545' : '#198754');
+$farkRenk = abs($fark) < 0.0005 ? 'slate' : ($fark < 0 ? 'red' : 'green');
+$tartiliSay = (int)$tryScalar("SELECT COUNT(*) FROM demir_sevkiyat_kalemleri WHERE kantar_miktar IS NOT NULL");
+$kalemSay   = (int)$tryScalar("SELECT COUNT(*) FROM demir_sevkiyat_kalemleri");
+$sipAlt = $sipSayi . ' sipariş · gelen <strong>' . $fmt($siparisGelen) . ' t</strong>';
+if ($sipSayi > 0 && $siparisGelen <= 0) {
+    $sipAlt = '<span class="text-danger">' . $sipSayi . ' siparişin hiçbiri sevkiyata bağlı değil</span>'
+            . ($sevkSipsiz ? ' · ' . $sevkSipsiz . ' sevkiyatta IFS no boş' : '');
+} elseif ($sevkSipsiz > 0) {
+    $sipAlt .= ' · ' . $sevkSipsiz . ' sevkiyatta IFS no boş';
+}
+echo kpi_satir([
+    ['ad' => 'Toplam Gelen Demir', 'deger' => $gelenTon, 'ondalik' => 2, 'birim' => 't', 'ikon' => 'bi-box-seam',
+     'renk' => 'green', 'link' => 'icmal.php', 'alt' => 'Kantar: <strong>' . $fmt($kantarTon) . ' t</strong>'],
+    ['ad' => 'Kantar Farkı', 'deger' => round($fark, 2), 'ondalik' => 2, 'isaret' => true, 'birim' => 't', 'ikon' => 'bi-sliders',
+     'renk' => $farkRenk, 'link' => 'icmal.php',
+     'alt' => 'yalnız tartılan kalemler · <strong>' . $tartiliSay . '/' . $kalemSay . '</strong> tartıldı'],
+    ['ad' => 'Sevkiyat Kaydı', 'deger' => $sevkSayi, 'ikon' => 'bi-truck', 'renk' => 'blue', 'link' => 'sevkiyatlar.php',
+     'alt' => 'Tedarikçi: <strong>' . $tedSayi . '</strong>'],
+    ['ad' => 'Kalan Sipariş', 'deger' => $siparisKalan, 'ondalik' => 2, 'birim' => 't', 'ikon' => 'bi-cart-check',
+     'renk' => 'orange', 'link' => 'siparisler.php', 'alt' => $sipAlt, 'uyari' => $sipSayi > 0 && $siparisGelen <= 0],
+    ['ad' => 'Teslim Tutanağı', 'deger' => $tutSayi, 'ikon' => 'bi-file-earmark-check', 'renk' => 'purple', 'link' => 'tutanaklar.php',
+     'alt' => 'Teslim: <strong>' . $fmt($teslimTon) . ' t</strong>'],
+    ['ad' => 'İade Edilen', 'deger' => $iadeTon, 'ondalik' => 2, 'birim' => 't', 'ikon' => 'bi-arrow-return-left', 'renk' => 'pink',
+     'link' => 'iade_tutanaklar.php', 'alt_metin' => $iadeSayi . ' iade tutanağı'],
+    ['ad' => 'Taşeronda Net', 'deger' => $taseronNet, 'ondalik' => 2, 'birim' => 't', 'ikon' => 'bi-wallet2', 'renk' => 'cyan',
+     'link' => 'taseron_bakiye.php', 'alt_metin' => 'Teslim − İade − Hurda' . ($hurdaTon > 0 ? ' (' . $fmt($hurdaTon) . ' t)' : '')],
+    ['ad' => 'Çap Tanımı', 'deger' => $capSayi, 'ikon' => 'bi-rulers', 'renk' => 'teal', 'link' => 'caplar.php',
+     'alt' => 'Taşeron: <strong>' . $tasSayi . '</strong>'],
+]);
 ?>
-<div class="row g-3 mb-4">
-    <div class="col-6 col-lg-3"><?= $kart('bi-box-seam','#198754', $fmt($gelenTon).' t', 'Toplam Gelen Demir', 'icmal.php', 'Kantar: <strong>'.$fmt($kantarTon).' t</strong>') ?></div>
-    <div class="col-6 col-lg-3"><?= $kart('bi-sliders','' . ($fark<0?'#dc3545':'#198754'), ($fark>0?'+':'').$fmt($fark,3).' t', 'Kantar Farkı', 'icmal.php', 'İrsaliye − Kantar mutabakatı') ?></div>
-    <div class="col-6 col-lg-3"><?= $kart('bi-truck','#0d6efd', $sevkSayi, 'Sevkiyat Kaydı', 'sevkiyatlar.php', 'Tedarikçi: <strong>'.$tedSayi.'</strong>') ?></div>
-    <div class="col-6 col-lg-3"><?= $kart('bi-cart-check','#fd7e14', $fmt($siparisKalan).' t', 'Kalan Sipariş', 'siparisler.php', $sipSayi.' sipariş · gelen '.$fmt($siparisGelen).' t') ?></div>
-</div>
-<div class="row g-3 mb-4">
-    <div class="col-6 col-lg-3"><?= $kart('bi-file-earmark-check','#6610f2', $tutSayi, 'Teslim Tutanağı', 'tutanaklar.php', 'Teslim: <strong>'.$fmt($teslimTon).' t</strong>') ?></div>
-    <div class="col-6 col-lg-3"><?= $kart('bi-arrow-return-left','#d63384', $fmt($iadeTon).' t', 'İade Edilen', 'iade_tutanaklar.php', $iadeSayi.' iade tutanağı') ?></div>
-    <div class="col-6 col-lg-3"><?= $kart('bi-wallet2','#0dcaf0', $fmt($taseronNet).' t', 'Taşeronda Net', 'taseron_bakiye.php', 'Teslim − İade − Hurda'.($hurdaTon>0?' ('.$fmt($hurdaTon).' t)':'')) ?></div>
-    <div class="col-6 col-lg-3"><?= $kart('bi-rulers','#20c997', $capSayi, 'Çap Tanımı', 'caplar.php', 'Taşeron: <strong>'.$tasSayi.'</strong>') ?></div>
-</div>
 
 <?php if (!empty($talepOzet)): $tk = $talepOzet['sip'] - $talepOzet['tes']; ?>
 <!-- IFS Sipariş Talepleri + Mutabakat -->

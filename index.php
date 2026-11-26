@@ -237,18 +237,30 @@ try {
         fn($g) => is_file($g) && !str_ends_with($g, '.json')));   // .json = bekleme not dosyası, belge değil
 } catch (Throwable $e) { $bekleyenBelge = 0; }
 
-// Kantar farkı özeti (bu ay)
+// Kantar farkı özeti (bu ay) — Yıldızlar net − tedarikçi net, yalnız İKİ tartım da girilmiş
+// irsaliyelerde. Eski hesap SUM(ABS(kantar_farki)) idi: tek tarafı boş/0 olan ya da Excel'den
+// biri ton ("30.000" → 30) biri kg (30000) okunmuş satırlar tartımın tamamı kadar fark
+// üretip toplamı milyonlarca kg'a çıkarıyordu. İki net arasında 2 kattan fazla fark varsa
+// satır "birim şüpheli" sayılır, toplama girmez.
+$kantarOzet = null;
 try {
     $st = $pdo->prepare(
-        "SELECT COALESCE(SUM(ABS(kantar_farki)),0) AS toplam_fark,
-                COUNT(CASE WHEN kantar_farki < 0 THEN 1 END) AS eksik_say,
-                COUNT(CASE WHEN kantar_farki > 0 THEN 1 END) AS fazla_say
+        "SELECT kantar_net_yildizlar y, kantar_net_tedarikci t
          FROM irsaliyeler i
-         WHERE i.tip='alis' AND i.durum<>'reddedildi' AND kantar_farki IS NOT NULL
-         AND DATE_FORMAT(i.tarih,'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m')$projeFilter"
+         WHERE i.tip='alis' AND i.durum<>'reddedildi'
+           AND kantar_net_yildizlar > 0 AND kantar_net_tedarikci > 0
+           AND DATE_FORMAT(i.tarih,'%Y-%m')=DATE_FORMAT(NOW(),'%Y-%m')$projeFilter"
     );
     $st->execute($projeParams);
-    $kantarOzet = $st->fetch();
+    $kantarOzet = ['n' => 0, 'net' => 0.0, 'mutlak' => 0.0, 'eksik' => 0, 'supheli' => 0];
+    foreach ($st->fetchAll() as $r) {
+        $y = (float)$r['y']; $t = (float)$r['t'];
+        if (max($y, $t) > 2 * min($y, $t)) { $kantarOzet['supheli']++; continue; }
+        $kantarOzet['n']++;
+        $kantarOzet['net']    += $y - $t;
+        $kantarOzet['mutlak'] += abs($y - $t);
+        if ($y < $t) $kantarOzet['eksik']++;
+    }
 } catch (Exception $e) { $kantarOzet = null; }
 
 // Trendler
@@ -337,11 +349,6 @@ require_once __DIR__ . '/includes/header.php';
 ?>
 
 <style>
-.trend-badge { font-size:.7rem; font-weight:700; padding:.18em .45em; border-radius:5px; white-space:nowrap; }
-.trend-up    { background:rgba(0,200,180,.12); color:#00796b; }
-.trend-down  { background:rgba(224,84,84,.1);  color:#c23b3b; }
-html[data-dark="1"] .trend-up   { background:rgba(0,200,180,.15); color:var(--ern-teal); }
-html[data-dark="1"] .trend-down { background:rgba(224,84,84,.14); color:#ff8080; }
 .kpi-card { display:flex; align-items:center; gap:.65rem; padding:.7rem 1rem; border-radius:11px;
             background:var(--bt-bg-soft); border:1px solid var(--bt-border-soft); }
 .kpi-icon { width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0; }
@@ -472,7 +479,9 @@ html[data-dark="1"] .trend-down { background:rgba(224,84,84,.14); color:#ff8080;
 
 <!-- Hızlı İşlemler -->
 <?php if (can_edit()): ?>
-<div class="row row-cols-3 row-cols-sm-5 row-cols-xxl-6 g-2 mb-4">
+<?php $__qaN = 4 + (has_role('admin','teknik_ofis_admin') ? 1 : 0) + ((function_exists('toplu_yukleme_izinli') && toplu_yukleme_izinli('beton')) ? 1 : 0);
+      $__qaCls = [4 => 'row-cols-2 row-cols-md-4', 5 => 'row-cols-3 row-cols-md-5', 6 => 'row-cols-3 row-cols-md-6'][$__qaN] ?? 'row-cols-3 row-cols-md-6'; ?>
+<div class="row <?= $__qaCls ?> g-2 mb-4">
     <div class="col">
         <a href="irsaliye_form.php" class="qa-btn w-100">
             <i class="bi bi-plus-circle-fill" style="color:var(--ern)"></i>
@@ -505,147 +514,66 @@ html[data-dark="1"] .trend-down { background:rgba(224,84,84,.14); color:#ff8080;
         </a>
     </div>
     <?php endif; ?>
-</div>
-<?php endif; ?>
-
-<!-- Ana İstatistik Kartları -->
-<div class="row g-3 mb-3">
-    <div class="col-6 col-md-4 col-xl-2">
-        <div class="card stat-card stat-green p-3 h-100">
-            <div class="d-flex align-items-center gap-2 mb-1">
-                <div class="stat-icon" style="background:rgba(0,88,78,.1);color:var(--ern)">
-                    <i class="bi bi-box-seam fs-4"></i>
-                </div>
-                <div>
-                    <div class="stat-value" style="color:var(--ern)"><?= format_number($toplamM3, 1) ?></div>
-                    <div class="stat-label">Toplam m³</div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-6 col-md-4 col-xl-2">
-        <div class="card stat-card stat-teal p-3 h-100">
-            <div class="d-flex align-items-start justify-content-between">
-                <div class="d-flex align-items-center gap-2">
-                    <div class="stat-icon" style="background:rgba(0,200,180,.1);color:var(--ern-teal)">
-                        <i class="bi bi-calendar-month fs-4"></i>
-                    </div>
-                    <div>
-                        <div class="stat-value" style="color:var(--ern-teal)"><?= format_number($buAyM3, 1) ?></div>
-                        <div class="stat-label">Bu Ay m³</div>
-                    </div>
-                </div>
-                <div class="ms-auto mt-1"><?= trendBadge($trendAy) ?></div>
-            </div>
-        </div>
-    </div>
-    <div class="col-6 col-md-4 col-xl-2">
-        <div class="card stat-card stat-gold p-3 h-100">
-            <div class="d-flex align-items-start justify-content-between">
-                <div class="d-flex align-items-center gap-2">
-                    <div class="stat-icon" style="background:rgba(201,168,76,.12);color:var(--ern-gold)">
-                        <i class="bi bi-file-earmark-text fs-4"></i>
-                    </div>
-                    <div>
-                        <div class="stat-value" style="color:var(--ern-gold)"><?= (int)$irsaliyeSay ?></div>
-                        <div class="stat-label">Alış İrsaliyesi</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-6 col-md-4 col-xl-2">
-        <div class="card stat-card stat-red p-3 h-100">
-            <div class="d-flex align-items-center gap-2">
-                <div class="stat-icon" style="background:rgba(224,84,84,.1);color:#E05454">
-                    <i class="bi bi-arrow-up-circle fs-4"></i>
-                </div>
-                <div>
-                    <div class="stat-value" style="color:#E05454"><?= (int)$iadeSay ?></div>
-                    <div class="stat-label">İade İrsaliyesi</div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-6 col-md-4 col-xl-2">
-        <div class="card stat-card stat-blue p-3 h-100">
-            <div class="d-flex align-items-center gap-2">
-                <div class="stat-icon" style="background:rgba(59,130,246,.1);color:#3B82F6">
-                    <i class="bi bi-diagram-3 fs-4"></i>
-                </div>
-                <div>
-                    <div class="stat-value" style="color:#3B82F6"><?= $aktifProjeSay ?></div>
-                    <div class="stat-label">Aktif Proje</div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-6 col-md-4 col-xl-2">
-        <div class="card stat-card stat-slate p-3 h-100">
-            <div class="d-flex align-items-center gap-2">
-                <div class="stat-icon" style="background:rgba(148,163,184,.12);color:#64748B">
-                    <i class="bi bi-truck fs-4"></i>
-                </div>
-                <div>
-                    <div class="stat-value" style="color:#64748B"><?= (int)$tedarikciSay ?></div>
-                    <div class="stat-label">Aktif Tedarikçi</div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- KPI Satırı: Bu Hafta / Günlük Ort / Geçen Ay / Kantar Farkı -->
-<div class="row g-2 mb-4">
-    <div class="col-6 col-md-3">
-        <div class="kpi-card">
-            <div class="kpi-icon" style="background:rgba(0,200,180,.1)"><i class="bi bi-calendar-week" style="color:var(--ern-teal)"></i></div>
-            <div>
-                <div class="kpi-val"><?= format_number($buHaftaM3,1) ?> <small style="font-size:.65rem;font-weight:500;color:var(--bt-text-muted)">m³</small></div>
-                <div class="kpi-lbl">Bu Hafta <?= trendBadge($trendHafta) ?></div>
-            </div>
-        </div>
-    </div>
-    <div class="col-6 col-md-3">
-        <div class="kpi-card">
-            <div class="kpi-icon" style="background:rgba(0,88,78,.1)"><i class="bi bi-calculator" style="color:var(--ern)"></i></div>
-            <div>
-                <div class="kpi-val"><?= format_number($gunlukOrt,1) ?> <small style="font-size:.65rem;font-weight:500;color:var(--bt-text-muted)">m³/gün</small></div>
-                <div class="kpi-lbl">Günlük Ort. (<?= ['','Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'][(int)date('n')] ?>)</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-6 col-md-3">
-        <div class="kpi-card">
-            <div class="kpi-icon" style="background:rgba(201,168,76,.1)"><i class="bi bi-clock-history" style="color:var(--ern-gold)"></i></div>
-            <div>
-                <div class="kpi-val"><?= format_number($gecenAyM3,1) ?> <small style="font-size:.65rem;font-weight:500;color:var(--bt-text-muted)">m³</small></div>
-                <div class="kpi-lbl">Geçen Ay</div>
-            </div>
-        </div>
-    </div>
-    <?php if ($kantarOzet && (float)$kantarOzet['toplam_fark'] > 0): ?>
-    <div class="col-6 col-md-3">
-        <div class="kpi-card">
-            <div class="kpi-icon" style="background:rgba(224,84,84,.1)"><i class="bi bi-exclamation-triangle" style="color:#E05454"></i></div>
-            <div>
-                <div class="kpi-val" style="color:#E05454"><?= format_number($kantarOzet['toplam_fark'],0) ?> <small style="font-size:.65rem;font-weight:500">kg</small></div>
-                <div class="kpi-lbl">Kantar Farkı (bu ay)</div>
-            </div>
-        </div>
-    </div>
-    <?php else: ?>
-    <div class="col-6 col-md-3">
-        <div class="kpi-card">
-            <div class="kpi-icon" style="background:rgba(59,130,246,.1)"><i class="bi bi-shield-check" style="color:#3B82F6"></i></div>
-            <div>
-                <div class="kpi-val" style="color:#3B82F6"><?= (int)$irsaliyeSay + (int)$iadeSay ?></div>
-                <div class="kpi-lbl">Toplam Kayıt</div>
-            </div>
-        </div>
+    <?php if (function_exists('toplu_yukleme_izinli') && toplu_yukleme_izinli('beton')): ?>
+    <div class="col">
+        <a href="toplu_yukleme.php" class="qa-btn w-100">
+            <i class="bi bi-cloud-upload" style="color:#0EA5C6"></i>
+            <span>Toplu Yükleme</span>
+        </a>
     </div>
     <?php endif; ?>
 </div>
+<?php endif; ?>
+
+<!-- Ana İstatistik Kartları (ortak kpi_kart bileşeni) -->
+<?php
+$__ayAd = ['','Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+$__trendAlt = function (?array $t, string $metin) {
+    return $t ? trendBadge($t) . ' ' . $metin : $metin;
+};
+$__qp = $projeId > 0 ? '&proje_id=' . $projeId : '';
+echo kpi_satir([
+    ['ad' => 'Toplam Beton', 'deger' => (float)$toplamM3, 'ondalik' => 1, 'birim' => 'm³', 'ikon' => 'bi-box-seam',
+     'renk' => 'green', 'link' => 'raporlar.php',
+     'alt' => $sonTeslimat ? 'Son teslimat <strong>' . format_date($sonTeslimat['tarih']) . '</strong>' : 'Henüz teslimat yok'],
+    ['ad' => 'Bu Ay (' . $__ayAd[(int)date('n')] . ')', 'deger' => (float)$buAyM3, 'ondalik' => 1, 'birim' => 'm³',
+     'ikon' => 'bi-calendar-month', 'renk' => 'teal', 'link' => 'irsaliyeler.php?tip=alis&yil=' . date('Y') . '&ay=' . (int)date('n') . $__qp,
+     'alt' => $__trendAlt($trendAy, 'geçen aya göre · geçen ay <strong>' . format_number($gecenAyM3, 1) . ' m³</strong>')],
+    ['ad' => 'Alış İrsaliyesi', 'deger' => (int)$irsaliyeSay, 'ikon' => 'bi-file-earmark-text', 'renk' => 'gold',
+     'link' => 'irsaliyeler.php?tip=alis' . $__qp,
+     'alt' => $faturaOzet ? '<strong>' . format_number($faturaOzet['bagsiz'], 0) . '</strong> henüz faturasız' : 'reddedilenler hariç'],
+    ['ad' => 'İade İrsaliyesi', 'deger' => (int)$iadeSay, 'ikon' => 'bi-arrow-up-circle', 'renk' => 'red',
+     'link' => 'irsaliyeler.php?tip=iade' . $__qp, 'alt_metin' => 'santrale geri gönderilen'],
+    ['ad' => 'Aktif Proje', 'deger' => (int)$aktifProjeSay, 'ikon' => 'bi-diagram-3', 'renk' => 'blue',
+     'link' => 'projeler.php', 'alt_metin' => 'parsel → blok → kot ağacı aşağıda'],
+    ['ad' => 'Aktif Tedarikçi', 'deger' => (int)$tedarikciSay, 'ikon' => 'bi-truck', 'renk' => 'slate',
+     'link' => 'tedarikciler.php',
+     'alt' => $sonTeslimat && $sonTeslimat['tedarikci'] ? 'son: <strong>' . h($sonTeslimat['tedarikci']) . '</strong>' : ''],
+], '', 'mb-3');
+
+// İkinci satır: hafta / günlük ortalama / geçen ay / kantar farkı
+$__kf = null;
+if ($kantarOzet && $kantarOzet['n'] > 0) {
+    $__kf = ['ad' => 'Kantar Farkı (bu ay)', 'deger' => round($kantarOzet['net']), 'ondalik' => 0, 'isaret' => true, 'birim' => 'kg',
+             'ikon' => 'bi-speedometer', 'renk' => $kantarOzet['net'] < 0 ? 'red' : 'green', 'link' => 'raporlar.php',
+             'alt' => '<strong>' . $kantarOzet['n'] . '</strong> tartım · ort. ' . format_number($kantarOzet['mutlak'] / $kantarOzet['n'], 0) . ' kg/irs.'
+                    . ($kantarOzet['eksik'] ? ' · ' . $kantarOzet['eksik'] . ' eksik' : '')
+                    . ($kantarOzet['supheli'] ? ' · <span class="text-danger">' . $kantarOzet['supheli'] . ' birim şüpheli</span>' : ''),
+             'title' => 'Yıldızlar net − tedarikçi net, iki tartımı da girilmiş irsaliyeler. İki net arasında 2 kattan fazla fark olan (ton/kg karışmış) satırlar toplama girmez.'];
+} else {
+    $__kf = ['ad' => 'Kantar Farkı (bu ay)', 'deger' => '—', 'ikon' => 'bi-speedometer', 'renk' => 'slate',
+             'alt_metin' => $kantarOzet && $kantarOzet['supheli'] ? $kantarOzet['supheli'] . ' kayıtta birim şüpheli (ton/kg)' : 'bu ay iki tartımı da girilmiş irsaliye yok'];
+}
+echo kpi_satir([
+    ['ad' => 'Bu Hafta', 'deger' => (float)$buHaftaM3, 'ondalik' => 1, 'birim' => 'm³', 'ikon' => 'bi-calendar-week', 'renk' => 'teal',
+     'alt' => $__trendAlt($trendHafta, 'geçen haftaya göre')],
+    ['ad' => 'Günlük Ortalama', 'deger' => (float)$gunlukOrt, 'ondalik' => 1, 'birim' => 'm³/gün', 'ikon' => 'bi-calculator', 'renk' => 'green',
+     'alt_metin' => $__ayAd[(int)date('n')] . ' · ' . (int)date('j') . ' güne bölündü'],
+    ['ad' => 'Geçen Ay', 'deger' => (float)$gecenAyM3, 'ondalik' => 1, 'birim' => 'm³', 'ikon' => 'bi-clock-history', 'renk' => 'gold',
+     'alt' => '<strong>' . format_number($gecenAyIrsaliye, 0) . '</strong> irsaliye'],
+    $__kf,
+], 'col-6 col-lg-3');
+?>
 
 <!-- Son 7 Gün + Tedarikçi Dağılımı -->
 <div class="row g-4 mb-4">

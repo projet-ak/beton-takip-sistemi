@@ -17,7 +17,8 @@ Dosyalar (`.claude/skills/run-beton-takip-sistemi/`):
 - `shot.mjs` — Playwright sürücüsü (ekran görüntüsü, taşma denetimi, JS hatası, DOM ölçümü).
 - `seed.sql` (→ ana DB) — 3 tedarikçi, 7 beton faturası (beton/pompa/fiyat farkı), 60 irsaliye ·
   `seed_demir.sql` (→ demir DB) — 3 tedarikçi, 6 demir faturası, 5 bağlı sevkiyat (biri tartılmış, biri
-  tutarsız/tonajsız). Gerçek veri değildir. Her dosya bir kez yüklenir (`$ERN_RUN_DIR/.seed_<dosya>` işareti);
+  tutarsız/tonajsız) · `seed_seramik/akaryakit/crm/prekast.sql` — dashboard'lar boş açılmasın diye küçük örnek veri
+  (seramik/akaryakıt/PTS kurulumu ve Saha Takip tabloları `.kuruldu2` işaretiyle ayrıca kurulur). Gerçek veri değildir. Her dosya bir kez yüklenir (`$ERN_RUN_DIR/.seed_<dosya>` işareti);
   yeni seed eklemek için `up.sh`'deki listeye `dosya:veritabanı:önce_açılacak_sayfa` satırı eklenir.
 
 ## Ön koşullar
@@ -76,6 +77,8 @@ Portlar `ERN_DB_PORT` (3399) / `ERN_PORT` (8099).
 - `.module-switch` (üst modül şeridi) kendi içinde kayar; sığma ölçümü `scrollWidth/clientWidth`.
 - **Formun ilk `input`'u CSRF gizli alanıdır** — `header.php` her POST formuna `<input type=hidden name=csrf>`
   ekler; `form.querySelector('input')` onu bulur. Odak/okuma için alanı adıyla seçin (`input[name=deger]`).
+- `ERN_EVAL` gövdesi `new Function` ile çalışır — `await` KULLANILAMAZ. KPI değerini değiştirip sığdırmayı ölçmek için
+  `ERN_KPI_SIGDIR()`'i aynı gövdede elle çağırın (resize zamanlayıcısı ölçümden sonra çalışır).
 - Seed'de `dosya_url` dolu olmalı: listelerde dosyalı satır fazladan düğme çizer, boş veriyle genişlik ölçümü yanıltır.
 
 - ⚠ **`router.php` her isteğe yönetici oturumu verir** — canlıya çıkmamalı: `deploy2.php` `.claude/`'u sunucuya

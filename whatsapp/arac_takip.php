@@ -168,20 +168,13 @@ require_once __DIR__ . '/../includes/header.php';
     <?php if (!$bekDahil): ?>(Henüz onaylanmamışları görmek için "Bekleyenler dahil" seçeneğini açın.)<?php endif; ?></div>
 <?php endif; ?>
 
-<div class="row g-3 mb-4">
-  <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body py-3">
-    <div class="fw-bold fs-4 text-success"><?= $toplamZiyaret ?></div>
-    <div class="text-muted small">Toplam araç girişi</div></div></div></div>
-  <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body py-3">
-    <div class="fw-bold fs-4"><?= $farkliArac ?></div>
-    <div class="text-muted small">Farklı araç</div></div></div></div>
-  <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body py-3">
-    <div class="fw-bold fs-4 text-info"><?= $sayi($toplamSaat) ?></div>
-    <div class="text-muted small">Toplam sahada kalma (saat)</div></div></div></div>
-  <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body py-3">
-    <div class="fw-bold fs-4"><?= $sayi($ortSaat) ?></div>
-    <div class="text-muted small">Ortalama kalış (saat)</div></div></div></div>
-</div>
+<?= kpi_satir([
+    ['ad' => 'Toplam araç girişi', 'deger' => (int)$toplamZiyaret, 'ikon' => 'bi-truck', 'renk' => 'green'],
+    ['ad' => 'Farklı araç', 'deger' => (int)$farkliArac, 'ikon' => 'bi-123', 'renk' => 'blue', 'alt_metin' => 'plakaya göre'],
+    ['ad' => 'Toplam sahada kalma', 'deger' => round((float)$toplamSaat, 1), 'ondalik' => 1, 'birim' => 'saat', 'ikon' => 'bi-clock-history', 'renk' => 'cyan'],
+    ['ad' => 'Ortalama kalış', 'deger' => round((float)$ortSaat, 1), 'ondalik' => 1, 'birim' => 'saat', 'ikon' => 'bi-hourglass-split', 'renk' => 'gold',
+     'alt_metin' => 'giriş başına'],
+]) ?>
 
 <?php if ($eslesmeyen): ?>
 <div class="alert alert-warning py-2 small">

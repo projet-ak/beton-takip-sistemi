@@ -227,47 +227,61 @@
     });
     menuyuIsaretle();
 
-    function animateCount(el, target, decimals) {
+    // Sayaç animasyonu: .stat-num (kpi_kart) + eski düz .stat-value/.stat-count.
+    // Yalnız SAF sayı metni sayılır ("1.234,5", "+12"); içinde birim/öğe olan değer
+    // ellenmez — eskiden "1.234 t" gibi metinlerde birim silinirdi.
+    var sayiRe = /^([+\-\u2212]?)(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d+))?$/;
+    var azHareket = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function animateCount(el, target, decimals, onEk) {
         var start = performance.now(), dur = 1100;
         (function step(now) {
             var p = Math.min((now - start) / dur, 1);
             // ÖNEMLİ: son karede (p>=1) değeri TAM hedefe eşitle. Aksi halde expo
             // easing (1 - 2^-10) p=1'de 0,999023 kalır ve sayı hedefe hiç ulaşmaz
             // (ör. 5253 yerine 5247,9; 590 yerine 589 gösterir).
-            var val;
-            if (p >= 1) {
-                val = target;
-            } else {
-                var ease = 1 - Math.pow(2, -10 * p);
-                val = target * ease;
-            }
-            el.textContent = decimals > 0
+            var val = p >= 1 ? target : target * (1 - Math.pow(2, -10 * p));
+            el.textContent = onEk + (decimals > 0
                 ? val.toLocaleString('tr-TR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
-                : Math.round(val).toLocaleString('tr-TR');
+                : Math.round(val).toLocaleString('tr-TR'));
             if (p < 1) requestAnimationFrame(step);
         })(start);
     }
 
-    var io = new IntersectionObserver(function(entries) {
+    var io = ('IntersectionObserver' in window) ? new IntersectionObserver(function(entries) {
         entries.forEach(function(e) {
             if (!e.isIntersecting) return;
-            var el  = e.target;
-            var raw = parseFloat((el.dataset.count || el.textContent).replace(/\./g,'').replace(',','.'));
-            if (isNaN(raw) || raw === 0) return;
-            var dec = parseInt(el.dataset.decimals || '0', 10);
-            animateCount(el, raw, dec);
+            var el = e.target;
+            animateCount(el, parseFloat(el.dataset.count), parseInt(el.dataset.decimals || '0', 10), el.dataset.onek || '');
             io.unobserve(el);
         });
-    }, { threshold: 0.4 });
+    }, { threshold: 0.3 }) : null;
 
-    document.querySelectorAll('.stat-value, .stat-count').forEach(function(el) {
-        var txt = el.textContent.trim();
-        var num = parseFloat(txt.replace(/\./g,'').replace(',','.'));
-        if (!isNaN(num) && num > 0) {
-            el.dataset.count    = String(num);
-            el.dataset.decimals = txt.indexOf(',') >= 0 ? (txt.split(',')[1] ? txt.split(',')[1].length : 1) : 0;
-            io.observe(el);
-        }
+    // KPI değeri kutuya sığmazsa yazı küçülür (en az 13 px). Kart genişliği ekran/sütun düzenine
+    // göre değiştiğinden sabit eşik yetmiyordu ("14.664.438 TL" 1440 px'te 6'lı dizilimde kesiliyordu).
+    function kpiSigdir() {
+        document.querySelectorAll('.stat-kpi .stat-value').forEach(function(v) {
+            v.style.fontSize = '';
+            var fs = parseFloat(getComputedStyle(v).fontSize), n = 0;
+            while (v.scrollWidth > v.clientWidth + 1 && fs > 13 && n++ < 20) { fs -= 1; v.style.fontSize = fs + 'px'; }
+        });
+    }
+    kpiSigdir();
+    window.ERN_KPI_SIGDIR = kpiSigdir;   // içerik sonradan değişirse (AJAX) yeniden sığdırmak için
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(kpiSigdir);
+    var kpiZam;
+    window.addEventListener('resize', function() { clearTimeout(kpiZam); kpiZam = setTimeout(kpiSigdir, 150); });
+
+    if (io && !azHareket) document.querySelectorAll('.stat-num, .stat-value, .stat-count').forEach(function(el) {
+        if (el.children.length) return;                     // içinde öğe var (kpi_kart) → iç .stat-num sayılır
+        var m = el.textContent.trim().match(sayiRe);
+        if (!m) return;
+        var num = parseFloat(m[2].replace(/\./g, '') + (m[3] ? '.' + m[3] : ''));
+        if (!(num > 0)) return;
+        var neg = m[1] === '-' || m[1] === '\u2212';
+        el.dataset.count    = String(neg ? -num : num);
+        el.dataset.decimals = m[3] ? String(m[3].length) : '0';
+        el.dataset.onek     = m[1] === '+' ? '+' : '';
+        io.observe(el);
     });
 
     if (typeof Chart !== 'undefined') {

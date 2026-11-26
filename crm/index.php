@@ -86,41 +86,32 @@ require_once __DIR__ . '/../includes/header.php';
     <a href="import.php" class="ms-auto">rapor yükle →</a>
 </div>
 
-<div class="row g-2 mb-3">
 <?php
-/* Kart = [etiket, değer, renk, ikon, link, alt açıklama].
-   ⚠ Rapor GÜNLÜK yüklenir: "bugün açılan" ancak bugünün raporu yüklendiğinde dolar —
+/* ⚠ Rapor GÜNLÜK yüklenir: "bugün açılan" ancak bugünün raporu yüklendiğinde dolar —
    kartın altındaki not bunu söyler ki 0 görünce "arıza gelmemiş" sanılmasın. */
 $__raporBugun = $son && substr((string)$son['created'], 0, 10) === $ozet['bugunTarih'];
-$kpi = [
-    ['Açık arıza', $f0($ozet['acik']), 'danger', 'bi-exclamation-triangle-fill', 'arizalar.php?durum=acik', 'çözülmeyi bekleyen'],
-    ['Bugün açılan', $f0($ozet['bugunYeni']), 'primary', 'bi-calendar-day-fill',
-     'arizalar.php?bas=' . $ozet['bugunTarih'] . '&bit=' . $ozet['bugunTarih'],
-     $__raporBugun ? 'bugünün raporu yüklendi' : 'bugünün raporu HENÜZ yüklenmedi'],
-    ['Bu hafta açılan', $f0($ozet['buHaftaYeni']), 'primary', 'bi-calendar-week-fill',
-     'arizalar.php?bas=' . $ozet['haftaBas'] . '&bit=' . $ozet['bugunTarih'],
-     'Pzt ' . format_date($ozet['haftaBas']) . ' → bugün'],
-    ['Bu ay yeni', $f0($ozet['buAyYeni']), 'primary', 'bi-plus-circle-fill',
-     'arizalar.php?bas=' . date('Y-m-01') . '&bit=' . $ozet['bugunTarih'],
-     format_date(date('Y-m-01')) . ' → bugün'],
-    ['Bu ay çözülen', $f0($ozet['buAyCozulen']), 'success', 'bi-check-circle-fill', 'arizalar.php?durum=cozuldu', 'kapanan kayıt'],
-    ['Ort. açık kalma', $f1($ozet['ortAcikGun']) . ' gün', 'info', 'bi-hourglass-split', null, 'açık arızaların yaşı'],
-    ['30+ gündür açık', $f0($ozet['eski30']), 'warning', 'bi-clock-fill', 'arizalar.php?durum=acik', 'gecikmiş iş yükü'],
-    ['Toplam kayıt', $f0($ozet['toplam']), 'secondary', 'bi-list-check', 'arizalar.php', 'açık + çözülen'],
-];
-foreach ($kpi as [$ad, $deger, $renk, $ikon, $link, $alt]): ?>
-    <div class="col-6 col-md-4 col-xl-3">
-        <?php if ($link): ?><a href="<?= h($link) ?>" class="text-decoration-none text-reset"><?php endif; ?>
-        <div class="card border-0 shadow-sm h-100"><div class="card-body py-3 text-center">
-            <i class="bi <?= $ikon ?> text-<?= $renk ?> fs-4"></i>
-            <div class="fs-4 fw-bold mt-1"><?= $deger ?></div>
-            <div class="small text-muted"><?= $ad ?></div>
-            <?php if ($alt): ?><div class="text-muted" style="font-size:.7rem"><?= h($alt) ?></div><?php endif; ?>
-        </div></div>
-        <?php if ($link): ?></a><?php endif; ?>
-    </div>
-<?php endforeach; ?>
-</div>
+echo kpi_satir([
+    ['ad' => 'Açık arıza', 'deger' => (int)$ozet['acik'], 'renk' => 'red', 'ikon' => 'bi-exclamation-triangle-fill',
+     'link' => 'arizalar.php?durum=acik', 'alt_metin' => 'çözülmeyi bekleyen'],
+    ['ad' => 'Bugün açılan', 'deger' => (int)$ozet['bugunYeni'], 'renk' => 'blue', 'ikon' => 'bi-calendar-day-fill',
+     'link' => 'arizalar.php?bas=' . $ozet['bugunTarih'] . '&bit=' . $ozet['bugunTarih'],
+     'alt' => $__raporBugun ? 'bugünün raporu yüklendi' : '<span class="text-danger">bugünün raporu HENÜZ yüklenmedi</span>'],
+    ['ad' => 'Bu hafta açılan', 'deger' => (int)$ozet['buHaftaYeni'], 'renk' => 'blue', 'ikon' => 'bi-calendar-week-fill',
+     'link' => 'arizalar.php?bas=' . $ozet['haftaBas'] . '&bit=' . $ozet['bugunTarih'],
+     'alt_metin' => 'Pzt ' . format_date($ozet['haftaBas']) . ' → bugün'],
+    ['ad' => 'Bu ay yeni', 'deger' => (int)$ozet['buAyYeni'], 'renk' => 'purple', 'ikon' => 'bi-plus-circle-fill',
+     'link' => 'arizalar.php?bas=' . date('Y-m-01') . '&bit=' . $ozet['bugunTarih'],
+     'alt_metin' => format_date(date('Y-m-01')) . ' → bugün'],
+    ['ad' => 'Bu ay çözülen', 'deger' => (int)$ozet['buAyCozulen'], 'renk' => 'green', 'ikon' => 'bi-check-circle-fill',
+     'link' => 'arizalar.php?durum=cozuldu', 'alt_metin' => 'kapanan kayıt'],
+    ['ad' => 'Ort. açık kalma', 'deger' => round((float)$ozet['ortAcikGun'], 1), 'ondalik' => 1, 'birim' => 'gün', 'renk' => 'cyan',
+     'ikon' => 'bi-hourglass-split', 'link' => 'raporlar.php', 'alt_metin' => 'açık arızaların ortalama yaşı'],
+    ['ad' => '30+ gündür açık', 'deger' => (int)$ozet['eski30'], 'renk' => $ozet['eski30'] ? 'yellow' : 'slate', 'ikon' => 'bi-clock-fill',
+     'link' => 'arizalar.php?durum=acik', 'alt_metin' => 'gecikmiş iş yükü', 'uyari' => $ozet['eski30'] > 0],
+    ['ad' => 'Toplam kayıt', 'deger' => (int)$ozet['toplam'], 'renk' => 'slate', 'ikon' => 'bi-list-check',
+     'link' => 'arizalar.php', 'alt_metin' => 'açık + çözülen'],
+], '', 'mb-3');
+?>
 
 <div class="row g-3 mb-3">
     <div class="col-lg-8">

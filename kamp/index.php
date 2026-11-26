@@ -75,8 +75,12 @@ require __DIR__ . '/../includes/header.php';
 </div>
 <?php endif; ?>
 
-<div class="row g-2 mb-3">
-  <?php foreach ([
+<?php
+// Ortak kpi_kart: [etiket, değer, ikon, renk, link, alt]
+echo kpi_satir(array_map(fn($k) => [
+    'ad' => $k[0], 'deger' => (int)$k[1], 'ikon' => $k[2], 'renk' => $k[3], 'link' => $k[4], 'alt' => $k[5],
+    'uyari' => $k[3] === 'danger' && (int)$k[1] > 0,
+], [
     ['Kampta kalan',     $o['kampta'],      'bi-people-fill',       'primary',   'kisiler.php?durum=kampta',                         $f0($o['firma']) . ' firmadan'],
     ['Boş yatak',        $o['bos'],         'bi-door-open',         'success',   'yerlesim.php',                                     $f0($o['yatak']) . ' yataktan · %' . $oran . ' dolu'],
     ['Bugün giren',      $o['bugun_giris'], 'bi-box-arrow-in-right','info',      'hareketler.php?bas=' . $bugun . '&bit=' . $bugun . '&tur=giris', 'yatak değişikliği hariç'],
@@ -87,18 +91,8 @@ require __DIR__ . '/../includes/header.php';
     ['Ziyaretçi (içeride)', $zo['iceride'], 'bi-person-badge',     $zo['uyari'] ? 'danger' : 'primary', 'ziyaretler.php?durum=iceride', $f0($zo['bugun']) . ' bugün geldi' . ($zo['son7'] ? ' · son 7 günde ' . $f0($zo['son7']) . ' izinsiz' : '')],
     ['Değişimi gecikmiş', $po['toplam_kirmizi'], 'bi-arrow-repeat', $po['toplam_kirmizi'] ? 'danger' : 'success', 'periyodik.php', 'nevresim / yorgan… · ' . $f0($po['toplam_sari']) . ' yaklaşıyor'],
     ['Kullanım dışı yatak', $o['disi'],     'bi-slash-circle',      'secondary', 'yapi.php',                                         'kırık / kaldırılmış'],
-  ] as [$ad, $deger, $ikon, $renk, $link, $alt]): ?>
-  <div class="col-6 col-xl-3">
-    <a href="<?= h($link) ?>" class="card border-0 shadow-sm h-100 text-decoration-none">
-      <div class="card-body py-2">
-        <div class="small text-muted"><i class="bi <?= $ikon ?> me-1"></i><?= h($ad) ?></div>
-        <div class="fs-4 fw-bold text-<?= $renk ?>"><?= $f0($deger) ?></div>
-        <div class="small text-muted"><?= $alt /* sabit metin + h() */ ?></div>
-      </div>
-    </a>
-  </div>
-  <?php endforeach; ?>
-</div>
+  ]), '', 'mb-3');
+?>
 
 <div class="row g-3">
   <div class="col-lg-7">

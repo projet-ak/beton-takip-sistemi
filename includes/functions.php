@@ -396,3 +396,115 @@ function current_user_id(): ?int
 {
     return isset($_SESSION['user']['id']) ? (int)$_SESSION['user']['id'] : null;
 }
+
+/* ── ORTAK KPI KARTI (tüm modül dashboard'ları) ────────────────────────────────
+ * Tek bileşen: ikon + sayı (sayaç animasyonlu) + birim + etiket + alt satır.
+ * Kartlar satırda EŞİT yükseklikte durur, uzun metin kutudan TAŞMAZ (değer küçülür,
+ * etiket/alt satır 2 satırda kesilir, tamamı title'da). Renk = KPI_RENK anahtarı.
+ *
+ *   kpi_kart(['ad'=>'Toplam m³', 'deger'=>1234.5, 'ondalik'=>1, 'birim'=>'m³',
+ *             'ikon'=>'bi-box-seam', 'renk'=>'green', 'link'=>'x.php', 'alt'=>'…html…'])
+ *
+ * 'deger' sayıysa biçimlenir ve sayaç animasyonu alır; metinse (ör. "—", "3 / 5")
+ * olduğu gibi (h() ile) basılır. 'alt' GÜVENİLİR HTML'dir (çağıran kaçışlar);
+ * düz metin için 'alt_metin'. 'isaret'=>true pozitif değere '+' koyar.
+ */
+const KPI_RENK = [
+    'green'  => '#00584E', 'teal'   => '#00A896', 'gold'  => '#B8912F', 'red'    => '#E05454',
+    'blue'   => '#3B82F6', 'slate'  => '#64748B', 'orange'=> '#EA7A1E', 'purple' => '#7C4DDB',
+    'pink'   => '#D63384', 'cyan'   => '#0EA5C6', 'yellow'=> '#D99A06',
+];
+// Bootstrap adlarıyla gelen eski kartlar için eşlik
+const KPI_RENK_ESI = ['success'=>'green','danger'=>'red','warning'=>'yellow','info'=>'cyan',
+                      'primary'=>'blue','secondary'=>'slate','dark'=>'slate','muted'=>'slate'];
+
+function kpi_renk(?string $r): string
+{
+    $r = strtolower(trim((string)$r));
+    $r = KPI_RENK_ESI[$r] ?? $r;
+    return isset(KPI_RENK[$r]) ? $r : 'green';
+}
+
+function kpi_kart(array $k): string
+{
+    $renk  = kpi_renk($k['renk'] ?? 'green');
+    $ad    = (string)($k['ad'] ?? '');
+    $ikon  = preg_replace('/[^a-z0-9\- ]/i', '', (string)($k['ikon'] ?? 'bi-bar-chart'));
+    $birim = (string)($k['birim'] ?? '');
+    $deger = $k['deger'] ?? null;
+
+    if (is_int($deger) || is_float($deger) || (is_string($deger) && is_numeric($deger))) {
+        $n   = (float)$deger;
+        $ond = (int)($k['ondalik'] ?? (floor($n) == $n ? 0 : 2));
+        $txt = ($n > 0 && !empty($k['isaret']) ? '+' : '') . format_number($n, $ond);
+        $deg = '<span class="stat-num">' . $txt . '</span>';
+    } else {
+        $txt = (string)($deger ?? '—');
+        $deg = '<span>' . h($txt) . '</span>';
+    }
+    // Değer + birim uzunsa yazı küçülür (kart darken "14.664.437,90 TL" sığsın)
+    $uz  = mb_strlen($txt) + ($birim !== '' ? mb_strlen($birim) + 1 : 0);
+    $boy = $uz > 12 ? ' kpi-v-xs' : ($uz > 9 ? ' kpi-v-sm' : '');
+    if ($birim !== '') $deg .= '<small class="stat-unit">' . h($birim) . '</small>';
+
+    $alt = '';
+    if (isset($k['alt']) && $k['alt'] !== '' && $k['alt'] !== null)       $alt = (string)$k['alt'];
+    elseif (isset($k['alt_metin']) && $k['alt_metin'] !== '')             $alt = h((string)$k['alt_metin']);
+    $rozet = (string)($k['rozet'] ?? '');
+    $altTitle = trim(strip_tags(str_replace(['<br>', '<br/>'], ' ', $alt)));
+
+    $title = (string)($k['title'] ?? trim($ad . ($altTitle !== '' ? ' — ' . $altTitle : '')));
+    $ek    = !empty($k['uyari']) ? ' kpi-uyari' : '';
+    $ic = '<div class="kpi-ust">'
+        . '<div class="stat-icon"><i class="bi ' . $ikon . '"></i></div>'
+        . '<div class="kpi-metin">'
+        .   '<div class="stat-value' . $boy . '">' . $deg . '</div>'
+        .   '<div class="stat-label">' . h($ad) . '</div>'
+        . '</div></div>'
+        . (($alt !== '' || $rozet !== '') ? '<div class="kpi-alt">' . ($rozet !== '' ? $rozet . ' ' : '') . $alt . '</div>' : '');
+
+    $sinif = 'card stat-card stat-kpi stat-' . $renk . $ek . ' h-100';
+    $t = ' title="' . h($title) . '"';
+    if (!empty($k['link'])) {
+        return '<a href="' . h((string)$k['link']) . '" class="' . $sinif . '"' . $t . '>' . $ic . '</a>';
+    }
+    return '<div class="' . $sinif . '"' . $t . '>' . $ic . '</div>';
+}
+
+/**
+ * Önceki döneme göre değişim rozeti ("↑ %12,5"). $artisIyi=false ise artış KIRMIZI
+ * (tüketim, arıza gibi azalması istenen değerler). Önceki 0 ise boş döner.
+ */
+function kpi_trend($yeni, $eski, bool $artisIyi = true): string
+{
+    if (!(float)$eski) return '';
+    $p = round(((float)$yeni - (float)$eski) / abs((float)$eski) * 100, 1);
+    $iyi = $p >= 0 ? $artisIyi : !$artisIyi;
+    return '<span class="trend-badge ' . ($iyi ? 'trend-up' : 'trend-down') . '"><i class="bi '
+         . ($p >= 0 ? 'bi-arrow-up-short' : 'bi-arrow-down-short') . '"></i>%' . number_format(abs($p), 1, ',', '.') . '</span>';
+}
+
+/**
+ * KPI satırı. Sütun genişliği kart sayısına göre seçilir: kenar menüyle birlikte 6'lı dizilim
+ * 1440 px'te bile kartları ~170 px'e indirip değeri kesiyordu → 5/6 kart ancak 1700 px üstünde
+ * tek satır (style.css kpi-col-5/6), altında 3'lü; 7+ kart 4'lü. $col verilirse o kullanılır.
+ */
+function kpi_satir(array $kartlar, string $col = '', string $ek = 'mb-4'): string
+{
+    $kartlar = array_values(array_filter($kartlar));
+    $n = count($kartlar);
+    if ($n === 0) return '';
+    if ($col === '') {
+        $col = match (true) {
+            $n <= 2 => 'col-6',
+            $n === 3 => 'col-12 col-sm-4',
+            $n === 4 => 'col-6 col-lg-3',
+            $n === 5 => 'col-6 col-md-4 kpi-col-5',
+            $n === 6 => 'col-6 col-md-4 kpi-col-6',
+            default  => 'col-6 col-md-4 col-xl-3',
+        };
+    }
+    $h = '<div class="row g-3 kpi-row ' . h($ek) . '">';
+    foreach ($kartlar as $k) $h .= '<div class="' . h($col) . '">' . (is_array($k) ? kpi_kart($k) : $k) . '</div>';
+    return $h . '</div>';
+}

@@ -34,6 +34,13 @@ $topArac = $pdoAkaryakit->query("SELECT a.sofor, a.cinsi, a.firma, SUM(t.aylik_t
     GROUP BY t.arac_id ORDER BY top DESC LIMIT 12")->fetchAll();
 
 $fmt0 = fn($n)=>number_format((float)$n,0,',','.');
+$onceki = $donemler[1] ?? null;
+$guncelArac = 0;
+if ($guncel) {
+    $st = $pdoAkaryakit->prepare("SELECT COUNT(DISTINCT arac_id) FROM akaryakit_tuketim WHERE donem = ? AND aylik_tuketim > 0");
+    $st->execute([$guncel['donem']]);
+    $guncelArac = (int)$st->fetchColumn();
+}
 $pageTitle = 'Akaryakıt Takip — Genel Bakış';
 require_once __DIR__ . '/../includes/header.php';
 ?>
@@ -48,35 +55,26 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 <?php else: ?>
 
-<!-- KPI -->
-<div class="row g-3 mb-4">
-    <div class="col-6 col-lg-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small mb-1"><i class="bi bi-fuel-pump-fill me-1"></i>Güncel Stok (Kalan)</div>
-            <div class="h3 mb-0 fw-bold text-primary"><?= $fmt0($guncel['kalan']??0) ?> <small class="fs-6 text-muted">Lt</small></div>
-            <div class="small text-muted mt-1"><?= h($guncel['donem']??'') ?></div>
-        </div></div>
-    </div>
-    <div class="col-6 col-lg-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small mb-1"><i class="bi bi-box-arrow-in-down me-1"></i>Toplam Gelen Mazot</div>
-            <div class="h3 mb-0 fw-bold text-success"><?= $fmt0($topGelen) ?> <small class="fs-6 text-muted">Lt</small></div>
-        </div></div>
-    </div>
-    <div class="col-6 col-lg-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small mb-1"><i class="bi bi-speedometer me-1"></i>Toplam Tüketim</div>
-            <div class="h3 mb-0 fw-bold text-danger"><?= $fmt0($topKull) ?> <small class="fs-6 text-muted">Lt</small></div>
-        </div></div>
-    </div>
-    <div class="col-6 col-lg-3">
-        <div class="card border-0 shadow-sm h-100"><div class="card-body">
-            <div class="text-muted small mb-1"><i class="bi bi-truck me-1"></i>Araç / Makine</div>
-            <div class="h3 mb-0 fw-bold"><?= $fmt0($aracSay) ?></div>
-            <div class="small text-muted mt-1"><?= count($donemler) ?> dönem</div>
-        </div></div>
-    </div>
-</div>
+<!-- KPI (ortak kpi_kart) -->
+<?php
+$__donemSay = count($donemler);
+echo kpi_satir([
+    ['ad' => 'Güncel Stok (Kalan)', 'deger' => round((float)($guncel['kalan'] ?? 0)), 'ondalik' => 0, 'birim' => 'Lt', 'ikon' => 'bi-fuel-pump-fill',
+     'renk' => ((float)($guncel['kalan'] ?? 0)) < 0 ? 'red' : 'green', 'link' => 'stok.php',
+     'alt' => '<strong>' . h($guncel['donem'] ?? '') . '</strong> sonu · devir ' . $fmt0($guncel['devir'] ?? 0) . ' Lt'],
+    ['ad' => 'Dönem Tüketimi', 'deger' => round((float)($guncel['kullanilan'] ?? 0)), 'ondalik' => 0, 'birim' => 'Lt', 'ikon' => 'bi-speedometer',
+     'renk' => 'orange', 'link' => 'aylik.php',
+     'alt' => $onceki ? kpi_trend($guncel['kullanilan'] ?? 0, $onceki['kullanilan'], false) . ' önceki dönem ' . $fmt0($onceki['kullanilan']) . ' Lt' : h($guncel['donem'] ?? '')],
+    ['ad' => 'Dönem Geleni', 'deger' => round((float)($guncel['gelen'] ?? 0)), 'ondalik' => 0, 'birim' => 'Lt', 'ikon' => 'bi-truck-flatbed',
+     'renk' => 'blue', 'link' => 'hareketler.php', 'alt' => 'tanka giren · <strong>' . h($guncel['donem'] ?? '') . '</strong>'],
+    ['ad' => 'Toplam Gelen Mazot', 'deger' => round($topGelen), 'ondalik' => 0, 'birim' => 'Lt', 'ikon' => 'bi-box-arrow-in-down',
+     'renk' => 'teal', 'link' => 'stok.php', 'alt_metin' => $__donemSay . ' dönemin toplamı'],
+    ['ad' => 'Toplam Tüketim', 'deger' => round($topKull), 'ondalik' => 0, 'birim' => 'Lt', 'ikon' => 'bi-droplet-half',
+     'renk' => 'red', 'link' => 'raporlar.php', 'alt' => 'ortalama <strong>' . $fmt0($__donemSay ? $topKull / $__donemSay : 0) . ' Lt/ay</strong>'],
+    ['ad' => 'Araç / Makine', 'deger' => $aracSay, 'ikon' => 'bi-truck', 'renk' => 'slate', 'link' => 'araclar.php',
+     'alt' => '<strong>' . $guncelArac . '</strong> tanesi bu dönem yakıt aldı'],
+]);
+?>
 
 <div class="row g-3 mb-4">
     <div class="col-lg-8">
