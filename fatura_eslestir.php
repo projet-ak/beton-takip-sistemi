@@ -213,11 +213,40 @@ if (($_POST['action'] ?? '') === 'eksik_tara' && ctype_digit((string)($_POST['fa
     $veri = fat_metinden_cikar($metin);
     $esl  = fat_eslestir($pdo, $veri['irsaliyeler']);
 
+    // ⚠ Sistemde BULUNAN irsaliyeler de faturaya BAĞLANIR (BFA2026000001611: ilk okumada faturanın altındaki
+    // etiketsiz 18 irsaliye numarası atlanmış, fatura 0 bağlı / 0 eksik kalmıştı; yeniden tarama yalnız
+    // eksik sayısını güncellediğinden bulunanlar yine bağlanmıyordu). Yalnız BOŞTA olan irsaliye bağlanır —
+    // başka faturaya bağlı olan TAŞINMAZ (çift faturalama şüphesi), raporlanır. Mevcut bağlara dokunulmaz.
+    $yeniBag = 0; $baskada = [];
+    $eslIds = array_map(fn($r) => (int)$r['id'], $esl['eslesen']);
+    if ($eslIds) {
+        $baskada = fat_baskaya_bagli($pdo, $eslIds, $fid);
+        $bag = $pdo->prepare("UPDATE irsaliyeler SET fatura_id = ?,
+                              fatura_no = CASE WHEN fatura_no IS NULL OR TRIM(fatura_no) = '' THEN ? ELSE fatura_no END
+                              WHERE id = ? AND fatura_id IS NULL");
+        $belgeKimlik = ['fatura_no' => (string)$f['fatura_no']];
+        foreach ($eslIds as $iid) {
+            if (isset($baskada[$iid])) continue;
+            $bag->execute([$fid, $f['fatura_no'], $iid]);
+            if ($bag->rowCount() < 1) continue;
+            $yeniBag++;
+            // Fatura dosyası irsaliyenin belgelerine de eklensin (kayıt ekranındaki davranış)
+            if ($f['dosya_url'] && !blg_mukerrer($pdo, $iid, 'fatura', $belgeKimlik))
+                blg_ekle($pdo, $iid, 'Fatura ' . $f['fatura_no'], $f['dosya_url'], 'fatura', $belgeKimlik, current_user_id());
+        }
+    }
+    // Okunan numaraların tamamı saklanır (çift faturalama kontrolü bunu kullanır); eski liste korunur
+    $eskiListe = json_decode((string)($f['irsaliye_liste'] ?? ''), true);
+    $irsListe  = array_values(array_unique(array_map(fn($x) => strtoupper(trim((string)$x)),
+                    array_merge(is_array($eskiListe) ? $eskiListe : [], $veri['irsaliyeler']))));
+
     // Eksik listesi + karekod-yalnız işlenmiş faturalarda BOŞ kalan alanlar
     // (m³ karekodda yoktur, yalnız metinden okunur) yeniden taramayla doldurulur.
     // Dolu alanların üzerine YAZILMAZ.
-    $set = ['eksik_adet = ?', 'eksik_liste = ?'];
+    $set = ['eksik_adet = ?', 'eksik_liste = ?',
+            'irsaliye_adet = (SELECT COUNT(*) FROM irsaliyeler WHERE fatura_id = faturalar.id)'];
     $par = [count($esl['eksik']), json_encode(array_values($esl['eksik']), JSON_UNESCAPED_UNICODE)];
+    if ($irsListe) { $set[] = 'irsaliye_liste = ?'; $par[] = json_encode($irsListe, JSON_UNESCAPED_UNICODE); }
     $dolan = [];
     foreach ([['miktar_m3', $veri['miktar'], 'm³'], ['tutar', $veri['tutar'], 'tutar'],
               ['tarih', $veri['tarih'], 'tarih'], ['ettn', $veri['ettn'], 'ETTN']] as [$kol, $deger, $ad2]) {
@@ -228,15 +257,28 @@ if (($_POST['action'] ?? '') === 'eksik_tara' && ctype_digit((string)($_POST['fa
     $par[] = $fid;
     $pdo->prepare("UPDATE faturalar SET " . implode(', ', $set) . " WHERE id = ?")->execute($par);
     audit_log($pdo, 'faturalar', $fid, 'UPDATE', null,
-              ['eksik_tara' => true, 'eksik' => $esl['eksik'], 'dolan' => $dolan], current_user_id());
+              ['eksik_tara' => true, 'eksik' => $esl['eksik'], 'dolan' => $dolan,
+               'yeni_bag' => $yeniBag, 'baskada' => array_values(array_map(fn($b) => $b['irsaliye_no'] . ' → ' . $b['fatura_no'], $baskada))],
+              current_user_id());
 
-    $mesaj = $esl['eksik'] ? 'Fatura yeniden tarandı — eksik irsaliyeler: ' . implode(', ', $esl['eksik'])
-                           : 'Fatura yeniden tarandı — faturadaki tüm irsaliyeler sistemde var, eksik yok.';
+    if (!$veri['irsaliyeler']) {
+        $mesaj = 'Fatura yeniden okundu ama İRSALİYE NUMARASI BULUNAMADI. Faturada irsaliye numarası yoksa türünü '
+               . '"Fiyat Farkı / Pompa / Hizmet" yapın; varsa irsaliyeleri "İrsaliyeler" ekranından elle bağlayın.';
+    } else {
+        $mesaj = 'Fatura yeniden okundu — ' . count($veri['irsaliyeler']) . ' irsaliye numarası bulundu'
+               . ($yeniBag ? ', ' . $yeniBag . ' irsaliye faturaya BAĞLANDI' : '')
+               . ($esl['eksik'] ? '. Sistemde olmayan ' . count($esl['eksik']) . ' irsaliye: ' . implode(', ', $esl['eksik'])
+                                . ' — "Eksik irsaliyeler" panelinden taslak olarak açabilirsiniz.'
+                                : '. Faturadaki tüm irsaliyeler sistemde var.');
+    }
+    if ($baskada) $mesaj .= ' ⚠ ' . count($baskada) . ' irsaliye BAŞKA bir faturaya bağlı olduğu için taşınmadı ('
+                          . implode(', ', array_slice(array_map(fn($b) => $b['irsaliye_no'] . ' → ' . $b['fatura_no'], $baskada), 0, 6))
+                          . (count($baskada) > 6 ? ' …' : '') . ') — çift faturalama olabilir, kontrol edin.';
     if ($dolan) $mesaj .= ' Boş alanlar dolduruldu: ' . implode(', ', $dolan) . '.';
     $m3Yok = ($f['miktar_m3'] === null || $f['miktar_m3'] === '') && ($veri['miktar'] === null || $veri['miktar'] === '');
     if ($m3Yok) $mesaj .= ' ⚠ m³ değeri metinden OKUNAMADI (PDF görüntü tabanlı olabilir) — listedeki m³ sütunundaki kutuya elle girebilirsiniz.';
-    flash(($esl['eksik'] || $m3Yok) ? 'warning' : 'success', $mesaj);
-    redirect(($_POST['geri'] ?? '') === 'liste' ? 'fatura_eslestir.php' : 'fatura_eslestir.php?eksik=1');
+    flash(($esl['eksik'] || $m3Yok || $baskada || !$veri['irsaliyeler']) ? 'warning' : 'success', $mesaj);
+    redirect(($_POST['geri'] ?? '') === 'liste' ? fat_liste_geri() : 'fatura_eslestir.php?eksik=1');
 }
 
 // ── 2c'') TEDARİKÇİSİ BOŞ faturaya tedarikçi ata (+ eksikleri taslak aç) ─────
@@ -655,7 +697,8 @@ if (($_POST['action'] ?? '') === 'fatura_isle' && !empty($_POST['dosya'])) {
                          'bagli'=>count($ids), 'eksik'=>count($esl['eksik']), 'belge'=>$belgeEk,
                          'taslak'=>$taslakAcilan, 'taslak_uyari'=>$taslakUyari, 'baskada'=>array_values($baskada),
                          'ted'=>($ted['ad'] ?? null), 'ted_yeni'=>$tedYeni,
-                         'm3'=>$veri['miktar'], 'tutar'=>$veri['tutar']];
+                         'm3'=>$veri['miktar'], 'tutar'=>$veri['tutar'],
+                         'irs_yok'=>fat_tur_irsaliyeli($turB['tur']) && empty($veri['irsaliyeler'])];
         } catch (Throwable $eI) {
             $iSonuc[] = ['ad'=>$orjAd, 'durum'=>'hata', 'mesaj'=>$eI->getMessage()];
         }
@@ -1151,7 +1194,7 @@ $fmt = fn($n,$d=2) => number_format((float)$n, $d, ',', '.');
                     <td class="text-end font-monospace"><?= isset($r['m3']) && $r['m3'] !== null ? $fmt($r['m3']) : '—' ?></td>
                     <td class="text-end font-monospace"><?= isset($r['tutar']) && $r['tutar'] !== null ? $fmt($r['tutar']) . ' ₺' : '—' ?></td>
                     <td class="text-end"><?= isset($r['bagli']) ? (int)$r['bagli'] : '—' ?><?= isset($r['belge']) && $r['belge'] ? ' <i class="bi bi-paperclip small text-muted" title="fatura ' . (int)$r['belge'] . ' irsaliyenin belgelerine eklendi"></i>' : '' ?></td>
-                    <td class="text-end"><?= !empty($r['taslak']) ? '<span class="badge bg-warning text-dark">' . (int)$r['taslak'] . ' taslak</span>' : (isset($r['bagli']) ? '0' : '—') ?><?= !empty($r['taslak_uyari']) ? '<div class="small text-danger">' . h($r['taslak_uyari']) . '</div>' : '' ?><?= !empty($r['baskada']) ? '<div class="small text-danger" title="' . h(implode("\n", $r['baskada'])) . '"><i class="bi bi-exclamation-triangle"></i> ' . count($r['baskada']) . ' irsaliye başka faturada — bağlanmadı</div>' : '' ?></td>
+                    <td class="text-end"><?= !empty($r['taslak']) ? '<span class="badge bg-warning text-dark">' . (int)$r['taslak'] . ' taslak</span>' : (isset($r['bagli']) ? '0' : '—') ?><?= !empty($r['taslak_uyari']) ? '<div class="small text-danger">' . h($r['taslak_uyari']) . '</div>' : '' ?><?= !empty($r['baskada']) ? '<div class="small text-danger" title="' . h(implode("\n", $r['baskada'])) . '"><i class="bi bi-exclamation-triangle"></i> ' . count($r['baskada']) . ' irsaliye başka faturada — bağlanmadı</div>' : '' ?><?= !empty($r['irs_yok']) ? '<div class="small text-danger"><i class="bi bi-exclamation-triangle"></i> faturadan irsaliye numarası okunamadı — listede "yeniden oku"</div>' : '' ?></td>
                     <td class="text-end <?= (int)($r['eksik'] ?? 0) > 0 ? 'text-danger fw-bold' : '' ?>"><?= isset($r['eksik']) ? (int)$r['eksik'] : '—' ?></td>
                     <td><?php $acNo = (string)($r['kayit']['no'] ?? $r['no'] ?? ''); if ($acNo !== ''): ?><a href="fatura_eslestir.php?fatura_ara=<?= urlencode($acNo) ?>" class="small">kaydı aç</a><?php endif; ?></td>
                 </tr>
@@ -1941,6 +1984,17 @@ foreach ($e['eslesen'] as $r) { in_array((int)$r['id'], $mevcutIrsId, true) ? $e
                         <span class="text-muted" title="İrsaliye eşleştirmesine girmeyen fatura">—</span>
                         <?php elseif ((int)$f['eksik_adet'] > 0): $fel = json_decode((string)($f['eksik_liste'] ?? ''), true); ?>
                         <a href="?eksik=1" class="text-danger text-decoration-none" title="<?= h(is_array($fel) ? implode(', ', $fel) : 'numara listesi için tıklayın') ?>"><?= (int)$f['eksik_adet'] ?> <i class="bi bi-box-arrow-up-right small"></i></a>
+                        <?php elseif (!$fIrs && (int)$f['bagli'] === 0 && !json_decode((string)($f['irsaliye_liste'] ?? ''), true)): ?>
+                        <span class="badge bg-warning text-dark" title="Faturadan hiç irsaliye numarası okunamamış — taranmış PDF'te numaralar etiketsiz yazılmış olabilir">irsaliye okunamadı</span>
+                        <?php if ($f['dosya_url'] && can_edit()): ?>
+                        <form method="post" class="d-inline">
+                            <input type="hidden" name="action" value="eksik_tara">
+                            <input type="hidden" name="fatura_id" value="<?= (int)$f['id'] ?>">
+                            <input type="hidden" name="geri" value="liste">
+                            <button class="btn btn-sm btn-outline-warning py-0 mt-1" title="Fatura dosyası yeniden okunur, bulunan irsaliyeler faturaya bağlanır, olmayanlar eksik listesine yazılır">
+                                <i class="bi bi-arrow-clockwise"></i> yeniden oku</button>
+                        </form>
+                        <?php endif; ?>
                         <?php elseif ($fTaslak): ?>
                         <span class="badge bg-warning text-dark" title="Faturadan otomatik açılmış taslak irsaliyeler — Excel aktarımıyla gerçek veriler gelmeden EKSİK sayılır<?= beton_onay_aktif() ? ', onaylanamaz' : '' ?>"><?= $fTaslak ?> taslak</span>
                         <?php else: ?>0<?php endif; ?>

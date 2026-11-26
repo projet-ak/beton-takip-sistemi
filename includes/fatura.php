@@ -674,6 +674,9 @@ function fat_ai_oku(string $path, string $mime, ?string $sistemOverride = null):
             . 'Ödenecek Tutar, kalem tablosundaki Miktar değerleri BİRİMİYLE aynen (örn. "250 M3" — '
             . 'birimi asla atlama) ve TÜM "İrsaliye No / İrsaliye Tarihi" değerleri. '
             . 'İrsaliye numaralarını tek tek, her biri ayrı satırda listele. '
+            . 'Bazı faturalarda irsaliye numaraları ETİKETSİZ yazılır: faturanın altındaki not/açıklama alanında '
+            . 'yan yana dizilmiş belge numaraları (ör. "MBT2026000013645 MBT2026000013646 …") — bunlar da '
+            . 'irsaliye numarasıdır; HİÇBİRİNİ atlamadan, her birini ayrı satırda aynen yaz. '
             . 'Faturanın başındaki SATICI firmanın unvanını ve hemen altına "VKN: <numara>" satırını, '
             . 'ardından "SAYIN" bloğundaki ALICI firmanın unvanını ve "VKN: <numara>" satırını da aynen yaz.') . $duzMetinKurali;
 
