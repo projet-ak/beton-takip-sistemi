@@ -186,31 +186,64 @@ if (($_POST['action'] ?? '') === 'kaydet') {
     redirect('fatura_eslestir.php');
 }
 
-// ── 2b) Eksik listesi kayıp eski kayıt: saklı PDF'ten yeniden tara ──────────
+// ── 2b) DOSYADAN YENİDEN OKU (listedeki ↻ düğmesi + eksik paneli "tara") ──────
+// Saklı fatura dosyası yeniden okunur: bulunan irsaliyeler bağlanır, eksik listesi yenilenir, BOŞ alanlar
+// (m³ · tutar · tarih · ETTN · tedarikçi) dolar — dolu alan ezilmez. İrsaliyesiz türde (pompa/fark/hizmet)
+// yalnız boş alanlar doldurulur. Demirdeki "yeniden oku" ile aynı iş (2026-11-26, kullanıcı isteği).
 if (($_POST['action'] ?? '') === 'eksik_tara' && ctype_digit((string)($_POST['fatura_id'] ?? ''))) {
+    @set_time_limit(180);
     $fid = (int)$_POST['fatura_id'];
+    $geriAdres = ($_POST['geri'] ?? '') === 'liste' ? fat_liste_geri() : 'fatura_eslestir.php?eksik=1';
+    if (!can_edit()) { flash('error', 'Bu işlem için yetkiniz yok.'); redirect($geriAdres); }
     $f = $pdo->prepare("SELECT * FROM faturalar WHERE id = ?"); $f->execute([$fid]);
     $f = $f->fetch();
-    if (!$f) { flash('error', 'Fatura bulunamadı.'); redirect('fatura_eslestir.php?eksik=1'); }
+    if (!$f) { flash('error', 'Fatura bulunamadı.'); redirect($geriAdres); }
 
-    if (!fat_tur_irsaliyeli($f['tur'] ?? 'beton')) {
-        flash('warning', h($f['fatura_no']) . ' — ' . FAT_TUR[fat_tur_norm($f['tur'])][0]
-            . ' faturasında irsaliye/m³ aranmaz. Beton faturasıysa listeden türünü "Beton (irsaliyeli)" yapın.');
-        redirect('fatura_eslestir.php');
-    }
-
-    $tam = $f['dosya_url'] ? __DIR__ . '/' . $f['dosya_url'] : '';
-    if ($tam === '' || !is_file($tam)) {
-        flash('error', 'Bu faturanın kayıtlı dosyası yok (metin yapıştırarak işlenmiş) — faturayı yukarıdan yeniden yükleyin, kaydettiğinizde eksik numaralar dolar.');
-        redirect('fatura_eslestir.php?eksik=1');
+    // Dosya yalnız uploads/ altından okunur (dosya_url DB'den gelir ama yol yine de sınırlanır)
+    $kok = realpath(__DIR__ . '/uploads');
+    $tam = $f['dosya_url'] ? realpath(__DIR__ . '/' . ltrim((string)$f['dosya_url'], '/')) : false;
+    if (!$tam || !$kok || !str_starts_with($tam, $kok . DIRECTORY_SEPARATOR) || !is_file($tam)) {
+        flash('error', $f['dosya_url']
+            ? 'Faturanın dosyası sunucuda bulunamadı — PDF\'i yukarıdan yeniden yükleyin (kayıt güncellenir, mükerrer açılmaz).'
+            : 'Bu faturanın kayıtlı dosyası yok (metin yapıştırarak işlenmiş) — faturayı yukarıdan yeniden yükleyin, kaydettiğinizde eksik numaralar dolar.');
+        redirect($geriAdres);
     }
     $mime = guess_mime($tam, basename($tam));
-    $metin = fat_dosyadan_metin($tam, $mime);
-    if ($metin === null || $metin === '') {
-        flash('error', 'Dosya okunamadı (AI okuma başarısız) — faturayı yukarıdan yeniden yükleyip kaydedin.');
-        redirect('fatura_eslestir.php?eksik=1');
+    $kyn = null;
+    $metin = fat_dosyadan_metin($tam, $mime, $kyn);
+    if ($metin === null || trim($metin) === '') {
+        flash('error', 'Dosya okunamadı (pdftotext ve AI okuma başarısız) — faturayı yukarıdan yeniden yükleyip kaydedin.');
+        redirect($geriAdres);
     }
     $veri = fat_metinden_cikar($metin);
+    $kaynakAd = $kyn === 'ai' ? 'AI' : ($kyn ? $kyn : 'metin');
+
+    // Tedarikçi boşsa okunan satıcıdan (VKN → ünvan → numara öneki) bulunur — yeni kart AÇILMAZ
+    $tedDolan = '';
+    if (empty($f['tedarikci_id'])) {
+        $tr = fat_tedarikci_coz($pdo, $veri + ['fatura_no' => $f['fatura_no']]);
+        if ($tr && !empty($tr['id'])) {
+            $pdo->prepare("UPDATE faturalar SET tedarikci_id = ? WHERE id = ? AND tedarikci_id IS NULL")->execute([(int)$tr['id'], $fid]);
+            $tedDolan = (string)($tr['ad'] ?? '');
+        }
+    }
+
+    // İrsaliyesiz tür: irsaliye/m³ aranmaz, yalnız boş alanlar dolar
+    if (!fat_tur_irsaliyeli($f['tur'] ?? 'beton')) {
+        $set = []; $par = []; $dolan = [];
+        foreach ([['tutar', $veri['tutar'], 'tutar'], ['tarih', $veri['tarih'], 'tarih'], ['ettn', $veri['ettn'], 'ETTN']] as [$kol, $deger, $ad2]) {
+            if ($deger !== null && $deger !== '' && ($f[$kol] === null || $f[$kol] === '')) { $set[] = "$kol = ?"; $par[] = $deger; $dolan[] = $ad2; }
+        }
+        if ($set) { $par[] = $fid; $pdo->prepare("UPDATE faturalar SET " . implode(', ', $set) . " WHERE id = ?")->execute($par); }
+        if ($tedDolan !== '') $dolan[] = 'tedarikçi (' . $tedDolan . ')';
+        audit_log($pdo, 'faturalar', $fid, 'UPDATE', null, ['yeniden_oku' => true, 'dolan' => $dolan], current_user_id());
+        $mesaj = "{$f['fatura_no']} dosyasından yeniden okundu ({$kaynakAd}) — " . FAT_TUR[fat_tur_norm($f['tur'])][0]
+               . ' faturası olduğu için irsaliye/m³ aranmadı. '
+               . ($dolan ? 'Boş alanlar dolduruldu: ' . implode(', ', $dolan) . '.' : 'Değişen alan yok.');
+        if ($veri['irsaliyeler']) $mesaj .= ' ⚠ Faturada ' . count($veri['irsaliyeler']) . ' irsaliye numarası var — beton teslim faturasıysa türünü "Beton (irsaliyeli)" yapıp yeniden okuyun.';
+        flash('success', $mesaj);
+        redirect($geriAdres);
+    }
     $esl  = fat_eslestir($pdo, $veri['irsaliyeler']);
 
     // ⚠ Sistemde BULUNAN irsaliyeler de faturaya BAĞLANIR (BFA2026000001611: ilk okumada faturanın altındaki
@@ -261,11 +294,15 @@ if (($_POST['action'] ?? '') === 'eksik_tara' && ctype_digit((string)($_POST['fa
                'yeni_bag' => $yeniBag, 'baskada' => array_values(array_map(fn($b) => $b['irsaliye_no'] . ' → ' . $b['fatura_no'], $baskada))],
               current_user_id());
 
+    if ($tedDolan !== '') $dolan[] = 'tedarikçi (' . $tedDolan . ')';
     if (!$veri['irsaliyeler']) {
-        $mesaj = 'Fatura yeniden okundu ama İRSALİYE NUMARASI BULUNAMADI. Faturada irsaliye numarası yoksa türünü '
-               . '"Fiyat Farkı / Pompa / Hizmet" yapın; varsa irsaliyeleri "İrsaliyeler" ekranından elle bağlayın.';
+        $sez = fat_tur_sez($metin, $veri);
+        $mesaj = "{$f['fatura_no']} dosyasından yeniden okundu ({$kaynakAd}) ama İRSALİYE NUMARASI BULUNAMADI. "
+               . (($sez['tur'] ?? 'beton') !== 'beton'
+                    ? 'Metin ' . FAT_TUR[fat_tur_norm($sez['tur'])][0] . ' faturasına benziyor' . (!empty($sez['gerekce']) ? ' (' . $sez['gerekce'] . ')' : '') . ' — listeden türünü değiştirin.'
+                    : 'Faturada irsaliye numarası yoksa türünü "Fiyat Farkı / Pompa / Hizmet" yapın; varsa irsaliyeleri "İrsaliyeler" ekranından elle bağlayın.');
     } else {
-        $mesaj = 'Fatura yeniden okundu — ' . count($veri['irsaliyeler']) . ' irsaliye numarası bulundu'
+        $mesaj = "{$f['fatura_no']} dosyasından yeniden okundu ({$kaynakAd}) — " . count($veri['irsaliyeler']) . ' irsaliye numarası bulundu'
                . ($yeniBag ? ', ' . $yeniBag . ' irsaliye faturaya BAĞLANDI' : '')
                . ($esl['eksik'] ? '. Sistemde olmayan ' . count($esl['eksik']) . ' irsaliye: ' . implode(', ', $esl['eksik'])
                                 . ' — "Eksik irsaliyeler" panelinden taslak olarak açabilirsiniz.'
@@ -278,7 +315,7 @@ if (($_POST['action'] ?? '') === 'eksik_tara' && ctype_digit((string)($_POST['fa
     $m3Yok = ($f['miktar_m3'] === null || $f['miktar_m3'] === '') && ($veri['miktar'] === null || $veri['miktar'] === '');
     if ($m3Yok) $mesaj .= ' ⚠ m³ değeri metinden OKUNAMADI (PDF görüntü tabanlı olabilir) — listedeki m³ sütunundaki kutuya elle girebilirsiniz.';
     flash(($esl['eksik'] || $m3Yok || $baskada || !$veri['irsaliyeler']) ? 'warning' : 'success', $mesaj);
-    redirect(($_POST['geri'] ?? '') === 'liste' ? fat_liste_geri() : 'fatura_eslestir.php?eksik=1');
+    redirect($geriAdres);
 }
 
 // ── 2c'') TEDARİKÇİSİ BOŞ faturaya tedarikçi ata (+ eksikleri taslak aç) ─────
@@ -2063,15 +2100,6 @@ $ciftKararNot = function (?array $karar): string {
                         <?php elseif ($f['miktar_m3'] !== null): ?><?= $fmt($f['miktar_m3']) ?>
                         <?php else: ?>
                         <div class="d-inline-flex align-items-center gap-1">
-                            <?php if ($f['dosya_url']): ?>
-                            <form method="post" class="d-inline">
-                                <input type="hidden" name="action" value="eksik_tara">
-                                <input type="hidden" name="fatura_id" value="<?= (int)$f['id'] ?>">
-                                <input type="hidden" name="geri" value="liste">
-                                <button class="btn btn-sm btn-outline-secondary py-0" title="m³ faturada var ama kayıtta boş — PDF yeniden okunur, boş alanlar dolar">
-                                    <i class="bi bi-arrow-clockwise"></i> tara</button>
-                            </form>
-                            <?php endif; ?>
                             <form method="post" class="d-inline-flex align-items-center gap-1" title="Faturadaki m³ değerini elle girin">
                                 <input type="hidden" name="action" value="m3_duzelt">
                                 <input type="hidden" name="fatura_id" value="<?= (int)$f['id'] ?>">
@@ -2112,9 +2140,17 @@ $ciftKararNot = function (?array $karar): string {
                         <?php else: ?>0<?php endif; ?>
                     </td>
                     <td class="text-end text-nowrap">
-                        <a class="btn btn-sm btn-outline-secondary py-0" href="irsaliyeler.php?fatura_id=<?= (int)$f['id'] ?>" title="Bu faturanın irsaliyeleri"><i class="bi bi-list-ul"></i><span class="d-none d-xxl-inline ms-1">İrsaliyeler</span></a>
+                        <?php if ($f['dosya_url'] && can_edit()): ?>
+                        <form method="post" class="d-inline" onsubmit="this.querySelector('button').disabled=true; this.querySelector('i').className='spinner-border spinner-border-sm';">
+                            <input type="hidden" name="action" value="eksik_tara">
+                            <input type="hidden" name="fatura_id" value="<?= (int)$f['id'] ?>">
+                            <input type="hidden" name="geri" value="liste">
+                            <button class="btn btn-sm btn-outline-secondary py-0 px-1" title="Dosyadan yeniden oku — irsaliyeler yeniden aranır ve bağlanır, boş alanlar (m³ · tutar · tarih · ETTN · tedarikçi) dolar; dolu alan değişmez"><i class="bi bi-arrow-repeat"></i></button>
+                        </form>
+                        <?php endif; ?>
+                        <a class="btn btn-sm btn-outline-secondary py-0 px-1" href="irsaliyeler.php?fatura_id=<?= (int)$f['id'] ?>" title="Bu faturanın irsaliyeleri"><i class="bi bi-list-ul"></i><span class="d-none d-xxl-inline ms-1">İrsaliyeler</span></a>
                         <?php if (is_admin()): ?>
-                        <a class="btn btn-sm btn-outline-danger py-0" href="?sil=<?= (int)$f['id'] ?>" onclick="return confirm('Fatura kaydı silinsin, irsaliye bağları çözülsün mü?')"><i class="bi bi-trash"></i></a>
+                        <a class="btn btn-sm btn-outline-danger py-0 px-1" href="?sil=<?= (int)$f['id'] ?>" onclick="return confirm('Fatura kaydı silinsin, irsaliye bağları çözülsün mü?')"><i class="bi bi-trash"></i></a>
                         <?php endif; ?>
                     </td>
                 </tr>
